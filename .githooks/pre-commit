@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# pre-commit dispatcher.
+#
+# Runs every executable `*.sh` script in `pre-commit.d/` in sorted order
+# (lexicographic - name files with a number prefix like `10-`, `20-` to fix
+# the run order). Passes through git's hook arguments. The first script to
+# exit non-zero aborts the commit.
+#
+# To add a new hook: drop an executable `.sh` file in `pre-commit.d/`.
+# No edits to this dispatcher are needed.
+#
+# Cross-platform: Linux, macOS (bash 3.2 - avoids `mapfile` and `set -u`
+# empty-array expansion), Windows (Git for Windows bundles bash).
+set -eo pipefail
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+hook_dir="$repo_root/.githooks/pre-commit.d"
+
+# No hooks directory = nothing to do.
+[ -d "$hook_dir" ] || exit 0
+
+# Collect hooks (sorted). nullglob makes a non-matching glob expand to nothing.
+shopt -s nullglob
+hooks=("$hook_dir"/*.sh)
+shopt -u nullglob
+
+if [ "${#hooks[@]}" -eq 0 ]; then
+  exit 0
+fi
+
+for hook in "${hooks[@]}"; do
+  # Skip non-executable files so notes/READMEs can live in the dir safely.
+  [ -x "$hook" ] || continue
+  if ! "$hook" "$@"; then
+    echo "pre-commit: $hook failed, aborting commit" >&2
+    exit 1
+  fi
+done
+
+exit 0

@@ -1,0 +1,341 @@
+//! Topological sort of named items by reference edges (Kahn's algorithm).
+//!
+//! [`toposort`] returns a reading order where callers precede callees;
+//! [`TieBreak`] controls how zero-in-degree and cycle nodes are ordered.
+//! `main` is always seeded first regardless of in-degree.
+
+use std::collections::HashMap;
+
+/// Tie-breaking strategy for topological sort.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TieBreak {
+    /// Sort zero-in-degree nodes alphabetically by name.
+    Alphabetical,
+    /// Keep original file order for zero-in-degree nodes.
+    Stable,
+}
+
+/// Compute a topological ordering of item indices by reference dependencies.
+///
+/// `fns` is the list of item names in original file order within a phase
+/// (parameter name reflects original function-oriented use; works for any named item type).
+/// `edges` is the set of `(referencer, referenced)` pairs.
+/// `tie_break` controls ordering of zero-in-degree nodes and cycle nodes.
+///
+/// Returns a permutation vector `order` where `order[i]` is the index into
+/// `fns` of the item that should appear at position `i`.
+///
+/// # Ordering guarantees
+///
+/// 1. **Entry points first.** `main` sorts before all other functions
+///    regardless of in-degree. Other functions with zero in-degree also
+///    sort before remaining functions.
+/// 2. **Callers before callees.** If `foo` calls `bar`, `foo` appears before
+///    `bar` in the output.
+/// 3. **Mutual recursion preserved.** Functions in a cycle stay as a contiguous
+///    block. With `Alphabetical` tie-break, cycles are sorted alphabetically.
+/// 4. **Unrelated functions stable.** Functions with no calls between them
+///    are ordered by the tie-break strategy.
+pub fn toposort(fns: &[String], edges: &[(String, String)], tie_break: TieBreak) -> Vec<usize> {
+    let n = fns.len();
+
+    // Name -> index lookup
+    let name_to_idx: HashMap<&str, usize> = fns
+        .iter()
+        .enumerate()
+        .map(|(i, name)| (name.as_str(), i))
+        .collect();
+
+    // Build adjacency list: caller_idx -> Vec<callee_idx>
+    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut in_degree: Vec<usize> = vec![0; n];
+
+    for (caller_name, callee_name) in edges {
+        if let (Some(&caller), Some(&callee)) = (
+            name_to_idx.get(caller_name.as_str()),
+            name_to_idx.get(callee_name.as_str()),
+        ) {
+            adj[caller].push(callee);
+            in_degree[callee] += 1;
+        }
+    }
+
+    let mut order: Vec<usize> = Vec::with_capacity(n);
+    let mut visited = vec![false; n];
+
+    // ── Phase 1: entry points first ──────────────────────────────────
+    // Seed with `main` first, regardless of in-degree.
+    if let Some(&main_idx) = name_to_idx.get("main")
+        && !visited[main_idx]
+    {
+        order.push(main_idx);
+        visited[main_idx] = true;
+        for &callee in &adj[main_idx] {
+            if in_degree[callee] > 0 {
+                in_degree[callee] -= 1;
+            }
+        }
+    }
+
+    // ── Phase 2: standard Kahn iteration ─────────────────────────────
+    let mut changed = true;
+    while changed {
+        changed = false;
+
+        // Collect all zero-in-degree nodes
+        let mut zero_degree: Vec<usize> = (0..n)
+            .filter(|&i| !visited[i] && in_degree[i] == 0)
+            .collect();
+
+        // Apply tie-break ordering
+        match tie_break {
+            TieBreak::Alphabetical => {
+                zero_degree.sort_by(|&a, &b| fns[a].cmp(&fns[b]));
+            }
+            TieBreak::Stable => {
+                // already in index order (file order)
+            }
+        }
+
+        for &i in &zero_degree {
+            visited[i] = true;
+            changed = true;
+            order.push(i);
+
+            for &callee in &adj[i] {
+                if in_degree[callee] > 0 {
+                    in_degree[callee] -= 1;
+                }
+            }
+        }
+    }
+
+    // ── Phase 3: remaining nodes (cycles) in sorted order ────────────
+    {
+        let mut remaining: Vec<usize> = (0..n).filter(|&i| !visited[i]).collect();
+        match tie_break {
+            TieBreak::Alphabetical => {
+                remaining.sort_by(|&a, &b| fns[a].cmp(&fns[b]));
+            }
+            TieBreak::Stable => {
+                // already in index order (file order)
+            }
+        }
+        order.extend(remaining);
+    }
+
+    order
+}
+
+/// Extract a bare function name from a call expression's function path.
+///
+/// Returns `Some("foo")` for bare `foo()` calls. Returns `None` for:
+/// - Qualified paths: `mod::foo()`, `crate::foo()`
+/// - Method calls: `self.foo()`, `x.foo()`
+/// - Associated function calls: `Foo::bar()`
+/// - Closures or other expressions
+#[cfg(test)]
+#[allow(dead_code)]
+fn extract_bare_fn_name(expr: &syn::Expr) -> Option<String> {
+    let inner = if let syn::Expr::Call(call) = expr {
+        &call.func
+    } else {
+        expr
+    };
+    if let syn::Expr::Path(syn::ExprPath { path, .. }) = inner {
+        if path.leading_colon.is_none() && path.segments.len() == 1 {
+            let seg = &path.segments[0];
+            if seg.arguments.is_empty() {
+                return Some(seg.ident.to_string());
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A → B → C linear chain: A calls B, B calls C.
+    /// Expected order: A, B, C.
+    #[test]
+    fn test_linear_chain() {
+        let fns = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let edges = vec![
+            ("b".to_string(), "c".to_string()),
+            ("a".to_string(), "b".to_string()),
+        ];
+
+        let order = toposort(&fns, &edges, TieBreak::Stable);
+
+        assert_eq!(order, vec![0, 1, 2]);
+    }
+
+    /// Diamond: A calls B and C; B and C both call D.
+    #[test]
+    fn test_diamond() {
+        let fns = vec![
+            "a".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+            "d".to_string(),
+        ];
+        let edges = vec![
+            ("a".to_string(), "b".to_string()),
+            ("a".to_string(), "c".to_string()),
+            ("b".to_string(), "d".to_string()),
+            ("c".to_string(), "d".to_string()),
+        ];
+
+        let order = toposort(&fns, &edges, TieBreak::Stable);
+
+        let a_pos = order.iter().position(|&i| i == 0).unwrap();
+        let b_pos = order.iter().position(|&i| i == 1).unwrap();
+        let c_pos = order.iter().position(|&i| i == 2).unwrap();
+        let d_pos = order.iter().position(|&i| i == 3).unwrap();
+
+        assert!(a_pos < b_pos, "a must be before b");
+        assert!(a_pos < c_pos, "a must be before c");
+        assert!(b_pos < d_pos, "b must be before d");
+        assert!(c_pos < d_pos, "c must be before d");
+    }
+
+    /// `main` should sort first even when another function calls it.
+    #[test]
+    fn test_entry_point_first() {
+        let fns = vec!["helper".to_string(), "main".to_string()];
+        let edges = vec![("main".to_string(), "helper".to_string())];
+
+        let order = toposort(&fns, &edges, TieBreak::Stable);
+
+        let main_pos = order.iter().position(|&i| i == 1).unwrap();
+        let helper_pos = order.iter().position(|&i| i == 0).unwrap();
+        assert!(main_pos < helper_pos, "main must sort before helper");
+    }
+
+    /// A ↔ B mutual recursion.
+    #[test]
+    fn test_mutual_recursion_block() {
+        let fns = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let edges = vec![
+            ("a".to_string(), "b".to_string()),
+            ("b".to_string(), "a".to_string()),
+        ];
+
+        let order = toposort(&fns, &edges, TieBreak::Stable);
+
+        let c_pos = order.iter().position(|&i| i == 2).unwrap();
+        let a_pos = order.iter().position(|&i| i == 0).unwrap();
+        let b_pos = order.iter().position(|&i| i == 1).unwrap();
+
+        assert!(
+            c_pos < a_pos,
+            "c (zero in-degree) must appear before cycle block"
+        );
+        assert!(
+            c_pos < b_pos,
+            "c (zero in-degree) must appear before cycle block"
+        );
+
+        let diff = a_pos.abs_diff(b_pos);
+        assert_eq!(diff, 1, "a and b must be adjacent (mutual recursion block)");
+        assert!(
+            a_pos < b_pos,
+            "a must stay before b (original file order in cycle)"
+        );
+    }
+
+    /// Functions with no calls between them should keep their original file order.
+    #[test]
+    fn test_unrelated_fns_stable() {
+        let fns = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let edges: Vec<(String, String)> = vec![];
+
+        let order = toposort(&fns, &edges, TieBreak::Stable);
+        assert_eq!(order, vec![0, 1, 2]);
+    }
+
+    /// Unit test for `extract_bare_fn_name`: accepts `foo()`,
+    /// rejects `mod::foo()`, `self.foo()`, `Foo::bar()`.
+    #[test]
+    fn test_bare_calls_only() {
+        fn extract_from_source(src: &str) -> Option<String> {
+            if let Ok(call) = syn::parse_str::<syn::ExprCall>(src) {
+                return extract_bare_fn_name(&call.func);
+            }
+            if let Ok(expr) = syn::parse_str::<syn::Expr>(src) {
+                return extract_bare_fn_name(&expr);
+            }
+            None
+        }
+
+        assert_eq!(extract_from_source("foo()"), Some("foo".to_string()));
+        assert_eq!(extract_from_source("bar()"), Some("bar".to_string()));
+        assert_eq!(extract_from_source("mod::foo()"), None);
+        assert_eq!(extract_from_source("self::foo()"), None);
+        assert_eq!(extract_from_source("crate::foo()"), None);
+        assert_eq!(extract_from_source("Foo::bar()"), None);
+        assert_eq!(extract_from_source("self.foo()"), None);
+    }
+
+    /// `toposort` with `Alphabetical` tie-break sorts independent items by name.
+    #[test]
+    fn test_toposort_alphabetical_tie_break() {
+        let fns = vec!["zebra".to_string(), "alpha".to_string(), "moon".to_string()];
+        let edges: Vec<(String, String)> = vec![];
+
+        let order = toposort(&fns, &edges, TieBreak::Alphabetical);
+
+        let names: Vec<&str> = order.iter().map(|&i| fns[i].as_str()).collect();
+        assert_eq!(names, vec!["alpha", "moon", "zebra"]);
+    }
+
+    /// `toposort` with `Stable` tie-break preserves original file order for independent items.
+    #[test]
+    fn test_toposort_stable_tie_break() {
+        let fns = vec!["zebra".to_string(), "alpha".to_string(), "moon".to_string()];
+        let edges: Vec<(String, String)> = vec![];
+
+        let order = toposort(&fns, &edges, TieBreak::Stable);
+
+        let names: Vec<&str> = order.iter().map(|&i| fns[i].as_str()).collect();
+        assert_eq!(names, vec!["zebra", "alpha", "moon"]);
+    }
+
+    /// `toposort` with `Alphabetical` sorts cycle members alphabetically.
+    #[test]
+    fn test_toposort_alphabetical_cycles() {
+        let fns = vec!["z".to_string(), "a".to_string(), "m".to_string()];
+        let edges = vec![
+            ("z".to_string(), "a".to_string()),
+            ("a".to_string(), "z".to_string()),
+        ];
+
+        let order = toposort(&fns, &edges, TieBreak::Alphabetical);
+
+        let names: Vec<&str> = order.iter().map(|&i| fns[i].as_str()).collect();
+        // m has zero in-degree, appears first (alphabetically it's the only one)
+        assert_eq!(names[0], "m");
+        // a and z form a cycle, alphabetical: a before z
+        assert_eq!(names[1], "a");
+        assert_eq!(names[2], "z");
+    }
+
+    /// File with no cross-function calls: identity ordering.
+    #[test]
+    fn test_no_calls() {
+        let fns = vec![
+            "main".to_string(),
+            "helper_a".to_string(),
+            "helper_b".to_string(),
+        ];
+        let edges: Vec<(String, String)> = vec![];
+
+        let order = toposort(&fns, &edges, TieBreak::Stable);
+
+        assert_eq!(order[0], 0, "main should be first");
+        let remaining: Vec<usize> = order[1..].to_vec();
+        assert_eq!(remaining, vec![1, 2]);
+    }
+}

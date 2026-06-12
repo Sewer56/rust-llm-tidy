@@ -1,0 +1,21 @@
+[package]
+name = "rust-auto-reorder"
+version = "0.1.0"
+edition = "2024"
+description = "Rust project for automatically reordering Rust source code. Intended for LLM use."
+repository = "https://github.com/Sewer56/rust-auto-reorder"
+license = "Apache-2.0"
+include = ["src/**/*"]
+readme = "README.MD"
+# keywords (search terms): https://crates.io/keywords
+keywords = ["rust", "syn", "ast", "reorder", "refactor"]
+# categories (fixed list): https://crates.io/categories
+categories = ["development-tools"]
+
+[dependencies]
+rust-source-model = { path = "../rust-source-model", version = "0.1.0" }
+anyhow = "1"
+syn = { version = "2", features = ["full", "visit", "parsing"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+
+[dev-dependencies]

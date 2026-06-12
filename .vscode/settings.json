@@ -1,0 +1,6 @@
+{
+    "[yaml]": {
+        "editor.formatOnSave": false
+    },
+    "rust-analyzer.linkedProjects": ["src/Cargo.toml"]
+}
