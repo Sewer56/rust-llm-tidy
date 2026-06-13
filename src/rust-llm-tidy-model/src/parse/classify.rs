@@ -305,7 +305,7 @@ fn extract_macro_rules_name(source: &str, item_start: usize) -> Option<String> {
 ///
 /// Only `Pat::Ident` patterns are reported (the common case); destructuring
 /// patterns like `(a, b): (u32, u32)` contribute nothing, which is acceptable
-/// because doc-check only needs simple name coverage.
+/// because rust-llm-tidy-lint only needs simple name coverage.
 fn extract_param_names(sig: &syn::Signature) -> Vec<String> {
     sig.inputs
         .iter()

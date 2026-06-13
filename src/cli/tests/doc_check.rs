@@ -1,5 +1,5 @@
 //! Integration tests for the `check` and `all` subcommands of
-//! `rust-auto-reorder`.
+//! `rust-llm-tidy`.
 //!
 //! These are kept separate from the reorder integration tests
 //! (`integration.rs`) so the documentation-lint behavior is exercised in
@@ -53,7 +53,7 @@ fn all_reports_remaining_doc_gaps() {
 #[test]
 fn check_nonexistent_path_fails() {
     let nonexistent = std::env::temp_dir().join(format!(
-        "rust-doc-check-missing-{}-{}.rs",
+        "rust-llm-tidy-lint-missing-{}-{}.rs",
         std::process::id(),
         TEST_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
@@ -401,7 +401,7 @@ fn assert_has_diagnostic(stderr: &str, code: &str, item_name: Option<&str>) {
 
 // ── DOC001: missing doc comments ──────────────────────────────────
 
-/// Run `rust-auto-reorder check <fixture>` and return (stderr, exit_code).
+/// Run `rust-llm-tidy check <fixture>` and return (stderr, exit_code).
 fn run_check_fixture(name: &str) -> (String, i32) {
     let path = fixture_dir().join(name);
     let output = run_command(&["check"], &path);
@@ -415,33 +415,29 @@ fn run_check_fixture(name: &str) -> (String, i32) {
 fn temp_dir() -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    std::env::temp_dir().join(format!("rust-doc-check-dir-{}-{}", pid, seq))
+    std::env::temp_dir().join(format!("rust-llm-tidy-lint-dir-{}-{}", pid, seq))
 }
 
-/// The directory holding doc-check fixtures.
+/// The directory holding lint fixtures.
 fn fixture_dir() -> std::path::PathBuf {
     manifest_dir().join("tests").join("fixtures").join("doc")
 }
 
-/// Build `rust-auto-reorder <args> <path>` and run it, returning captured output.
+/// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
 fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
     let mut cmd = Command::new(binary());
     cmd.args(args).arg(path);
-    cmd.output().unwrap_or_else(|e| {
-        panic!(
-            "failed to spawn rust-auto-reorder on {}: {e}",
-            path.display()
-        )
-    })
+    cmd.output()
+        .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
 }
 
-/// Return the path to the `rust-auto-reorder` debug binary.
+/// Return the path to the `rust-llm-tidy` debug binary.
 fn binary() -> std::path::PathBuf {
-    std::env::var_os("CARGO_BIN_EXE_rust_auto_reorder")
+    std::env::var_os("CARGO_BIN_EXE_rust_llm_tidy")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
             let dir = std::env::current_dir().unwrap();
-            dir.join("../target/debug/rust-auto-reorder")
+            dir.join("../target/debug/rust-llm-tidy")
         })
 }
 

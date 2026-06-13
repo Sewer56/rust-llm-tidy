@@ -1,7 +1,7 @@
 
 [workspace]
 resolver = "2"
-members = ["rust-source-model", "rust-auto-reorder", "doc-check", "cli"]
+members = ["rust-llm-tidy-model", "rust-llm-tidy-reorder", "rust-llm-tidy-lint", "cli"]
 
 # Profile Build
 [profile.profile]

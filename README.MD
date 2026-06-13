@@ -1,8 +1,8 @@
-# rust-auto-reorder
+# rust-llm-tidy
 
-[![Crates.io](https://img.shields.io/crates/v/rust-auto-reorder.svg)][Crates.io]
-[![Docs.rs](https://docs.rs/rust-auto-reorder/badge.svg)][Docs.rs]
-[![CI](https://github.com/Sewer56/rust-auto-reorder/actions/workflows/rust.yml/badge.svg)][CI]
+[![Crates.io](https://img.shields.io/crates/v/rust-llm-tidy-reorder.svg)][Crates.io]
+[![Docs.rs](https://docs.rs/rust-llm-tidy-reorder/badge.svg)][Docs.rs]
+[![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
 
 Rust project for automatically reordering Rust source file items into an
 opinionated order with dependency resolution. Intended for LLM use.
@@ -21,7 +21,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rust-auto-reorder = "0.1.0"
+rust-llm-tidy-reorder = "0.1.0"
 ```
 
 ### CLI
@@ -31,22 +31,22 @@ The binary exposes three subcommands: `reorder` (the original behavior),
 
 ```bash
 # Reorder a file in place
-rust-auto-reorder reorder src/main.rs
+rust-llm-tidy reorder src/main.rs
 
 # Preview changes without modifying the file
-rust-auto-reorder reorder --dry-run src/main.rs
+rust-llm-tidy reorder --dry-run src/main.rs
 
 # Reorder every .rs file under a directory recursively
-rust-auto-reorder reorder src
+rust-llm-tidy reorder src
 
 # Reorder multiple paths in one invocation (files and/or directories)
-rust-auto-reorder reorder src/main.rs src/lib.rs tests
+rust-llm-tidy reorder src/main.rs src/lib.rs tests
 
 # Lint for missing docs, incomplete `# Errors`/`# Arguments` sections, placeholders, and test naming (read-only)
-rust-auto-reorder check src
+rust-llm-tidy check src
 
 # Reorder then check in one pass
-rust-auto-reorder all src
+rust-llm-tidy all src
 ```
 
 #### `check` rules
@@ -72,8 +72,9 @@ parse.
 ### Programmatic
 
 ```rust
-use rust_auto_reorder::{parse, graph};
-use rust_auto_reorder::reorder::Permutation;
+use rust_llm_tidy_model::parse;
+use rust_llm_tidy_reorder::graph;
+use rust_llm_tidy_reorder::reorder::Permutation;
 
 let source = r#"
 fn b() { a(); }
@@ -83,14 +84,14 @@ fn a() {}
 let parsed = parse::parse_source(source).unwrap();
 let order = graph::compute_order(&parsed).unwrap();
 let perm = Permutation::new(parsed.items.len(), order).unwrap();
-let output = rust_auto_reorder::reorder::emit(&parsed, &perm).unwrap();
+let output = rust_llm_tidy_reorder::reorder::emit(&parsed, &perm).unwrap();
 
 println!("{}", output);
 // fn a() {}
 // fn b() { a(); }
 ```
 
-See the [rust-auto-reorder crate documentation] for detailed usage.
+See the [rust-llm-tidy crate documentation] for detailed usage.
 
 ## Ordering Rules
 
@@ -188,9 +189,9 @@ for sorting, grouping, and merging.
 
 ## Crates
 
-- [rust-source-model]: Shared source model - parse top-level items with spans, visibility, and doc comments; atomic I/O; line-multiset safety
-- [rust-auto-reorder]: Reordering library - reference-graph ordering of items into canonical 10-phase order
-- [rust-doc-check]: Documentation linter - missing-docs and incomplete-`# Errors` checks
+- [rust-llm-tidy-model]: Shared source model - parse top-level items with spans, visibility, and doc comments; atomic I/O; line-multiset safety
+- [rust-llm-tidy-reorder]: Reordering library - reference-graph ordering of items into canonical 10-phase order
+- [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/`# Arguments`, placeholder, and test-naming checks
 - [cli]: Unified command-line interface (`reorder`, `check`, `all`)
 
 ## Git Hook (optional)
@@ -209,7 +210,7 @@ there. Works on Linux, macOS, and Windows (Git for Windows).
 Bundled hooks, in run order:
 
 - `10-reorder-rust.sh` - reorders staged `.rs` files. Uses an installed
-  `rust-auto-reorder` binary if present, else `cargo run`.
+  `rust-llm-tidy` binary if present, else `cargo run`.
 - `20-rustfmt.sh` - runs `rustfmt --edition 2021` on staged `.rs` files so
   import sorting/grouping (handled by rustfmt) and general formatting apply
   after the reorder step.
@@ -226,13 +227,13 @@ We welcome contributions! See the [Contributing Guide] for details.
 
 Licensed under [Apache 2.0].
 
-[Crates.io]: https://crates.io/crates/rust-auto-reorder
-[Docs.rs]: https://docs.rs/rust-auto-reorder
-[CI]: https://github.com/Sewer56/rust-auto-reorder/actions
-[rust-auto-reorder crate documentation]: ./src/rust-auto-reorder/README.MD
-[rust-source-model]: ./src/rust-source-model/README.MD
-[rust-auto-reorder]: ./src/rust-auto-reorder/README.MD
-[rust-doc-check]: ./src/doc-check/README.MD
+[Crates.io]: https://crates.io/crates/rust-llm-tidy-reorder
+[Docs.rs]: https://docs.rs/rust-llm-tidy-reorder
+[CI]: https://github.com/Sewer56/rust-llm-tidy/actions
+[rust-llm-tidy crate documentation]: ./src/rust-llm-tidy-reorder/README.MD
+[rust-llm-tidy-model]: ./src/rust-llm-tidy-model/README.MD
+[rust-llm-tidy-reorder]: ./src/rust-llm-tidy-reorder/README.MD
+[rust-llm-tidy-lint]: ./src/rust-llm-tidy-lint/README.MD
 [cli]: ./src/cli/README.MD
 [Developer Manual]: https://reloaded-project.github.io/reloaded-templates-rust/manual/
 [Contributing Guide]: https://reloaded-project.github.io/reloaded-templates-rust/manual/#contributing

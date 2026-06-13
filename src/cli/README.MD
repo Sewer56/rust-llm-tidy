@@ -1,10 +1,10 @@
-# rust-auto-reorder-cli
+# rust-llm-tidy-cli
 
-[![Crates.io](https://img.shields.io/crates/v/rust-auto-reorder-cli.svg)][Crates.io]
-[![Docs.rs](https://docs.rs/rust-auto-reorder-cli/badge.svg)][Docs.rs]
-[![CI](https://github.com/Sewer56/rust-auto-reorder/actions/workflows/rust.yml/badge.svg)][CI]
+[![Crates.io](https://img.shields.io/crates/v/rust-llm-tidy-cli.svg)][Crates.io]
+[![Docs.rs](https://docs.rs/rust-llm-tidy-cli/badge.svg)][Docs.rs]
+[![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
 
-Command-line interface for [rust-auto-reorder].
+Command-line interface for [rust-llm-tidy-reorder].
 
 <!-- 
     This README is displayed on crates.io & docs.rs
@@ -14,13 +14,13 @@ Command-line interface for [rust-auto-reorder].
 ## Installation
 
 ```bash
-cargo install rust-auto-reorder-cli
+cargo install rust-llm-tidy-cli
 ```
 
 Or build from source:
 
 ```bash
-cargo build --release -p rust-auto-reorder-cli
+cargo build --release -p rust-llm-tidy-cli
 ```
 
 ## Usage
@@ -30,22 +30,22 @@ The binary exposes three subcommands: `reorder` (reorder items), `check`
 
 ```bash
 # Reorder a single file in place
-rust-auto-reorder reorder src/main.rs
+rust-llm-tidy reorder src/main.rs
 
 # Preview changes without modifying the file
-rust-auto-reorder reorder --dry-run src/main.rs
+rust-llm-tidy reorder --dry-run src/main.rs
 
 # Recursively reorder every .rs file under a directory
-rust-auto-reorder reorder src
+rust-llm-tidy reorder src
 
 # Preview recursive changes
-rust-auto-reorder reorder --dry-run src
+rust-llm-tidy reorder --dry-run src
 
 # Check documentation coverage (read-only, never writes)
-rust-auto-reorder check src
+rust-llm-tidy check src
 
 # Reorder then check in one pass
-rust-auto-reorder all src
+rust-llm-tidy all src
 ```
 
 ## Ordering Rules
@@ -90,14 +90,14 @@ mod tests {}
 ```
 
 `fn main()` always comes first in its visibility tier. `#[cfg(test)] mod tests`
-always comes last. See the [rust-auto-reorder documentation](../rust-auto-reorder/README.MD)
+always comes last. See the [rust-llm-tidy-reorder documentation](../rust-llm-tidy-reorder/README.MD)
 for the full rules.
 
 ## License
 
 Licensed under Apache 2.0
 
-[Crates.io]: https://crates.io/crates/rust-auto-reorder-cli
-[Docs.rs]: https://docs.rs/rust-auto-reorder-cli
-[CI]: https://github.com/Sewer56/rust-auto-reorder/actions
-[rust-auto-reorder]: ../rust-auto-reorder/README.MD
+[Crates.io]: https://crates.io/crates/rust-llm-tidy-cli
+[Docs.rs]: https://docs.rs/rust-llm-tidy-cli
+[CI]: https://github.com/Sewer56/rust-llm-tidy/actions
+[rust-llm-tidy-reorder]: ../rust-llm-tidy-reorder/README.MD

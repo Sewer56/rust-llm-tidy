@@ -6,8 +6,8 @@
 //! returns `Result`. Also provides atomic file I/O ([`io`]) and a line-multiset
 //! safety check ([`safety`]).
 //!
-//! This crate holds the parsing primitives shared by the `rust-auto-reorder`
-//! reordering tool and the `rust-doc-check` documentation checker. It contains
+//! This crate holds the parsing primitives shared by the `rust-llm-tidy-reorder`
+//! reordering tool and the `rust-llm-tidy-lint` documentation checker. It contains
 //! no reordering or checking logic of its own.
 
 /// Atomic file I/O (tempfile + rename writes).

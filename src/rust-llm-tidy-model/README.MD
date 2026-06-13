@@ -1,6 +1,6 @@
-# rust-source-model
+# rust-llm-tidy-model
 
-Shared Rust source model used by the `rust-auto-reorder` and `rust-doc-check`
+Shared Rust source model used by the `rust-llm-tidy-reorder` and `rust-llm-tidy-lint`
 tooling. It parses a Rust source file with [`syn`] and exposes a flat list of
 top-level [`SourceItem`]s, each carrying its byte span, kind, name, visibility
 tier, leading doc comments, and (for functions) its parameter names, whether it
@@ -14,13 +14,13 @@ the shared parsing primitives.
 
 ```toml
 [dependencies]
-rust-source-model = "0.1.0"
+rust-llm-tidy-model = "0.1.0"
 ```
 
 ## Usage
 
 ```rust
-use rust_source_model::parse;
+use rust_llm_tidy_model::parse;
 
 let source = r#"
 pub fn main() {}
@@ -52,5 +52,5 @@ for item in &parsed.items {
 Licensed under [Apache 2.0].
 
 [`syn`]: https://docs.rs/syn
-[`SourceItem`]: https://docs.rs/rust-source-model/latest/rust_source_model/parse/struct.SourceItem.html
+[`SourceItem`]: https://docs.rs/rust-llm-tidy-model/latest/rust_llm_tidy_model/parse/struct.SourceItem.html
 [Apache 2.0]: ../../LICENSE

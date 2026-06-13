@@ -2,8 +2,8 @@
 // Modified based on https://github.com/umwelt-ai/rust-reorder.
 // Provides permutation validation and byte-slice emit.
 
-use crate::parse::{ItemKind, ParseResult};
 use anyhow::{Result, ensure};
+use rust_llm_tidy_model::parse::{ItemKind, ParseResult};
 
 /// A validated permutation of items.
 ///

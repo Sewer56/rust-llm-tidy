@@ -5,8 +5,8 @@
 //! `Vec<usize>` permutation of the parsed items that puts callers before
 //! callees (and macro/impl definitions before their uses).
 
-use crate::parse::{ItemKind, ParseResult, VisibilityTier};
 pub use collect::ReferenceCollector;
+use rust_llm_tidy_model::parse::{ItemKind, ParseResult, VisibilityTier};
 use std::collections::{HashMap, HashSet};
 pub use toposort::{TieBreak, toposort};
 
@@ -330,7 +330,7 @@ mod tests {
             macro_rules! a { () => {}; }
         "#;
 
-        let parsed = crate::parse::parse_source(source).unwrap();
+        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
         let order = compute_order(&parsed).unwrap();
 
         // Source order: 0 = macro b, 1 = macro a. Alphabetical: a, b.
@@ -345,7 +345,7 @@ mod tests {
             macro_rules! a { () => {}; }
         "#;
 
-        let parsed = crate::parse::parse_source(source).unwrap();
+        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
         let order = compute_order(&parsed).unwrap();
 
         // Source order: 0 = fn b, 1 = macro a. Macro should be first.
@@ -364,7 +364,7 @@ mod tests {
             a!();
         "#;
 
-        let parsed = crate::parse::parse_source(source).unwrap();
+        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
         let order = compute_order(&parsed).unwrap();
 
         // Expected phases: use(0), macro def(2), invocation(3), static(1).
@@ -381,7 +381,7 @@ mod tests {
             macro_rules! a { () => {}; }
         "#;
 
-        let parsed = crate::parse::parse_source(source).unwrap();
+        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
         let order = compute_order(&parsed).unwrap();
 
         // println! is external (no local def) -> phase 1, stays first.
@@ -400,7 +400,7 @@ mod tests {
             macro_rules! m { ($x:ident) => {}; }
         "#;
 
-        let parsed = crate::parse::parse_source(source).unwrap();
+        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
         let order = compute_order(&parsed).unwrap();
 
         // def(2) first, then invocations in source order: a(0), b(1).
@@ -422,7 +422,7 @@ mod tests {
             alpha!();
         "#;
 
-        let parsed = crate::parse::parse_source(source).unwrap();
+        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
         let order = compute_order(&parsed).unwrap();
 
         // bravo(1) before alpha(0) (alpha depends on bravo), then invocation(2).
@@ -446,7 +446,7 @@ mod tests {
             }
         "#;
 
-        let parsed = crate::parse::parse_source(source).unwrap();
+        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
         let order = compute_order(&parsed).unwrap();
 
         // c(2), b(1), a(0): callees before callers.

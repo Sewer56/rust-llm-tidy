@@ -6,17 +6,17 @@
 //! # Checks
 //!
 //! | Code      | Severity | Fires when                                                             |
-//! | --------- | ------- | ---------------------------------------------------------------------- |
-//! | `DOC001`  | Error   | A non-private item has no `///` doc comment.                           |
-//! | `DOC002`  | Error   | A `pub fn` returning `Result` has no `# Errors` section.               |
-//! | `DOC003`  | Warning | A `# Errors` section names no concrete error variant.                  |
-//! | `DOC004`  | Warning | A `pub fn` with parameters has no `# Arguments` section.               |
-//! | `DOC005`  | Warning | A `# Arguments` section does not mention every parameter name.         |
-//! | `DOC006`  | Warning | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`/...).    |
-//! | `TEST001` | Warning | A `#[test]` fn uses a `test_*` or `case_*` name, not a behavioral one. |
+//! | --------- | -------- | ---------------------------------------------------------------------- |
+//! | `DOC001`  | Error    | A non-private item has no `///` doc comment.                           |
+//! | `DOC002`  | Error    | A `pub fn` returning `Result` has no `# Errors` section.               |
+//! | `DOC003`  | Warning  | A `# Errors` section names no concrete error variant.                  |
+//! | `DOC004`  | Warning  | A `pub fn` with parameters has no `# Arguments` section.               |
+//! | `DOC005`  | Warning  | A `# Arguments` section does not mention every parameter name.         |
+//! | `DOC006`  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`/...).    |
+//! | `TEST001` | Warning  | A `#[test]` fn uses a `test_*` or `case_*` name, not a behavioral one. |
 
 use crate::diagnostic::{Diagnostic, Severity};
-use rust_source_model::parse::{ItemKind, ParseResult, SourceItem, VisibilityTier};
+use rust_llm_tidy_model::parse::{ItemKind, ParseResult, SourceItem, VisibilityTier};
 
 /// Accepted rustdoc headers for documenting function parameters.
 ///
@@ -439,7 +439,7 @@ fn is_test_plus_digits(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_source_model::parse;
+    use rust_llm_tidy_model::parse;
 
     fn parse_one(source: &str) -> SourceItem {
         let parsed = parse::parse_source(source).unwrap();

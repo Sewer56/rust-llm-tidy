@@ -285,36 +285,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
-name = "rust-auto-reorder"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "proc-macro2",
- "rust-source-model",
- "syn",
-]
-
-[[package]]
-name = "rust-auto-reorder-cli"
+name = "rust-llm-tidy-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
  "proc-macro2",
- "rust-auto-reorder",
- "rust-doc-check",
- "rust-source-model",
+ "rust-llm-tidy-lint",
+ "rust-llm-tidy-model",
+ "rust-llm-tidy-reorder",
 ]
 
 [[package]]
-name = "rust-doc-check"
+name = "rust-llm-tidy-lint"
 version = "0.1.0"
 dependencies = [
- "rust-source-model",
+ "rust-llm-tidy-model",
 ]
 
 [[package]]
-name = "rust-source-model"
+name = "rust-llm-tidy-model"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -323,6 +313,16 @@ dependencies = [
  "quote",
  "syn",
  "tempfile",
+]
+
+[[package]]
+name = "rust-llm-tidy-reorder"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "proc-macro2",
+ "rust-llm-tidy-model",
+ "syn",
 ]
 
 [[package]]

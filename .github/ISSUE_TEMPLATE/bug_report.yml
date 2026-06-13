@@ -77,8 +77,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: "rust-auto-reorder version"
-      description: The version of rust-auto-reorder you're using
+      label: "rust-llm-tidy version"
+      description: The version of rust-llm-tidy you're using
       placeholder: e.g. 0.1.0
     validations:
       required: true

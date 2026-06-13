@@ -1,4 +1,4 @@
-//! Integration tests for `rust-auto-reorder` CLI.
+//! Integration tests for `rust-llm-tidy` CLI.
 //!
 //! Tests are split into two groups:
 //!
@@ -13,7 +13,7 @@ use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-/// Run `rust-auto-reorder --dry-run` against `<name>_before.rs` in `tests/fixtures/reorder/`.
+/// Run `rust-llm-tidy --dry-run` against `<name>_before.rs` in `tests/fixtures/reorder/`.
 ///
 /// Returns `(actual_stdout, expected_after_content)`.
 macro_rules! run_fixture {
@@ -196,7 +196,7 @@ fn test_in_place_write() {
     let dir = std::env::temp_dir();
     let pid = std::process::id();
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let tmp = dir.join(format!("rust-auto-reorder-write-test-{}-{}.rs", pid, seq));
+    let tmp = dir.join(format!("rust-llm-tidy-write-test-{}-{}.rs", pid, seq));
 
     fs::write(
         &tmp,
@@ -207,7 +207,7 @@ fn test_in_place_write() {
     let output = run_command(&["reorder"], &tmp);
     assert!(
         output.status.success(),
-        "rust-auto-reorder (no --dry-run) failed"
+        "rust-llm-tidy (no --dry-run) failed"
     );
 
     let actual = fs::read_to_string(&tmp).unwrap();
@@ -223,7 +223,7 @@ fn test_in_place_write() {
 #[test]
 fn test_nonexistent_path() {
     let nonexistent = std::env::temp_dir().join(format!(
-        "rust-auto-reorder-missing-{}-{}-{}-{}-{}-{}-{}-{}-{}.rs",
+        "rust-llm-tidy-missing-{}-{}-{}-{}-{}-{}-{}-{}-{}.rs",
         std::process::id(),
         std::process::id(),
         std::process::id(),
@@ -422,17 +422,14 @@ fn helper() {}\n";
 }
 
 /// Safety check: corrupted output (missing lines) must cause an error exit.
-/// We verify that rust-auto-reorder exits non-zero when given a non-Rust file.
+/// We verify that rust-llm-tidy exits non-zero when given a non-Rust file.
 #[test]
 fn test_safety_aborts() {
     let source = "not valid rust {{{";
 
     let (_stdout, stderr, exit) = run(source, &[]);
 
-    assert_ne!(
-        exit, 0,
-        "rust-auto-reorder should exit non-zero on parse error"
-    );
+    assert_ne!(exit, 0, "rust-llm-tidy should exit non-zero on parse error");
     assert!(!stderr.is_empty(), "stderr should contain error message");
 }
 
@@ -443,13 +440,13 @@ fn manifest_dir() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// Run rust-auto-reorder on `content` (written to a tempfile) with optional `--dry-run`.
+/// Run rust-llm-tidy on `content` (written to a tempfile) with optional `--dry-run`.
 /// Returns (stdout, stderr, exit_code).
 fn run(content: &str, args: &[&str]) -> (String, String, i32) {
     let dir = std::env::temp_dir();
     let pid = std::process::id();
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let file = dir.join(format!("rust-auto-reorder-test-{}-{}.rs", pid, seq));
+    let file = dir.join(format!("rust-llm-tidy-test-{}-{}.rs", pid, seq));
     fs::write(&file, content).unwrap();
 
     let mut full_args = vec!["reorder"];
@@ -464,18 +461,18 @@ fn run(content: &str, args: &[&str]) -> (String, String, i32) {
     (stdout, stderr, exit)
 }
 
-/// Read a tempfile after rust-auto-reorder has modified it.
+/// Read a tempfile after rust-llm-tidy has modified it.
 fn run_and_read(content: &str) -> String {
     let dir = std::env::temp_dir();
     let pid = std::process::id();
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let file = dir.join(format!("rust-auto-reorder-test-{}-{}.rs", pid, seq));
+    let file = dir.join(format!("rust-llm-tidy-test-{}-{}.rs", pid, seq));
     fs::write(&file, content).unwrap();
 
     let output = run_command(&["reorder"], &file);
     assert!(
         output.status.success(),
-        "rust-auto-reorder failed: {}",
+        "rust-llm-tidy failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -484,7 +481,7 @@ fn run_and_read(content: &str) -> String {
     result
 }
 
-/// Run `rust-auto-reorder` on a directory with optional arguments.
+/// Run `rust-llm-tidy` on a directory with optional arguments.
 fn run_dir(dir: &std::path::Path, args: &[&str]) -> (String, String, i32) {
     let mut full_args = vec!["reorder"];
     full_args.extend(args);
@@ -496,7 +493,7 @@ fn run_dir(dir: &std::path::Path, args: &[&str]) -> (String, String, i32) {
     (stdout, stderr, exit)
 }
 
-/// Run `rust-auto-reorder --dry-run` on `path` and return stdout.
+/// Run `rust-llm-tidy --dry-run` on `path` and return stdout.
 ///
 /// Panics if the command fails.
 fn run_dry_run(path: &std::path::Path) -> String {
@@ -504,7 +501,7 @@ fn run_dry_run(path: &std::path::Path) -> String {
 
     assert!(
         output.status.success(),
-        "rust-auto-reorder --dry-run failed on {}: {}",
+        "rust-llm-tidy --dry-run failed on {}: {}",
         path.display(),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -516,27 +513,23 @@ fn run_dry_run(path: &std::path::Path) -> String {
 fn temp_dir() -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    std::env::temp_dir().join(format!("rust-auto-reorder-dir-{}-{}", pid, seq))
+    std::env::temp_dir().join(format!("rust-llm-tidy-dir-{}-{}", pid, seq))
 }
 
-/// Build `rust-auto-reorder <args> <path>` and run it, returning captured output.
+/// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
 fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
     let mut cmd = Command::new(binary());
     cmd.args(args).arg(path);
-    cmd.output().unwrap_or_else(|e| {
-        panic!(
-            "failed to spawn rust-auto-reorder on {}: {e}",
-            path.display()
-        )
-    })
+    cmd.output()
+        .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
 }
 
-/// Return the path to the `rust-auto-reorder` debug binary.
+/// Return the path to the `rust-llm-tidy` debug binary.
 fn binary() -> std::path::PathBuf {
-    std::env::var_os("CARGO_BIN_EXE_rust_auto_reorder")
+    std::env::var_os("CARGO_BIN_EXE_rust_llm_tidy")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
             let dir = std::env::current_dir().unwrap();
-            dir.join("../target/debug/rust-auto-reorder")
+            dir.join("../target/debug/rust-llm-tidy")
         })
 }

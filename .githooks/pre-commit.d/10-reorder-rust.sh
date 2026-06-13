@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hook: reorder staged Rust files with rust-auto-reorder.
+# Hook: reorder staged Rust files with rust-llm-tidy.
 #
 # Cross-platform: Linux, macOS (bash 3.2), Windows (Git for Windows bash).
 # macOS note: avoids `mapfile` and `set -u` empty-array expansion.
@@ -25,18 +25,18 @@ if [ "${#files[@]}" -eq 0 ]; then
   exit 0
 fi
 
-# Prefer an installed `rust-auto-reorder` binary; fall back to `cargo run`
+# Prefer an installed `rust-llm-tidy` binary; fall back to `cargo run`
 # against this workspace so the hook works with no global install.
-if command -v rust-auto-reorder >/dev/null 2>&1; then
-  reorder=(rust-auto-reorder)
+if command -v rust-llm-tidy >/dev/null 2>&1; then
+  reorder=(rust-llm-tidy)
 else
-  reorder=(cargo run --quiet --manifest-path src/Cargo.toml -p rust-auto-reorder-cli --)
+  reorder=(cargo run --quiet --manifest-path src/Cargo.toml -p rust-llm-tidy-cli --)
 fi
 
-echo "rust-auto-reorder: reordering ${#files[@]} staged file(s)"
+echo "rust-llm-tidy: reordering ${#files[@]} staged file(s)"
 
 if ! "${reorder[@]}" reorder "${files[@]}"; then
-  echo "rust-auto-reorder: reorder failed" >&2
+  echo "rust-llm-tidy: reorder failed" >&2
   exit 1
 fi
 

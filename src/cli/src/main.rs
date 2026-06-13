@@ -1,4 +1,4 @@
-//! `rust-auto-reorder` - reorder and lint Rust source files.
+//! `rust-llm-tidy` - reorder and lint Rust source files.
 //!
 //! A unified CLI for two operations:
 //!
@@ -23,21 +23,18 @@
 use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand};
 use proc_macro2::fallback::force;
-use rust_auto_reorder::graph;
-use rust_auto_reorder::io;
-use rust_auto_reorder::parse;
-use rust_auto_reorder::reorder::Permutation;
-use rust_auto_reorder::safety;
-use rust_doc_check::check;
-use rust_source_model::parse as model_parse;
+use rust_llm_tidy_lint::check;
+use rust_llm_tidy_model::io;
+use rust_llm_tidy_model::parse as model_parse;
+use rust_llm_tidy_model::parse;
+use rust_llm_tidy_model::safety;
+use rust_llm_tidy_reorder::graph;
+use rust_llm_tidy_reorder::reorder::Permutation;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
-#[command(
-    name = "rust-auto-reorder",
-    about = "Reorder and lint Rust source files"
-)]
+#[command(name = "rust-llm-tidy", about = "Reorder and lint Rust source files")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -209,7 +206,7 @@ fn check_file(path: &Path) -> anyhow::Result<usize> {
 
     let error_count = diagnostics
         .iter()
-        .filter(|d| matches!(d.severity, rust_doc_check::Severity::Error))
+        .filter(|d| matches!(d.severity, rust_llm_tidy_lint::Severity::Error))
         .count();
 
     if !diagnostics.is_empty() {
@@ -245,7 +242,7 @@ fn reorder_file(path: &Path, dry_run: bool, multiple_files: bool) -> anyhow::Res
     // 4. Build permutation and emit reordered source
     let permutation =
         Permutation::new(parsed.items.len(), order).context("failed to build permutation")?;
-    let output = rust_auto_reorder::reorder::emit(&parsed, &permutation)
+    let output = rust_llm_tidy_reorder::reorder::emit(&parsed, &permutation)
         .context("failed to emit reordered source")?;
 
     // 5. Safety check - verify every line is preserved (multiset equality)

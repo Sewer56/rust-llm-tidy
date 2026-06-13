@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Hook: format staged Rust files with rustfmt.
 #
-# Runs after rust-auto-reorder so imports get sorted/grouped there. This
+# Runs after rust-llm-tidy so imports get sorted/grouped there. This
 # hook handles general formatting (spacing, wrapping, import merging).
 #
 # Cross-platform: Linux, macOS (bash 3.2), Windows (Git for Windows bash).

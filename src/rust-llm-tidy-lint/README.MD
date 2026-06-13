@@ -1,8 +1,8 @@
-# rust-doc-check
+# rust-llm-tidy-lint
 
-Documentation linter for Rust source files. Runs a set of documentation checks
-over a parsed source file and reports missing docs and incomplete `# Errors`
-sections.
+Linter for Rust source files. Runs a set of checks over a parsed source file and
+reports missing docs, incomplete `# Errors`/`# Arguments` sections, doc-comment
+placeholders, and discouraged test-function names.
 
 ## Checks
 
@@ -20,14 +20,14 @@ sections.
 
 ```toml
 [dependencies]
-rust-doc-check = "0.1.0"
+rust-llm-tidy-lint = "0.1.0"
 ```
 
 ## Usage
 
 ```rust
-use rust_doc_check::check;
-use rust_source_model::parse;
+use rust_llm_tidy_lint::check;
+use rust_llm_tidy_model::parse;
 
 let source = "pub fn load() -> Result<(), String> { Ok(()) }";
 let parsed = parse::parse_source(source).unwrap();

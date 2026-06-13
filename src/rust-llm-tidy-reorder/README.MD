@@ -1,4 +1,4 @@
-# rust-auto-reorder
+# rust-llm-tidy-reorder
 
 > **⚠ Vibecoded jank - personal tooling, not production software.**
 > 
@@ -8,9 +8,9 @@
 > It may have rough edges, including untested edge cases.
 > Use at your own risk - or don't.
 
-[![Crates.io](https://img.shields.io/crates/v/rust-auto-reorder.svg)][Crates.io]
-[![Docs.rs](https://docs.rs/rust-auto-reorder/badge.svg)][Docs.rs]
-[![CI](https://github.com/Sewer56/rust-auto-reorder/actions/workflows/rust.yml/badge.svg)][CI]
+[![Crates.io](https://img.shields.io/crates/v/rust-llm-tidy-reorder.svg)][Crates.io]
+[![Docs.rs](https://docs.rs/rust-llm-tidy-reorder/badge.svg)][Docs.rs]
+[![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
 
 Library for automatically reordering Rust source code. Built for LLM workflows.
 
@@ -32,7 +32,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rust-auto-reorder = "0.1.0"
+rust-llm-tidy-reorder = "0.1.0"
 ```
 
 ## Usage
@@ -42,9 +42,9 @@ rust-auto-reorder = "0.1.0"
 Parse a source string, compute reorder, emit:
 
 ```rust
-use rust_auto_reorder::parse::parse_source;
-use rust_auto_reorder::graph::compute_order;
-use rust_auto_reorder::reorder::Permutation;
+use rust_llm_tidy_model::parse::parse_source;
+use rust_llm_tidy_reorder::graph::compute_order;
+use rust_llm_tidy_reorder::reorder::Permutation;
 
 let source = r#"
 fn b() { a(); }
@@ -54,7 +54,7 @@ fn a() {}
 let parsed = parse_source(source).unwrap();
 let order = compute_order(&parsed).unwrap();
 let perm = Permutation::new(parsed.items.len(), order).unwrap();
-let output = rust_auto_reorder::reorder::emit(&parsed, &perm).unwrap();
+let output = rust_llm_tidy_reorder::reorder::emit(&parsed, &perm).unwrap();
 
 assert!(output.contains("fn a()"));
 assert!(output.contains("fn b()"));
@@ -65,11 +65,11 @@ assert!(output.contains("fn b()"));
 Full pipeline with safety verification and atomic write:
 
 ```rust,no_run
-use rust_auto_reorder::parse::parse_source;
-use rust_auto_reorder::graph::compute_order;
-use rust_auto_reorder::reorder::Permutation;
-use rust_auto_reorder::safety::verify_line_preservation;
-use rust_auto_reorder::io::atomic_write;
+use rust_llm_tidy_model::parse::parse_source;
+use rust_llm_tidy_reorder::graph::compute_order;
+use rust_llm_tidy_reorder::reorder::Permutation;
+use rust_llm_tidy_model::safety::verify_line_preservation;
+use rust_llm_tidy_model::io::atomic_write;
 use std::path::Path;
 
 let source = std::fs::read_to_string("src/main.rs")?;
@@ -77,7 +77,7 @@ let source = std::fs::read_to_string("src/main.rs")?;
 let parsed = parse_source(&source)?;
 let order = compute_order(&parsed)?;
 let perm = Permutation::new(parsed.items.len(), order)?;
-let output = rust_auto_reorder::reorder::emit(&parsed, &perm)?;
+let output = rust_llm_tidy_reorder::reorder::emit(&parsed, &perm)?;
 
 // Ensure no lines were lost or duplicated.
 verify_line_preservation(&source, &output)?;
@@ -190,6 +190,6 @@ for sorting, grouping, and merging.
 
 Licensed under Apache 2.0
 
-[Crates.io]: https://crates.io/crates/rust-auto-reorder
-[Docs.rs]: https://docs.rs/rust-auto-reorder
-[CI]: https://github.com/Sewer56/rust-auto-reorder/actions
+[Crates.io]: https://crates.io/crates/rust-llm-tidy-reorder
+[Docs.rs]: https://docs.rs/rust-llm-tidy-reorder
+[CI]: https://github.com/Sewer56/rust-llm-tidy/actions
