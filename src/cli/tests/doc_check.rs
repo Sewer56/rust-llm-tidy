@@ -15,12 +15,7 @@ static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 #[test]
 fn all_clean_file() {
     let path = fixture_dir().join("clean.rs");
-    let output = Command::new(binary())
-        .arg("all")
-        .arg("--dry-run")
-        .arg(&path)
-        .output()
-        .unwrap();
+    let output = run_command(&["all", "--dry-run"], &path);
 
     assert!(
         output.status.success(),
@@ -37,11 +32,7 @@ fn all_reports_remaining_doc_gaps() {
     let file = dir.join("gap.rs");
     std::fs::write(&file, "pub fn undocumented() {}\n").unwrap();
 
-    let output = Command::new(binary())
-        .arg("all")
-        .arg(&file)
-        .output()
-        .unwrap();
+    let output = run_command(&["all"], &file);
 
     assert!(
         !output.status.success(),
@@ -67,11 +58,7 @@ fn check_nonexistent_path_fails() {
         TEST_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
 
-    let output = Command::new(binary())
-        .arg("check")
-        .arg(&nonexistent)
-        .output()
-        .unwrap();
+    let output = run_command(&["check"], &nonexistent);
 
     assert!(
         !output.status.success(),
@@ -93,11 +80,7 @@ fn check_recursive_directory() {
     // Undocumented file in a nested dir.
     std::fs::write(sub.join("dirty.rs"), "pub fn dirty() {}\n").unwrap();
 
-    let output = Command::new(binary())
-        .arg("check")
-        .arg(&dir)
-        .output()
-        .unwrap();
+    let output = run_command(&["check"], &dir);
 
     assert!(
         !output.status.success(),
@@ -421,11 +404,7 @@ fn assert_has_diagnostic(stderr: &str, code: &str, item_name: Option<&str>) {
 /// Run `rust-auto-reorder check <fixture>` and return (stderr, exit_code).
 fn run_check_fixture(name: &str) -> (String, i32) {
     let path = fixture_dir().join(name);
-    let output = Command::new(binary())
-        .arg("check")
-        .arg(&path)
-        .output()
-        .unwrap_or_else(|e| panic!("failed to spawn check on {name}: {e}"));
+    let output = run_command(&["check"], &path);
     (
         String::from_utf8_lossy(&output.stderr).to_string(),
         output.status.code().unwrap_or(-1),
@@ -439,6 +418,23 @@ fn temp_dir() -> std::path::PathBuf {
     std::env::temp_dir().join(format!("rust-doc-check-dir-{}-{}", pid, seq))
 }
 
+/// The directory holding doc-check fixtures.
+fn fixture_dir() -> std::path::PathBuf {
+    manifest_dir().join("tests").join("fixtures").join("doc")
+}
+
+/// Build `rust-auto-reorder <args> <path>` and run it, returning captured output.
+fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
+    let mut cmd = Command::new(binary());
+    cmd.args(args).arg(path);
+    cmd.output().unwrap_or_else(|e| {
+        panic!(
+            "failed to spawn rust-auto-reorder on {}: {e}",
+            path.display()
+        )
+    })
+}
+
 /// Return the path to the `rust-auto-reorder` debug binary.
 fn binary() -> std::path::PathBuf {
     std::env::var_os("CARGO_BIN_EXE_rust_auto_reorder")
@@ -447,11 +443,6 @@ fn binary() -> std::path::PathBuf {
             let dir = std::env::current_dir().unwrap();
             dir.join("../target/debug/rust-auto-reorder")
         })
-}
-
-/// The directory holding doc-check fixtures.
-fn fixture_dir() -> std::path::PathBuf {
-    manifest_dir().join("tests").join("fixtures").join("doc")
 }
 
 /// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.

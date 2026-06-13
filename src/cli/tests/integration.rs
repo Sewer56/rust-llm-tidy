@@ -204,12 +204,11 @@ fn test_in_place_write() {
     )
     .unwrap();
 
-    let status = Command::new(binary())
-        .arg("reorder")
-        .arg(&tmp)
-        .status()
-        .unwrap();
-    assert!(status.success(), "rust-auto-reorder (no --dry-run) failed");
+    let output = run_command(&["reorder"], &tmp);
+    assert!(
+        output.status.success(),
+        "rust-auto-reorder (no --dry-run) failed"
+    );
 
     let actual = fs::read_to_string(&tmp).unwrap();
     let _ = fs::remove_file(&tmp);
@@ -236,11 +235,7 @@ fn test_nonexistent_path() {
         std::process::id()
     ));
 
-    let output = Command::new(binary())
-        .arg("reorder")
-        .arg(&nonexistent)
-        .output()
-        .unwrap();
+    let output = run_command(&["reorder"], &nonexistent);
     assert!(
         !output.status.success(),
         "non-existent path should exit non-zero"
@@ -271,11 +266,7 @@ fn test_recursive_directory() {
     )
     .unwrap();
 
-    let output = Command::new(binary())
-        .arg("reorder")
-        .arg(&dir)
-        .output()
-        .unwrap();
+    let output = run_command(&["reorder"], &dir);
     assert!(
         output.status.success(),
         "directory run failed: {}",
@@ -461,11 +452,9 @@ fn run(content: &str, args: &[&str]) -> (String, String, i32) {
     let file = dir.join(format!("rust-auto-reorder-test-{}-{}.rs", pid, seq));
     fs::write(&file, content).unwrap();
 
-    let mut cmd = Command::new(binary());
-    cmd.arg("reorder").args(args);
-    cmd.arg(&file);
-
-    let output = cmd.output().unwrap();
+    let mut full_args = vec!["reorder"];
+    full_args.extend(args);
+    let output = run_command(&full_args, &file);
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     let exit = output.status.code().unwrap_or(-1);
@@ -483,12 +472,12 @@ fn run_and_read(content: &str) -> String {
     let file = dir.join(format!("rust-auto-reorder-test-{}-{}.rs", pid, seq));
     fs::write(&file, content).unwrap();
 
-    let status = Command::new(binary())
-        .arg("reorder")
-        .arg(&file)
-        .status()
-        .unwrap();
-    assert!(status.success(), "rust-auto-reorder failed");
+    let output = run_command(&["reorder"], &file);
+    assert!(
+        output.status.success(),
+        "rust-auto-reorder failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let result = fs::read_to_string(&file).unwrap();
     let _ = fs::remove_file(&file);
@@ -497,11 +486,9 @@ fn run_and_read(content: &str) -> String {
 
 /// Run `rust-auto-reorder` on a directory with optional arguments.
 fn run_dir(dir: &std::path::Path, args: &[&str]) -> (String, String, i32) {
-    let mut cmd = Command::new(binary());
-    cmd.arg("reorder").args(args);
-    cmd.arg(dir);
-
-    let output = cmd.output().unwrap();
+    let mut full_args = vec!["reorder"];
+    full_args.extend(args);
+    let output = run_command(&full_args, dir);
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     let exit = output.status.code().unwrap_or(-1);
@@ -513,17 +500,7 @@ fn run_dir(dir: &std::path::Path, args: &[&str]) -> (String, String, i32) {
 ///
 /// Panics if the command fails.
 fn run_dry_run(path: &std::path::Path) -> String {
-    let output = Command::new(binary())
-        .arg("reorder")
-        .arg("--dry-run")
-        .arg(path)
-        .output()
-        .unwrap_or_else(|e| {
-            panic!(
-                "failed to spawn rust-auto-reorder --dry-run on {}: {e}",
-                path.display()
-            )
-        });
+    let output = run_command(&["reorder", "--dry-run"], path);
 
     assert!(
         output.status.success(),
@@ -540,6 +517,18 @@ fn temp_dir() -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
     std::env::temp_dir().join(format!("rust-auto-reorder-dir-{}-{}", pid, seq))
+}
+
+/// Build `rust-auto-reorder <args> <path>` and run it, returning captured output.
+fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
+    let mut cmd = Command::new(binary());
+    cmd.args(args).arg(path);
+    cmd.output().unwrap_or_else(|e| {
+        panic!(
+            "failed to spawn rust-auto-reorder on {}: {e}",
+            path.display()
+        )
+    })
 }
 
 /// Return the path to the `rust-auto-reorder` debug binary.
