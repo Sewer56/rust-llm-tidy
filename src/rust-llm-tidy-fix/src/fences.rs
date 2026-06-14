@@ -37,14 +37,39 @@ pub fn fix_fences(input: &str) -> Cow<'_, str> {
         return Cow::Borrowed(input);
     }
 
-    let mut output = String::with_capacity(input.len());
-    let mut changed = false;
+    // Output is allocated lazily: only once the first segment that needs to
+    // change is found. Until then the input is borrowed verbatim, so the
+    // overwhelmingly common case (already-canonical input, or an idempotent
+    // re-run) pays zero allocation and zero copying, beyond the marker
+    // presence check above and a cheap per-line scan.
+    //
+    // Because `fix_fences` only swaps `` ` `` <-> `~` marker characters, the
+    // output length always equals `input.len()`, so `String::with_capacity`
+    // never reallocates once allocated.
+    let mut out: Option<String> = None;
     let mut stack: Vec<OpenFence> = Vec::new();
+    // Byte offset of the start of the current segment within `input`; used to
+    // back-fill the verbatim prefix when the first change is emitted.
+    let mut pos = 0usize;
 
     for segment in input.split_inclusive('\n') {
+        let seg_start = pos;
+        pos += segment.len();
+
+        // Cheap candidate check: a line can only be a fence after
+        // [`strip_doc_prefix`] + trim if, ignoring leading whitespace, it begins
+        // with a marker run or a `///` / `//!` doc prefix. The vast majority of
+        // lines (code, prose) fail this and are emitted verbatim with no
+        // further work. See [`is_fence_candidate`] for the exactness argument.
+        if !is_fence_candidate(segment) {
+            if let Some(o) = out.as_mut() {
+                o.push_str(segment);
+            }
+            continue;
+        }
+
         let (content, term) = split_terminator(segment);
         let (prefix, body) = strip_doc_prefix(content);
-
         let stripped = body.trim_start();
         if let Some((source_marker, run_len, info)) = parse_fence(stripped) {
             // Body leading whitespace before the fence run (e.g. an indented
@@ -62,18 +87,10 @@ pub fn fix_fences(input: &str) -> Cow<'_, str> {
             if is_closer {
                 let open = stack.pop().expect("non-empty when closer_match");
                 if source_marker != open.expected_marker {
-                    emit_fence(
-                        &mut output,
-                        prefix,
-                        lead,
-                        open.expected_marker,
-                        run_len,
-                        info,
-                        term,
-                    );
-                    changed = true;
-                } else {
-                    output.push_str(segment);
+                    let o = ensure_output(&mut out, input, seg_start);
+                    emit_fence(o, prefix, lead, open.expected_marker, run_len, info, term);
+                } else if let Some(o) = out.as_mut() {
+                    o.push_str(segment);
                 }
             } else {
                 // Opener. Depth-0 keeps its source marker as the root; deeper
@@ -92,18 +109,10 @@ pub fn fix_fences(input: &str) -> Cow<'_, str> {
                 };
 
                 if source_marker != expected_marker {
-                    emit_fence(
-                        &mut output,
-                        prefix,
-                        lead,
-                        expected_marker,
-                        run_len,
-                        info,
-                        term,
-                    );
-                    changed = true;
-                } else {
-                    output.push_str(segment);
+                    let o = ensure_output(&mut out, input, seg_start);
+                    emit_fence(o, prefix, lead, expected_marker, run_len, info, term);
+                } else if let Some(o) = out.as_mut() {
+                    o.push_str(segment);
                 }
                 stack.push(OpenFence {
                     source_marker,
@@ -111,28 +120,30 @@ pub fn fix_fences(input: &str) -> Cow<'_, str> {
                     expected_marker,
                 });
             }
-        } else {
-            // Blank lines and other content are emitted verbatim; the stack
-            // is intentionally NOT reset by blank lines (same nesting model
-            // as the spec).
-            output.push_str(segment);
+        } else if let Some(o) = out.as_mut() {
+            // Candidate line that did not parse as a fence (e.g. `/// //` or a
+            // one/two marker run); emit verbatim.
+            o.push_str(segment);
         }
     }
 
-    if changed {
-        Cow::Owned(output)
-    } else {
-        Cow::Borrowed(input)
+    match out {
+        // Something changed: return the rewritten buffer.
+        Some(o) => Cow::Owned(o),
+        // No fence changed: borrow the input back unchanged (zero allocation).
+        None => Cow::Borrowed(input),
     }
 }
 
 /// Return the opposite fence marker character.
+#[inline]
 fn alternate(marker: char) -> char {
     if marker == '`' { '~' } else { '`' }
 }
 
 /// Rebuild a fence segment: `prefix` + `lead` + `marker * run_len` + `info`
 /// + `term`.
+#[inline]
 fn emit_fence(
     output: &mut String,
     prefix: &str,
@@ -149,22 +160,85 @@ fn emit_fence(
     output.push_str(term);
 }
 
+/// Lazily allocate `out` if absent, copying the verbatim prefix
+/// `input[..seg_start]`, then return the mutable buffer.
+///
+/// Until the first changed segment, [`fix_fences`] borrows the input; this
+/// defers the one allocation to the point it is actually needed.
+#[inline]
+fn ensure_output<'a>(out: &'a mut Option<String>, input: &str, seg_start: usize) -> &'a mut String {
+    out.get_or_insert_with(|| {
+        let mut s = String::with_capacity(input.len());
+        s.push_str(&input[..seg_start]);
+        s
+    })
+}
+
+/// Cheaply decide whether `segment` could begin a fence under the full
+/// [`strip_doc_prefix`] + Unicode `body.trim_start()` pipeline.
+///
+/// This is a sound superset gate: it returns `true` for every line the pipeline
+/// would treat as a fence, plus a few extras the pipeline would emit verbatim
+/// (still correct). The common case - an ASCII line whose first non-whitespace
+/// byte is not a marker run or `///` / `//!` - short-circuits with a raw byte
+/// scan, so typical code and prose cost almost nothing.
+///
+/// Whitespace handled in two tiers to stay both exact and fast:
+/// - ASCII whitespace (`0x09..=0x0d` plus space `0x20` - the ASCII members of
+///   [`char::is_whitespace`]) is skipped directly; this covers the realistic
+///   indentation (spaces, tabs) and the ASCII oddities like form feed.
+/// - A leading non-ASCII byte (`>= 0x80`) may be Unicode whitespace (e.g.
+///   NBSP, ideographic space) preceding a fence, so such lines defer to the
+///   full Unicode-aware pipeline rather than risk being skipped.
+#[inline]
+fn is_fence_candidate(segment: &str) -> bool {
+    let bytes = segment.as_bytes();
+    // Skip ASCII whitespace (the ASCII subset of `char::is_whitespace`); a tight
+    // byte scan. `i` lands on a `char` boundary, so slicing below is safe.
+    let mut i = 0;
+    while i < bytes.len() && matches!(bytes[i], 0x09..=0x0d | 0x20) {
+        i += 1;
+    }
+    match bytes.get(i).copied() {
+        // ASCII first byte: a fence - after the pipeline's Unicode trim - can
+        // only start with a marker run or a doc-comment prefix, all ASCII.
+        Some(b) if b <= 0x7f => {
+            b == b'`'
+                || b == b'~'
+                || segment[i..].starts_with("///")
+                || segment[i..].starts_with("//!")
+        }
+        // Non-ASCII leading byte: may be Unicode whitespace before a fence;
+        // defer to the full pipeline, which handles Unicode whitespace exactly.
+        Some(_) => true,
+        // Line was whitespace only (or empty): not a fence.
+        None => false,
+    }
+}
+
 /// Parse a fence from `stripped` if its leading run is 3+ backticks or tildes.
 ///
 /// Returns `(marker, run_len, info)` where `info` is the text after the run
 /// (may be empty). Returns `None` for non-fence lines.
+#[inline]
 fn parse_fence(stripped: &str) -> Option<(char, usize, &str)> {
-    let marker = stripped.chars().next()?;
-    if marker != '`' && marker != '~' {
+    let bytes = stripped.as_bytes();
+    // `stripped` is the trimmed line body; it may be empty for a blank line.
+    let &marker = bytes.first()?;
+    if marker != b'`' && marker != b'~' {
         return None;
     }
-    let run_len = stripped.chars().take_while(|&c| c == marker).count();
+    // Backticks and tildes are ASCII, so the byte run length equals the char
+    // run length and the byte offset is a valid `char` boundary.
+    let run_len = bytes
+        .iter()
+        .position(|&c| c != marker)
+        .unwrap_or(bytes.len());
     if run_len < 3 {
         return None;
     }
-    // Backticks and tildes are ASCII, so the byte offset equals the run length.
     let info = &stripped[run_len..];
-    Some((marker, run_len, info))
+    Some((marker as char, run_len, info))
 }
 
 #[cfg(test)]
@@ -365,5 +439,239 @@ deep
             &*out, expected,
             "depth-2 fences should reuse the root marker (backtick), not a third alternation"
         );
+    }
+
+    #[test]
+    fn unicode_whitespace_before_fence_is_processed() {
+        // A fence run preceded by Unicode whitespace (here form feed `\u{c}`)
+        // must still be parsed: the candidate-check fast path uses the same
+        // `trim_start` whitespace notion as the full pipeline, so it cannot
+        // skip such a line (which would desync the nesting stack).
+        let input = "\u{c}```text\n\u{c}```rust\n\u{c}```\n```\n";
+        let expected = "\u{c}```text\n\u{c}~~~rust\n\u{c}~~~\n```\n";
+        let out = fix_fences(input);
+        assert_eq!(
+            &*out, expected,
+            "form-feed-prefixed fences must be processed like space-prefixed ones"
+        );
+        assert!(
+            matches!(out, Cow::Owned(_)),
+            "the inner backtick fence should flip to tildes"
+        );
+    }
+
+    /// Reference: the exact `fix_fences` from commit bc51750 (eager allocation,
+    /// no candidate-check fast path), retained only to differential-test that
+    /// the optimized version produces byte-identical output and the same
+    /// `Cow` variant for every input.
+    ///
+    /// It shares the module's `parse_fence` / `alternate` / `emit_fence` /
+    /// `split_terminator` / `strip_doc_prefix`, which are logic-identical to
+    /// bc51750 (the byte-based `parse_fence` equals the old char-based one
+    /// because fence markers are ASCII).
+    #[allow(clippy::too_many_lines)]
+    fn fix_fences_ref(input: &str) -> Cow<'_, str> {
+        if !input.contains('`') && !input.contains('~') {
+            return Cow::Borrowed(input);
+        }
+        let mut output = String::with_capacity(input.len());
+        let mut changed = false;
+        let mut stack: Vec<OpenFence> = Vec::new();
+        for segment in input.split_inclusive('\n') {
+            let (content, term) = split_terminator(segment);
+            let (prefix, body) = strip_doc_prefix(content);
+            let stripped = body.trim_start();
+            if let Some((source_marker, run_len, info)) = parse_fence(stripped) {
+                let lead = &body[..body.len() - stripped.len()];
+                let closer_match = stack
+                    .last()
+                    .map(|open| open.source_marker == source_marker && open.run_len <= run_len)
+                    .unwrap_or(false);
+                let is_closer = info.is_empty() && closer_match;
+                if is_closer {
+                    let open = stack.pop().expect("non-empty when closer_match");
+                    if source_marker != open.expected_marker {
+                        emit_fence(
+                            &mut output,
+                            prefix,
+                            lead,
+                            open.expected_marker,
+                            run_len,
+                            info,
+                            term,
+                        );
+                        changed = true;
+                    } else {
+                        output.push_str(segment);
+                    }
+                } else {
+                    let depth = stack.len();
+                    let root_marker = if depth == 0 {
+                        source_marker
+                    } else {
+                        stack[0].source_marker
+                    };
+                    let expected_marker = if depth.is_multiple_of(2) {
+                        root_marker
+                    } else {
+                        alternate(root_marker)
+                    };
+                    if source_marker != expected_marker {
+                        emit_fence(
+                            &mut output,
+                            prefix,
+                            lead,
+                            expected_marker,
+                            run_len,
+                            info,
+                            term,
+                        );
+                        changed = true;
+                    } else {
+                        output.push_str(segment);
+                    }
+                    stack.push(OpenFence {
+                        source_marker,
+                        run_len,
+                        expected_marker,
+                    });
+                }
+            } else {
+                output.push_str(segment);
+            }
+        }
+        if changed {
+            Cow::Owned(output)
+        } else {
+            Cow::Borrowed(input)
+        }
+    }
+
+    #[test]
+    fn optimized_matches_bc51750_reference() {
+        // Broad differential corpus: ASCII + Unicode leading whitespace before
+        // fences (the fast-path risk area), doc-comment fences, tilde roots,
+        // run lengths, info strings, closers with leading ws, unbalanced and
+        // non-fence edge cases.
+        let cases: &[&str] = &[
+            "",
+            "no markers here at all\n",
+            "single line, no trailing newline",
+            // canonical / dirty plain fences
+            "```text\ntext\n~~~rust\ninner\n~~~\n```\n",
+            "```text\ntext\n```rust\ninner\n```\n```\n",
+            // ASCII indentation before fences
+            "  ```text\n  ```rust\n  ```\n  ```\n",
+            "\t```text\n\t```rust\n\t```\n\t```\n",
+            // ASCII oddities (vertical tab, form feed, CR) before fences
+            "\u{b}```text\n\u{b}```rust\n\u{b}```\n```\n",
+            "\u{c}```text\n\u{c}```rust\n\u{c}```\n```\n",
+            "\r```text\n\r```rust\n\r```\n\r```\n",
+            // Non-ASCII (Unicode) whitespace before fences
+            "\u{a0}```text\n\u{a0}```rust\n\u{a0}```\n```\n",
+            "\u{3000}```text\n\u{3000}```rust\n\u{3000}```\n```\n",
+            // Closer alone preceded by Unicode whitespace (reviewer case)
+            "```\n```rust\n\u{a0}```\n```\n",
+            "```\n```rust\n\u{3000}```\n```\n",
+            // doc-comment fences (outer + inner same marker)
+            "/// ```text\n/// ```rust\n/// inner\n/// ```\n/// ```\n",
+            "//! ```text\n//! ```rust\n//! ```\n//! ```\n",
+            // tilde root, backtick inner
+            "~~~text\n```rust\n```\n~~~\n",
+            // run-length preservation (4-backtick outer, 3 inner)
+            "````text\n```rust\n```\n````\n",
+            // info strings
+            "```text\n```rust,no_run\nx\n```\n```\n",
+            // unbalanced / edge
+            "```text\n",
+            "```\n```\n",
+            // lines beginning with `/` that are not doc comments
+            "// not a doc comment\n```text\n```\n",
+            "//// also not a doc comment\n```text\n```\n",
+            "/path/like/this\n```text\n```\n",
+            // non-ASCII leading non-whitespace (defers to full pipeline)
+            "é```text\n```\n",
+            "café and code\n```text\n```\n",
+        ];
+        for &input in cases {
+            let got = fix_fences(input);
+            let want = fix_fences_ref(input);
+            assert_eq!(
+                &*got, &*want,
+                "byte-identical divergence from bc51750 for input {input:?}"
+            );
+            assert_eq!(
+                matches!(got, Cow::Borrowed(_)),
+                matches!(want, Cow::Borrowed(_)),
+                "Cow variant divergence from bc51750 for input {input:?}"
+            );
+            // The optimized version must remain idempotent on each input.
+            let once = fix_fences(input).into_owned();
+            let twice = fix_fences(&once).into_owned();
+            assert_eq!(twice, once, "not idempotent for input {input:?}");
+        }
+    }
+
+    #[test]
+    fn optimized_matches_reference_on_generated_inputs() {
+        // Deterministic LCG (no external test dependency) builds many inputs
+        // from a fence-flavoured fragment alphabet, including ASCII and
+        // Unicode leading whitespace, doc prefixes, mixed markers, run lengths,
+        // and info strings. The optimized `fix_fences` must stay byte-identical
+        // to the bc51750 reference for every generated input.
+        let mut seed: u64 = 0x9E37_79B9_7F4A_7C15;
+        let mut next = || {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            seed
+        };
+        let frags: &[&str] = &[
+            "```text\n",
+            "```\n",
+            "```rust\n",
+            "```rust,no_run\n",
+            "````\n",
+            "`````\n",
+            "~~~\n",
+            "~~~text\n",
+            "~~~rust\n",
+            "/// ```text\n",
+            "/// ```\n",
+            "/// ~~~\n",
+            "//! ```text\n",
+            "  ```text\n",
+            "\t```\n",
+            "\u{c}```\n",
+            "\u{b}```\n",
+            "\u{a0}```\n",
+            "\u{3000}```\n",
+            "inner content\n",
+            "    indented code\n",
+            "\n",
+            "plain text\n",
+            "//// comment\n",
+            "// plain comment\n",
+            "é unicode line\n",
+            "```python\nx = 1\n```\n",
+        ];
+        for _ in 0..8192 {
+            let n = 1 + (next() as usize) % 16;
+            let mut input = String::new();
+            for _ in 0..n {
+                input.push_str(frags[(next() as usize) % frags.len()]);
+            }
+            let got = fix_fences(&input);
+            let want = fix_fences_ref(&input);
+            assert_eq!(
+                &*got, &*want,
+                "byte-identical divergence from bc51750 for generated input {input:?}"
+            );
+            assert_eq!(
+                matches!(got, Cow::Borrowed(_)),
+                matches!(want, Cow::Borrowed(_)),
+                "Cow variant divergence for generated input {input:?}"
+            );
+        }
     }
 }
