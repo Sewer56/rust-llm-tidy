@@ -30,6 +30,7 @@ harness = false
 rust-llm-tidy-reorder = { path = "../rust-llm-tidy-reorder", version = "0.1.0" }
 rust-llm-tidy-lint = { path = "../rust-llm-tidy-lint", version = "0.1.0" }
 rust-llm-tidy-model = { path = "../rust-llm-tidy-model", version = "0.1.0" }
+rust-llm-tidy-fix = { path = "../rust-llm-tidy-fix", version = "0.1.0" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }

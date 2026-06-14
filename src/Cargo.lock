@@ -626,10 +626,15 @@ dependencies = [
  "clap",
  "criterion",
  "proc-macro2",
+ "rust-llm-tidy-fix",
  "rust-llm-tidy-lint",
  "rust-llm-tidy-model",
  "rust-llm-tidy-reorder",
 ]
+
+[[package]]
+name = "rust-llm-tidy-fix"
+version = "0.1.0"
 
 [[package]]
 name = "rust-llm-tidy-lint"

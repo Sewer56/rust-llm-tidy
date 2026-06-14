@@ -26,8 +26,9 @@ rust-llm-tidy-reorder = "0.1.0"
 
 ### CLI
 
-The binary exposes three subcommands: `reorder` (the original behavior),
-`check` (a read-only documentation linter), and `all` (reorder then check).
+The binary exposes four subcommands: `fix` (realign GitHub-Flavored Markdown (GFM) tables), `reorder`
+(the original behavior), `check` (a read-only documentation linter), and `all`
+(fix, reorder, then check in one pass).
 
 ```bash
 # Reorder a file in place
@@ -41,11 +42,24 @@ rust-llm-tidy reorder src
 
 # Reorder multiple paths in one invocation (files and/or directories)
 rust-llm-tidy reorder src/main.rs src/lib.rs tests
+```
 
+```bash
+# Fix (realign) GFM tables in .rs doc comments and .md files
+rust-llm-tidy fix README.md
+
+# Preview table fixes without modifying files
+rust-llm-tidy fix --dry-run src
+
+# Fix every .rs and .md file under a directory recursively
+rust-llm-tidy fix docs
+```
+
+```bash
 # Lint for missing docs, incomplete `# Errors`/`# Arguments` sections, placeholders, and test naming (read-only)
 rust-llm-tidy check src
 
-# Reorder then check in one pass
+# Fix, reorder, then check in one pass
 rust-llm-tidy all src
 ```
 
@@ -192,7 +206,8 @@ for sorting, grouping, and merging.
 - [rust-llm-tidy-model]: Shared source model - parse top-level items with spans, visibility, and doc comments; atomic I/O; line-multiset safety
 - [rust-llm-tidy-reorder]: Reordering library - reference-graph ordering of items into canonical 10-phase order
 - [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/`# Arguments`, placeholder, and test-naming checks
-- [cli]: Unified command-line interface (`reorder`, `check`, `all`)
+- [rust-llm-tidy-fix]: Table alignment - realigns GFM tables in `.rs` doc comments and `.md` files
+- [cli]: Unified command-line interface (`fix`, `reorder`, `check`, `all`)
 
 ## Git Hook (optional)
 
@@ -234,6 +249,7 @@ Licensed under [Apache 2.0].
 [rust-llm-tidy-model]: ./src/rust-llm-tidy-model/README.MD
 [rust-llm-tidy-reorder]: ./src/rust-llm-tidy-reorder/README.MD
 [rust-llm-tidy-lint]: ./src/rust-llm-tidy-lint/README.MD
+[rust-llm-tidy-fix]: ./src/rust-llm-tidy-fix/README.MD
 [cli]: ./src/cli/README.MD
 [Developer Manual]: https://reloaded-project.github.io/reloaded-templates-rust/manual/
 [Contributing Guide]: https://reloaded-project.github.io/reloaded-templates-rust/manual/#contributing

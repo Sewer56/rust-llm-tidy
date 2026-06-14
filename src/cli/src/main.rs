@@ -1,28 +1,32 @@
-//! `rust-llm-tidy` - reorder and lint Rust source files.
+//! `rust-llm-tidy` - fix, reorder, and lint Rust and Markdown source files.
 //!
-//! A unified CLI for two operations:
+//! A unified CLI for three operations:
 //!
+//! - **fix**: realign misaligned GFM markdown tables in `.rs` doc comments and
+//!   `.md` files (auto-fixable).
 //! - **reorder**: reorder Rust source file items into a canonical 10-phase
 //!   ordering (the original behavior).
 //! - **check**: lint for missing documentation and incomplete `# Errors`
 //!   sections (read-only, never writes).
 //!
-//! Use `all` to run both in one pass: reorder (fix what is auto-fixable) then
-//! check (report what remains).
+//! Use `all` to run all three in one pass: fix (table alignment) -> reorder
+//! (item ordering) -> check (report what remains).
 //!
 //! # Subcommands
 //!
 //! | Command   | Mutates?                 | Description                                        |
 //! | --------- | ------------------------ | -------------------------------------------------- |
+//! | `fix`     | yes (unless `--dry-run`) | Realign GFM markdown tables                        |
 //! | `reorder` | yes (unless `--dry-run`) | Reorder items into canonical order                 |
 //! | `check`   | no                       | Report documentation and test-naming lint findings |
-//! | `all`     | yes (unless `--dry-run`) | Reorder then check                                 |
+//! | `all`     | yes (unless `--dry-run`) | Fix, reorder, then check                           |
 //!
 //! Multiple paths are accepted; each directory is expanded recursively.
 
 use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand};
 use proc_macro2::fallback::force;
+use rust_llm_tidy_fix as fix;
 use rust_llm_tidy_lint::check;
 use rust_llm_tidy_model::io;
 use rust_llm_tidy_model::parse as model_parse;
@@ -51,11 +55,16 @@ enum Command {
     /// Read-only: never writes files. Exits non-zero when any error-severity
     /// diagnostic is found.
     Check(PathsArgs),
-    /// Reorder then check in one pass.
+    /// Fix table alignment, reorder, then check in one pass.
     ///
-    /// Reorders first (fixing what is auto-fixable), then reports any
-    /// remaining documentation gaps. Mutates files unless --dry-run is given.
+    /// Collects `.rs` and `.md` files. Markdown files are fixed (table
+    /// alignment); Rust files are fixed, reordered, and checked. Mutates files
+    /// unless --dry-run is given.
     All(PathsArgs),
+    /// Fix auto-fixable style issues (markdown table alignment).
+    ///
+    /// Mutates files in place unless --dry-run is given.
+    Fix(PathsArgs),
 }
 
 /// Shared path and dry-run arguments for every subcommand.
@@ -70,7 +79,7 @@ struct PathsArgs {
     #[arg(required = true)]
     paths: Vec<PathBuf>,
 
-    /// For `reorder`/`all`: print results to stdout instead of modifying
+    /// For `reorder`/`fix`/`all`: print results to stdout instead of modifying
     /// files. For `check`: accepted but ignored (checking is always read-only).
     #[arg(long)]
     dry_run: bool,
@@ -87,6 +96,7 @@ fn main() -> anyhow::Result<()> {
         Command::Reorder(args) => run_reorder(args),
         Command::Check(args) => run_check(args),
         Command::All(args) => run_all(args),
+        Command::Fix(args) => run_fix(args),
     }
 }
 
@@ -94,9 +104,12 @@ fn main() -> anyhow::Result<()> {
 // Subcommand handlers
 // ---------------------------------------------------------------------------
 
-/// `all` - reorder then check in one pass.
+/// `all` - fix, reorder, then check in one pass.
+///
+/// Collects both `.rs` and `.md` files. Markdown files are only fixed (table
+/// alignment); reordering and checking apply only to Rust source files.
 fn run_all(args: PathsArgs) -> anyhow::Result<()> {
-    let paths = resolve_all(&args.paths)?;
+    let paths = resolve_all(&args.paths, &["rs", "md"])?;
     if paths.is_empty() {
         return Ok(());
     }
@@ -106,7 +119,23 @@ fn run_all(args: PathsArgs) -> anyhow::Result<()> {
     let mut failed = Vec::new();
 
     for path in &paths {
-        // Reorder first (fixes ordering). Failures abort the check for this file.
+        // Fix table alignment first (auto-fixable formatting).
+        if let Err(e) = fix_file(path, args.dry_run, multiple_files) {
+            eprintln!("error processing {}: {e:?}", path.display());
+            failed.push(path);
+            continue;
+        }
+
+        // Reorder/check are Rust-only operations.
+        let is_rust = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e == "rs");
+        if !is_rust {
+            continue;
+        }
+
+        // Reorder next (fixes ordering). Failures abort the check for this file.
         if let Err(e) = reorder_file(path, args.dry_run, multiple_files) {
             eprintln!("error processing {}: {e:?}", path.display());
             failed.push(path);
@@ -139,7 +168,7 @@ fn run_all(args: PathsArgs) -> anyhow::Result<()> {
 
 /// `check` - report documentation diagnostics.
 fn run_check(args: PathsArgs) -> anyhow::Result<()> {
-    let paths = resolve_all(&args.paths)?;
+    let paths = resolve_all(&args.paths, &["rs"])?;
     if paths.is_empty() {
         return Ok(());
     }
@@ -168,9 +197,33 @@ fn run_check(args: PathsArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// `fix` - realign GFM markdown tables in place.
+fn run_fix(args: PathsArgs) -> anyhow::Result<()> {
+    let paths = resolve_all(&args.paths, &["rs", "md"])?;
+    if paths.is_empty() {
+        return Ok(());
+    }
+
+    let multiple_files = paths.len() > 1;
+    let mut failed = Vec::new();
+
+    for path in &paths {
+        if let Err(e) = fix_file(path, args.dry_run, multiple_files) {
+            eprintln!("error processing {}: {e:?}", path.display());
+            failed.push(path);
+        }
+    }
+
+    if !failed.is_empty() {
+        bail!("failed to process {} file(s)", failed.len());
+    }
+
+    Ok(())
+}
+
 /// `reorder` - reorder items into canonical order.
 fn run_reorder(args: PathsArgs) -> anyhow::Result<()> {
-    let paths = resolve_all(&args.paths)?;
+    let paths = resolve_all(&args.paths, &["rs"])?;
     if paths.is_empty() {
         return Ok(());
     }
@@ -222,6 +275,31 @@ fn check_file(path: &Path) -> anyhow::Result<usize> {
 // Shared path resolution
 // ---------------------------------------------------------------------------
 
+/// Fix table alignment in a single file.
+///
+/// Reads the source, calls [`fix::fix_tables`], and writes the result back
+/// via [`io::atomic_write`] unless `--dry-run` is given. On dry-run with
+/// multiple files, a neutral `<!-- {path} -->` HTML-comment header is emitted
+/// (valid in both markdown and harmless in stdout).
+///
+/// `fix` never fails on content; it exits non-zero only on I/O errors.
+fn fix_file(path: &Path, dry_run: bool, multiple_files: bool) -> anyhow::Result<()> {
+    let source =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let out = fix::fix_tables(&source);
+    if dry_run {
+        if multiple_files {
+            print!("<!-- {} -->\n{}", path.display(), out);
+        } else {
+            print!("{out}");
+        }
+    } else if out != source {
+        io::atomic_write(path, &out)
+            .with_context(|| format!("failed to write {}", path.display()))?;
+    }
+    Ok(())
+}
+
 /// Reorder a single source file.
 ///
 /// When processing multiple files in dry-run mode, a comment header with the
@@ -268,23 +346,23 @@ fn reorder_file(path: &Path, dry_run: bool, multiple_files: bool) -> anyhow::Res
     Ok(())
 }
 
-/// Resolve a list of input paths into a flat, ordered list of `.rs` files.
-fn resolve_all(inputs: &[PathBuf]) -> anyhow::Result<Vec<PathBuf>> {
+/// Resolve a list of input paths into a flat, ordered list of files with matching extensions.
+fn resolve_all(inputs: &[PathBuf], exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
     let mut paths: Vec<PathBuf> = Vec::new();
     for input in inputs {
-        let resolved = resolve_paths(input)
+        let resolved = resolve_paths(input, exts)
             .with_context(|| format!("failed to resolve path {}", input.display()))?;
         paths.extend(resolved);
     }
     Ok(paths)
 }
 
-/// Resolve `path` into a sorted list of `.rs` files to process.
+/// Resolve `path` into a sorted list of files with matching extensions.
 ///
 /// If `path` is a file, it is returned directly. If it is a directory,
-/// all `.rs` files are collected recursively and sorted for deterministic
-/// ordering.
-fn resolve_paths(path: &Path) -> anyhow::Result<Vec<PathBuf>> {
+/// all files with extensions in `exts` are collected recursively and sorted
+/// for deterministic ordering.
+fn resolve_paths(path: &Path, exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
     if path.is_file() {
         return Ok(vec![path.to_path_buf()]);
     }
@@ -298,23 +376,28 @@ fn resolve_paths(path: &Path) -> anyhow::Result<Vec<PathBuf>> {
     }
 
     let mut files = Vec::new();
-    collect_rs_files(path, &mut files)
+    collect_files(path, exts, &mut files)
         .with_context(|| format!("failed to read directory {}", path.display()))?;
     files.sort();
 
     Ok(files)
 }
 
-/// Recursively collect all `.rs` files under `dir`.
-fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) -> anyhow::Result<()> {
+/// Recursively collect all files under `dir` whose extension is in `exts`.
+fn collect_files(dir: &Path, exts: &[&str], out: &mut Vec<PathBuf>) -> anyhow::Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         let metadata = entry.metadata()?;
 
         if metadata.is_dir() {
-            collect_rs_files(&path, out)?;
-        } else if metadata.is_file() && path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            collect_files(&path, exts, out)?;
+        } else if metadata.is_file()
+            && path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| exts.contains(&e))
+        {
             out.push(path);
         }
     }

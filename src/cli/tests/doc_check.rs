@@ -6,6 +6,7 @@
 //! isolation. Each test runs the built CLI binary against a fixture file in
 //! `tests/fixtures/doc/` and asserts on its exit code and stderr diagnostics.
 
+use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -23,6 +24,47 @@ fn all_clean_file() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+/// `all --dry-run` applies table fixes to a `.md` file.
+#[test]
+fn all_md_dry_run_fixes_tables() {
+    let before = fix_fixture_dir().join("table_md_before.md");
+    let expected = fs::read_to_string(fix_fixture_dir().join("table_md_after.md")).unwrap();
+    let output = run_command(&["all", "--dry-run"], &before);
+
+    assert!(
+        output.status.success(),
+        "all --dry-run on markdown should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, expected, "markdown table should be fixed");
+}
+
+/// `all` fixes markdown tables in place but skips reorder/check for `.md`.
+#[test]
+fn all_md_in_place_fixes_tables() {
+    let expected = fs::read_to_string(fix_fixture_dir().join("table_md_after.md")).unwrap();
+    let tmp = temp_file("md");
+    fs::write(
+        &tmp,
+        fs::read_to_string(fix_fixture_dir().join("table_md_before.md")).unwrap(),
+    )
+    .unwrap();
+
+    let output = run_command(&["all"], &tmp);
+    assert!(
+        output.status.success(),
+        "all on markdown file should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(&tmp).unwrap();
+    let _ = fs::remove_file(&tmp);
+    assert_eq!(actual, expected, "in-place markdown fix must match after");
+}
+
+// ── Error handling ────────────────────────────────────────────────
 
 /// `all` on a file with doc gaps reports them after reordering.
 #[test]
@@ -46,8 +88,6 @@ fn all_reports_remaining_doc_gaps() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
-
-// ── Error handling ────────────────────────────────────────────────
 
 /// A non-existent path is rejected.
 #[test]
@@ -401,6 +441,11 @@ fn assert_has_diagnostic(stderr: &str, code: &str, item_name: Option<&str>) {
 
 // ── DOC001: missing doc comments ──────────────────────────────────
 
+/// The directory holding fix fixtures.
+fn fix_fixture_dir() -> std::path::PathBuf {
+    manifest_dir().join("tests").join("fixtures").join("fix")
+}
+
 /// Run `rust-llm-tidy check <fixture>` and return (stderr, exit_code).
 fn run_check_fixture(name: &str) -> (String, i32) {
     let path = fixture_dir().join(name);
@@ -416,6 +461,13 @@ fn temp_dir() -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-lint-dir-{}-{}", pid, seq))
+}
+
+/// Create a numbered temporary file path with the given extension.
+fn temp_file(ext: &str) -> std::path::PathBuf {
+    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    std::env::temp_dir().join(format!("rust-llm-tidy-all-{}-{}.{}", pid, seq, ext))
 }
 
 /// The directory holding lint fixtures.
