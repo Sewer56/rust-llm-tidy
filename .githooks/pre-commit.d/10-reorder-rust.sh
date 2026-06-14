@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hook: reorder staged Rust files with rust-llm-tidy.
+# Hook: fix and reorder staged Rust files with rust-llm-tidy.
 #
 # Cross-platform: Linux, macOS (bash 3.2), Windows (Git for Windows bash).
 # macOS note: avoids `mapfile` and `set -u` empty-array expansion.
@@ -10,7 +10,7 @@ cd "$repo_root"
 
 # Collect staged .rs files (added/copied/modified/renamed); skip deletions.
 # Skip hand-curated test fixtures: they are intentional before/after pairs,
-# not compilable units, so reordering would corrupt them.
+# not compilable units, so fixing/reordering would corrupt them.
 files=()
 while IFS= read -r f; do
   [ -f "$f" ] || continue
@@ -34,6 +34,13 @@ else
   reorder=(cargo run --quiet --manifest-path src/Cargo.toml -p rust-llm-tidy-cli --)
 fi
 
+echo "rust-llm-tidy: fixing ${#files[@]} staged file(s)"
+
+if ! "${reorder[@]}" fix "${files[@]}"; then
+  echo "rust-llm-tidy: fix failed" >&2
+  exit 1
+fi
+
 echo "rust-llm-tidy: reordering ${#files[@]} staged file(s)"
 
 if ! "${reorder[@]}" reorder "${files[@]}"; then
@@ -41,6 +48,6 @@ if ! "${reorder[@]}" reorder "${files[@]}"; then
   exit 1
 fi
 
-# Re-stage files the reorder step may have rewritten.
+# Re-stage files the fix/reorder steps may have rewritten.
 git add -- "${files[@]}"
 exit 0
