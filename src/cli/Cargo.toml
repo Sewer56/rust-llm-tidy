@@ -34,6 +34,10 @@ harness = false
 name = "vis"
 harness = false
 
+[[bench]]
+name = "links"
+harness = false
+
 [dependencies]
 rust-llm-tidy-reorder = { path = "../rust-llm-tidy-reorder", version = "0.1.0" }
 rust-llm-tidy-lint = { path = "../rust-llm-tidy-lint", version = "0.1.0" }
