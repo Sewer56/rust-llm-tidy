@@ -635,6 +635,9 @@ dependencies = [
 [[package]]
 name = "rust-llm-tidy-fix"
 version = "0.1.0"
+dependencies = [
+ "criterion",
+]
 
 [[package]]
 name = "rust-llm-tidy-lint"

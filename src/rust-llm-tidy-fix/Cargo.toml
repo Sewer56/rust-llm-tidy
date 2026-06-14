@@ -12,4 +12,14 @@ keywords = ["markdown", "table", "fix"]
 # categories (fixed list): https://crates.io/categories
 categories = ["command-line-utilities"]
 
+# Benchmark for the `fix_tables` pass over embedded real-world fixtures.
+# `harness = false` enables the criterion entry point in `benches/fix.rs`.
+[[bench]]
+name = "fix"
+harness = false
+
 [dependencies]
+
+[dev-dependencies]
+# Dev-only: keeps the published crate zero-dependency.
+criterion = "0.5"
