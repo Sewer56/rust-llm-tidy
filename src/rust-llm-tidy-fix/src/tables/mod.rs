@@ -45,62 +45,171 @@ mod realign;
 ///
 /// Non-table lines and lines without a pipe are returned verbatim. When no
 /// table changes, the original buffer is borrowed back (idempotent).
+///
+/// # Allocation strategy
+///
+/// The output buffer is allocated lazily: a single read-only scan runs first,
+/// and only when a table actually changes is a `String` allocated and the
+/// unchanged text before it copied in. A fully-aligned document therefore
+/// returns [`Cow::Borrowed`] with **zero** heap allocation.
+///
+/// The scan also fast-forwards over pipe-less regions with [`str::find`]
+/// (which the standard library lowers to a vectorized byte search), so files
+/// where tables are a small fraction - typical Rust source - are not charged
+/// per-line for the surrounding code.
 pub fn fix_tables(input: &str) -> Cow<'_, str> {
-    if !input.contains('|') {
-        return Cow::Borrowed(input);
-    }
-
-    let segments: Vec<&str> = input.split_inclusive('\n').collect();
-    let mut output = String::with_capacity(input.len());
+    // Output buffer, allocated lazily on the first real change. `copied_until`
+    // is the byte offset in `input` already present in `output`; the slice
+    // `input[copied_until..next_change_start]` is copied in just-in-time.
+    let mut output = String::new();
     let mut changed = false;
-    let mut i = 0;
+    let mut copied_until = 0usize;
 
-    while i < segments.len() {
-        let (content, _term) = split_terminator(segments[i]);
-        let (prefix, body) = strip_doc_prefix(content);
-
-        if body.contains('|') {
-            let run_start = i;
-            let mut k = i;
-            let mut run_bodies: Vec<&str> = Vec::new();
-            while k < segments.len() {
-                let (c, _) = split_terminator(segments[k]);
-                let (p, b) = strip_doc_prefix(c);
-                if b.contains('|') && p == prefix {
-                    run_bodies.push(b);
-                    k += 1;
-                } else {
-                    break;
+    let mut pos = 0usize;
+    while pos < input.len() {
+        // Fast-forward to the start of the next line that contains a pipe,
+        // skipping whole runs of pipe-less text/code in a single vectorized
+        // byte search. If no pipe remains, nothing can change.
+        let line_start = match input[pos..].find('|') {
+            None => break,
+            Some(rel) => {
+                let pipe = pos + rel;
+                match input[pos..pipe].rfind('\n') {
+                    Some(r) => pos + r + 1,
+                    None => pos,
                 }
             }
+        };
 
-            match realign_table(&run_bodies) {
-                Some(realigned) => {
-                    for (idx, line) in realigned.iter().enumerate() {
-                        output.push_str(prefix);
-                        output.push_str(line);
-                        let (_, term) = split_terminator(segments[run_start + idx]);
-                        output.push_str(term);
-                    }
-                    changed = true;
-                }
-                None => {
-                    for idx in 0..run_bodies.len() {
-                        output.push_str(segments[run_start + idx]);
-                    }
-                }
+        // Gather the maximal run of consecutive pipe lines sharing one
+        // doc-comment prefix, starting at `line_start`.
+        let (prefix, bodies, terminators, run_end) = gather_run_from(input, line_start);
+
+        if let Some(realigned) = realign_table(&bodies) {
+            // First change: reserve roughly the full input size so subsequent
+            // pushes never trigger capacity regrowth.
+            if !changed {
+                output.reserve(input.len());
             }
-            i = k;
-        } else {
-            output.push_str(segments[i]);
-            i += 1;
+            // Flush any unchanged text between the last change and here.
+            if line_start > copied_until {
+                output.push_str(&input[copied_until..line_start]);
+            }
+            for (line, term) in realigned.iter().zip(terminators.iter()) {
+                output.push_str(prefix);
+                output.push_str(line);
+                output.push_str(term);
+            }
+            changed = true;
+            copied_until = run_end;
         }
+        pos = run_end;
     }
 
     if changed {
+        if copied_until < input.len() {
+            output.push_str(&input[copied_until..]);
+        }
+        output.shrink_to_fit();
         Cow::Owned(output)
     } else {
         Cow::Borrowed(input)
+    }
+}
+
+/// Gather the contiguous run of pipe-bearing lines starting at byte offset
+/// `line_start` in `input`, all sharing the first line's doc-comment prefix.
+///
+/// A *run* is the longest prefix of consecutive lines whose body still
+/// contains `|` and whose stripped doc-comment prefix equals the first line's.
+/// The first line is assumed to already contain a pipe - the caller
+/// ([`fix_tables`]) fast-forwards to one - so it always seeds the run.
+/// Folding the gather and the per-line split into a single pass avoids
+/// reparsing each line's prefix on the way back out.
+///
+/// # Returns
+///
+/// A four-tuple `(prefix, bodies, terminators, run_end)`, one slice per
+/// concern:
+///
+/// **`prefix`** - shared doc-comment prefix from the first line: indent +
+/// `///` or `//!` + one space. Empty for plain markdown. Identical across the
+/// run, so re-applied to every line on the way out.
+///
+/// **`bodies`** - one [`Vec`] entry per line, the text after stripping
+/// `prefix`. The raw pipe row, e.g. `| a | b |`.
+///
+/// **`terminators`** - one entry per line, parallel to `bodies` (same index =
+/// same line). Verbatim terminator: `\n`, `\r\n`, or `""` for a trailing line
+/// without a newline, so the caller round-trips endings exactly.
+///
+/// **`run_end`** - byte offset of the first line *not* in the run (the one
+/// that broke an invariant, or `input.len()` at EOF). Caller resumes scan here.
+///
+/// `bodies.len() == terminators.len()` always.
+///
+/// # Examples
+///
+/// Plain markdown - the run stops where a line has no pipe:
+///
+/// ```text
+/// input:      "| a | b |\nno pipe\n"
+/// line_start: 0
+/// -> prefix      = ""
+///    bodies      = ["| a | b |"]
+///    terminators = ["\n"]
+///    run_end     = 10  // offset of "no pipe"
+/// ```
+///
+/// Rust doc comment - the shared `/// ` prefix is factored out and both
+/// rows join the run:
+///
+/// ```text
+/// input:      "/// | a |\n/// | b |\ncode\n"
+/// line_start: 0
+/// -> prefix      = "/// "
+///    bodies      = ["| a |", "| b |"]
+///    terminators = ["\n", "\n"]
+///    run_end     = 20  // offset of "code"
+/// ```
+fn gather_run_from(input: &str, line_start: usize) -> (&str, Vec<&str>, Vec<&str>, usize) {
+    let mut cur = line_start;
+    let mut bodies: Vec<&str> = Vec::new();
+    let mut terminators: Vec<&str> = Vec::new();
+
+    // Seed the run from the first line; its prefix becomes the membership
+    // contract every later line must match.
+    let seg = next_segment(&input[cur..]);
+    let (content, term) = split_terminator(seg);
+    let (prefix, body) = strip_doc_prefix(content);
+    bodies.push(body);
+    terminators.push(term);
+    cur += seg.len();
+
+    while cur < input.len() {
+        let seg = next_segment(&input[cur..]);
+        let (content, term) = split_terminator(seg);
+        let (p, b) = strip_doc_prefix(content);
+        // Extend only while the next line keeps the same prefix and is still
+        // a pipe row; otherwise the run ends just before it.
+        if b.contains('|') && p == prefix {
+            bodies.push(b);
+            terminators.push(term);
+            cur += seg.len();
+        } else {
+            break;
+        }
+    }
+    (prefix, bodies, terminators, cur)
+}
+
+/// Return the next line of `s` including its terminator (`\n` or `\r\n`),
+/// or the remaining slice for a trailing line without a newline.
+#[inline]
+fn next_segment(s: &str) -> &str {
+    match s.find('\n') {
+        Some(idx) => &s[..=idx],
+        None => s,
     }
 }
 
@@ -247,5 +356,58 @@ pub fn f() {}
             "already-aligned table should be borrowed"
         );
         assert_eq!(&*out, input);
+    }
+
+    #[test]
+    fn multiple_tables_and_text_roundtrip() {
+        // Two tables separated by prose: the first is misaligned (realigns),
+        // the second is already canonical (borrowed). Exercises the lazy
+        // output buffer: unchanged text before, between, and after the changed
+        // run must be copied through verbatim.
+        let input = "\
+intro line
+| a  | b |
+| -- | - |
+| cc | d |
+
+| x  | y |
+| -- | - |
+| zz | w |
+trailer
+";
+        let out = fix_tables(input).into_owned();
+        // first table realigned to width [2, 1].
+        assert!(out.contains("| a  | b |"), "{out}");
+        assert!(out.contains("| -- | - |"), "{out}");
+        assert!(out.contains("| cc | d |"), "{out}");
+        // second table was already canonical and is carried through unchanged.
+        assert!(out.contains("| x  | y |"), "{out}");
+        assert!(out.contains("| zz | w |"), "{out}");
+        assert!(
+            out.contains("intro line") && out.contains("trailer"),
+            "{out}"
+        );
+        // idempotent
+        let twice = fix_tables(&out).into_owned();
+        assert_eq!(twice, out, "must be idempotent across mixed runs");
+    }
+
+    #[test]
+    fn crlf_line_endings_preserved() {
+        let input = "| a | b |\r\n| --- | --- |\r\n| cc | d |\r\n";
+        let out = fix_tables(input);
+        assert!(out.contains("\r\n"), "CRLF must be preserved");
+        assert!(out.contains("| a  | b |"), "{out}");
+        let owned = out.into_owned();
+        let twice = fix_tables(&owned).into_owned();
+        assert_eq!(twice, owned, "idempotent under CRLF");
+    }
+
+    #[test]
+    fn no_trailing_newline() {
+        let input = "| a | b |\n| --- | --- |\n| cc | d |";
+        let out = fix_tables(input);
+        assert!(!out.ends_with('\n'), "no terminator introduced");
+        assert!(out.contains("| a  | b |"), "{out}");
     }
 }
