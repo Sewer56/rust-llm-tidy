@@ -29,10 +29,33 @@ fn fix_doc_comment_dry_run_matches_after() {
     );
 }
 
+/// `fix --dry-run` on `fence_md_before.md` matches `fence_md_after.md`.
+#[test]
+fn fix_fence_md_dry_run_matches_after() {
+    let before = fixture_dir().join("fence_md_before.md");
+    let expected = fs::read_to_string(fixture_dir().join("fence_md_after.md")).unwrap();
+    let output = run_command(&["fix", "--dry-run"], &before);
+
+    assert!(
+        output.status.success(),
+        "fix --dry-run should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout, expected,
+        "dry-run stdout must match fence_md_after.md"
+    );
+}
+
 /// Idempotency: running `fix --dry-run` on an `_after` fixture is a no-op.
 #[test]
 fn fix_idempotent_on_after_fixtures() {
-    for name in ["table_md_after.md", "table_doc_comment_after.rs"] {
+    for name in [
+        "table_md_after.md",
+        "fence_md_after.md",
+        "table_doc_comment_after.rs",
+    ] {
         let path = fixture_dir().join(name);
         let expected = fs::read_to_string(&path).unwrap();
         let output = run_command(&["fix", "--dry-run"], &path);

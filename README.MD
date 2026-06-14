@@ -26,7 +26,7 @@ rust-llm-tidy-reorder = "0.1.0"
 
 ### CLI
 
-The binary exposes four subcommands: `fix` (realign GitHub-Flavored Markdown (GFM) tables), `reorder`
+The binary exposes four subcommands: `fix` (realign GitHub-Flavored Markdown (GFM) tables and fix nested fence delimiters), `reorder`
 (the original behavior), `check` (a read-only documentation linter), and `all`
 (fix, reorder, then check in one pass).
 
@@ -45,10 +45,10 @@ rust-llm-tidy reorder src/main.rs src/lib.rs tests
 ```
 
 ```bash
-# Fix (realign) GFM tables in .rs doc comments and .md files
+# Fix (realign GFM tables and fix nested fence delimiters) in .rs doc comments and .md files
 rust-llm-tidy fix README.md
 
-# Preview table fixes without modifying files
+# Preview fixes without modifying files
 rust-llm-tidy fix --dry-run src
 
 # Fix every .rs and .md file under a directory recursively
@@ -206,7 +206,7 @@ for sorting, grouping, and merging.
 - [rust-llm-tidy-model]: Shared source model - parse top-level items with spans, visibility, and doc comments; atomic I/O; line-multiset safety
 - [rust-llm-tidy-reorder]: Reordering library - reference-graph ordering of items into canonical 10-phase order
 - [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/`# Arguments`, placeholder, and test-naming checks
-- [rust-llm-tidy-fix]: Table alignment - realigns GFM tables in `.rs` doc comments and `.md` files
+- [rust-llm-tidy-fix]: Table alignment and fence safety - realigns GFM tables and fixes nested fence delimiters in `.rs` doc comments and `.md` files
 - [cli]: Unified command-line interface (`fix`, `reorder`, `check`, `all`)
 
 ## Git Hook (optional)

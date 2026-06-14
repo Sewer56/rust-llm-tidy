@@ -7,9 +7,14 @@
 //!
 //! # Passes
 //!
+//! - [`fix_fences`]: rewrite nested markdown fences to alternate backtick/tilde
+//!   markers so an inner fence cannot close the outer block early; works on
+//!   `.md` and `///`/`//!` doc comments.
 //! - [`fix_tables`]: realign GFM pipe tables, including those nested inside
 //!   `///` and `//!` doc comments.
 
+pub use fences::fix_fences;
 pub use tables::fix_tables;
 
+pub mod fences;
 pub mod tables;

@@ -2,13 +2,13 @@
 name = "rust-llm-tidy-fix"
 version = "0.1.0"
 edition = "2024"
-description = "Realigns misaligned GFM markdown tables in place. Intended for LLM use."
+description = "Realigns GFM markdown tables and fixes nested fence delimiter safety in place. Intended for LLM use."
 repository = "https://github.com/Sewer56/rust-llm-tidy"
 license = "Apache-2.0"
 include = ["src/**/*"]
 readme = "README.MD"
 # keywords (search terms): https://crates.io/keywords
-keywords = ["markdown", "table", "fix"]
+keywords = ["markdown", "table", "fence", "fix"]
 # categories (fixed list): https://crates.io/categories
 categories = ["command-line-utilities"]
 

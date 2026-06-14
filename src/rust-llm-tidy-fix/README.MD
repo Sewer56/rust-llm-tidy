@@ -4,8 +4,9 @@
 [![Docs.rs](https://docs.rs/rust-llm-tidy-fix/badge.svg)][Docs.rs]
 [![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
 
-Realigns misaligned GitHub-Flavored Markdown (GFM) tables. Pure text
-processing, zero dependencies.
+Realigns misaligned GitHub-Flavored Markdown (GFM) tables and rewrites nested
+fence markers to alternate backticks and tildes. Pure text processing, zero
+dependencies.
 
 ## What it does
 
@@ -25,6 +26,33 @@ It works on:
   table is realigned, and the prefix is re-applied.
 
 The function is idempotent: an already-aligned table is returned unchanged.
+
+## Nested fence delimiter safety
+
+[`fix_fences`] rewrites nested markdown fences so the inner fence uses the
+opposite marker character from the outer one (backticks <-> tildes), preventing
+an inner fence from closing the outer block early. The outer (depth-0) marker is
+preserved, run lengths are kept, and a document that already alternates is
+returned unchanged. It applies to `.md` files and to fences inside `///` and
+`//!` doc comments.
+
+Before (both fences use backticks - the inner closes the outer early):
+
+````text
+```text
+```rust
+inner
+```
+````
+
+After (inner flipped to tildes):
+
+````text
+```text
+~~~rust
+inner
+~~~
+````
 
 ## Usage
 
