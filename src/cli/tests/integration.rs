@@ -99,7 +99,7 @@ synthetic_fixture!(preamble_preserved);
 
 synthetic_fixture!(trailer_preserved);
 
-synthetic_fixture!(fn_interstitial_comment_travels);
+synthetic_fixture!(fn_interstitial_comment_travels_with_next);
 
 synthetic_fixture!(docs_attrs_travel);
 

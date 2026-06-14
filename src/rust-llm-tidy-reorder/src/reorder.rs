@@ -18,7 +18,14 @@ impl Permutation {
     /// Create a new permutation.
     ///
     /// `n` is the total number of items.
-    /// `order` is a sequence of indices that should cover each index 0..n exactly once.
+    /// `order` must contain every index in `0..n` exactly once.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - `order.len() != n` (length mismatch).
+    /// - any index in `order` is `>= n` (out of range).
+    /// - any index appears more than once in `order` (duplicate).
     pub fn new(n: usize, order: Vec<usize>) -> Result<Self> {
         ensure!(
             order.len() == n,
@@ -46,9 +53,19 @@ impl Permutation {
 /// Emit the reordered source by byte-slicing the original source.
 ///
 /// Extracts each item's byte range from `parsed.source` and concatenates
-/// them in the permutation order. Items already include inter-item
-/// whitespace (including trailing newlines). The preamble and trailer
-/// are placed at the start and end.
+/// them in the permutation order. Because items are gap-anchored to the
+/// next item, a slice may begin with carried leading trivia (blank lines
+/// and plain `//` section headers). Leading and trailing whitespace are
+/// stripped ([`str::trim`]) so separators do not pile up when items move,
+/// while the `//` header and `///`/`//!` doc lines (non-whitespace) are
+/// preserved. Inter-item spacing is then re-derived from the compact-group
+/// logic below. The preamble and trailer are placed at the start and end.
+///
+/// # Errors
+///
+/// Returns an error if the permutation is malformed for the parsed items
+/// (e.g. an index out of range, which surfaces as a slice-out-of-bounds
+/// failure).
 pub fn emit(parsed: &ParseResult, perm: &Permutation) -> Result<String> {
     let source = &parsed.source;
     let mut output = String::with_capacity(source.len());
@@ -64,7 +81,7 @@ pub fn emit(parsed: &ParseResult, perm: &Permutation) -> Result<String> {
     for (i, &idx) in perm.order.iter().enumerate() {
         let item = &parsed.items[idx];
         let slice = &source[item.start..item.end];
-        output.push_str(slice.trim_end());
+        output.push_str(slice.trim());
         output.push('\n');
 
         if i + 1 < perm.order.len() {
