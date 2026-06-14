@@ -52,7 +52,7 @@ pub(super) fn is_fence_candidate(segment: &str) -> bool {
 /// Returns `(marker, run_len, info)` where `info` is the text after the run
 /// (may be empty). Returns `None` for non-fence lines.
 #[inline]
-pub(super) fn parse_fence(stripped: &str) -> Option<(char, usize, &str)> {
+pub(crate) fn parse_fence(stripped: &str) -> Option<(char, usize, &str)> {
     let bytes = stripped.as_bytes();
     // `stripped` is the trimmed line body; it may be empty for a blank line.
     let &marker = bytes.first()?;

@@ -4,9 +4,9 @@
 [![Docs.rs](https://docs.rs/rust-llm-tidy-fix/badge.svg)][Docs.rs]
 [![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
 
-Realigns misaligned GitHub-Flavored Markdown (GFM) tables and rewrites nested
-fence markers to alternate backticks and tildes. Pure text processing, zero
-dependencies.
+Realigns misaligned GitHub-Flavored Markdown (GFM) tables, rewrites nested
+fence markers to alternate backticks and tildes, and hoists repeated inline
+links to reference definitions. Pure text processing, zero dependencies.
 
 ## What it does
 
@@ -52,10 +52,43 @@ inner
 ~~~
 ````
 
+## Repeated inline-link hoisting
+
+[`fix_links`] rewrites inline links `[text](url)` that appear 2+ times in the
+same document to reference-style `[text]` in prose plus a single trailing
+`[text]: url` definition, reducing token count and visual clutter.
+
+Before (the same pair is repeated verbatim):
+
+```text
+See [the docs](https://example.com) for setup and
+[the docs](https://example.com) for troubleshooting.
+```
+
+After (hoisted to reference style):
+
+```text
+See [the docs] for setup and
+[the docs] for troubleshooting.
+
+[the docs]: https://example.com
+```
+
+The pass skips links that would not benefit or would break:
+
+- **Single-occurrence** inline links (no repetition to hoist).
+- **Autolink** (`<url>`) or whitespace/newline-URL forms.
+- Already **reference-style** links (`[text][ref]`, `[text][]`, `[text]`).
+- Links whose **text** already has a `[text]:` definition.
+- Links inside **fenced code blocks** (reuses the same fence-tracking
+  discipline as `fix_fences`).
+
+The function is idempotent: an already-hoisted document is returned unchanged.
+
 ## Usage
 
 ```rust
-use rust_llm_tidy_fix::fix_tables;
+use rust_llm_tidy_fix::{fix_tables, fix_links};
 
 | let input = " | a   | bb |
 | ------------- | --- |
@@ -63,6 +96,11 @@ use rust_llm_tidy_fix::fix_tables;
 ";
 let out = fix_tables(input);
 assert_ne!(&*out, input);
+
+// Link hoisting works independently:
+let links = "see [A](http://x) and [A](http://x)\n";
+let out = fix_links(links);
+assert_eq!(&*out, "see [A] and [A]\n[A]: http://x\n");
 ```
 
 ## Alignment

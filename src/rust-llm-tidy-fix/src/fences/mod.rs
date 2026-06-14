@@ -13,8 +13,10 @@
 //! inner-tilde alternation is returned unchanged (as a borrowed [`Cow`]).
 
 use crate::tables::{split_terminator, strip_doc_prefix};
-use scan::{is_fence_candidate, parse_fence};
+use scan::is_fence_candidate;
 use std::borrow::Cow;
+// Re-exported for `crate::fences::parse_fence` callers (e.g. `links`).
+pub(crate) use scan::parse_fence;
 
 mod scan;
 
