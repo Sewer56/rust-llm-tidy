@@ -31,7 +31,10 @@ The function is idempotent: an already-aligned table is returned unchanged.
 ```rust
 use rust_llm_tidy_fix::fix_tables;
 
-let input = "| a | bb |\n| --- | --- |\n| ccc | d |\n";
+let input = "| a | bb |
+| --- | --- |
+| ccc | d |
+";
 let out = fix_tables(input);
 assert_ne!(&*out, input);
 ```
