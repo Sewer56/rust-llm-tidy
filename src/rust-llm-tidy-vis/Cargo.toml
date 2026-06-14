@@ -1,0 +1,24 @@
+[package]
+name = "rust-llm-tidy-vis"
+version = "0.1.0"
+edition = "2024"
+description = "Narrows bare `pub` items nested inside restricted-visibility inline modules to the module's visibility. Intended for LLM use."
+repository = "https://github.com/Sewer56/rust-llm-tidy"
+license = "Apache-2.0"
+include = ["src/**/*"]
+readme = "README.MD"
+# keywords (search terms): https://crates.io/keywords
+keywords = ["rust", "syn", "visibility", "refactor", "lint"]
+# categories (fixed list): https://crates.io/categories
+categories = ["development-tools"]
+
+[dependencies]
+# `narrow_vis_in_tree` only needs the parsed `syn::File`, so it parses directly
+# with `syn::parse_str` and does not depend on `rust-llm-tidy-model` (whose
+# gap-anchored span extraction and item classification it would discard).
+anyhow = "1"
+syn = { version = "2", features = ["full", "parsing"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+ahash = "0.8"
+memchr = "2"
+cargo_metadata = "0.19" # crate-root discovery for cross-file vis (P1); pin/adjust to latest 0.x

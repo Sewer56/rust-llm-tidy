@@ -25,9 +25,13 @@ cargo build --release -p rust-llm-tidy-cli
 
 ## Usage
 
-The binary exposes four subcommands: `fix` (realign GitHub-Flavored Markdown (GFM) tables),
-`reorder` (reorder items), `check` (read-only documentation linter), and `all`
-(fix, reorder, then check).
+The binary exposes five subcommands:
+
+- `fix` - realign GitHub-Flavored Markdown (GFM) tables
+- `reorder` - reorder items
+- `vis` - clamp `pub` to its module's reach
+- `check` - read-only documentation linter
+- `all` - fix, reorder, vis, then check
 
 ```bash
 # Reorder a single file in place
@@ -55,10 +59,18 @@ rust-llm-tidy fix docs
 ```
 
 ```bash
+# Clamp `pub` to its module's reach
+rust-llm-tidy vis src/lib.rs
+
+# Preview visibility clamping without modifying files
+rust-llm-tidy vis --dry-run src
+```
+
+```bash
 # Check documentation coverage (read-only, never writes)
 rust-llm-tidy check src
 
-# Fix, reorder, then check in one pass
+# Fix, reorder, clamp `pub`, then check in one pass
 rust-llm-tidy all src
 ```
 
