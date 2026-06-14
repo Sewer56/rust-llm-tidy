@@ -17,6 +17,7 @@ syn = { version = "2", features = ["full", "visit", "parsing"] }
 quote = "1"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 memchr = "2"
+ahash = "0.8"
 tempfile = "3"
 
 [dev-dependencies]

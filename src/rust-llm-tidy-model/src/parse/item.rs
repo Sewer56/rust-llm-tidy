@@ -8,12 +8,15 @@
 use std::fmt;
 
 /// The result of parsing a source file.
-#[derive(Debug)]
 pub struct ParseResult {
     /// The parsed items in file order.
     pub items: Vec<SourceItem>,
     /// The original source text.
     pub source: String,
+    /// The parsed syntax tree, retained so downstream passes (e.g. the reorder
+    /// reference-graph walk) can reuse it instead of re-parsing `source`.
+    /// `pub(crate)`: read it through [`ParseResult::syntax_file`].
+    pub(crate) file: syn::File,
     /// Byte offset where the preamble ends.
     ///
     /// The preamble is everything before the first top-level item. It may
@@ -48,6 +51,10 @@ pub struct SourceItem {
     pub start: usize,
     /// Byte offset of the end of this item.
     pub end: usize,
+    /// 1-based source line where this item starts (including prefix
+    /// comments/attrs). Precomputed at parse time so lint checks need not rescan
+    /// the source for each diagnostic.
+    start_line: usize,
     /// The kind of this item.
     kind: ItemKind,
     /// The name of this item (if it has one).
@@ -179,7 +186,7 @@ pub enum ItemKind {
 }
 
 /// Visibility classification for ordering items.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum VisibilityTier {
     /// `pub` - fully public
     Pub,
@@ -189,33 +196,47 @@ pub enum VisibilityTier {
     Private,
 }
 
+impl ParseResult {
+    /// The parsed [`syn::File`], reused from parsing so downstream passes avoid
+    /// a second `syn::parse_str` of [`ParseResult::source`].
+    pub fn syntax_file(&self) -> &syn::File {
+        &self.file
+    }
+}
+
 impl SourceItem {
     /// The kind of this item.
+    #[inline]
     pub fn kind(&self) -> &ItemKind {
         &self.kind
     }
 
     /// The name of this item, if any.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
 
     /// True if this item is a function.
+    #[inline]
     pub fn is_fn(&self) -> bool {
         self.kind == ItemKind::Fn
     }
 
     /// The target type name for an impl block, if any.
+    #[inline]
     pub fn impl_target_name(&self) -> Option<&str> {
         self.impl_target.as_deref()
     }
 
     /// True if this is a `mod` item gated by `#[cfg(test)]`.
+    #[inline]
     pub fn is_test_module(&self) -> bool {
         self.is_test_module
     }
 
     /// True for `impl Trait for Type` (trait impl), false for `impl Type` (inherent).
+    #[inline]
     pub fn is_trait_impl(&self) -> bool {
         self.is_trait_impl
     }
@@ -226,8 +247,9 @@ impl SourceItem {
     /// (fn, struct, enum, union, type, const, static, mod, trait, use, extern
     /// crate), and `None` for kinds without one (impl, macro, macro
     /// invocation, other).
+    #[inline]
     pub fn visibility(&self) -> Option<VisibilityTier> {
-        self.visibility.clone()
+        self.visibility
     }
 
     /// The leading doc-comment lines for this item, in source order.
@@ -241,6 +263,7 @@ impl SourceItem {
 
     /// True for fn items whose return type path ends in `Result`
     /// (a `-> Result<...>` signature).
+    #[inline]
     pub fn returns_result(&self) -> bool {
         self.returns_result
     }
@@ -249,25 +272,35 @@ impl SourceItem {
     ///
     /// Empty for non-fn items. For fns with destructuring parameter patterns,
     /// only simple `Pat::Ident` names are reported.
+    #[inline]
     pub fn params(&self) -> &[String] {
         &self.params
     }
 
     /// True for fn items carrying a `#[test]` or `#[...::test]` attribute.
+    #[inline]
     pub fn is_test_fn(&self) -> bool {
         self.is_test_fn
+    }
+
+    /// 1-based source line where this item starts (including prefix
+    /// comments/attrs).
+    #[inline]
+    pub fn start_line(&self) -> usize {
+        self.start_line
     }
 
     #[allow(clippy::too_many_arguments)]
     /// Creates a new `SourceItem`.
     ///
     /// See the [`SourceItem`] struct field docs for parameter descriptions:
-    /// `start`, `end`, `kind`, `name`, `impl_target`, `is_test_module`,
-    /// `is_trait_impl`, `visibility`, `doc_comments`, `returns_result`,
-    /// `params`, and `is_test_fn`.
+    /// `start`, `end`, `start_line`, `kind`, `name`, `impl_target`,
+    /// `is_test_module`, `is_trait_impl`, `visibility`, `doc_comments`,
+    /// `returns_result`, `params`, and `is_test_fn`.
     pub fn new(
         start: usize,
         end: usize,
+        start_line: usize,
         kind: ItemKind,
         name: Option<String>,
         impl_target: Option<String>,
@@ -282,6 +315,7 @@ impl SourceItem {
         Self {
             start,
             end,
+            start_line,
             kind,
             name,
             impl_target,
@@ -293,6 +327,20 @@ impl SourceItem {
             params,
             is_test_fn,
         }
+    }
+}
+
+impl fmt::Debug for ParseResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ParseResult")
+            .field("items", &self.items)
+            .field("source", &self.source)
+            .field("preamble_end", &self.preamble_end)
+            .field("trailer_start", &self.trailer_start)
+            // `file` is intentionally omitted: `syn::File` has no `Debug`
+            // impl without the `extra-traits` feature, and the syntax tree is
+            // already represented by `items` + `source`.
+            .finish_non_exhaustive()
     }
 }
 

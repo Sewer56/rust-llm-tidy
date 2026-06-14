@@ -4,8 +4,6 @@
 //! [`TieBreak`] controls how zero-in-degree and cycle nodes are ordered.
 //! `main` is always seeded first regardless of in-degree.
 
-use std::collections::HashMap;
-
 /// Tie-breaking strategy for topological sort.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TieBreak {
@@ -17,9 +15,10 @@ pub enum TieBreak {
 
 /// Compute a topological ordering of item indices by reference dependencies.
 ///
-/// `fns` is the list of item names in original file order within a phase
-/// (parameter name reflects original function-oriented use; works for any named item type).
-/// `edges` is the set of `(referencer, referenced)` pairs.
+/// `fns` is the list of item names (borrowed) in original file order within a
+/// phase (parameter name reflects original function-oriented use; works for any
+/// named item type). `edges` is a set of `(referencer_position,
+/// referenced_position)` pairs, already filtered to positions within this phase.
 /// `tie_break` controls ordering of zero-in-degree nodes and cycle nodes.
 ///
 /// Returns a permutation vector `order` where `order[i]` is the index into
@@ -36,25 +35,16 @@ pub enum TieBreak {
 ///    block. With `Alphabetical` tie-break, cycles are sorted alphabetically.
 /// 4. **Unrelated functions stable.** Functions with no calls between them
 ///    are ordered by the tie-break strategy.
-pub fn toposort(fns: &[String], edges: &[(String, String)], tie_break: TieBreak) -> Vec<usize> {
+pub fn toposort(fns: &[&str], edges: &[(usize, usize)], tie_break: TieBreak) -> Vec<usize> {
     let n = fns.len();
 
-    // Name -> index lookup
-    let name_to_idx: HashMap<&str, usize> = fns
-        .iter()
-        .enumerate()
-        .map(|(i, name)| (name.as_str(), i))
-        .collect();
-
-    // Build adjacency list: caller_idx -> Vec<callee_idx>
+    // Build adjacency list: caller -> Vec<callee>. Edges are already phase
+    // positions, so no name-string lookup is needed here.
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
     let mut in_degree: Vec<usize> = vec![0; n];
 
-    for (caller_name, callee_name) in edges {
-        if let (Some(&caller), Some(&callee)) = (
-            name_to_idx.get(caller_name.as_str()),
-            name_to_idx.get(callee_name.as_str()),
-        ) {
+    for &(caller, callee) in edges {
+        if caller < n && callee < n {
             adj[caller].push(callee);
             in_degree[callee] += 1;
         }
@@ -65,7 +55,7 @@ pub fn toposort(fns: &[String], edges: &[(String, String)], tie_break: TieBreak)
 
     // ── Phase 1: entry points first ──────────────────────────────────
     // Seed with `main` first, regardless of in-degree.
-    if let Some(&main_idx) = name_to_idx.get("main")
+    if let Some(main_idx) = fns.iter().position(|&nm| nm == "main")
         && !visited[main_idx]
     {
         order.push(main_idx);
@@ -90,7 +80,7 @@ pub fn toposort(fns: &[String], edges: &[(String, String)], tie_break: TieBreak)
         // Apply tie-break ordering
         match tie_break {
             TieBreak::Alphabetical => {
-                zero_degree.sort_by(|&a, &b| fns[a].cmp(&fns[b]));
+                zero_degree.sort_by(|&a, &b| fns[a].cmp(fns[b]));
             }
             TieBreak::Stable => {
                 // already in index order (file order)
@@ -115,7 +105,7 @@ pub fn toposort(fns: &[String], edges: &[(String, String)], tie_break: TieBreak)
         let mut remaining: Vec<usize> = (0..n).filter(|&i| !visited[i]).collect();
         match tie_break {
             TieBreak::Alphabetical => {
-                remaining.sort_by(|&a, &b| fns[a].cmp(&fns[b]));
+                remaining.sort_by(|&a, &b| fns[a].cmp(fns[b]));
             }
             TieBreak::Stable => {
                 // already in index order (file order)
@@ -142,12 +132,13 @@ fn extract_bare_fn_name(expr: &syn::Expr) -> Option<String> {
     } else {
         expr
     };
-    if let syn::Expr::Path(syn::ExprPath { path, .. }) = inner {
-        if path.leading_colon.is_none() && path.segments.len() == 1 {
-            let seg = &path.segments[0];
-            if seg.arguments.is_empty() {
-                return Some(seg.ident.to_string());
-            }
+    if let syn::Expr::Path(syn::ExprPath { path, .. }) = inner
+        && path.leading_colon.is_none()
+        && path.segments.len() == 1
+    {
+        let seg = &path.segments[0];
+        if seg.arguments.is_empty() {
+            return Some(seg.ident.to_string());
         }
     }
     None
@@ -161,11 +152,9 @@ mod tests {
     /// Expected order: A, B, C.
     #[test]
     fn test_linear_chain() {
-        let fns = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let edges = vec![
-            ("b".to_string(), "c".to_string()),
-            ("a".to_string(), "b".to_string()),
-        ];
+        let fns = vec!["a", "b", "c"];
+        // (a,b)=(0,1), (b,c)=(1,2)
+        let edges: Vec<(usize, usize)> = vec![(0, 1), (1, 2)];
 
         let order = toposort(&fns, &edges, TieBreak::Stable);
 
@@ -175,18 +164,9 @@ mod tests {
     /// Diamond: A calls B and C; B and C both call D.
     #[test]
     fn test_diamond() {
-        let fns = vec![
-            "a".to_string(),
-            "b".to_string(),
-            "c".to_string(),
-            "d".to_string(),
-        ];
-        let edges = vec![
-            ("a".to_string(), "b".to_string()),
-            ("a".to_string(), "c".to_string()),
-            ("b".to_string(), "d".to_string()),
-            ("c".to_string(), "d".to_string()),
-        ];
+        let fns = vec!["a", "b", "c", "d"];
+        // a=0,b=1,c=2,d=3
+        let edges: Vec<(usize, usize)> = vec![(0, 1), (0, 2), (1, 3), (2, 3)];
 
         let order = toposort(&fns, &edges, TieBreak::Stable);
 
@@ -204,8 +184,9 @@ mod tests {
     /// `main` should sort first even when another function calls it.
     #[test]
     fn test_entry_point_first() {
-        let fns = vec!["helper".to_string(), "main".to_string()];
-        let edges = vec![("main".to_string(), "helper".to_string())];
+        let fns = vec!["helper", "main"];
+        // helper=0, main=1; edge (main,helper)=(1,0)
+        let edges: Vec<(usize, usize)> = vec![(1, 0)];
 
         let order = toposort(&fns, &edges, TieBreak::Stable);
 
@@ -217,11 +198,9 @@ mod tests {
     /// A ↔ B mutual recursion.
     #[test]
     fn test_mutual_recursion_block() {
-        let fns = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let edges = vec![
-            ("a".to_string(), "b".to_string()),
-            ("b".to_string(), "a".to_string()),
-        ];
+        let fns = vec!["a", "b", "c"];
+        // a=0,b=1,c=2; (a,b)=(0,1), (b,a)=(1,0)
+        let edges: Vec<(usize, usize)> = vec![(0, 1), (1, 0)];
 
         let order = toposort(&fns, &edges, TieBreak::Stable);
 
@@ -249,8 +228,8 @@ mod tests {
     /// Functions with no calls between them should keep their original file order.
     #[test]
     fn test_unrelated_fns_stable() {
-        let fns = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let edges: Vec<(String, String)> = vec![];
+        let fns = vec!["a", "b", "c"];
+        let edges: Vec<(usize, usize)> = vec![];
 
         let order = toposort(&fns, &edges, TieBreak::Stable);
         assert_eq!(order, vec![0, 1, 2]);
@@ -282,39 +261,37 @@ mod tests {
     /// `toposort` with `Alphabetical` tie-break sorts independent items by name.
     #[test]
     fn test_toposort_alphabetical_tie_break() {
-        let fns = vec!["zebra".to_string(), "alpha".to_string(), "moon".to_string()];
-        let edges: Vec<(String, String)> = vec![];
+        let fns = vec!["zebra", "alpha", "moon"];
+        let edges: Vec<(usize, usize)> = vec![];
 
         let order = toposort(&fns, &edges, TieBreak::Alphabetical);
 
-        let names: Vec<&str> = order.iter().map(|&i| fns[i].as_str()).collect();
+        let names: Vec<&str> = order.iter().map(|&i| fns[i]).collect();
         assert_eq!(names, vec!["alpha", "moon", "zebra"]);
     }
 
     /// `toposort` with `Stable` tie-break preserves original file order for independent items.
     #[test]
     fn test_toposort_stable_tie_break() {
-        let fns = vec!["zebra".to_string(), "alpha".to_string(), "moon".to_string()];
-        let edges: Vec<(String, String)> = vec![];
+        let fns = vec!["zebra", "alpha", "moon"];
+        let edges: Vec<(usize, usize)> = vec![];
 
         let order = toposort(&fns, &edges, TieBreak::Stable);
 
-        let names: Vec<&str> = order.iter().map(|&i| fns[i].as_str()).collect();
+        let names: Vec<&str> = order.iter().map(|&i| fns[i]).collect();
         assert_eq!(names, vec!["zebra", "alpha", "moon"]);
     }
 
     /// `toposort` with `Alphabetical` sorts cycle members alphabetically.
     #[test]
     fn test_toposort_alphabetical_cycles() {
-        let fns = vec!["z".to_string(), "a".to_string(), "m".to_string()];
-        let edges = vec![
-            ("z".to_string(), "a".to_string()),
-            ("a".to_string(), "z".to_string()),
-        ];
+        let fns = vec!["z", "a", "m"];
+        // z=0, a=1, m=2; (z,a)=(0,1), (a,z)=(1,0)
+        let edges: Vec<(usize, usize)> = vec![(0, 1), (1, 0)];
 
         let order = toposort(&fns, &edges, TieBreak::Alphabetical);
 
-        let names: Vec<&str> = order.iter().map(|&i| fns[i].as_str()).collect();
+        let names: Vec<&str> = order.iter().map(|&i| fns[i]).collect();
         // m has zero in-degree, appears first (alphabetically it's the only one)
         assert_eq!(names[0], "m");
         // a and z form a cycle, alphabetical: a before z
@@ -325,12 +302,8 @@ mod tests {
     /// File with no cross-function calls: identity ordering.
     #[test]
     fn test_no_calls() {
-        let fns = vec![
-            "main".to_string(),
-            "helper_a".to_string(),
-            "helper_b".to_string(),
-        ];
-        let edges: Vec<(String, String)> = vec![];
+        let fns = vec!["main", "helper_a", "helper_b"];
+        let edges: Vec<(usize, usize)> = vec![];
 
         let order = toposort(&fns, &edges, TieBreak::Stable);
 

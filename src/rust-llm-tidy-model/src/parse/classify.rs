@@ -6,7 +6,6 @@
 //! the parse orchestration that builds source items.
 
 use crate::parse::item::{ItemKind, VisibilityTier};
-use quote::ToTokens;
 
 /// Result of classifying a single top-level item.
 pub(super) struct Classification {
@@ -244,19 +243,12 @@ pub(super) fn classify_item(item: &syn::Item, source: &str, item_start: usize) -
 
 fn classify_visibility(vis: &syn::Visibility) -> VisibilityTier {
     match vis {
+        // `pub(crate)`, `pub(super)`, `pub(in path)` all map to PubRestricted.
+        // The previous code stringified the path (`to_token_stream().to_string()`)
+        // only to compare it, but every `Restricted` variant is PubRestricted
+        // regardless, so the tokenize + stringify was dead work per item.
         syn::Visibility::Public(_) => VisibilityTier::Pub,
-        syn::Visibility::Restricted(restricted) => {
-            // `pub(crate)`, `pub(super)`, `pub(in path)`
-            // Heuristic: pub(crate), pub(super), and pub(in ...) all map to PubRestricted.
-            // String-matching "crate", "super", or "in " covers all practical cases.
-            let path_str = restricted.path.to_token_stream().to_string();
-            if path_str == "crate" || path_str == "super" || path_str.contains("in ") {
-                VisibilityTier::PubRestricted
-            } else {
-                // Shouldn't happen; treat as restricted
-                VisibilityTier::PubRestricted
-            }
-        }
+        syn::Visibility::Restricted(_) => VisibilityTier::PubRestricted,
         syn::Visibility::Inherited => VisibilityTier::Private,
     }
 }
@@ -331,13 +323,20 @@ fn is_test_fn(attrs: &[syn::Attribute]) -> bool {
 
 fn path_type_to_string(path: &syn::Type) -> String {
     if let syn::Type::Path(type_path) = path {
-        type_path
-            .path
-            .segments
-            .iter()
-            .map(|s| s.ident.to_string())
-            .collect::<Vec<_>>()
-            .join("::")
+        let mut iter = type_path.path.segments.iter();
+        let Some(first) = iter.next() else {
+            return String::new();
+        };
+        // Pre-size to the first segment's ident length; further segments add
+        // `::` separators on demand via `extend`.
+        let first_str = first.ident.to_string();
+        let mut out = String::with_capacity(first_str.len() + 8);
+        out.push_str(&first_str);
+        for seg in iter {
+            out.push_str("::");
+            out.push_str(&seg.ident.to_string());
+        }
+        out
     } else {
         String::new()
     }

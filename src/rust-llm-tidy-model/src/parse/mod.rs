@@ -53,6 +53,7 @@ pub fn parse_source(source: &str) -> anyhow::Result<ParseResult> {
         return Ok(ParseResult {
             items: Vec::new(),
             source: source.to_string(),
+            file,
             preamble_end: 0,
             trailer_start: source.len(),
         });
@@ -84,10 +85,16 @@ pub fn parse_source(source: &str) -> anyhow::Result<ParseResult> {
             e
         };
 
+        // 1-based line of this item's start: count of line-start offsets that
+        // are <= the item start byte (O(log lines) via binary search on the
+        // sorted `line_starts` table).
+        let start_line = line_starts.partition_point(|&s| s <= start);
+
         let class = classify_item(&file.items[i], source, start);
         items.push(SourceItem::new(
             start,
             end,
+            start_line,
             class.kind,
             class.name,
             class.impl_target,
@@ -110,6 +117,7 @@ pub fn parse_source(source: &str) -> anyhow::Result<ParseResult> {
     Ok(ParseResult {
         items,
         source: source.to_string(),
+        file,
         preamble_end,
         trailer_start,
     })

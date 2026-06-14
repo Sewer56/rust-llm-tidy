@@ -1,9 +1,9 @@
 // Partially vendored from rust-reorder (MIT).
-// Modified based on https://github.com/umwelt-ai/rust-reorder.
+// Modified based on https://github.com/umilt-ai/rust-reorder.
 // Line-multiset safety verification.
 
-use anyhow::{Result, ensure};
-use std::collections::HashMap;
+use crate::line_count::count_lines;
+use anyhow::{Result, bail, ensure};
 
 /// Verify that every non-blank line in `original` appears exactly once in `output`.
 ///
@@ -12,48 +12,81 @@ use std::collections::HashMap;
 /// Whitespace-only lines are ignored because the reorder pass intentionally
 /// re-normalizes blank lines between item groups.
 ///
+/// # Algorithm
+///
+/// Builds one frequency map of `original`'s non-blank lines, then makes a
+/// single pass over `output` decrementing counts. Any line absent from
+/// `original`, or whose count is already exhausted, is an error; any residual
+/// positive count afterwards is a dropped line. This is one map and two line
+/// scans instead of the prior two maps and four scans.
+///
 /// # Errors
 ///
 /// Returns an error describing the first line whose count differs between
 /// `original` and `output`.
 pub fn verify_line_preservation(original: &str, output: &str) -> Result<()> {
-    let original_lines = count_lines(original);
-    let output_lines = count_lines(output);
+    let mut counts = count_lines(original);
 
-    // Check that every line in original appears with the same count in output.
-    for (line, count) in &original_lines {
-        let out_count = output_lines.get(line).copied().unwrap_or(0);
-        ensure!(
-            *count == out_count,
-            "line multiset mismatch: line {:?} appears {} time(s) in original but {} time(s) in output",
-            line,
-            count,
-            out_count,
-        );
+    for line in output.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        match counts.get_mut(line) {
+            None => {
+                bail!(
+                    "line multiset mismatch: line {:?} appears in output but not in original",
+                    line,
+                );
+            }
+            Some(0) => {
+                bail!(
+                    "line multiset mismatch: line {:?} appears more times in output than in original",
+                    line,
+                );
+            }
+            Some(c) => *c -= 1,
+        }
     }
 
-    // Check that output doesn't have extra lines not in original.
-    for (line, count) in &output_lines {
-        let orig_count = original_lines.get(line).copied().unwrap_or(0);
+    // Any remaining positive count is a line dropped from the output.
+    for (line, count) in &counts {
         ensure!(
-            *count == orig_count,
-            "line multiset mismatch: line {:?} appears {} time(s) in output but {} time(s) in original",
+            *count == 0,
+            "line multiset mismatch: line {:?} appears {} time(s) in original but 0 time(s) in output",
             line,
             count,
-            orig_count,
         );
     }
 
     Ok(())
 }
 
-fn count_lines(s: &str) -> HashMap<String, usize> {
-    let mut map = HashMap::new();
-    for line in s.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        *map.entry(line.to_string()).or_insert(0) += 1;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identical_lines_pass() {
+        assert!(verify_line_preservation("a\nb\nc\n", "a\nb\nc\n").is_ok());
     }
-    map
+
+    #[test]
+    fn reordered_lines_pass() {
+        assert!(verify_line_preservation("a\nb\nc\n", "c\nb\na\n").is_ok());
+    }
+
+    #[test]
+    fn dropped_line_fails() {
+        assert!(verify_line_preservation("a\nb\nc\n", "a\nc\n").is_err());
+    }
+
+    #[test]
+    fn duplicated_line_fails() {
+        assert!(verify_line_preservation("a\nb\n", "a\nb\nb\n").is_err());
+    }
+
+    #[test]
+    fn blank_lines_ignored() {
+        assert!(verify_line_preservation("a\n\nb\n", "a\nb\n").is_ok());
+    }
 }

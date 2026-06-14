@@ -5,9 +5,9 @@
 //! `Vec<usize>` permutation of the parsed items that puts callers before
 //! callees (and macro/impl definitions before their uses).
 
+use ahash::{AHashMap, AHashSet};
 pub use collect::ReferenceCollector;
 use rust_llm_tidy_model::parse::{ItemKind, ParseResult, VisibilityTier};
-use std::collections::{HashMap, HashSet};
 pub use toposort::{TieBreak, toposort};
 
 mod collect;
@@ -38,38 +38,47 @@ mod toposort;
 pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
     let n = parsed.items.len();
 
-    // ── 1. Collect top-level names (all named items) for dependency collection ──
-    let top_level_names: HashSet<String> = parsed
-        .items
-        .iter()
-        .filter_map(|item| item.name().map(|n| n.to_string()))
-        .collect();
+    // ── 1. Build name -> item-index map (one entry per distinct name) for
+    //        reference collection. Borrowed `&str` keys avoid cloning names.
+    //        `or_insert` keeps the *first* index per name: names can collide
+    //        across namespaces (e.g. a `macro_rules! foo` def and a later
+    //        `foo!()` invocation share the name "foo"); keeping the def's index
+    //        (which precedes its uses) matches the prior name-keyed lookup. ──
+    let mut name_to_idx: AHashMap<&str, usize> = AHashMap::with_capacity(parsed.items.len());
+    for (i, item) in parsed.items.iter().enumerate() {
+        if let Some(name) = item.name() {
+            name_to_idx.entry(name).or_insert(i);
+        }
+    }
 
-    let macro_names: HashSet<String> = parsed
+    let macro_names: AHashSet<&str> = parsed
         .items
         .iter()
         .filter(|item| item.kind() == &ItemKind::Macro)
-        .filter_map(|item| item.name().map(|n| n.to_string()))
+        .filter_map(|item| item.name())
         .collect();
 
-    // ── 2. Build syn::File and collect reference edges ──
-    let file: syn::File = syn::parse_str(&parsed.source)?;
-    let mut collector = ReferenceCollector::new(top_level_names.clone(), macro_names.clone());
-    collector.collect(&file);
+    // ── 2. Collect reference edges, reusing the syntax tree stored in the
+    //        parse result instead of re-parsing `parsed.source` ──
+    let file = parsed.syntax_file();
+    let mut collector = ReferenceCollector::new(name_to_idx, macro_names.clone());
+    collector.collect(file);
     let edges = collector.into_edges();
 
-    // ── 3. Helper: group items by kind ──
+    // ── 3. Group items by kind. Phases hold item *indices* only; names are
+    //        borrowed from `parsed.items` on demand, avoiding a per-item name
+    //        clone into these vectors. ──
     let mut phase1: Vec<usize> = Vec::new(); // extern + Other
     let mut phase2: Vec<usize> = Vec::new(); // use
     let mut phase3: Vec<usize> = Vec::new(); // mod (non-test)
-    let mut phase3_macro: Vec<(usize, String)> = Vec::new(); // macro defs
-    let mut macro_invocations: Vec<(usize, String)> = Vec::new(); // local macro invocations
-    let mut phase4: Vec<(usize, String)> = Vec::new(); // const + static
-    let mut phase5: Vec<(usize, String)> = Vec::new(); // struct, enum, union, type
-    let mut phase6: Vec<(usize, String)> = Vec::new(); // trait
+    let mut phase3_macro: Vec<usize> = Vec::new(); // macro defs
+    let mut macro_invocations: Vec<usize> = Vec::new(); // local macro invocations
+    let mut phase4: Vec<usize> = Vec::new(); // const + static
+    let mut phase5: Vec<usize> = Vec::new(); // struct, enum, union, type
+    let mut phase6: Vec<usize> = Vec::new(); // trait
     let mut phase7_inherent: Vec<usize> = Vec::new(); // inherent impls
     let mut phase7_trait: Vec<usize> = Vec::new(); // trait impls
-    let mut phase8: Vec<(usize, String)> = Vec::new(); // fn
+    let mut phase8: Vec<usize> = Vec::new(); // fn
     let mut phase9: Vec<usize> = Vec::new(); // #[cfg(test)] mod
 
     for (idx, item) in parsed.items.iter().enumerate() {
@@ -84,25 +93,19 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
                     phase3.push(idx);
                 }
             }
-            ItemKind::Const | ItemKind::Static => {
-                phase4.push((idx, item.name().unwrap_or("").to_string()));
-            }
+            ItemKind::Const | ItemKind::Static => phase4.push(idx),
             ItemKind::Struct | ItemKind::Enum | ItemKind::Union | ItemKind::Type => {
-                phase5.push((idx, item.name().unwrap_or("").to_string()));
+                phase5.push(idx);
             }
-            ItemKind::Trait => {
-                phase6.push((idx, item.name().unwrap_or("").to_string()));
-            }
-            ItemKind::Macro => {
-                phase3_macro.push((idx, item.name().unwrap_or("").to_string()));
-            }
+            ItemKind::Trait => phase6.push(idx),
+            ItemKind::Macro => phase3_macro.push(idx),
             ItemKind::MacroInvocation => {
-                let name = item.name().unwrap_or("").to_string();
+                let name = item.name().unwrap_or("");
                 // Only invocations of a locally-defined macro_rules! need to
                 // follow their definition. External macros (println!,
                 // tokio::main, ...) stay in the stable phase-1 bucket.
-                if !name.is_empty() && macro_names.contains(&name) {
-                    macro_invocations.push((idx, name));
+                if !name.is_empty() && macro_names.contains(name) {
+                    macro_invocations.push(idx);
                 } else {
                     phase1.push(idx);
                 }
@@ -114,9 +117,7 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
                     phase7_inherent.push(idx);
                 }
             }
-            ItemKind::Fn => {
-                phase8.push((idx, item.name().unwrap_or("").to_string()));
-            }
+            ItemKind::Fn => phase8.push(idx),
         }
     }
 
@@ -135,7 +136,7 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
     //    its local macro invocations in source order ──
     {
         let macro_start = final_order.len();
-        sort_phase_by_dep(phase3_macro, &edges, &mut final_order);
+        sort_phase_by_dep(parsed, &phase3_macro, &edges, &mut final_order);
 
         // sort_phase_by_dep appended the defs as the tail of final_order.
         // Split them off and re-emit each def followed by its invocations,
@@ -146,12 +147,13 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
         // Group invocations by macro name, preserving source order. The loop
         // above pushed them in ascending item-index order, so the Vec is
         // already in source order.
-        let mut invocations_by_def: HashMap<&str, Vec<usize>> = HashMap::new();
-        for (inv_idx, inv_name) in &macro_invocations {
+        let mut invocations_by_def: AHashMap<&str, Vec<usize>> = AHashMap::new();
+        for &inv_idx in &macro_invocations {
+            let inv_name = parsed.items[inv_idx].name().unwrap_or("");
             invocations_by_def
-                .entry(inv_name.as_str())
+                .entry(inv_name)
                 .or_default()
-                .push(*inv_idx);
+                .push(inv_idx);
         }
 
         for &def_idx in &def_order {
@@ -170,47 +172,54 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
 
     // ── Helpers for dependency-sorted phases ──
 
+    /// Sort a phase's items by reference dependency with alphabetical tie-break.
+    /// Names are borrowed from `parsed.items[phase_items[*]]`, so no per-item
+    /// name clone is needed.
     fn sort_phase_by_dep(
-        phase_items: Vec<(usize, String)>,
-        edges: &[(String, String)],
+        parsed: &ParseResult,
+        phase_items: &[usize],
+        edges: &[(usize, usize)],
         final_order: &mut Vec<usize>,
     ) {
-        let names: Vec<String> = phase_items.iter().map(|(_, n)| n.clone()).collect();
-        let name_to_pos: HashMap<&str, usize> = names
+        // Borrowed names for toposort's alphabetical tie-break / `main` lookup.
+        let names: Vec<&str> = phase_items
             .iter()
-            .enumerate()
-            .map(|(i, n)| (n.as_str(), i))
+            .map(|&idx| parsed.items[idx].name().unwrap_or(""))
             .collect();
+        // item index -> position within this phase
+        let mut pos_by_idx: AHashMap<usize, usize> = AHashMap::with_capacity(phase_items.len());
+        for (pos, &idx) in phase_items.iter().enumerate() {
+            pos_by_idx.insert(idx, pos);
+        }
 
-        // Filter edges to only those within this phase
-        let phase_edges: Vec<(String, String)> = edges
-            .iter()
-            .filter(|(a, b)| {
-                name_to_pos.contains_key(a.as_str()) && name_to_pos.contains_key(b.as_str())
-            })
-            .cloned()
-            .collect();
+        // Keep only edges whose both endpoints are in this phase, translated to
+        // phase positions for the toposort.
+        let mut phase_edges: Vec<(usize, usize)> = Vec::new();
+        for &(a, b) in edges {
+            if let (Some(&pa), Some(&pb)) = (pos_by_idx.get(&a), pos_by_idx.get(&b)) {
+                phase_edges.push((pa, pb));
+            }
+        }
 
         let order = toposort(&names, &phase_edges, TieBreak::Alphabetical);
         for pos in &order {
-            let idx = phase_items[*pos].0;
-            final_order.push(idx);
+            final_order.push(phase_items[*pos]);
         }
     }
 
     // ── Phase 5: const + static (dependency → alphabetical) ──
-    sort_phase_by_dep(phase4, &edges, &mut final_order);
+    sort_phase_by_dep(parsed, &phase4, &edges, &mut final_order);
 
     // ── Phase 6: struct, enum, union, type (dependency → alphabetical) ──
-    sort_phase_by_dep(phase5, &edges, &mut final_order);
+    sort_phase_by_dep(parsed, &phase5, &edges, &mut final_order);
 
     // ── Phase 7: trait (dependency → alphabetical) ──
-    sort_phase_by_dep(phase6, &edges, &mut final_order);
+    sort_phase_by_dep(parsed, &phase6, &edges, &mut final_order);
 
     // ── Phase 8: impl (inherent first, then trait impls; after matching type) ──
     {
-        let mut placed_inherent: HashSet<usize> = HashSet::new();
-        let mut placed_trait: HashSet<usize> = HashSet::new();
+        let mut placed_inherent: AHashSet<usize> = AHashSet::new();
+        let mut placed_trait: AHashSet<usize> = AHashSet::new();
 
         // Place inherent impls after their matching type
         for i in 0..final_order.len() {
@@ -263,23 +272,22 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
 
     // ── Phase 9: fn (visibility groups; then dependency within each group; main first) ──
     {
-        // Group fns by visibility
-        let mut pub_fns: Vec<(usize, String)> = Vec::new();
-        let mut restricted_fns: Vec<(usize, String)> = Vec::new();
-        let mut private_fns: Vec<(usize, String)> = Vec::new();
+        // Group fns by visibility (indices only; names borrowed later).
+        let mut pub_fns: Vec<usize> = Vec::new();
+        let mut restricted_fns: Vec<usize> = Vec::new();
+        let mut private_fns: Vec<usize> = Vec::new();
 
-        for (idx, name) in phase8 {
-            let vis = parsed.items[idx].visibility();
-            match vis {
-                Some(VisibilityTier::Pub) => pub_fns.push((idx, name)),
-                Some(VisibilityTier::PubRestricted) => restricted_fns.push((idx, name)),
-                _ => private_fns.push((idx, name)),
+        for &idx in &phase8 {
+            match parsed.items[idx].visibility() {
+                Some(VisibilityTier::Pub) => pub_fns.push(idx),
+                Some(VisibilityTier::PubRestricted) => restricted_fns.push(idx),
+                _ => private_fns.push(idx),
             }
         }
 
         // Sort each visibility group
         for group in [pub_fns, restricted_fns, private_fns] {
-            sort_fn_group(&group, &edges, &mut final_order);
+            sort_fn_group(parsed, &group, &edges, &mut final_order);
         }
     }
 
@@ -290,31 +298,33 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
 }
 
 /// Helper: sort a group of fns by dependency with alphabetical tie-break.
-/// `main`-first is handled by `toposort` Phase 1; this helper only groups by visibility.
+/// `main`-first is handled by `toposort` Phase 1; this helper only groups by
+/// visibility. Names are borrowed from `parsed.items`.
 fn sort_fn_group(
-    group: &[(usize, String)],
-    edges: &[(String, String)],
+    parsed: &ParseResult,
+    group: &[usize],
+    edges: &[(usize, usize)],
     final_order: &mut Vec<usize>,
 ) {
-    let names: Vec<String> = group.iter().map(|(_, n)| n.clone()).collect();
-    let name_to_pos: HashMap<&str, usize> = names
+    let names: Vec<&str> = group
         .iter()
-        .enumerate()
-        .map(|(i, n)| (n.as_str(), i))
+        .map(|&idx| parsed.items[idx].name().unwrap_or(""))
         .collect();
+    let mut pos_by_idx: AHashMap<usize, usize> = AHashMap::with_capacity(group.len());
+    for (pos, &idx) in group.iter().enumerate() {
+        pos_by_idx.insert(idx, pos);
+    }
 
-    let group_edges: Vec<(String, String)> = edges
-        .iter()
-        .filter(|(a, b)| {
-            name_to_pos.contains_key(a.as_str()) && name_to_pos.contains_key(b.as_str())
-        })
-        .cloned()
-        .collect();
+    let mut group_edges: Vec<(usize, usize)> = Vec::new();
+    for &(a, b) in edges {
+        if let (Some(&pa), Some(&pb)) = (pos_by_idx.get(&a), pos_by_idx.get(&b)) {
+            group_edges.push((pa, pb));
+        }
+    }
 
     let order = toposort(&names, &group_edges, TieBreak::Alphabetical);
     for pos in &order {
-        let idx = group[*pos].0;
-        final_order.push(idx);
+        final_order.push(group[*pos]);
     }
 }
 

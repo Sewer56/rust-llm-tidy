@@ -1,6 +1,6 @@
 //! Documentation checks that run over a parsed source file.
 //!
-//! Each check is a pure function over a [`ParseResult`] that returns a
+//! Each check is a pure function over a [`SourceItem`] that returns a
 //! [`Vec<Diagnostic>`]. [`run_all`] runs every check and concatenates results.
 //!
 //! # Checks
@@ -50,15 +50,17 @@ pub(crate) const CODE_VAGUE_ERRORS: &str = "DOC003";
 /// Diagnostics are returned in source order (by item, then by check). The
 /// returned `Vec` is empty when every item passes every check.
 pub fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
+    // Each item produces at most a handful of diagnostics; preallocate to the
+    // item count to avoid regrowth on the common dirty-file path.
+    let mut diags = Vec::with_capacity(parsed.items.len());
     for item in &parsed.items {
-        diags.extend(missing_docs(parsed.source.as_str(), item));
-        diags.extend(missing_errors_section(parsed.source.as_str(), item));
-        diags.extend(vague_errors(parsed.source.as_str(), item));
-        diags.extend(missing_arguments_section(parsed.source.as_str(), item));
-        diags.extend(undocumented_param(parsed.source.as_str(), item));
-        diags.extend(doc_placeholder(parsed.source.as_str(), item));
-        diags.extend(test_naming(parsed.source.as_str(), item));
+        diags.extend(missing_docs(item));
+        diags.extend(missing_errors_section(item));
+        diags.extend(vague_errors(item));
+        diags.extend(missing_arguments_section(item));
+        diags.extend(undocumented_param(item));
+        diags.extend(doc_placeholder(item));
+        diags.extend(test_naming(item));
     }
     diags
 }
@@ -72,7 +74,7 @@ pub fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
 /// Fires on documentable items whose doc comments contain a placeholder marker
 /// (`TODO`, `FIXME`, `TBD`, or `...`). Such markers signal unfinished docs that
 /// read as finished API documentation.
-pub fn doc_placeholder(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
+pub fn doc_placeholder(item: &SourceItem) -> Vec<Diagnostic> {
     if !is_documentable(item.kind()) {
         return Vec::new();
     }
@@ -88,7 +90,7 @@ pub fn doc_placeholder(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
         severity: Severity::Warning,
         code: CODE_DOC_PLACEHOLDER,
         message: "doc comment contains placeholder text (TODO/FIXME/TBD/...)".to_string(),
-        line: line_of(source, item.start),
+        line: item.start_line(),
         item_kind: item.kind().to_string(),
         item_name: item.name().map(str::to_string),
     }]
@@ -103,7 +105,7 @@ pub fn doc_placeholder(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
 /// Fires on fully-public functions (`pub fn`) that declare at least one named
 /// parameter (excluding `self`) and whose doc comments contain no `# Arguments`
 /// or `# Parameters` header.
-pub fn missing_arguments_section(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
+pub fn missing_arguments_section(item: &SourceItem) -> Vec<Diagnostic> {
     if !is_pub_fn_with_params(item) {
         return Vec::new();
     }
@@ -115,7 +117,7 @@ pub fn missing_arguments_section(source: &str, item: &SourceItem) -> Vec<Diagnos
         severity: Severity::Warning,
         code: CODE_MISSING_ARGUMENTS,
         message: "pub fn with parameters is missing a `# Arguments` doc section".to_string(),
-        line: line_of(source, item.start),
+        line: item.start_line(),
         item_kind: item.kind().to_string(),
         item_name: item.name().map(str::to_string),
     }]
@@ -130,7 +132,7 @@ pub fn missing_arguments_section(source: &str, item: &SourceItem) -> Vec<Diagnos
 /// Fires on `pub` and `pub(crate)`/`pub(super)`/`pub(in path)` items of
 /// documentable kinds (fn, struct, enum, ...) that have zero leading doc
 /// comments. Test modules are skipped.
-pub fn missing_docs(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
+pub fn missing_docs(item: &SourceItem) -> Vec<Diagnostic> {
     let Some(vis) = item.visibility() else {
         return Vec::new();
     };
@@ -151,7 +153,7 @@ pub fn missing_docs(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
         severity: Severity::Error,
         code: CODE_MISSING_DOCS,
         message: "non-private item is missing a doc comment".to_string(),
-        line: line_of(source, item.start),
+        line: item.start_line(),
         item_kind: item.kind().to_string(),
         item_name: item.name().map(str::to_string),
     }]
@@ -165,7 +167,7 @@ pub fn missing_docs(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
 ///
 /// Fires on fully-public functions (`pub fn`) whose return type ends in
 /// `Result` and whose doc comments contain no `# Errors` header.
-pub fn missing_errors_section(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
+pub fn missing_errors_section(item: &SourceItem) -> Vec<Diagnostic> {
     if !is_pub_result_fn(item) {
         return Vec::new();
     }
@@ -177,7 +179,7 @@ pub fn missing_errors_section(source: &str, item: &SourceItem) -> Vec<Diagnostic
         severity: Severity::Error,
         code: CODE_MISSING_ERRORS,
         message: "pub fn returning Result is missing a `# Errors` doc section".to_string(),
-        line: line_of(source, item.start),
+        line: item.start_line(),
         item_kind: item.kind().to_string(),
         item_name: item.name().map(str::to_string),
     }]
@@ -194,7 +196,7 @@ pub fn missing_errors_section(source: &str, item: &SourceItem) -> Vec<Diagnostic
 /// `subject_should_expectation_when_condition`. Behavioral names describe the
 /// behavior under test without the redundant `test_` prefix the test module
 /// already provides.
-pub fn test_naming(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
+pub fn test_naming(item: &SourceItem) -> Vec<Diagnostic> {
     if !item.is_test_fn() {
         return Vec::new();
     }
@@ -212,7 +214,7 @@ pub fn test_naming(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
             "test function `{name}` should use a behavioral name \
              (subject_should_expectation_when_condition), not a `test_*` or `case_*` prefix"
         ),
-        line: line_of(source, item.start),
+        line: item.start_line(),
         item_kind: item.kind().to_string(),
         item_name: Some(name.to_string()),
     }]
@@ -227,7 +229,7 @@ pub fn test_naming(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
 /// Fires on `pub fn` with parameters when an `# Arguments`/`# Parameters`
 /// section exists but at least one parameter name is not mentioned anywhere in
 /// the section body.
-pub fn undocumented_param(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
+pub fn undocumented_param(item: &SourceItem) -> Vec<Diagnostic> {
     if !is_pub_fn_with_params(item) {
         return Vec::new();
     }
@@ -254,7 +256,7 @@ pub fn undocumented_param(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
             "parameter(s) not documented in the `# Arguments` section: `{}`",
             undocumented.join("`, `")
         ),
-        line: line_of(source, item.start),
+        line: item.start_line(),
         item_kind: item.kind().to_string(),
         item_name: item.name().map(str::to_string),
     }]
@@ -269,7 +271,7 @@ pub fn undocumented_param(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
 /// Fires on `pub fn` returning `Result` when a `# Errors` section exists but
 /// none of its bullets reference a concrete variant (detected by the presence
 /// of a rustdoc link `[...]` or a `::` path).
-pub fn vague_errors(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
+pub fn vague_errors(item: &SourceItem) -> Vec<Diagnostic> {
     if !is_pub_result_fn(item) {
         return Vec::new();
     }
@@ -289,7 +291,7 @@ pub fn vague_errors(source: &str, item: &SourceItem) -> Vec<Diagnostic> {
         severity: Severity::Warning,
         code: CODE_VAGUE_ERRORS,
         message: "`# Errors` section does not name any concrete error variant".to_string(),
-        line: line_of(source, item.start),
+        line: item.start_line(),
         item_kind: item.kind().to_string(),
         item_name: item.name().map(str::to_string),
     }]
@@ -369,16 +371,6 @@ fn is_pub_result_fn(item: &SourceItem) -> bool {
     item.is_fn() && item.visibility() == Some(VisibilityTier::Pub) && item.returns_result()
 }
 
-/// 1-based line number of `byte_offset` within `source`.
-fn line_of(source: &str, byte_offset: usize) -> usize {
-    source
-        .get(..byte_offset)
-        .unwrap_or(source)
-        .matches('\n')
-        .count()
-        + 1
-}
-
 /// Lines belonging to a doc section body: everything after the header at
 /// `start` up to the next `# ` section header or end of docs.
 ///
@@ -455,7 +447,7 @@ mod tests {
     #[test]
     fn test_missing_docs_pub_fn() {
         let item = parse_one("pub fn do_thing() {}");
-        let diags = missing_docs("", &item);
+        let diags = missing_docs(&item);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_MISSING_DOCS);
         assert_eq!(diags[0].severity, Severity::Error);
@@ -464,26 +456,26 @@ mod tests {
     #[test]
     fn test_missing_docs_documented() {
         let item = parse_one("/// Does the thing.\npub fn do_thing() {}");
-        assert!(missing_docs("", &item).is_empty());
+        assert!(missing_docs(&item).is_empty());
     }
 
     #[test]
     fn test_missing_docs_private_skipped() {
         let item = parse_one("fn helper() {}");
-        assert!(missing_docs("", &item).is_empty());
+        assert!(missing_docs(&item).is_empty());
     }
 
     #[test]
     fn test_missing_docs_pub_struct() {
         let item = parse_one("pub struct Foo;");
-        let diags = missing_docs("", &item);
+        let diags = missing_docs(&item);
         assert_eq!(diags.len(), 1);
     }
 
     #[test]
     fn test_missing_docs_pub_crate() {
         let item = parse_one("pub(crate) fn internal() {}");
-        let diags = missing_docs("", &item);
+        let diags = missing_docs(&item);
         assert_eq!(diags.len(), 1);
     }
 
@@ -491,13 +483,13 @@ mod tests {
     fn test_missing_docs_test_mod_skipped() {
         let source = "#[cfg(test)]\npub mod tests {}";
         let item = parse_one(source);
-        assert!(missing_docs(source, &item).is_empty());
+        assert!(missing_docs(&item).is_empty());
     }
 
     #[test]
     fn test_missing_docs_use_skipped() {
         let item = parse_one("pub use std::io;");
-        assert!(missing_docs("", &item).is_empty());
+        assert!(missing_docs(&item).is_empty());
     }
 
     // ── DOC002: missing_errors_section ──
@@ -505,7 +497,7 @@ mod tests {
     #[test]
     fn test_missing_errors_no_section() {
         let item = parse_one("pub fn load() -> Result<(), String> { Ok(()) }");
-        let diags = missing_errors_section("", &item);
+        let diags = missing_errors_section(&item);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_MISSING_ERRORS);
     }
@@ -515,19 +507,19 @@ mod tests {
         let item = parse_one(
             "/// Loads a file.\n///\n/// # Errors\n///\n/// Returns nothing.\npub fn load() -> Result<(), String> { Ok(()) }",
         );
-        assert!(missing_errors_section("", &item).is_empty());
+        assert!(missing_errors_section(&item).is_empty());
     }
 
     #[test]
     fn test_missing_errors_not_result() {
         let item = parse_one("pub fn load() -> u32 { 0 }");
-        assert!(missing_errors_section("", &item).is_empty());
+        assert!(missing_errors_section(&item).is_empty());
     }
 
     #[test]
     fn test_missing_errors_private_skipped() {
         let item = parse_one("fn load() -> Result<(), String> { Ok(()) }");
-        assert!(missing_errors_section("", &item).is_empty());
+        assert!(missing_errors_section(&item).is_empty());
     }
 
     // ── DOC003: vague_errors ──
@@ -537,7 +529,7 @@ mod tests {
         let item = parse_one(
             "/// Loads.\n///\n/// # Errors\n///\n/// Returns an error if loading fails.\npub fn load() -> Result<(), String> { Ok(()) }",
         );
-        let diags = vague_errors("", &item);
+        let diags = vague_errors(&item);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_VAGUE_ERRORS);
         assert_eq!(diags[0].severity, Severity::Warning);
@@ -548,13 +540,13 @@ mod tests {
         let item = parse_one(
             "/// Loads.\n///\n/// # Errors\n///\n/// Returns [Error::NotFound] if missing.\npub fn load() -> Result<(), String> { Ok(()) }",
         );
-        assert!(vague_errors("", &item).is_empty());
+        assert!(vague_errors(&item).is_empty());
     }
 
     #[test]
     fn test_vague_errors_no_section_skipped() {
         let item = parse_one("pub fn load() -> Result<(), String> { Ok(()) }");
-        assert!(vague_errors("", &item).is_empty());
+        assert!(vague_errors(&item).is_empty());
     }
 
     // ── DOC004: missing_arguments_section ──
@@ -562,7 +554,7 @@ mod tests {
     #[test]
     fn test_missing_arguments_no_section() {
         let item = parse_one("/// Greets.\npub fn greet(name: &str) {}");
-        let diags = missing_arguments_section("", &item);
+        let diags = missing_arguments_section(&item);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_MISSING_ARGUMENTS);
         assert_eq!(diags[0].severity, Severity::Warning);
@@ -573,7 +565,7 @@ mod tests {
         let item = parse_one(
             "/// Greets.\n///\n/// # Arguments\n///\n/// `name` - the name.\npub fn greet(name: &str) {}",
         );
-        assert!(missing_arguments_section("", &item).is_empty());
+        assert!(missing_arguments_section(&item).is_empty());
     }
 
     #[test]
@@ -596,7 +588,7 @@ mod tests {
             );
             let item = parse_one(&source);
             assert!(
-                missing_arguments_section("", &item).is_empty(),
+                missing_arguments_section(&item).is_empty(),
                 "header `{header}` should suppress DOC004"
             );
         }
@@ -609,7 +601,7 @@ mod tests {
             "/// Greets.\n///\n/// # Inputs\n///\n/// `name` - the name.\npub fn greet(name: &str) {}",
         );
         assert_eq!(
-            missing_arguments_section("", &item).len(),
+            missing_arguments_section(&item).len(),
             1,
             "`# Inputs` is not a recognized arguments header"
         );
@@ -618,13 +610,13 @@ mod tests {
     #[test]
     fn test_missing_arguments_no_params() {
         let item = parse_one("/// Greets.\npub fn greet() {}");
-        assert!(missing_arguments_section("", &item).is_empty());
+        assert!(missing_arguments_section(&item).is_empty());
     }
 
     #[test]
     fn test_missing_arguments_private_skipped() {
         let item = parse_one("fn greet(name: &str) {}");
-        assert!(missing_arguments_section("", &item).is_empty());
+        assert!(missing_arguments_section(&item).is_empty());
     }
 
     // ── DOC005: undocumented_param ──
@@ -634,7 +626,7 @@ mod tests {
         let item = parse_one(
             "/// Builds.\n///\n/// # Arguments\n///\n/// `name` - the name.\npub fn build(name: &str, fmt: &str) {}",
         );
-        let diags = undocumented_param("", &item);
+        let diags = undocumented_param(&item);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_UNDOCUMENTED_PARAM);
         assert!(diags[0].message.contains("fmt"));
@@ -645,7 +637,7 @@ mod tests {
         let item = parse_one(
             "/// Builds.\n///\n/// # Arguments\n///\n/// `name` - the name.\n/// `fmt` - the format.\npub fn build(name: &str, fmt: &str) {}",
         );
-        assert!(undocumented_param("", &item).is_empty());
+        assert!(undocumented_param(&item).is_empty());
     }
 
     #[test]
@@ -657,7 +649,7 @@ mod tests {
             );
             let item = parse_one(&source);
             assert!(
-                undocumented_param("", &item).is_empty(),
+                undocumented_param(&item).is_empty(),
                 "header `{header}` should be recognized by DOC005"
             );
         }
@@ -666,7 +658,7 @@ mod tests {
     #[test]
     fn test_undocumented_param_no_section() {
         let item = parse_one("/// Builds.\npub fn build(name: &str) {}");
-        assert!(undocumented_param("", &item).is_empty());
+        assert!(undocumented_param(&item).is_empty());
     }
 
     // ── DOC006: doc_placeholder ──
@@ -674,7 +666,7 @@ mod tests {
     #[test]
     fn test_doc_placeholder_todo() {
         let item = parse_one("/// TODO: implement.\npub fn task() {}");
-        let diags = doc_placeholder("", &item);
+        let diags = doc_placeholder(&item);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_DOC_PLACEHOLDER);
     }
@@ -682,25 +674,25 @@ mod tests {
     #[test]
     fn test_doc_placeholder_fixme() {
         let item = parse_one("/// FIXME: broken.\npub fn task() {}");
-        assert_eq!(doc_placeholder("", &item).len(), 1);
+        assert_eq!(doc_placeholder(&item).len(), 1);
     }
 
     #[test]
     fn test_doc_placeholder_ellipsis() {
         let item = parse_one("/// Something ... here.\npub fn task() {}");
-        assert_eq!(doc_placeholder("", &item).len(), 1);
+        assert_eq!(doc_placeholder(&item).len(), 1);
     }
 
     #[test]
     fn test_doc_placeholder_clean() {
         let item = parse_one("/// A clean doc.\npub fn task() {}");
-        assert!(doc_placeholder("", &item).is_empty());
+        assert!(doc_placeholder(&item).is_empty());
     }
 
     #[test]
     fn test_doc_placeholder_non_documentable() {
         let item = parse_one("/// TODO.\nimpl Foo {}");
-        assert!(doc_placeholder("", &item).is_empty());
+        assert!(doc_placeholder(&item).is_empty());
     }
 
     // ── TEST001: test_naming ──
@@ -708,7 +700,7 @@ mod tests {
     #[test]
     fn test_naming_test_prefix() {
         let item = parse_one("#[test]\nfn test_foo() {}");
-        let diags = test_naming("", &item);
+        let diags = test_naming(&item);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_TEST_NAMING);
     }
@@ -716,24 +708,36 @@ mod tests {
     #[test]
     fn test_naming_test_digits() {
         let item = parse_one("#[test]\nfn test1() {}");
-        assert_eq!(test_naming("", &item).len(), 1);
+        assert_eq!(test_naming(&item).len(), 1);
     }
 
     #[test]
     fn test_naming_case_prefix() {
         let item = parse_one("#[test]\nfn case_1() {}");
-        assert_eq!(test_naming("", &item).len(), 1);
+        assert_eq!(test_naming(&item).len(), 1);
     }
 
     #[test]
     fn test_naming_behavioral() {
         let item = parse_one("#[test]\nfn should_pass_when_valid() {}");
-        assert!(test_naming("", &item).is_empty());
+        assert!(test_naming(&item).is_empty());
     }
 
     #[test]
     fn test_naming_non_test() {
         let item = parse_one("fn helper() {}");
-        assert!(test_naming("", &item).is_empty());
+        assert!(test_naming(&item).is_empty());
+    }
+
+    // ── start_line propagation ──
+
+    #[test]
+    fn test_start_line_is_reported() {
+        // Item starts on line 3 (after two doc lines); the reported diagnostic
+        // line must equal the precomputed start line, not 1.
+        let item = parse_one("\n\npub fn do_thing() {}");
+        let diags = missing_docs(&item);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].line, 3);
     }
 }

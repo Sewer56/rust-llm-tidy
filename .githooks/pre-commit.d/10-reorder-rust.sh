@@ -16,6 +16,7 @@ while IFS= read -r f; do
   [ -f "$f" ] || continue
   case "$f" in
     */tests/fixtures/*) continue ;;
+    */benches/fixtures/*) continue ;;
   esac
   files+=("$f")
 done < <(git diff --cached --name-only --diff-filter=ACMR -- '*.rs')

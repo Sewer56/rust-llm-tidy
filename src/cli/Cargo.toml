@@ -15,6 +15,17 @@ categories = ["command-line-utilities"]
 name = "rust-llm-tidy"
 path = "src/main.rs"
 
+# Benchmarks for the two CLI operations (lint and reorder) over embedded
+# real-world source fixtures. `harness = false` enables the criterion entry
+# point defined in each bench file.
+[[bench]]
+name = "lint"
+harness = false
+
+[[bench]]
+name = "reorder"
+harness = false
+
 [dependencies]
 rust-llm-tidy-reorder = { path = "../rust-llm-tidy-reorder", version = "0.1.0" }
 rust-llm-tidy-lint = { path = "../rust-llm-tidy-lint", version = "0.1.0" }
@@ -24,3 +35,4 @@ clap = { version = "4", features = ["derive"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 
 [dev-dependencies]
+criterion = "0.5"
