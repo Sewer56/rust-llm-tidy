@@ -1,7 +1,7 @@
 //! Shared benchmark fixtures and setup.
 //!
-//! Fixtures live in two filesystem folders so each benchmark iterates only
-//! the files relevant to its operation:
+//! Fixtures live in per-operation filesystem folders so each benchmark
+//! iterates only the files relevant to its operation:
 //!
 //! - `fixtures/lint/`: named `<size>_<clean|dirty>` by lint outcome.
 //! - `fixtures/reorder/`: named `<size>_<stable|dirty>` by reorder outcome
@@ -71,6 +71,7 @@ pub const REORDER_FIXTURES: &[(&str, &str)] = &[
 /// that byte-range spans are accurate when parsing outside a proc-macro context.
 ///
 /// [`main`]: rust_llm_tidy_cli
+#[allow(dead_code)] // each bench compiles `common` separately; some may not call this
 pub fn force_span_fallback() {
     proc_macro2::fallback::force();
 }
