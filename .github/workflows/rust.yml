@@ -21,7 +21,7 @@ jobs:
   format-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Run formatter check
         if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
         uses: actions-rust-lang/rustfmt@v1
@@ -62,7 +62,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Run Tests and Upload Coverage
         uses: Reloaded-Project/devops-rust-test-and-coverage@v1
@@ -105,7 +105,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build CLI Binary
         uses: Reloaded-Project/devops-rust-lightweight-binary@v1
@@ -125,7 +125,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build and Package .NET Wrapper
         uses: Reloaded-Project/devops-rust-c-library-to-dotnet@v1
