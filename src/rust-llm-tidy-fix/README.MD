@@ -29,14 +29,12 @@ The function is idempotent: an already-aligned table is returned unchanged.
 
 ## Nested fence delimiter safety
 
-[`fix_fences`] rewrites nested markdown fences so the inner fence uses the
-opposite marker character from the outer one (backticks <-> tildes), preventing
-an inner fence from closing the outer block early. The outer (depth-0) marker is
-preserved, run lengths are kept, and a document that already alternates is
-returned unchanged. It applies to `.md` files and to fences inside `///` and
-`//!` doc comments.
+[`fix_fences`] flips each nested fence to the opposite marker (backticks <->
+tildes) so an inner fence can't close the outer block early.
 
-Before (both fences use backticks - the inner closes the outer early):
+Applies to `.md` files and to fences inside `///` and `//!` doc comments.
+
+Before (both backticks - inner closes outer early):
 
 ````text
 ```text
@@ -59,9 +57,9 @@ inner
 ```rust
 use rust_llm_tidy_fix::fix_tables;
 
-let input = "| a | bb |
-| --- | --- |
-| ccc | d |
+| let input = " | a   | bb |
+| ------------- | --- |
+| ccc           | d   |
 ";
 let out = fix_tables(input);
 assert_ne!(&*out, input);

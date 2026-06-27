@@ -87,7 +87,7 @@ enum Command {
     /// checked. Mutates files unless --dry-run is given.
     All(PathsArgs),
     /// Fix auto-fixable style issues (markdown table alignment and nested
-    /// fence delimiter safety).
+    /// fence delimiters).
     ///
     /// Mutates files in place unless --dry-run is given.
     Fix(PathsArgs),
@@ -135,7 +135,7 @@ fn main() -> anyhow::Result<()> {
 /// `all` - fix (tables and fences), reorder, then check in one pass.
 ///
 /// Collects both `.rs` and `.md` files. Markdown files are only fixed (table
-/// alignment and fence delimiter safety); reordering and checking apply only
+/// alignment and fence delimiters); reordering and checking apply only
 /// to Rust source files.
 fn run_all(args: PathsArgs) -> anyhow::Result<()> {
     let paths = resolve_all(&args.paths, &["rs", "md"])?;
@@ -343,6 +343,7 @@ fn check_file(path: &Path) -> anyhow::Result<usize> {
 ///
 /// Reads the source, runs [`fix::fix_tables`] then [`fix::fix_fences`], and
 /// writes the result back via [`io::atomic_write`] unless `--dry-run` is given.
+///
 /// On dry-run with multiple files, a neutral `<!-- {path} -->` HTML-comment
 /// header is emitted (valid in both markdown and harmless in stdout).
 ///

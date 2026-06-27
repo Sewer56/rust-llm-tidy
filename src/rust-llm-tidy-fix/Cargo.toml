@@ -2,7 +2,7 @@
 name = "rust-llm-tidy-fix"
 version = "0.1.0"
 edition = "2024"
-description = "Realigns GFM markdown tables and fixes nested fence delimiter safety in place. Intended for LLM use."
+description = "Realigns markdown tables and fixes nested code fences in place. Intended for LLM use."
 repository = "https://github.com/Sewer56/rust-llm-tidy"
 license = "Apache-2.0"
 include = ["src/**/*"]

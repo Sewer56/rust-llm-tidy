@@ -49,7 +49,7 @@ rust-llm-tidy reorder src/main.rs src/lib.rs tests
 ```
 
 ```bash
-# Fix (realign GFM tables and fix nested fence delimiters) in .rs doc comments and .md files
+# Realign markdown tables and fix nested code fences in .rs doc comments and .md files
 rust-llm-tidy fix README.md
 
 # Preview fixes without modifying files
