@@ -14,14 +14,11 @@ on:
   workflow_dispatch:
 
 
-env:
-  build-with-pgo: true
-
 jobs:
   format-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Run formatter check
         if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
         uses: actions-rust-lang/rustfmt@v1
@@ -46,23 +43,23 @@ jobs:
       matrix:
         include:
           # Linux
-          - { label: "Linux x64", os: ubuntu-latest, target: x86_64-unknown-linux-gnu, use-cross: false, use-pgo: true }
-          - { label: "Linux x86", os: ubuntu-latest, target: i686-unknown-linux-gnu, use-cross: false, use-pgo: true }
-          - { label: "Linux ARM64", os: ubuntu-latest, target: aarch64-unknown-linux-gnu, use-cross: true, use-pgo: false }
-          - { label: "Linux ARMv7", os: ubuntu-latest, target: armv7-unknown-linux-gnueabihf, use-cross: true, use-pgo: false }
+          - { label: "Linux x64", os: ubuntu-latest, target: x86_64-unknown-linux-gnu, use-cross: false }
+          - { label: "Linux x86", os: ubuntu-latest, target: i686-unknown-linux-gnu, use-cross: false }
+          - { label: "Linux ARM64", os: ubuntu-latest, target: aarch64-unknown-linux-gnu, use-cross: true }
+          - { label: "Linux ARMv7", os: ubuntu-latest, target: armv7-unknown-linux-gnueabihf, use-cross: true }
 
           # Windows
-          - { label: "Windows x64", os: windows-latest, target: x86_64-pc-windows-msvc, use-cross: false, use-pgo: true }
-          - { label: "Windows x86", os: windows-latest, target: i686-pc-windows-msvc, use-cross: false, use-pgo: true }
+          - { label: "Windows x64", os: windows-latest, target: x86_64-pc-windows-msvc, use-cross: false }
+          - { label: "Windows x86", os: windows-latest, target: i686-pc-windows-msvc, use-cross: false }
 
           # macOS
-          - { label: "macOS Intel", os: macos-15-intel, target: x86_64-apple-darwin, use-cross: false, use-pgo: true }
-          - { label: "macOS Apple Silicon", os: macos-latest, target: aarch64-apple-darwin, use-cross: false, use-pgo: true }
+          - { label: "macOS Intel", os: macos-15-intel, target: x86_64-apple-darwin, use-cross: false }
+          - { label: "macOS Apple Silicon", os: macos-latest, target: aarch64-apple-darwin, use-cross: false }
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Run Tests and Upload Coverage
         uses: Reloaded-Project/devops-rust-test-and-coverage@v1
@@ -89,35 +86,33 @@ jobs:
       matrix:
         include:
           # Linux
-          - { label: "CLI Linux x64", os: ubuntu-latest, target: x86_64-unknown-linux-gnu, use-cross: false, use-pgo: true }
-          - { label: "CLI Linux x86", os: ubuntu-latest, target: i686-unknown-linux-gnu, use-cross: false, use-pgo: true }
-          - { label: "CLI Linux ARM64", os: ubuntu-latest, target: aarch64-unknown-linux-gnu, use-cross: true, use-pgo: false }
-          - { label: "CLI Linux ARMv7", os: ubuntu-latest, target: armv7-unknown-linux-gnueabihf, use-cross: true, use-pgo: false }
+          - { label: "CLI Linux x64", os: ubuntu-latest, target: x86_64-unknown-linux-gnu, use-cross: false }
+          - { label: "CLI Linux x86", os: ubuntu-latest, target: i686-unknown-linux-gnu, use-cross: false }
+          - { label: "CLI Linux ARM64", os: ubuntu-latest, target: aarch64-unknown-linux-gnu, use-cross: true }
+          - { label: "CLI Linux ARMv7", os: ubuntu-latest, target: armv7-unknown-linux-gnueabihf, use-cross: true }
 
           # Windows
-          - { label: "CLI Windows x64", os: windows-latest, target: x86_64-pc-windows-msvc, use-cross: false, use-pgo: true }
-          - { label: "CLI Windows x86", os: windows-latest, target: i686-pc-windows-msvc, use-cross: false, use-pgo: true }
+          - { label: "CLI Windows x64", os: windows-latest, target: x86_64-pc-windows-msvc, use-cross: false }
+          - { label: "CLI Windows x86", os: windows-latest, target: i686-pc-windows-msvc, use-cross: false }
 
           # macOS
-          - { label: "CLI macOS Intel", os: macos-15-intel, target: x86_64-apple-darwin, use-cross: false, use-pgo: true }
-          - { label: "CLI macOS Apple Silicon", os: macos-latest, target: aarch64-apple-darwin, use-cross: false, use-pgo: true }
+          - { label: "CLI macOS Intel", os: macos-15-intel, target: x86_64-apple-darwin, use-cross: false }
+          - { label: "CLI macOS Apple Silicon", os: macos-latest, target: aarch64-apple-darwin, use-cross: false }
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build CLI Binary
         uses: Reloaded-Project/devops-rust-lightweight-binary@v1
         with:
           target: ${{ matrix.target }}
-          use-pgo: ${{ matrix.use-pgo && env.build-with-pgo }}
           use-cross: ${{ matrix.use-cross }}
           build-library: false
           run-tests-and-coverage: false
           rust-project-path: src/cli
           workspace-path: src
-          pgo-project-path: src/rust-llm-tidy-reorder
           use-cache: true
 
   build-dotnet-library:
@@ -125,7 +120,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build and Package .NET Wrapper
         uses: Reloaded-Project/devops-rust-c-library-to-dotnet@v1
