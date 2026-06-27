@@ -114,10 +114,16 @@ pub fn build_module_tree(root: &Path, sources: &[(PathBuf, String)]) -> anyhow::
     Ok(ModuleTree { floors, warnings })
 }
 
-/// Discover the crate root source file by walking up from `start` to a
-/// `Cargo.toml`, then running `cargo metadata --no-deps` and returning the
-/// `lib` target's `src_path` (else the `bin` target whose path ends in
-/// `main.rs`). The CLI maps failure to a warn + standalone narrowing.
+/// Discover the crate root source file by walking up from `start` to the
+/// nearest `Cargo.toml` (the owning crate's manifest), then running
+/// `cargo metadata --no-deps` and returning that package's `lib` target's
+/// `src_path` (else the `bin` target whose path ends in `main.rs`). The owning
+/// crate is matched by manifest path rather than `root_package()`: under
+/// `--no-deps` `root_package()` resolves to the package at
+/// `workspace_root/Cargo.toml`, which does not exist for a *virtual*
+/// workspace, so member crates of a virtual workspace would otherwise degrade
+/// to standalone narrowing. The CLI maps failure to a warn + standalone
+/// narrowing.
 ///
 /// # Errors
 ///
@@ -126,18 +132,30 @@ pub fn build_module_tree(root: &Path, sources: &[(PathBuf, String)]) -> anyhow::
 /// - No `Cargo.toml` is found walking up from `start`.
 /// - `cargo metadata --no-deps` fails (e.g. the manifest is invalid or
 ///   unparseable).
-/// - `cargo metadata` returns no root package.
-/// - The root package has no `lib` target and no `bin` target whose `src_path`
-///   ends in `main.rs`.
+/// - No package in the metadata owns the manifest found (e.g. the manifest is
+///   a virtual workspace root with no `[package]`).
+/// - The owning package has no `lib` target and no `bin` target whose
+///   `src_path` ends in `main.rs`.
 pub fn discover_crate_root(start: &Path) -> anyhow::Result<PathBuf> {
     let manifest = find_cargo_toml(start)?;
     let meta = cargo_metadata::MetadataCommand::new()
         .manifest_path(&manifest)
         .no_deps()
         .exec()?;
+    // Match the owning package by manifest path. `root_package()` only works
+    // for standalone packages and non-virtual workspaces: under `--no-deps` it
+    // resolves to the package at `workspace_root/Cargo.toml`, which does not
+    // exist for a *virtual* workspace, so member crates would otherwise
+    // degrade to standalone narrowing.
+    let canon_manifest = std::fs::canonicalize(&manifest).unwrap_or_else(|_| manifest.clone());
     let pkg = meta
-        .root_package()
-        .ok_or_else(|| anyhow::anyhow!("cargo metadata returned no root package"))?;
+        .packages
+        .iter()
+        .find(|p| {
+            let pm: PathBuf = p.manifest_path.as_std_path().to_path_buf();
+            pm == canon_manifest || std::fs::canonicalize(&pm).ok() == Some(canon_manifest.clone())
+        })
+        .ok_or_else(|| anyhow::anyhow!("no package owns {}", manifest.display()))?;
     // Prefer a lib target; else main.rs bin.
     pkg.targets
         .iter()

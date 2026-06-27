@@ -461,9 +461,13 @@ fn resolve_vis_context(paths: &[PathBuf]) -> Option<VisContext> {
 }
 
 /// Narrow visibility in a single source file. With a [`VisContext`] (crate
-/// root discovered) the file's tree floor + crate-wide re-export guard apply;
-/// without it (standalone), the file is narrowed with `floor = None` and a
-/// per-file re-export guard built from the file itself.
+/// root discovered) the file's tree floor + crate-wide re-export guard apply,
+/// but only when the file is a node in the resolved crate module tree; a file
+/// outside that tree (e.g. an integration test, example, bench, or a fixture
+/// under `tests/`) is narrowed standalone, since the crate-wide re-export set
+/// is built only from the crate `src/` dir and would miss the file's own
+/// `pub use`. Without a [`VisContext`] (no crate root) every file narrows
+/// standalone with `floor = None` and a per-file re-export guard.
 fn vis_file(
     path: &Path,
     dry_run: bool,
@@ -477,8 +481,21 @@ fn vis_file(
         Some(VisContext { tree, reexports }) => {
             // Canonicalize the lookup key to match the tree's canonical keys.
             let canon = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-            let floor = tree.floor_for(&canon);
-            narrow_vis_in_tree(&source, floor, reexports)
+            if tree.contains(&canon) {
+                // File is a node in the resolved crate module tree: apply the
+                // tree floor + crate-wide re-export guard (built from every .rs
+                // under the crate src dir, so cross-file re-exports are sound).
+                let floor = tree.floor_for(&canon);
+                narrow_vis_in_tree(&source, floor, reexports)
+            } else {
+                // File is outside the crate's src module tree (integration test,
+                // example, bench, stray file under tests/). The crate-wide
+                // re-export set would miss this file's own `pub use`, so narrow
+                // standalone with a per-file re-export guard instead.
+                let parsed: syn::File = syn::parse_str(&source)?;
+                let per_file = collect_crate_reexports(std::iter::once(&parsed));
+                narrow_vis_in_tree(&source, None, &per_file)
+            }
         }
         None => {
             // Standalone: build a per-file re-export guard from this file only.
