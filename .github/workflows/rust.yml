@@ -45,8 +45,6 @@ jobs:
           # Linux
           - { label: "Linux x64", os: ubuntu-latest, target: x86_64-unknown-linux-gnu, use-cross: false }
           - { label: "Linux x86", os: ubuntu-latest, target: i686-unknown-linux-gnu, use-cross: false }
-          - { label: "Linux ARM64", os: ubuntu-latest, target: aarch64-unknown-linux-gnu, use-cross: true }
-          - { label: "Linux ARMv7", os: ubuntu-latest, target: armv7-unknown-linux-gnueabihf, use-cross: true }
 
           # Windows
           - { label: "Windows x64", os: windows-latest, target: x86_64-pc-windows-msvc, use-cross: false }
@@ -88,8 +86,6 @@ jobs:
           # Linux
           - { label: "CLI Linux x64", os: ubuntu-latest, target: x86_64-unknown-linux-gnu, use-cross: false }
           - { label: "CLI Linux x86", os: ubuntu-latest, target: i686-unknown-linux-gnu, use-cross: false }
-          - { label: "CLI Linux ARM64", os: ubuntu-latest, target: aarch64-unknown-linux-gnu, use-cross: true }
-          - { label: "CLI Linux ARMv7", os: ubuntu-latest, target: armv7-unknown-linux-gnueabihf, use-cross: true }
 
           # Windows
           - { label: "CLI Windows x64", os: windows-latest, target: x86_64-pc-windows-msvc, use-cross: false }
