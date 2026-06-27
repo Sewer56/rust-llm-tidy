@@ -214,7 +214,7 @@ fn next_segment(s: &str) -> &str {
 }
 
 /// Split `line` into content and terminator (`\n` or `\r\n`).
-fn split_terminator(line: &str) -> (&str, &str) {
+pub(crate) fn split_terminator(line: &str) -> (&str, &str) {
     if let Some(rest) = line.strip_suffix('\n') {
         if let Some(content) = rest.strip_suffix('\r') {
             (content, "\r\n")
@@ -231,7 +231,7 @@ fn split_terminator(line: &str) -> (&str, &str) {
 /// Returns `(prefix, rest)` where `prefix` is the leading indent plus the
 /// marker (`///` or `//!`) and one separating space. Lines without a doc
 /// marker get an empty prefix.
-fn strip_doc_prefix(line: &str) -> (&str, &str) {
+pub(crate) fn strip_doc_prefix(line: &str) -> (&str, &str) {
     let indent_end = line.len() - line.trim_start_matches([' ', '\t']).len();
     let core = &line[indent_end..];
     if let Some(rest) = core

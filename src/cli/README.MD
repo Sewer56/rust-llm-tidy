@@ -48,10 +48,10 @@ rust-llm-tidy reorder --dry-run src
 ```
 
 ```bash
-# Fix (realign) GFM tables in .rs doc comments and .md files
+# Realign markdown tables and fix nested code fences in .rs doc comments and .md files
 rust-llm-tidy fix README.md
 
-# Preview table fixes without modifying files
+# Preview fixes without modifying files
 rust-llm-tidy fix --dry-run src
 
 # Recursively fix every .rs and .md file under a directory

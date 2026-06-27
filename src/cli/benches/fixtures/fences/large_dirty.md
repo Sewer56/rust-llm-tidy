@@ -1,0 +1,1493 @@
+<!-- Benchmark fixture: reloaded-templates-rust v1.0.0 migration notes. -->
+<!-- large tier; dirty for fix_fences (nested same-marker fences rewritten). -->
+<!-- Source (pinned): https://github.com/Reloaded-Project/reloaded-templates-rust/blob/b53513defc9d1f9a301673066df9bede7e75f251/docs/migration/v1.0.0.md -->
+<!-- Embedded verbatim via include_str! in benches/common.rs. -->
+
+# Migration to v1.0.0
+
+This is the steps to migrating from `< v1` into `v1.0.0`. 
+
+## Rearrange Folder Structure
+
+Old folder structure looks like:
+
+```
+.
+├── assets
+│   └── profile_example.png
+├── benches
+│   └── my_benchmark
+│       ├── main.rs
+│       └── util.rs
+├── bindings
+│   └── csharp
+│       ├── csharp.csproj
+│       ├── .gitignore
+│       ├── Init.cs
+│       ├── NativeMethods.cs
+│       └── nuget-icon.png
+├── docs
+│   ├── contributing.md
+│   ├── index.md
+│   └── requirements.txt
+├── .github
+│   ├── ISSUE_TEMPLATE
+│   │   ├── bug_report.yml
+│   │   ├── config.yml
+│   │   └── feature_request.yml
+│   ├── workflows
+│   │   ├── auto-changelog.yml
+│   │   ├── deploy-mkdocs.yml
+│   │   └── rust.yml
+│   ├── dependabot.yml
+│   └── pull_request_template.md
+├── src
+│   ├── exports.rs
+│   └── lib.rs
+├── .vscode
+│   ├── settings.json
+│   └── tasks.json
+├── build.rs
+├── Cargo.toml
+├── cbindgen_cpp.toml
+├── cbindgen_c.toml
+├── codecov.yml
+├── CONTRIBUTING.MD
+├── flake.nix
+├── .gitignore
+├── .gitmodules
+├── LICENSE
+├── mkdocs.yml
+├── README-DEV.MD
+└── README.MD
+```
+
+New folder structure looks like:
+
+```
+.
+├── doc
+│   ├── docs
+│   │   ├── contributing.md
+│   │   ├── index.md
+│   │   └── requirements.txt
+│   ├── mkdocs.yml
+│   ├── README.md
+│   └── start_docs.py
+├── .github
+│   ├── ISSUE_TEMPLATE
+│   │   ├── bug_report.yml
+│   │   ├── config.yml
+│   │   └── feature_request.yml
+│   ├── workflows
+│   │   ├── deploy-mkdocs.yml
+│   │   └── rust.yml
+│   ├── artifact-groups.yml
+│   ├── cbindgen_cpp.toml
+│   ├── cbindgen_c.toml
+│   ├── changelog.hbs
+│   ├── codecov.yml
+│   ├── dependabot.yml
+│   └── pull_request_template.md
+├── src
+│   ├── bindings
+│   │   └── csharp
+│   │       ├── csharp.csproj
+│   │       ├── Init.cs
+│   │       ├── NativeMethods.cs
+│   │       └── nuget-icon.png
+│   ├── cli
+│   ├── prs-rs
+│   │   ├── build.rs
+│   │   └── Cargo.toml
+│   ├── Cargo.lock
+│   ├── Cargo.toml
+│   └── .gitignore
+├── .vscode
+│   ├── launch.json
+│   ├── settings.json
+│   └── tasks.json
+├── .gitignore
+├── .gitmodules
+├── flake.nix
+├── LICENSE
+└── README.MD
+```
+
+Namely:
+
+- All source code moved to `src/` directory, including `bindings/` (now `src/bindings/`)
+- Introduced cargo workspace structure with `src/Cargo.toml` as the workspace root
+- Configuration files moved from root to `.github/` directory:
+  - `cbindgen_*.toml`, `codecov.yml`, `dependabot.yml`
+- Documentation restructured: `docs/` → `doc/docs/` with added `mkdocs.yml` and `start_docs.py`
+- Project code moved to `src/<project-name>/` directory
+
+## Move IDE Configuration
+
+Move the `.vscode` directory to the `src/` folder and open `src/` in your IDE for development.
+
+## Split VSCode Configuration
+
+!!! info "Editor-Specific Configuration"
+    This section describes VSCode-specific configuration. If you use a different code editor, you may adapt these settings to your editor's format or skip this section.
+
+The template now splits VSCode configuration between two directories:
+
+- **`src/.vscode/`** - Rust development settings
+- **`doc/.vscode/`** - Documentation and markdown settings
+
+### Rust Development Settings (src/.vscode/)
+
+The `src/.vscode/settings.json` file contains settings for Rust development:
+
+```json
+{
+  "rust-analyzer.check.command": "clippy",
+  "editor.formatOnSave": true,
+  "coverage-gutters.coverageFileNames": [
+    "cobertura.xml"
+  ],
+  "coverage-gutters.coverageReportFileName": "tarpaulin-report.html"
+}
+```
+
+### Documentation Settings (doc/.vscode/)
+
+The `doc/.vscode/settings.json` file contains settings for documentation work:
+
+```json
+{
+  "editor.formatOnSave": true,
+  "files.exclude": {
+    "venv/": true,
+    "__pycache__/": true
+  },
+  "files.associations": {
+    "mkdocs.yml": "yaml",
+    "requirements.txt": "plaintext"
+  },
+  "[markdown]": {
+    "editor.wordWrap": "on",
+    "editor.rulers": [80]
+  }
+}
+```
+
+## Update VS Code Task Paths
+
+When migrating to the new workspace structure, move the `.vscode` folder to the `src/` directory and open `src/` in your code editor. This ensures all tasks run from the correct context without needing `cwd` overrides. Update watch paths in `.vscode/tasks.json` to reflect the new template structure:
+
+```diff
+--- a/src/.vscode/tasks.json
++++ b/src/.vscode/tasks.json
+@@ -4,13 +4,11 @@
+      {
+        "label": "Auto Test on Save",
+        "type": "shell",
+-       "command": "cargo watch -x \"test\" -w <project-name>/src",
++       "command": "cargo install cargo-watch --quiet && cargo watch -x \"test\" -w {{project-name}}/src",
+        "group": "test",
+        "presentation": {
+          "reveal": "always"
+        },
+        "problemMatcher": [],
+-       "options": {
+-         "cwd": "${workspaceFolder}/src"
+-       }
+      },
+      {
+        "label": "Auto Coverage on Save",
+        "type": "shell",
+-       "command": "cargo install cargo-tarpaulin --quiet && cargo watch -x \"tarpaulin --skip-clean --out Xml --out Html --engine llvm --target-dir target/coverage-build\" -w <project-name>/src",
++       "command": "cargo install cargo-watch --quiet && cargo install cargo-tarpaulin --quiet && cargo watch -x \"tarpaulin --skip-clean --out Xml --out Html --engine llvm --target-dir target/coverage-build\" -w {{project-name}}/src",
+        "group": "test",
+        "presentation": {
+          "reveal": "always"
+        },
+        "problemMatcher": [],
+-       "options": {
+-         "cwd": "${workspaceFolder}/src"
+-       }
+      },
+      {
+        "label": "Generate Code Coverage",
+        "type": "shell",
+        "command": "cargo install cargo-tarpaulin --quiet && cargo tarpaulin --skip-clean --out Xml --out Html --engine llvm --target-dir target/coverage-build",
+        "group": "test",
+        "presentation": {
+          "reveal": "always"
+        },
+        "problemMatcher": [],
+-       "options": {
+-         "cwd": "${workspaceFolder}/src"
+-       }
+      }
+    ]
+ }
+```
+
+Key changes:
+
+- **Remove `cwd` options**: Delete the `"options": { "cwd": "${workspaceFolder}/src" }` blocks from all tasks-they are no longer needed since you're opening `src/` as the workspace root
+- Update watch paths to use template variables: `{{project-name}}/src`
+- `.vscode` folder should be located in `src/` directory
+- Open `src/` folder in your code editor for automatic task context
+
+Replace `{{project-name}}` with your actual project name (e.g., `my-library`, `my-mod`, etc.).
+
+## Add C# GitIgnore File
+
+For C# bindings projects, add a comprehensive `.gitignore` file to the `src/<project-name>/bindings/csharp/` directory:
+
+Create `src/bindings/csharp/.gitignore` with the following content:
+
+```
+## Ignore Visual Studio temporary files, build results, and
+## files generated by popular Visual Studio add-ons.
+
+# User-specific files
+*.suo
+*.user
+*.sln.docstates
+
+# Build results
+
+[Dd]ebug/
+[Rr]elease/
+x64/
+[Bb]in/
+[Oo]bj/
+
+# MSTest test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+*_i.c
+*_p.c
+*_i.h
+*.ilk
+*.meta
+*.obj
+*.pch
+*.pdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*.log
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.log
+*.svclog
+*.scc
+
+# Visual C++ cache files
+ipch/
+*.aps
+*.ncb
+*.opensdf
+*.sdf
+*.cachefile
+
+# Visual Studio profiler
+*.psess
+*.vsp
+*.vspx
+
+# Guidance Automation Toolkit
+*.gpState
+
+# ReSharper is a .NET coding add-in
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# Click-Once directory
+publish/
+
+# Publish Web Output
+*.Publish.xml
+*.pubxml
+*.azurePubxml
+
+# NuGet Packages Directory
+## TODO: If you have NuGet Package Restore enabled, uncomment the next line
+packages/
+## TODO: If the tool you use requires repositories.config, also uncomment the next line
+!packages/repositories.config
+
+# Windows Azure Build Output
+csx/
+*.build.csdef
+
+# Windows Store app package directory
+AppPackages/
+
+# Others
+sql/
+*.Cache
+ClientBin/
+[Ss]tyle[Cc]op.*
+![Ss]tyle[Cc]op.targets
+~$*
+*~
+*.dbmdl
+*.[Pp]ublish.xml
+
+*.publishsettings
+
+# RIA/Silverlight projects
+Generated_Code/
+
+# Backup & report files from converting an old project file to a newer
+# Visual Studio version. Backup files are not needed, because we have git ;-)
+_UpgradeReport_Files/
+Backup*/
+UpgradeLog*.XML
+UpgradeLog*.htm
+
+# SQL Server files
+App_Data/*.mdf
+App_Data/*.ldf
+
+# =========================
+# Windows detritus
+# =========================
+
+# Windows image file caches
+Thumbs.db
+ehthumbs.db
+
+# Folder config file
+Desktop.ini
+
+# Recycle Bin used on file shares
+$RECYCLE.BIN/
+
+# Mac desktop service store files
+.DS_Store
+
+_NCrunch*
+```
+
+## Update Dependabot Configuration
+
+Update the Dependabot configuration in `.github/dependabot.yml` to point to the new workspace structure:
+
+```diff
+    version: 2
+    updates:
+      # Enable version updates for Cargo
+      - package-ecosystem: "cargo"
+-     directory: "/"
++     directory: "src"
+       schedule:
+         interval: "weekly"
+         day: "monday"
+```
+
+Since the workspace root and `Cargo.toml` are now located in the `src/` directory, Dependabot needs to be configured to monitor dependencies in that directory instead of the repository root.
+
+## Add GitHub Actions Dependabot Monitoring
+
+Add monitoring for GitHub Actions dependency updates by adding the following block to your `.github/dependabot.yml` file, after the existing cargo configuration:
+
+```yaml
+  # Monitor GitHub Actions for dependency updates
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Etc/UTC"
+    labels:
+      - "dependencies"
+      - "github-actions"
+```
+
+This ensures your GitHub Actions (such as `actions/checkout`, `Reloaded-Project/devops-*`, etc.) receive automated update PRs, helping you stay current with bug fixes and security patches.
+
+## Update GitHub Issue Templates
+
+Copy the following files to `.github/ISSUE_TEMPLATE/`:
+
+- [`.github/ISSUE_TEMPLATE/bug_report.yml`](https://raw.githubusercontent.com/Reloaded-Project/reloaded-templates-rust/85de6c53264b807da97b13c1b6591314bf05c818/templates/library/.github/ISSUE_TEMPLATE/bug_report.yml)
+- [`.github/ISSUE_TEMPLATE/config.yml`](https://raw.githubusercontent.com/Reloaded-Project/reloaded-templates-rust/85de6c53264b807da97b13c1b6591314bf05c818/templates/library/.github/ISSUE_TEMPLATE/config.yml)
+- [`.github/ISSUE_TEMPLATE/feature_request.yml`](https://raw.githubusercontent.com/Reloaded-Project/reloaded-templates-rust/85de6c53264b807da97b13c1b6591314bf05c818/templates/library/.github/ISSUE_TEMPLATE/feature_request.yml)
+
+## Update VS Code Settings
+
+Add the following settings to `.vscode/settings.json`:
+
+```json
+{
+  "coverage-gutters.coverageReportFileName": "tarpaulin-report.html",
+  "editor.formatOnSave": true
+}
+```
+
+These settings:
+- Configure Coverage Gutters extension to use the correct tarpaulin report file
+- Enable automatic formatting for all files on save
+
+## Update .gitignore
+
+Add the following entries to your `.gitignore` files:
+
+### Top-level `.gitignore`
+```
+# LLM Prompts
+PROMPT.md
+PROMPT-*.md
+PROMPT.MD
+PROMPT-*.MD
+```
+
+### `src/.gitignore`
+```
+# Profiling files
+perf.data.old
+perf.data
+flamegraph.svg
+
+# Code Coverage
+tarpaulin-report.html
+cobertura.xml
+```
+
+This prevents committing LLM prompt files to the repository (top-level) and profiling/coverage files to the repository (src-level).
+
+## Add Clippy Fix Task
+
+Add a task to automatically fix clippy lints to `src/.vscode/tasks.json`:
+
+```diff
+     {
++      "label": "Fix Clippy Lints",
++      "type": "shell",
++      "command": "cargo clippy --fix --allow-dirty --allow-staged",
++      "group": "build",
++      "presentation": {
++        "reveal": "always"
++      },
++      "problemMatcher": []
+     }
+```
+
+This task:
+- Runs `cargo clippy --fix` to automatically fix applicable lints
+- Uses `--allow-dirty` to work on uncommitted changes
+- Uses `--allow-staged` to work on staged changes
+
+## Remove Reloaded: Prefix from Task Labels
+
+Update your VS Code task labels to remove the `Reloaded:` prefix for cleaner task names:
+
+```diff
+--- a/src/.vscode/tasks.json
++++ b/src/.vscode/tasks.json
+@@ -4,29 +4,29 @@
+      {
+-       "label": "Reloaded: Cargo Watch Test (Auto Test on Save)",
++       "label": "Auto Test on Save",
+        "type": "shell",
+-       "command": "cargo watch -x \"test\" -w <project-name>/src",
++       "command": "cargo install cargo-watch --quiet && cargo watch -x \"test\" -w {{project-name}}/src",
+        "group": "test",
+        "presentation": {
+          "reveal": "always"
+        },
+        "problemMatcher": []
+      },
+      {
+-       "label": "Reloaded: Cargo Watch Tarpaulin (Auto Coverage on Save)",
++       "label": "Auto Coverage on Save",
+        "type": "shell",
+-       "command": "cargo install cargo-tarpaulin --quiet && cargo watch -x \"tarpaulin --skip-clean --out Xml --out Html --engine llvm --target-dir target/coverage-build\" -w <project-name>/src",
++       "command": "cargo install cargo-watch --quiet && cargo install cargo-tarpaulin --quiet && cargo watch -x \"tarpaulin --skip-clean --out Xml --out Html --engine llvm --target-dir target/coverage-build\" -w {{project-name}}/src",
+        "group": "test",
+        "presentation": {
+          "reveal": "always"
+        },
+        "problemMatcher": []
+      },
+      {
+-       "label": "Reloaded: Generate Code Coverage",
++       "label": "Generate Code Coverage",
+        "type": "shell",
+        "command": "cargo install cargo-tarpaulin --quiet && cargo tarpaulin --skip-clean --out Xml --out Html --engine llvm --target-dir target/coverage-build",
+        "group": "test",
+        "presentation": {
+          "reveal": "always"
+        },
+        "problemMatcher": []
+      },
+      {
+-       "label": "Reloaded: Fix Clippy Lints",
++       "label": "Fix Clippy Lints",
+        "type": "shell",
+        "command": "cargo clippy --fix --allow-dirty --allow-staged",
+        "group": "build",
+        "presentation": {
+          "reveal": "always"
+        },
+        "problemMatcher": []
+      }
+    ]
+ }
+```
+
+This change:
+- Removes the `Reloaded:` prefix from all task labels for cleaner display in VS Code
+- Maintains all task functionality and configuration
+- Makes task names more concise and easier to read
+
+## Task Name Changes
+
+Update your VS Code task labels to use more intuitive and user-friendly names:
+
+```diff
+--- a/src/.vscode/tasks.json
++++ b/src/.vscode/tasks.json
+@@ -4,28 +4,28 @@
+      {
+-       "label": "Cargo Watch Test (Auto Test on Save)",
++       "label": "Auto Test on Save",
+        "type": "shell",
+-       "command": "cargo watch -x \"test\" -w <project-name>/src",
++       "command": "cargo install cargo-watch --quiet && cargo watch -x \"test\" -w {{project-name}}/src",
+        "group": "test",
+        "presentation": {
+          "reveal": "always"
+        },
+        "problemMatcher": []
+      },
+      {
+-       "label": "Cargo Watch Tarpaulin (Auto Coverage on Save)",
++       "label": "Auto Coverage on Save",
+        "type": "shell",
+-       "command": "cargo install cargo-watch --quiet && cargo install cargo-tarpaulin --quiet && cargo watch -x \"tarpaulin --skip-clean --out Xml --out Html --engine llvm --target-dir target/coverage-build\" -w <project-name>/src",
++       "command": "cargo install cargo-watch --quiet && cargo install cargo-tarpaulin --quiet && cargo watch -x \"tarpaulin --skip-clean --out Xml --out Html --engine llvm --target-dir target/coverage-build\" -w {{project-name}}/src",
+        "group": "test",
+        "presentation": {
+          "reveal": "always"
+        },
+        "problemMatcher": []
+      }
+```
+
+This change renames tasks to be more intuitive and concise.
+
+## Add Benchmark Task
+
+Add a task to run benchmarks to `src/.vscode/tasks.json` when the `bench` feature is enabled:
+
+```diff
+     {
++      "label": "Run Benchmarks",
++      "type": "shell",
++      "command": "cargo bench",
++      "group": "test",
++      "presentation": {
++        "reveal": "always"
++      },
++      "problemMatcher": []
+     }
+```
+
+## Add C/C++ Bindings Generation Tasks
+
+Add tasks to generate C/C++ bindings manually to `src/.vscode/tasks.json`:
+
+```diff
+     {
++      "label": "Generate C Bindings",
++      "type": "shell",
++      "command": "cargo install cbindgen --quiet && cbindgen --config ../.github/cbindgen_c.toml --output bindings/c/{{project-name}}.h {{project-name}}",
++      "group": "build",
++      "presentation": {
++        "reveal": "always"
++      },
++      "problemMatcher": []
++    },
++    {
++      "label": "Generate C++ Bindings",
++      "type": "shell",
++      "command": "cargo install cbindgen --quiet && cbindgen --config ../.github/cbindgen_cpp.toml --output bindings/cpp/{{project-name}}.hpp {{project-name}}",
++      "group": "build",
++      "presentation": {
++        "reveal": "always"
++      },
++      "problemMatcher": []
+     }
+```
+
+Replace `{{project-name}}` with your actual project name.
+
+These tasks:
+- Install cbindgen automatically if not present
+- Generate C and/or C++ headers from Rust code
+- Use configuration files in `.github/` directory
+- Place generated headers in `bindings/c/` and `bindings/cpp/` directories
+
+## Update cbindgen Paths in GitHub Actions
+
+Since cbindgen config files moved to `.github/`, update the paths in `.github/workflows/rust.yml`:
+
+```diff
+name: Generate C++ bindings
+uses: Reloaded-Project/devops-rust-cbindgen@v1
+with:
++ rust-project-path: "src/<project-name>"
+- config-file: cbindgen_cpp.toml
++ config-file: ../../.github/cbindgen_cpp.toml
+  ...
+
+name: Generate C bindings
+uses: Reloaded-Project/devops-rust-cbindgen@v1
+with:
++ rust-project-path: "src/<project-name>"
+- config-file: cbindgen_c.toml
++ config-file: ../../.github/cbindgen_c.toml
+  ...
+```
+
+Add or update `rust-project-path` to point to your project under `src/`. cbindgen config is now relative to project path, so update it.
+
+## Add Fuzzing Tasks
+
+Add a task to list fuzz targets to `src/.vscode/tasks.json` when the `fuzz` feature is enabled:
+
+```diff
+     {
++      "label": "List Fuzz Targets",
++      "type": "shell",
++      "command": "cargo install cargo-fuzz --quiet && cargo +nightly fuzz list",
++      "group": "test",
++      "presentation": {
++        "reveal": "always"
++      },
++      "problemMatcher": []
+     }
+```
+
+## Add Miri Testing Tasks
+
+**Miri** is a testing tool that checks your Rust code for hidden bugs that can cause crashes, data corruption, or security problems. These bugs are called **undefined behavior** (UB) - situations where your program's behavior becomes unpredictable. Undefined behavior might work fine on your computer but crash on someone else's, appear to work but corrupt data silently, create security vulnerabilities that attackers can exploit, or only show up months later in production.
+
+Rust normally prevents many types of bugs automatically through its safety checks. However, sometimes you need to write **unsafe code** that bypasses these checks (for performance or when interfacing with hardware/other languages). Unsafe code can introduce undefined behavior if not written carefully.
+
+Miri detects issues like:
+
+- **Out-of-bounds memory accesses and use-after-free**: Reading or writing memory outside valid regions or after it's been freed
+- **Invalid use of uninitialized data**: Using memory before it's been given a valid value
+- **Not sufficiently aligned memory accesses**: Accessing memory with incorrect alignment requirements
+
+These tasks are optional and typically used when writing unsafe code. For more information, see the [Miri testing documentation](../features/miri-testing.md).
+
+### Standard Miri Task
+
+Add the standard Miri task to `src/.vscode/tasks.json` when the `miri` feature is enabled in cargo-generate:
+
+```diff
+     {
++      "label": "Run Tests to Detect Undefined Behaviour",
++      "type": "shell",
++      "command": "rustup +nightly component add miri && cargo +nightly miri test",
++      "group": "test",
++      "presentation": {
++        "reveal": "always"
++      },
++      "problemMatcher": []
+     }
+```
+
+This task uses the friendly name "Run Tests to Detect Undefined Behaviour" to clearly communicate its purpose to developers who may not be familiar with Miri.
+
+### Big-Endian Miri Task
+
+If you need big-endian testing support, add this task to `src/.vscode/tasks.json` when both `miri` AND `big_endian` features are enabled:
+
+```diff
+     {
++      "label": "Run Tests to Detect Undefined Behaviour (Big Endian)",
++      "type": "shell",
++      "command": "rustup +nightly component add miri && cargo +nightly miri test --target powerpc64-unknown-linux-gnu",
++      "group": "test",
++      "presentation": {
++        "reveal": "always"
++      },
++      "problemMatcher": []
+     }
+```
+
+!!! note "Nightly Toolchain Required"
+     Miri requires the nightly Rust toolchain. The tasks automatically use `cargo +nightly` to run Miri tests with the nightly toolchain.
+
+## Migrate Documentation
+
+The theme now uses a vendoring approach instead of submodules. You now copy the necessary files directly instead of managing submodules.
+
+**Setup:**
+
+- Copy the contents of the `copy-me` folder from [Reloaded.MkDocsMaterial.Themes.R2](https://github.com/Reloaded-Project/Reloaded.MkDocsMaterial.Themes.R2) to your project's `doc/` directory
+- Skip `.gitignore` and `mkdocs.yml` if already present, and do updates below instead
+
+There is also now a [`README.md`](https://raw.githubusercontent.com/Reloaded-Project/reloaded-templates-rust/52e69ef1f045df88ec3d0fa7fe07bb84e19486a6/templates/library/doc/README.md) next to `mkdocs.yml` in the `doc` folder.
+
+Obviously, if your project has no mkdocs documentation, you can skip this step.
+
+### Referencing Theme Documentation
+
+If you need to reference pages from the theme's documentation (such as contributing guidelines or examples), use direct URLs instead of local file references.
+
+**mkdocs.yml Changes:**
+
+```diff
+  nav:
+-  - How to Document: Reloaded/Pages/contributing.md
+-  - Testing Zone: Reloaded/Pages/testing-zone.md
++  - How to Document: https://reloaded-project.github.io/Reloaded.MkDocsMaterial.Themes.R2/Pages/contributing.html
++  - Testing Zone: https://reloaded-project.github.io/Reloaded.MkDocsMaterial.Themes.R2/Pages/testing-zone.html
+```
+
+Previously this was done via submodule, but turned out unnecessary.
+
+### Updated Exclude Patterns
+
+With the vendoring approach, exclude patterns are no longer needed for the Reloaded folder since the files are now part of your project.
+
+**mkdocs.yml Changes:**
+
+```diff
+  plugins:
+    - exclude:
+        glob:
+-        - Reloaded/docs/Pages/private/*
+-        - Reloaded/docs/*.txt
+-        - Reloaded/.gitignore
+-        - Reloaded/Readme.md
+-        - Reloaded/LICENSE
+-        - Reloaded/*.yml
+-        - Reloaded/*.py
+-        - Reloaded/venv/*
+```
+
+### Image References
+
+Since the files are now vendored, you may need to move them out to your own `docs` folder.
+
+**Actions Required:**
+
+- Move any images from the vendored theme files to your `doc/docs/Images/` folder
+- Update image references in your markdown files to use the new paths
+
+**Example Changes:**
+
+```diff
+- ![Reloaded Icon](Reloaded/Images/Reloaded-Icon.avif)
++ ![Reloaded Icon](Images/Reloaded-Icon.avif)
+```
+
+### Image Format Migration
+
+All PNG images in the theme have been converted to AVIF format for better compression.
+
+**Actions Required:**
+
+- If you reference any images from the theme template (e.g., Reloaded logo), you may need to change the file extension from `.png` to `.avif`
+- Example: `../Images/Reloaded-Icon.png` → `../Images/Reloaded-Icon.avif`
+
+### Build System Enhancements
+
+Added minification plugin for optimized builds.
+
+**Actions Required:**
+
+- Add to `doc/docs/requirements.txt`:
+   ```
+   mkdocs-minify-plugin
+   ```
+
+- Add to `doc/mkdocs.yml` plugins section:
+```yaml
+plugins:
+   - offline
+   - search
+   - minify:
+       minify_html: true
+       minify_js: true
+       minify_css: true
+       htmlmin_opts:
+         remove_comments: true
+       cache_safe: true
+```
+
+### Setup Script Improvements
+
+New automated setup script available.
+
+**Actions Required:**
+
+- Add `start_docs.py` from the `copy-me` folder to your `doc/` directory
+- Create `doc/.gitignore` with the following content:
+   ```
+   # MkDocs build output
+   site/
+   
+   # Python virtual environments
+   venv/
+   ```
+
+### Version Tracking
+
+Version information is now stored in `version.txt` files in the `vendor` folder for future migration.
+
+## Add Template Version Marker
+
+Create a version marker file to track which version of reloaded-templates-rust generated your project.
+
+!!! info "This will give you bot notifications for when template updates."
+
+**Create** `.github/template-version.txt` with the following content:
+
+```
+reloaded-templates-rust:1.0.0
+```
+
+## Add AGENTS.md for AI Assistants
+
+The template now includes an `AGENTS.md` file that provides context and guidelines for AI coding assistants (such as Claude, GPT, or Cursor).
+
+!!! info "AI assistants use this file to understand your project structure and coding standards."
+
+**Create** `src/AGENTS.md` with the following content:
+
+`````markdown
+# <project-name>
+
+<project-description>
+
+# Project Structure
+
+- `<project-name>/` - Main library crate
+  - `src/` - Library source code
+  - `src/exports.rs` - C FFI exports (if applicable)
+  - `benches/` - Benchmarks (if applicable)
+- `cli/` - CLI executable wrapper (if applicable)
+- `fuzz/` - Fuzz testing targets (if applicable)
+- `bindings/csharp/` - C# bindings (if applicable)
+
+# Code Guidelines
+
+- Optimize for performance; use zero-cost abstractions, avoid allocations.
+- Keep modules under 500 lines (excluding tests); split if larger.
+- Place `use` inside functions only for `#[cfg]` conditional compilation.
+- Prefer `core` over `std` where possible (`core::mem` over `std::mem`). (if no_std)
+
+# Documentation Standards
+
+- Document public items with `///`
+- Add examples in docs where helpful
+- Use `//!` for module-level docs
+- Focus comments on "why" not "what"
+- Use [`TypeName`] rustdoc links, not backticks.
+
+# Post-Change Verification
+
+```bash
+cargo test --workspace --all-features
+cargo clippy --workspace --all-features -- -D warnings
+cargo doc --workspace --all-features
+cargo fmt --all
+cargo publish --dry-run
+```
+
+All must pass before submitting.
+`````
+
+Replace `<project-name>` with your actual project name and `<project-description>` with a description of your project's purpose, features, and goals. Remove any structure lines that don't apply to your project (e.g., remove the `cli/` line if you don't have a CLI, remove `benches/` if benchmarks aren't enabled, etc.).
+
+## Remove Cross-Platform Scripts
+
+Delete the `scripts/` directory. The scripts have been migrated to VSCode tasks.
+
+The following tasks are added to `src/.vscode/tasks.json` when `xplat` is enabled:
+
+```json
+{
+   "label": "Test Cross-Compile: Linux (x64)",
+   "type": "shell",
+   "command": "cargo install cross --git https://github.com/cross-rs/cross --quiet && cross test --target x86_64-unknown-linux-gnu",
+   "group": "test",
+   "presentation": {
+     "reveal": "always"
+   },
+   "problemMatcher": []
+},
+{
+   "label": "Test Cross-Compile: Linux (x86)",
+   "type": "shell",
+   "command": "cargo install cross --git https://github.com/cross-rs/cross --quiet && cross test --target i686-unknown-linux-gnu",
+   "group": "test",
+   "presentation": {
+     "reveal": "always"
+   },
+   "problemMatcher": []
+},
+{
+   "label": "Test Cross-Compile: Windows (x64) [Test on Linux via Wine]",
+   "type": "shell",
+   "command": "cargo install cross --git https://github.com/cross-rs/cross --quiet && cross test --target x86_64-pc-windows-gnu",
+   "group": "test",
+   "presentation": {
+     "reveal": "always"
+   },
+   "problemMatcher": []
+},
+{
+   "label": "Test Cross-Compile: Windows (x86) [Test on Linux via Wine]",
+   "type": "shell",
+   "command": "cargo install cross --git https://github.com/cross-rs/cross --quiet && cross test --target i686-pc-windows-gnu",
+   "group": "test",
+   "presentation": {
+     "reveal": "always"
+   },
+   "problemMatcher": []
+}
+```
+
+### Big Endian Support
+
+A new `big_endian` placeholder has been added to optionally include PowerPC big endian target support. When enabled, the following additional tasks are added to `src/.vscode/tasks.json`:
+
+```json
+{
+   "label": "Test Cross-Compile: Linux (PowerPC 32-bit) [Big Endian]",
+   "type": "shell",
+   "command": "cargo install cross --git https://github.com/cross-rs/cross --quiet && cross test --target powerpc-unknown-linux-gnu",
+   "group": "test",
+   "presentation": {
+     "reveal": "always"
+   },
+   "problemMatcher": []
+},
+{
+   "label": "Test Cross-Compile: Linux (PowerPC 64-bit) [Big Endian]",
+   "type": "shell",
+   "command": "cargo install cross --git https://github.com/cross-rs/cross --quiet && cross test --target powerpc64-unknown-linux-gnu",
+   "group": "test",
+   "presentation": {
+     "reveal": "always"
+   },
+   "problemMatcher": []
+}
+```
+
+The GitHub Actions workflow also includes PowerPC targets in the CI matrix when this feature is enabled:
+- `powerpc-unknown-linux-gnu` (32-bit big endian)
+- `powerpc64-unknown-linux-gnu` (64-bit big endian)
+
+Both targets use cross compilation and do not support PGO due to lack of native runners.
+
+## Fix Auto Coverage on Save Task Command
+
+Some existing "Auto Coverage on Save" task commands may be missing the `cargo-watch` installation, which can cause the task to fail. 
+
+Check your `src/.vscode/tasks.json` for tasks with either of these labels:
+- "Auto Coverage on Save"
+- "Cargo Watch Tarpaulin (Auto Coverage on Save)"
+
+If you find a command that looks like this (missing `cargo-watch`):
+```json
+"command": "cargo install cargo-tarpaulin --quiet && cargo watch -x \"tarpaulin --skip-clean --out Xml --out Html --engine llvm --target-dir target/coverage-build\" -w {{project-name}}/src"
+```
+
+Update it to include both installations:
+```json
+"command": "cargo install cargo-watch --quiet && cargo install cargo-tarpaulin --quiet && cargo watch -x \"tarpaulin --skip-clean --out Xml --out Html --engine llvm --target-dir target/coverage-build\" -w {{project-name}}/src"
+```
+
+This ensures both required tools are installed before running the coverage task.
+
+## Configure Workspace Profile Optimization
+
+Previously the profiles were a bit unoptimized. As you migrate towards workspaces, you can reduce this redundancy, with something like this:
+
+```toml
+# [workspace]
+# resolver = "2"
+# members = ["your-project-name", "cli"]
+
+# Profile Build
+[profile.profile]
+inherits = "release"
+strip = false           # symbols are needed for good profile data
+debug = true
+split-debuginfo = "off" # Some tools on Linux expect embedded symbols, e.g. cargo flamegraph. Keep them together.
+
+# Benchmark Build
+[profile.bench]
+inherits = "profile"
+
+# Optimized Release Build
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true
+panic = "abort"            # Automatically strip symbols from the binary
+# Ensure that on Linux, you get separate .dwp files , in same vein you get .pdb on Windows.
+debug = "full"
+split-debuginfo = "packed"
+```
+
+Redundant lines in `profile` were removed.
+Also consider keeping the comments, so it's clear to users why certain settings are used.
+
+## Run Tests and Coverage on WINE
+
+When using the `Reloaded-Project/devops-rust-test-and-coverage` action for testing on WINE, remove redundant settings that are no longer required:
+
+```diff
+    - uses: Reloaded-Project/devops-rust-test-and-coverage@v1
+      with:
+        rust-project-path: ./src
+-        rust-toolchain: nightly
+-        target: {% raw %}${{ matrix.target }}{% endraw %}
+-        install-rust-toolchain: true
+-        setup-rust-cache: true
+         upload-coverage: true
+         codecov-token: {% raw %}${{ secrets.CODECOV_TOKEN }}{% endraw %}
++        target: {% raw %}${{ matrix.target }}{% endraw %}
+         use-cross: true
+         additional-test-args: --release
+```
+
+**Removed settings:**
+
+- `rust-toolchain: nightly` - the action handles toolchain setup automatically
+- `install-rust-toolchain: true` - redundant with the action's defaults
+- `setup-rust-cache: true` - redundant with the action's defaults
+
+## Remove pprof from Benchmark Configuration
+
+The pprof dependency has been completely removed from the benchmark configuration. 
+
+Although pprof is maintained, its maintainers have ignored a simple 1-line fix to make it work with Criterion for many months, blocking upgrades. 
+
+To eliminate dependabot annoyance and enable Criterion versions greater than 0.5.0, pprof was removed in favor of `cargo flamegraph` for profiling. 
+
+This simplifies the benchmark setup, and allows flamegraphs on Windows.
+
+### Changes to Cargo.toml
+
+The pprof dependency and target-specific configuration have been removed:
+
+```diff
+  [dev-dependencies]
+- criterion = "0.5.1"
+- 
+- [target.'cfg(all(any(target_os = "linux", target_os = "macos"), any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))'.dev-dependencies]
+- pprof = { version = "0.15", features = ["flamegraph", "criterion"] }
++ criterion = "0.7.0"
+```
+
+### Changes to Benchmark File
+
+The pprof-specific code has been removed from `benches/my_benchmark/main.rs`:
+
+```diff
+- #[cfg(all(any(target_os = "linux", target_os = "macos"), any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
+- use pprof::criterion::{Output, PProfProfiler};
+- 
+  fn fibonacci(n: u64) -> u64 {
+      // ... function implementation
+  }
+ 
+- #[cfg(all(any(target_os = "linux", target_os = "macos"), any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
+- criterion_group! {
+-     name = benches;
+-     config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+-     targets = criterion_benchmark
+- }
+- 
+- #[cfg(not(all(any(target_os = "linux", target_os = "macos"), any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))))]
+  criterion_group! {
+       name = benches;
+       config = Criterion::default();
+       targets = criterion_benchmark
+   }
+```
+
+## Update LICENSE-GPL3-R File
+
+The `LICENSE-GPL3-R` file now includes a helpful introductory blurb at the top before the full GPLv3 license text. 
+
+**Actions Required:**
+
+Replace your existing `LICENSE-GPL3-R` file content with the updated version that includes the following header:
+
+```
+This project is licensed under the GNU General Public License v3.0 (GPLv3).
+
+For a detailed FAQ about this license and its implications, please visit:
+https://reloaded-project.github.io/License/GPLv3/about.html
+
+For custom/alternative/commercial licensing options, contact admin@sewer56.dev
+
+===================
+
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+[... rest of GPL3 license text ...]
+```
+
+The previous version of this license file looked a bit different
+
+```
+# The Reloaded Project License FAQ (1.0.0)
+
+[Latest Web Version](https://reloaded-project.github.io/Reloaded.MkDocsMaterial.Themes.R2/Pages/license.html)
+
+Components of the Reloaded-Project are governed by the *GPLv3* license as of May 2023.  
+Prior versions of the project were under the LGPLv3 license.  
+```
+
+If the previous version is present, replace it with the new one.
+
+## Update README License References
+
+The template no longer includes a "Learn more about Reloaded's general choice of licensing for projects" link in README.MD files.
+
+**Actions Required:**
+
+```diff
+  ## License
+  
+- Licensed under [{{license}}](./LICENSE).  
+- 
+- [Learn more about Reloaded's general choice of licensing for projects.][reloaded-license].  
++ Licensed under [{{license}}](./LICENSE).
+  
+  [codecov]: https://app.codecov.io
+  ...
+- [docs]: https://{{gh_reponame}}.github.io/{{gh_reponame}} {%- endif %}
++ [docs]: https://{{gh_reponame}}.github.io/{{gh_reponame}} {%- endif %}
+```
+
+## Separate Repository and Crate READMEs
+
+The template now uses a two-level README structure to serve different audiences:
+
+| File                           | Displayed On | Audience                         | Content Focus                                           |
+| ------------------------------ | ------------ | -------------------------------- | ------------------------------------------------------- |
+| `README.MD` (repo root)        | GitHub       | Visitors browsing the repo       | Overview, badges, quick start, links to crates          |
+| `src/<project-name>/README.MD` | crates.io    | Developers adding the dependency | Detailed features, installation, comprehensive examples |
+
+Both READMEs include badges and description, but serve different purposes:
+
+- **Main README**: Gateway/landing page with a quick start example, then links to crate READMEs for details
+- **Crate README**: Complete reference for crate users (feature flags, detailed usage patterns, advanced examples)
+
+**Reference Templates:**
+
+See the actual template files for the exact structure:
+
+- [Main README template](https://raw.githubusercontent.com/Reloaded-Project/reloaded-templates-rust/refs/heads/main/templates/general/README.MD)
+- [Crate README template](https://raw.githubusercontent.com/Reloaded-Project/reloaded-templates-rust/refs/heads/main/templates/general/src/{{project-name}}/README.MD)
+- [CLI README template](https://raw.githubusercontent.com/Reloaded-Project/reloaded-templates-rust/refs/heads/main/templates/general/src/cli/README.MD)
+
+Make sure to update `Cargo.toml` at the crate level to reference the new README if it has not been done already. 
+
+```rust
+#![doc = include_str!(concat!("../", env!("CARGO_PKG_README")))]
+```
+
+And in `lib.rs`/`main.rs` too, as above.
+
+## Upgrade to devops-publish-action@v3
+
+The publish action has been upgraded from v1 to v3 with renamed parameters and integrated changelog generation.
+
+### Parameter Renames
+
+Update the following parameter names in `.github/workflows/rust.yml`:
+
+```diff
+- crates-io-token: ${{ secrets.CRATES_IO_TOKEN }}
++ rust-crates-io-token: ${{ secrets.CRATES_IO_TOKEN }}
+
+- nuget-api-key: ${{ secrets.NUGET_KEY }}
++ csharp-nuget-api-key: ${{ secrets.NUGET_KEY }}
+
+- rust-project-paths: |
+-   .
++ rust-cargo-project-paths: |
++   src/<project-name>
+```
+
+### Remove crate-name in C Library Builds
+
+The `crate-name` parameter has been replaced with `artifact-prefix` for C library builds:
+
+```diff
+      - name: Build C Libraries and Run Tests
+        uses: Reloaded-Project/devops-rust-lightweight-binary@v1
+        with:
+-         crate-name: ${{ github.event.repository.name }}
++         artifact-prefix: C-Library
++         upload-symbols-separately: false
+          target: ${{ matrix.target }}
+```
+
+The `upload-symbols-separately: false` parameter controls whether debug symbols are included with the library download or uploaded as separate artifacts. When `false`, symbols are embedded in the library artifacts.
+
+### Remove crate-name in CLI Builds
+
+Remove the `crate-name` parameter from CLI builds (artifact naming is now automatic):
+
+```diff
+      - name: Build CLI Binary
+        uses: Reloaded-Project/devops-rust-lightweight-binary@v1
+        with:
+-         crate-name: <project-name>-cli
+          target: ${{ matrix.target }}
+```
+
+### Delete auto-changelog.yml
+
+Delete `.github/workflows/auto-changelog.yml` as changelog generation is now integrated into the publish action.
+
+### Create artifact-groups.yml
+
+Create `.github/artifact-groups.yml` with the following content:
+
+```yaml
+C-Library:
+  patterns:
+    - "C-Library-*"
+    - "C-Bindings-*"
+  flattens:
+    - "C-Bindings-*"
+  renames:
+    - "C-Library-": ""
+Symbols:
+  patterns: "*.symbols"
+  renames:
+    - ".symbols": ""
+```
+
+This configuration controls how artifacts are grouped and renamed for release downloads:
+
+- **C-Library**: Groups all C library artifacts (`C-Library-*`) and C bindings (`C-Bindings-*`) into a single `C-Library.7z` archive per platform. The `C-Library-` prefix is stripped from filenames inside the archive.
+- **Symbols**: Groups all symbol files (`*.symbols`) into a `Symbols.7z` archive, stripping the `.symbols` suffix from filenames.
+
+Empty groups (when features are disabled) simply produce no archives.
+
+### Create changelog.hbs
+
+Create `.github/changelog.hbs` with a Handlebars template for release notes. Copy from:
+[changelog.hbs template](https://raw.githubusercontent.com/Reloaded-Project/reloaded-templates-rust/main/templates/general/.github/changelog.hbs)
+
+Make sure you remove the `Jinja2` syntax, i.e. `{%- if build_cli or build_c_libs %}`, but keep the handlebars syntax `{{#each releases}}`.
+
+Former is part of project template, latter is part of changelog generation.
+
+### Update publish-crate Job
+
+Update the `publish-crate` job in `.github/workflows/rust.yml`:
+
+```diff
+      - name: Publish Rust Crate and Artifacts
+-       uses: Reloaded-Project/devops-publish-action@v1
++       uses: Reloaded-Project/devops-publish-action@v3
+        with:
+-         crates-io-token: ${{ secrets.CRATES_IO_TOKEN }}
+-         nuget-api-key: ${{ secrets.NUGET_KEY }}
+-         rust-project-paths: |
+-           .
++         rust-crates-io-token: ${{ secrets.CRATES_IO_TOKEN }}
++         csharp-nuget-api-key: ${{ secrets.NUGET_KEY }}
++         rust-cargo-project-paths: |
++           src/<project-name>
++         compression-tool: 7z
++         artifact-groups-file: .github/artifact-groups.yml
++         changelog-enabled: 'true'
++         changelog-template: .github/changelog.hbs
++         changelog-is-release: ${{ startsWith(github.ref, 'refs/tags/') }}
++         changelog-release-tag: ${{ github.ref_name }}
++         changelog-override-starting-version: 'true'
++         changelog-hide-credit: 'true'
+```
+
+Replace `<project-name>` with your actual project name.
+
+## Rename Workflow
+
+The workflow name has been simplified from "Test, Upload Coverage and Release Rust" to just "Rust" for cleaner display in the GitHub Actions UI.
+
+Update the workflow name in `.github/workflows/rust.yml`:
+
+```diff
+- name: Test, Upload Coverage and Release Rust
++ name: Rust
+```
+
+## Add Automated Quality Controls
+
+The template now includes three quality gates that run on pull requests and tagged releases.
+
+**What's Included:**
+
+- **Documentation**: Verifies `cargo doc` compiles without errors
+- **Linter**: Treats `cargo clippy` warnings as errors
+- **Formatter**: Ensures code matches `rustfmt` standards
+
+**Adding to Existing Projects:**
+
+Add the following steps to your `.github/workflows/rust.yml` file, after the `cargo-semver-checks` step:
+
+```yaml
+      - name: Check documentation is valid
+        if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
+        working-directory: src
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --workspace --all-features --document-private-items --target ${{ matrix.target }}
+
+      - name: Run linter
+        if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
+        working-directory: src
+        run: cargo clippy --workspace --all-features --target ${{ matrix.target }} -- -D warnings
+
+      - name: Run formatter check
+        uses: actions-rust-lang/rustfmt@v1
+        if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
+        with:
+          manifest-path: src/Cargo.toml
+```
+
+Don't forget the RUSTDOCFLAGS !!
+
+## Adopt Consistent no_std Pattern
+
+Older projects may use a conditional `cfg_attr` approach for `no_std` support:
+
+```rust
+#![cfg_attr(not(feature = "std"), no_std)]
+```
+
+This pattern causes **inconsistent implicit preludes** between builds:
+
+- With `std` feature enabled: implicit prelude is `std::prelude`
+- With `std` feature disabled: implicit prelude is `core::prelude`
+
+This inconsistency creates problems when using the `alloc` crate. Types like `Vec` and `String` may require different import patterns depending on whether `std` is enabled, leading to confusing compilation errors or redundant `#[cfg]` blocks.
+
+### Migration
+
+Replace the conditional `cfg_attr` pattern with an unconditional `no_std` declaration:
+
+```diff
+- #![cfg_attr(not(feature = "std"), no_std)]
++ #![no_std]
++ #[cfg(feature = "std")]
++ extern crate std;
+```
+
+### How It Works
+
+- `#![no_std]` is always applied, so the implicit prelude is always `core::prelude`
+- When the `std` feature is enabled, `extern crate std;` makes `std` available without changing the implicit prelude
+- The `alloc` crate works identically in both configurations since the prelude is consistent
+
+This approach ensures predictable behavior across all feature combinations.
+
+
+## Update README Development Instructions
+
+!!! info "Earlier template versions included inline development instructions directly in `README.MD` or a separate `README-DEV.MD` file."
+
+    These have been consolidated into the [Developer Manual](https://reloaded-project.github.io/reloaded-templates-rust/manual/).
+
+**Old format (README.MD or README-DEV.MD):**
+
+```markdown
+## Development
+
+How to develop this project.
+
+***Clone this Repository:***
+```bash
+# When cloning, make sure symlinks are enabled
+git clone -c core.symlinks=true https://github.com/Sewer56/ptr-utils.git
+```
+
+***Install Rust:***
+- Install the [Rust Toolchain.][rust-toolchain]  
+
+***Setup IDE***
+- This repository is fully with VSCode. [Guidance below](#visual-studio-code-integration).
+```
+
+**New format (README.MD only):**
+
+```markdown
+## Developer Manual
+
+For step-by-step development guidance, see the [Developer Manual](https://reloaded-project.github.io/reloaded-templates-rust/manual/).
+
+## Contributing
+
+We welcome contributions! See the [Contributing Guide](https://reloaded-project.github.io/reloaded-templates-rust/manual/#contributing) for details.
+
+## License
+
+Licensed under [{{license}}](./LICENSE).
+```
+
+**Actions Required:**
+
+- Replace any inline development instructions with the links above
+- Delete `README-DEV.MD` if present (the manual now covers all development guidance)
+- Remove any leftovers from old templates, e.g. `assets/profile_example.png`
+
+## Migrate `docs.rs` crate documentation configuration
+
+Currently some repos may have something like:
+
+```rust
+#![doc = include_str!("../../../README.MD")]
+```
+
+In their `lib.rs` or `main.rs` to include the README in crate docs.
+
+You should now use
+
+```rust
+#![doc = include_str!(concat!("../", env!("CARGO_PKG_README")))]
+```
+
+So it's consistent with the `crates.io` README location.
+
+## Upgrade actions/checkout to v6
+
+The `actions/checkout` action has been upgraded from v4 to v6.
+
+**Actions Required:**
+
+Update `.github/workflows/rust.yml`:
+
+```diff
+- - uses: actions/checkout@v4
++ - uses: actions/checkout@v6
+```

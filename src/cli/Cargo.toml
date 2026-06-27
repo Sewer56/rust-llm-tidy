@@ -27,6 +27,10 @@ name = "reorder"
 harness = false
 
 [[bench]]
+name = "fences"
+harness = false
+
+[[bench]]
 name = "vis"
 harness = false
 

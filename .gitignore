@@ -3,6 +3,8 @@ PROMPT.md
 PROMPT-*.md
 PROMPT.MD
 PROMPT-*.MD
+PROMPT-*.transcripts/
+*.transcripts/
 
 # Local Code Review
 .vscode/local-reviews/

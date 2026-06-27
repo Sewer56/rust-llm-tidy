@@ -57,6 +57,45 @@ pub const CRATE_FIXTURES: &[(&str, &[(&str, &str)])] = &[
         ],
     ),
 ];
+/// Fence-fix benchmark fixtures: `(name, source)` pairs, named by size tier and
+/// fence state.
+///
+/// `clean` fixtures contain backtick/tilde runs but no nested same-marker
+/// fences, so [`fix_fences`] returns the input borrowed (a no-op). `dirty`
+/// fixtures contain nested same-marker fences that get rewritten to alternate
+/// markers. The `doc/*` variants are Rust source with `///` doc-comment fences,
+/// exercising the doc-prefix stripping path.
+///
+/// [`fix_fences`]: rust_llm_tidy_fix::fix_fences
+#[allow(dead_code)] // each bench compiles `common` separately, using one set
+pub const FENCE_FIXTURES: &[(&str, &str)] = &[
+    (
+        "small/clean",
+        include_str!("fixtures/fences/small_clean.md"),
+    ),
+    (
+        "small/dirty",
+        include_str!("fixtures/fences/small_dirty.md"),
+    ),
+    (
+        "medium/clean",
+        include_str!("fixtures/fences/medium_clean.md"),
+    ),
+    (
+        "medium/dirty",
+        include_str!("fixtures/fences/medium_dirty.md"),
+    ),
+    (
+        "large/clean",
+        include_str!("fixtures/fences/large_clean.md"),
+    ),
+    (
+        "large/dirty",
+        include_str!("fixtures/fences/large_dirty.md"),
+    ),
+    ("doc/clean", include_str!("fixtures/fences/doc_clean.rs")),
+    ("doc/dirty", include_str!("fixtures/fences/doc_dirty.rs")),
+];
 /// Lint benchmark fixtures: `(name, source)` pairs, named by lint state.
 ///
 /// `clean` fixtures produce zero lint findings; `dirty` fixtures produce
@@ -149,7 +188,7 @@ pub fn build_crate_context(
 /// that byte-range spans are accurate when parsing outside a proc-macro context.
 ///
 /// [`main`]: rust_llm_tidy_cli
-#[allow(dead_code)] // each bench compiles `common` separately; some may not call this
+#[allow(dead_code)] // each bench compiles `common` separately; the fences bench does not call this
 pub fn force_span_fallback() {
     proc_macro2::fallback::force();
 }

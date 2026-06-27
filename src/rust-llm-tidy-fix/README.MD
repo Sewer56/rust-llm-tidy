@@ -4,8 +4,9 @@
 [![Docs.rs](https://docs.rs/rust-llm-tidy-fix/badge.svg)][Docs.rs]
 [![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
 
-Realigns misaligned GitHub-Flavored Markdown (GFM) tables. Pure text
-processing, zero dependencies.
+Realigns misaligned GitHub-Flavored Markdown (GFM) tables and rewrites nested
+fence markers to alternate backticks and tildes. Pure text processing, zero
+dependencies.
 
 ## What it does
 
@@ -26,14 +27,39 @@ It works on:
 
 The function is idempotent: an already-aligned table is returned unchanged.
 
+## Nested fence delimiter safety
+
+[`fix_fences`] flips each nested fence to the opposite marker (backticks <->
+tildes) so an inner fence can't close the outer block early.
+
+Applies to `.md` files and to fences inside `///` and `//!` doc comments.
+
+Before (both backticks - inner closes outer early):
+
+````text
+```text
+```rust
+inner
+```
+````
+
+After (inner flipped to tildes):
+
+````text
+```text
+~~~rust
+inner
+~~~
+````
+
 ## Usage
 
 ```rust
 use rust_llm_tidy_fix::fix_tables;
 
-let input = "| a | bb |
-| --- | --- |
-| ccc | d |
+| let input = " | a   | bb |
+| ------------- | --- |
+| ccc           | d   |
 ";
 let out = fix_tables(input);
 assert_ne!(&*out, input);
