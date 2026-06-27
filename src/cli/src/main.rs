@@ -424,6 +424,23 @@ fn resolve_vis_context(paths: &[PathBuf]) -> Option<VisContext> {
     let first = paths.first()?;
     match discover_crate_root(first) {
         Ok(root) => {
+            // Canonicalize the crate root so it matches the canonicalized source
+            // paths collected below.
+            //
+            // `discover_crate_root` returns the owning package's `src_path`
+            // from `cargo metadata`, which is not canonicalized. On platforms
+            // where the temp dir is behind a symlink (e.g. macOS `/tmp` ->
+            // `/private/tmp`, or any symlinked `TMPDIR`):
+            //
+            // - the BFS root lookup in `build_module_tree` (`parsed.get(&path)`)
+            //   would miss (root key is non-canonical, `parsed` keys are canonical)
+            // - the tree ends up with only the root node: no children resolved,
+            //   no warnings emitted
+            // - every file silently degrades to standalone narrowing
+            //
+            // Canonicalizing here keeps the BFS root consistent with the
+            // canonicalized source paths.
+            let root = fs::canonicalize(&root).unwrap_or(root);
             // Collect every .rs file under the crate src dir, parse, build tree.
             let crate_dir = root.parent().unwrap_or_else(|| Path::new("."));
             let mut rs_files: Vec<PathBuf> = Vec::new();
