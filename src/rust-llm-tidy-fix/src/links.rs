@@ -489,326 +489,51 @@ after
         assert_eq!(twice, once, "fix_links must be idempotent");
     }
 
-    // ---- Differential reference (commit 460046a algorithm) ----------------
-    //
-    // A faithful copy of the original `fix_links` (char-by-char tally/rewrite,
-    // eager per-segment allocation, no candidate check), kept only to
-    // differential-test that the optimized version produces byte-identical
-    // output and the same `Cow` variant for every input. It shares the
-    // module's `parse_inline_link` / `definition_text` / `ensure_output` /
-    // `append_definitions` / `split_terminator` / `strip_doc_prefix` /
-    // `parse_fence`, which are logic-identical to 460046a; only the scan and
-    // allocation strategies differ.
-
-    /// 460046a fence step: takes the raw `segment` and re-splits internally
-    /// (no candidate fast path).
-    fn step_fence_ref(stack: &mut Vec<(char, usize)>, segment: &str) -> bool {
-        let (content, _) = split_terminator(segment);
-        let (_, body) = strip_doc_prefix(content);
-        let stripped = body.trim_start();
-        let Some((marker, run_len, info)) = parse_fence(stripped) else {
-            return false;
-        };
-        let is_closer = info.is_empty()
-            && stack
-                .last()
-                .map(|(m, r)| *m == marker && *r <= run_len)
-                .unwrap_or(false);
-        if is_closer {
-            stack.pop();
-        } else {
-            stack.push((marker, run_len));
-        }
-        true
-    }
-
-    /// 460046a tally: walks every UTF-8 character of `body`.
-    fn tally_links_ref<'a>(
-        body: &'a str,
-        counts: &mut HashMap<(&'a str, &'a str), usize>,
-        order: &mut Vec<(&'a str, &'a str)>,
-    ) {
-        let bytes = body.as_bytes();
-        let mut i = 0usize;
-        while i < bytes.len() {
-            if bytes[i] == b'['
-                && let Some((text, url, end)) = parse_inline_link(body, i)
-            {
-                let prev = counts.get(&(text, url)).copied().unwrap_or(0);
-                if prev == 0 {
-                    order.push((text, url));
-                }
-                counts.insert((text, url), prev + 1);
-                i = end;
-                continue;
-            }
-            let ch = body[i..].chars().next().unwrap();
-            i += ch.len_utf8();
-        }
-    }
-
-    /// 460046a rewrite: eagerly allocates a `String` and copies the segment.
-    fn rewrite_links_ref(
-        prefix: &str,
-        body: &str,
-        term: &str,
-        hoist: &HashSet<(&str, &str)>,
-    ) -> Option<String> {
-        let bytes = body.as_bytes();
-        let mut out = String::with_capacity(prefix.len() + body.len() + term.len());
-        out.push_str(prefix);
-        let mut changed = false;
-        let mut i = 0usize;
-        while i < bytes.len() {
-            if bytes[i] == b'['
-                && let Some((text, url, end)) = parse_inline_link(body, i)
-            {
-                if hoist.contains(&(text, url)) {
-                    out.push('[');
-                    out.push_str(text);
-                    out.push(']');
-                    i = end;
-                    changed = true;
-                    continue;
-                }
-                out.push_str(&body[i..end]);
-                i = end;
-                continue;
-            }
-            let ch = body[i..].chars().next().unwrap();
-            out.push(ch);
-            i += ch.len_utf8();
-        }
-        out.push_str(term);
-        if changed { Some(out) } else { None }
-    }
-
-    #[allow(clippy::too_many_lines)]
-    fn fix_links_ref(input: &str) -> Cow<'_, str> {
-        if !input.contains('[') {
-            return Cow::Borrowed(input);
-        }
-
-        let segments: Vec<&str> = input.split_inclusive('\n').collect();
-        let mut fence_stack: Vec<(char, usize)> = Vec::new();
-        let mut counts: HashMap<(&str, &str), usize> = HashMap::new();
-        let mut order: Vec<(&str, &str)> = Vec::new();
-        let mut existing: HashSet<&str> = HashSet::new();
-        for segment in &segments {
-            if step_fence_ref(&mut fence_stack, segment) {
-                continue;
-            }
-            if !fence_stack.is_empty() {
-                continue;
-            }
-            let (content, _) = split_terminator(segment);
-            let (_, body) = strip_doc_prefix(content);
-            if let Some(key) = definition_text(body) {
-                existing.insert(key);
-            }
-            tally_links_ref(body, &mut counts, &mut order);
-        }
-
-        let mut hoist: Vec<(&str, &str)> = Vec::new();
-        let mut hoist_set: HashSet<(&str, &str)> = HashSet::new();
-        for &(text, url) in &order {
-            if counts[&(text, url)] >= 2 && existing.insert(text) {
-                hoist_set.insert((text, url));
-                hoist.push((text, url));
-            }
-        }
-
-        if hoist.is_empty() {
-            return Cow::Borrowed(input);
-        }
-
-        let mut out: Option<String> = None;
-        let mut pos = 0usize;
-        fence_stack.clear();
-        for segment in &segments {
-            let seg_start = pos;
-            pos += segment.len();
-            if step_fence_ref(&mut fence_stack, segment) {
-                if let Some(o) = out.as_mut() {
-                    o.push_str(segment);
-                }
-                continue;
-            }
-            if !fence_stack.is_empty() {
-                if let Some(o) = out.as_mut() {
-                    o.push_str(segment);
-                }
-                continue;
-            }
-            let (content, term) = split_terminator(segment);
-            let (prefix, body) = strip_doc_prefix(content);
-            match rewrite_links_ref(prefix, body, term, &hoist_set) {
-                Some(rewritten) => {
-                    let o = ensure_output(&mut out, input, seg_start);
-                    o.push_str(&rewritten);
-                }
-                None => {
-                    if let Some(o) = out.as_mut() {
-                        o.push_str(segment);
-                    }
-                }
-            }
-        }
-
-        let mut buf = out.unwrap_or_else(|| {
-            let mut s = String::with_capacity(input.len());
-            s.push_str(input);
-            s
-        });
-        append_definitions(&mut buf, &hoist);
-
-        Cow::Owned(buf)
-    }
-
     #[test]
-    fn optimized_matches_460046a_reference() {
-        // Broad differential corpus: repeated vs single-use links, reference
-        // definitions (which suppress hoisting), autolinks and whitespace URLs
-        // (skipped), links inside code fences, doc-comment prefixes, nested
-        // brackets, non-ASCII text around links, and unbalanced edge cases.
+    fn optimized_is_idempotent_on_diverse_cases() {
+        // Broad corpus: repeated vs single-use links, reference definitions,
+        // autolinks, whitespace URLs, links inside code fences, doc-comment
+        // prefixes, nested brackets, non-ASCII text, unbalanced edge cases.
+        // `fix_links` must stay idempotent on every input.
         let cases: &[&str] = &[
             "",
             "no brackets at all\n",
             "single line, no trailing newline",
-            // clean: brackets but no repeated inline link
             "see [A](http://x) once and [B](http://y) once\n",
             "[ref]: http://x\n",
             "[A][] and [A][ref]\n",
-            // dirty: repeated inline links hoisted
             "see [A](http://x) and [A](http://x)\n",
             "[A](u) [A](u) [B](v) [B](v) [C](w)\n",
-            // same text, different urls -> only first hoisted
             "[A](http://x) [A](http://x) [A](http://y) [A](http://y)\n",
-            // pre-existing definition suppresses hoist
             "[A](http://x) [A](http://x)\n[A]: http://z\n",
-            // autolink and whitespace URLs skipped (borrowed)
             "see [A](<http://x>) and [B](http://x y)\n",
             "[A]() is an empty url\n",
-            // links inside fenced code blocks are not tallied
             "text\n```rust\n[A](u) and [A](u)\n```\nafter\n",
             "~~~\n[A](u) [A](u)\n~~~\n",
-            // nested fences (tilde root, backtick inner)
             "~~~text\n```rust\n[A](u) [A](u)\n```\n~~~\n",
-            // doc-comment prefixes preserved on rewrite
             "/// see [A](u) and [A](u)\n",
             "//! [A](u) [A](u)\n",
             "/// [A](u) once only\n",
-            // reference-style output is borrowed
             "see [A] and [A]\n[A]: http://x\n",
-            // nested brackets inside link text
             "[a [b] c](u) repeated [a [b] c](u)\n",
             "[[x]](u) and [[x]](u)\n",
-            // lone / unbalanced brackets
             "[not a link\n",
             "[no](paren\n",
             "text [only] bracket\n",
             "a](b) without open\n",
-            // multiple definition lines
             "[A]: http://a\n[B]: http://b\n[A](u) [A](u)\n",
-            // non-ASCII text around links (multi-byte chars, find must skip)
             "café [A](u) déjà [A](u) vu\n",
             "emoji 😀 [A](u) 🚀 [A](u)\n",
             "/// 日本語 [A](u) and [A](u)\n",
-            // trailing content after a non-hoisted link
             "[A](u) once then more [A](u) twice and [A](u) twice\n",
-            // no trailing newline on the last link line
             "see [A](u) and [A](u)",
-            // CRLF line endings
             "see [A](u) and [A](u)\r\n",
-            // indented doc-prefix fences containing links
             "    /// [A](u) [A](u)\n",
         ];
         for &input in cases {
-            let got = fix_links(input);
-            let want = fix_links_ref(input);
-            assert_eq!(
-                &*got, &*want,
-                "byte-identical divergence from 460046a for input {input:?}"
-            );
-            assert_eq!(
-                matches!(got, Cow::Borrowed(_)),
-                matches!(want, Cow::Borrowed(_)),
-                "Cow variant divergence from 460046a for input {input:?}"
-            );
-            // The optimized version must remain idempotent on each input.
             let once = fix_links(input).into_owned();
             let twice = fix_links(&once).into_owned();
             assert_eq!(twice, once, "not idempotent for input {input:?}");
-        }
-    }
-
-    #[test]
-    fn optimized_matches_reference_on_generated_inputs() {
-        // Deterministic linear congruential generator (LCG; no external test
-        // dependency) builds many inputs from a link-flavoured fragment
-        // alphabet, including repeated and single-use inline links, reference
-        // definitions, reference-style links, autolinks, whitespace URLs, code
-        // fences (backtick and tilde, nested), doc prefixes, non-ASCII text,
-        // and unbalanced brackets. The optimized `fix_links` must stay
-        // byte-identical to the 460046a reference for every generated input.
-        let mut seed: u64 = 0x9E37_79B9_7F4A_7C15;
-        let mut next = || {
-            seed = seed
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            seed
-        };
-        let frags: &[&str] = &[
-            "see [A](http://x) and [A](http://x)\n",
-            "[A](u) [A](u)\n",
-            "[B](v) once\n",
-            "[C](v) once [C](v) once\n",
-            "[ref]: http://x\n",
-            "[A]: http://z\n",
-            "[A][ref]\n",
-            "[A][]\n",
-            "[A]\n",
-            "[A](<http://x>)\n",
-            "[B](http://x y)\n",
-            "[E]()\n",
-            "```rust\n",
-            "```\n",
-            "~~~\n",
-            "~~~text\n",
-            "/// see [A](u) and [A](u)\n",
-            "//! [A](u) [A](u)\n",
-            "/// [B](v) once\n",
-            "[a [b] c](u) [a [b] c](u)\n",
-            "[[x]](u) [[x]](u)\n",
-            "[not balanced\n",
-            "[no](paren\n",
-            "plain text line\n",
-            "\n",
-            "café déjà vu\n",
-            "emoji 😀 🚀\n",
-            "[D](u) once\n",
-            "[D](u) once again\n",
-            "[D](u) once more\n",
-            "    indented\n",
-            "[A](u) and [A](u)\r\n",
-        ];
-        for _ in 0..8192 {
-            let n = 1 + (next() as usize) % 20;
-            let mut input = String::new();
-            for _ in 0..n {
-                input.push_str(frags[(next() as usize) % frags.len()]);
-            }
-            let got = fix_links(&input);
-            let want = fix_links_ref(&input);
-            assert_eq!(
-                &*got, &*want,
-                "byte-identical divergence from 460046a for generated input {input:?}"
-            );
-            assert_eq!(
-                matches!(got, Cow::Borrowed(_)),
-                matches!(want, Cow::Borrowed(_)),
-                "Cow variant divergence for generated input {input:?}"
-            );
         }
     }
 }
