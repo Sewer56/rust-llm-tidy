@@ -111,23 +111,11 @@ jobs:
           workspace-path: src
           use-cache: true
 
-  build-dotnet-library:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Build and Package .NET Wrapper
-        uses: Reloaded-Project/devops-rust-c-library-to-dotnet@v1
-        with:
-          csharp-project-path: src/bindings/csharp
-
   publish-crate:
     permissions:
       contents: write
 
-    needs: [format-check,semver-checks,build-and-test,build-cli,build-dotnet-library]
+    needs: [format-check,semver-checks,build-and-test,build-cli]
     # Publish only on tags
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
