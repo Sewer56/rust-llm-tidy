@@ -26,9 +26,13 @@ rust-llm-tidy-reorder = "0.1.0"
 
 ### CLI
 
-The binary exposes four subcommands: `fix` (realign GitHub-Flavored Markdown (GFM) tables), `reorder`
-(the original behavior), `check` (a read-only documentation linter), and `all`
-(fix, reorder, then check in one pass).
+The binary exposes five subcommands:
+
+- `fix` - realign GitHub-Flavored Markdown (GFM) tables
+- `reorder` - the original behavior
+- `vis` - clamp `pub` to its module's reach
+- `check` - a read-only documentation linter
+- `all` - fix, reorder, vis, then check in one pass
 
 ```bash
 # Reorder a file in place
@@ -56,10 +60,18 @@ rust-llm-tidy fix docs
 ```
 
 ```bash
+# Clamp `pub` to its module's reach (crate-aware by default)
+rust-llm-tidy vis src/lib.rs
+
+# Preview visibility clamping without modifying files
+rust-llm-tidy vis --dry-run src
+```
+
+```bash
 # Lint for missing docs, incomplete `# Errors`/`# Arguments` sections, placeholders, and test naming (read-only)
 rust-llm-tidy check src
 
-# Fix, reorder, then check in one pass
+# Fix, reorder, clamp `pub`, then check in one pass
 rust-llm-tidy all src
 ```
 
@@ -205,9 +217,10 @@ for sorting, grouping, and merging.
 
 - [rust-llm-tidy-model]: Shared source model - parse top-level items with spans, visibility, and doc comments; atomic I/O; line-multiset safety
 - [rust-llm-tidy-reorder]: Reordering library - reference-graph ordering of items into canonical 10-phase order
+- [rust-llm-tidy-vis]: Visibility narrowing - narrows bare `pub` items inside restricted-visibility inline modules to the module's visibility
 - [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/`# Arguments`, placeholder, and test-naming checks
 - [rust-llm-tidy-fix]: Table alignment - realigns GFM tables in `.rs` doc comments and `.md` files
-- [cli]: Unified command-line interface (`fix`, `reorder`, `check`, `all`)
+- [cli]: Unified command-line interface (`fix`, `reorder`, `vis`, `check`, `all`)
 
 ## Git Hook (optional)
 
@@ -248,6 +261,7 @@ Licensed under [Apache 2.0].
 [rust-llm-tidy crate documentation]: ./src/rust-llm-tidy-reorder/README.MD
 [rust-llm-tidy-model]: ./src/rust-llm-tidy-model/README.MD
 [rust-llm-tidy-reorder]: ./src/rust-llm-tidy-reorder/README.MD
+[rust-llm-tidy-vis]: ./src/rust-llm-tidy-vis/README.MD
 [rust-llm-tidy-lint]: ./src/rust-llm-tidy-lint/README.MD
 [rust-llm-tidy-fix]: ./src/rust-llm-tidy-fix/README.MD
 [cli]: ./src/cli/README.MD
