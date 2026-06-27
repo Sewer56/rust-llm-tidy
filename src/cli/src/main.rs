@@ -1,26 +1,29 @@
-//! `rust-llm-tidy` - fix, reorder, and lint Rust and Markdown source files.
+//! `rust-llm-tidy` - fix, reorder, narrow visibility, and lint Rust and
+//! Markdown source files.
 //!
-//! A unified CLI for three operations:
+//! A unified CLI for four operations:
 //!
 //! - **fix**: realign GitHub-Flavored Markdown (GFM) tables and fix nested fence delimiters in
 //!   `.rs` doc comments and `.md` files (auto-fixable).
 //! - **reorder**: reorder Rust source file items into a canonical 10-phase
 //!   ordering (the original behavior).
+//! - **vis**: narrow bare `pub` items nested inside restricted-visibility
+//!   inline modules to the module's visibility (crate-aware by default).
 //! - **check**: lint for missing documentation and incomplete `# Errors`
 //!   sections (read-only, never writes).
 //!
-//! Use `all` to run all three in one pass: fix (table alignment and nested
-//! fence delimiter safety) -> reorder (item ordering) -> check (report what
-//! remains).
+//! Use `all` to run all four in one pass: fix (table alignment) -> reorder
+//! (item ordering) -> vis (narrow visibility) -> check (report what remains).
 //!
 //! # Subcommands
 //!
-//! | Command   | Mutates?                 | Description                                        |
-//! | --------- | ------------------------ | -------------------------------------------------- |
-//! | `fix`     | yes (unless `--dry-run`) | Realign tables and fix nested fence markers        |
-//! | `reorder` | yes (unless `--dry-run`) | Reorder items into canonical order                 |
-//! | `check`   | no                       | Report documentation and test-naming lint findings |
-//! | `all`     | yes (unless `--dry-run`) | Fix, reorder, then check                           |
+//! | Command   | Mutates?                 | Description                                                                 |
+//! | --------- | ------------------------ | --------------------------------------------------------------------------- |
+//! | `fix`     | yes (unless `--dry-run`) | Realign GFM markdown tables                                                 |
+//! | `reorder` | yes (unless `--dry-run`) | Reorder items into canonical order                                          |
+//! | `vis`     | yes (unless `--dry-run`) | Narrow bare `pub` in restricted-visibility modules (crate-aware by default) |
+//! | `check`   | no                       | Report documentation and test-naming lint findings                          |
+//! | `all`     | yes (unless `--dry-run`) | Fix, reorder, vis, then check                                               |
 //!
 //! Multiple paths are accepted; each directory is expanded recursively.
 
@@ -35,6 +38,10 @@ use rust_llm_tidy_model::parse;
 use rust_llm_tidy_model::safety;
 use rust_llm_tidy_reorder::graph;
 use rust_llm_tidy_reorder::reorder::Permutation;
+use rust_llm_tidy_vis::{
+    ModuleTree, ReexportSet, build_module_tree, collect_crate_reexports, discover_crate_root,
+    narrow_vis_in_tree,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -48,22 +55,36 @@ struct Cli {
     command: Command,
 }
 
+/// Crate-aware context for the `vis` step: a prebuilt module tree (per-file
+/// floor) + crate-wide re-export set, built ONCE before iterating files.
+/// `None` when crate-root discovery fails (standalone file); each file is then
+/// narrowed with `floor = None` and a per-file re-export guard.
+struct VisContext {
+    tree: ModuleTree,
+    reexports: ReexportSet,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Reorder items into canonical 10-phase order.
     ///
     /// Mutates files in place unless --dry-run is given.
     Reorder(PathsArgs),
+    /// Narrow bare `pub` items nested inside restricted-visibility inline
+    /// modules to the module's visibility (crate-aware by default).
+    ///
+    /// Mutates files in place unless --dry-run is given.
+    Vis(PathsArgs),
     /// Check documentation coverage and error sections.
     ///
     /// Read-only: never writes files. Exits non-zero when any error-severity
     /// diagnostic is found.
     Check(PathsArgs),
-    /// Fix tables and nested fence delimiters, reorder, then check in one pass.
+    /// Fix table alignment, reorder, narrow visibility, then check in one pass.
     ///
     /// Collects `.rs` and `.md` files. Markdown files are fixed (table
-    /// alignment and fence delimiter safety); Rust files are fixed, reordered,
-    /// and checked. Mutates files unless --dry-run is given.
+    /// alignment); Rust files are fixed, reordered, visibility-narrowed, and
+    /// checked. Mutates files unless --dry-run is given.
     All(PathsArgs),
     /// Fix auto-fixable style issues (markdown table alignment and nested
     /// fence delimiter safety).
@@ -75,7 +96,7 @@ enum Command {
 /// Shared path and dry-run arguments for every subcommand.
 ///
 /// `--dry-run` is accepted by all subcommands; for `check` it is a no-op
-/// (checking never writes anyway).
+/// (checking is always read-only).
 #[derive(Args)]
 struct PathsArgs {
     /// Path(s) to the Rust source file(s) or directory(s) to process. Each
@@ -84,8 +105,9 @@ struct PathsArgs {
     #[arg(required = true)]
     paths: Vec<PathBuf>,
 
-    /// For `reorder`/`fix`/`all`: print results to stdout instead of modifying
-    /// files. For `check`: accepted but ignored (checking is always read-only).
+    /// For `reorder`/`fix`/`vis`/`all`: print results to stdout instead of
+    /// modifying files. For `check`: accepted but ignored (checking is always
+    /// read-only).
     #[arg(long)]
     dry_run: bool,
 }
@@ -99,6 +121,7 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Reorder(args) => run_reorder(args),
+        Command::Vis(args) => run_vis(args),
         Command::Check(args) => run_check(args),
         Command::All(args) => run_all(args),
         Command::Fix(args) => run_fix(args),
@@ -124,6 +147,9 @@ fn run_all(args: PathsArgs) -> anyhow::Result<()> {
     let mut error_count = 0usize;
     let mut failed = Vec::new();
 
+    // Build VisContext once for the crate-aware default in the vis step.
+    let ctx = resolve_vis_context(&paths);
+
     for path in &paths {
         // Fix table alignment first (auto-fixable formatting).
         if let Err(e) = fix_file(path, args.dry_run, multiple_files) {
@@ -143,6 +169,15 @@ fn run_all(args: PathsArgs) -> anyhow::Result<()> {
 
         // Reorder next (fixes ordering). Failures abort the check for this file.
         if let Err(e) = reorder_file(path, args.dry_run, multiple_files) {
+            eprintln!("error processing {}: {e:?}", path.display());
+            failed.push(path);
+            continue;
+        }
+        // Narrow visibility next (fixes misleading bare `pub` inside
+        // restricted-visibility inline modules). Runs after reorder (canonical
+        // item layout) and before check (narrowing can flip VisibilityTier and
+        // newly suppress/trigger missing-docs diagnostics).
+        if let Err(e) = vis_file(path, args.dry_run, multiple_files, ctx.as_ref()) {
             eprintln!("error processing {}: {e:?}", path.display());
             failed.push(path);
             continue;
@@ -239,6 +274,29 @@ fn run_reorder(args: PathsArgs) -> anyhow::Result<()> {
 
     for path in &paths {
         if let Err(e) = reorder_file(path, args.dry_run, multiple_files) {
+            eprintln!("error processing {}: {e:?}", path.display());
+            failed.push(path);
+        }
+    }
+
+    if !failed.is_empty() {
+        bail!("failed to process {} file(s)", failed.len());
+    }
+
+    Ok(())
+}
+
+/// `vis` - crate-aware when a crate root is discovered, else standalone.
+fn run_vis(args: PathsArgs) -> anyhow::Result<()> {
+    let paths = resolve_all(&args.paths, &["rs"])?;
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let ctx = resolve_vis_context(&paths);
+    let multiple_files = paths.len() > 1;
+    let mut failed = Vec::new();
+    for path in &paths {
+        if let Err(e) = vis_file(path, args.dry_run, multiple_files, ctx.as_ref()) {
             eprintln!("error processing {}: {e:?}", path.display());
             failed.push(path);
         }
@@ -362,6 +420,127 @@ fn resolve_all(inputs: &[PathBuf], exts: &[&str]) -> anyhow::Result<Vec<PathBuf>
         paths.extend(resolved);
     }
     Ok(paths)
+}
+
+/// Build the crate-aware [`VisContext`] from the first input path. Returns
+/// `None` (with a printed warning) when crate-root discovery fails, so
+/// standalone files keep working via `narrow_vis_in_tree` with `floor = None`
+/// and a per-file re-export guard.
+fn resolve_vis_context(paths: &[PathBuf]) -> Option<VisContext> {
+    let first = paths.first()?;
+    match discover_crate_root(first) {
+        Ok(root) => {
+            // Canonicalize the crate root so it matches the canonicalized source
+            // paths collected below.
+            //
+            // `discover_crate_root` returns the owning package's `src_path`
+            // from `cargo metadata`, which is not canonicalized. On platforms
+            // where the temp dir is behind a symlink (e.g. macOS `/tmp` ->
+            // `/private/tmp`, or any symlinked `TMPDIR`):
+            //
+            // - the BFS root lookup in `build_module_tree` (`parsed.get(&path)`)
+            //   would miss (root key is non-canonical, `parsed` keys are canonical)
+            // - the tree ends up with only the root node: no children resolved,
+            //   no warnings emitted
+            // - every file silently degrades to standalone narrowing
+            //
+            // Canonicalizing here keeps the BFS root consistent with the
+            // canonicalized source paths.
+            let root = fs::canonicalize(&root).unwrap_or(root);
+            // Collect every .rs file under the crate src dir, parse, build tree.
+            let crate_dir = root.parent().unwrap_or_else(|| Path::new("."));
+            let mut rs_files: Vec<PathBuf> = Vec::new();
+            let _ = collect_files(crate_dir, &["rs"], &mut rs_files);
+            let mut sources: Vec<(PathBuf, String)> = Vec::new();
+            for f in &rs_files {
+                if let Ok(src) = fs::read_to_string(f) {
+                    // Canonicalize so tree keys match the per-file floor_for lookup
+                    // (collect_files yields absolute paths; CLI inputs may be relative).
+                    sources.push((fs::canonicalize(f).unwrap_or_else(|_| f.clone()), src));
+                }
+            }
+            let parsed: Vec<syn::File> = sources
+                .iter()
+                .filter_map(|(_, s)| syn::parse_str(s).ok())
+                .collect();
+            let tree = match build_module_tree(&root, &sources) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("warning: failed to build module tree ({e:?})");
+                    return None;
+                }
+            };
+            for w in tree.warnings() {
+                eprintln!("warning: {w}");
+            }
+            let reexports = collect_crate_reexports(parsed.iter());
+            Some(VisContext { tree, reexports })
+        }
+        Err(e) => {
+            eprintln!("warning: crate-aware vis unavailable ({e}); narrowing standalone");
+            None
+        }
+    }
+}
+
+/// Narrow visibility in a single source file. With a [`VisContext`] (crate
+/// root discovered) the file's tree floor + crate-wide re-export guard apply,
+/// but only when the file is a node in the resolved crate module tree; a file
+/// outside that tree (e.g. an integration test, example, bench, or a fixture
+/// under `tests/`) is narrowed standalone, since the crate-wide re-export set
+/// is built only from the crate `src/` dir and would miss the file's own
+/// `pub use`. Without a [`VisContext`] (no crate root) every file narrows
+/// standalone with `floor = None` and a per-file re-export guard.
+fn vis_file(
+    path: &Path,
+    dry_run: bool,
+    multiple_files: bool,
+    ctx: Option<&VisContext>,
+) -> anyhow::Result<()> {
+    let source =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+
+    let output = match ctx {
+        Some(VisContext { tree, reexports }) => {
+            // Canonicalize the lookup key to match the tree's canonical keys.
+            let canon = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+            if tree.contains(&canon) {
+                // File is a node in the resolved crate module tree: apply the
+                // tree floor + crate-wide re-export guard (built from every .rs
+                // under the crate src dir, so cross-file re-exports are sound).
+                let floor = tree.floor_for(&canon);
+                narrow_vis_in_tree(&source, floor, reexports)
+            } else {
+                // File is outside the crate's src module tree (integration test,
+                // example, bench, stray file under tests/). The crate-wide
+                // re-export set would miss this file's own `pub use`, so narrow
+                // standalone with a per-file re-export guard instead.
+                let parsed: syn::File = syn::parse_str(&source)?;
+                let per_file = collect_crate_reexports(std::iter::once(&parsed));
+                narrow_vis_in_tree(&source, None, &per_file)
+            }
+        }
+        None => {
+            // Standalone: build a per-file re-export guard from this file only.
+            let parsed: syn::File = syn::parse_str(&source)?;
+            let reexports = collect_crate_reexports(std::iter::once(&parsed));
+            narrow_vis_in_tree(&source, None, &reexports)
+        }
+    }
+    .with_context(|| format!("failed to narrow {}", path.display()))?;
+
+    if dry_run {
+        if multiple_files {
+            print!("// {}\n{}", path.display(), output);
+        } else {
+            print!("{output}");
+        }
+    } else if output != source {
+        io::atomic_write(path, &output)
+            .with_context(|| format!("failed to write {}", path.display()))?;
+    }
+
+    Ok(())
 }
 
 /// Resolve `path` into a sorted list of files with matching extensions.

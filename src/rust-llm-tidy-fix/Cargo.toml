@@ -22,4 +22,4 @@ harness = false
 
 [dev-dependencies]
 # Dev-only: keeps the published crate zero-dependency.
-criterion = "0.5"
+criterion = "0.8"
