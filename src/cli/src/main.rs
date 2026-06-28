@@ -3,8 +3,8 @@
 //!
 //! A unified CLI for four operations:
 //!
-//! - **fix**: realign GitHub-Flavored Markdown (GFM) tables and fix nested fence delimiters in
-//!   `.rs` doc comments and `.md` files (auto-fixable).
+//! - **fix**: realign GitHub-Flavored Markdown (GFM) tables, fix nested fence delimiters, and
+//!   hoist repeated inline links in `.rs` doc comments and `.md` files (auto-fixable).
 //! - **reorder**: reorder Rust source file items into a canonical 10-phase
 //!   ordering (the original behavior).
 //! - **vis**: narrow bare `pub` items nested inside restricted-visibility
@@ -12,14 +12,15 @@
 //! - **check**: lint for missing documentation and incomplete `# Errors`
 //!   sections (read-only, never writes).
 //!
-//! Use `all` to run all four in one pass: fix (table alignment) -> reorder
-//! (item ordering) -> vis (narrow visibility) -> check (report what remains).
+//! Use `all` to run all four in one pass: fix (table alignment, nested fence
+//! delimiter safety, and inline-link hoisting) -> reorder (item ordering) -> vis (narrow visibility)
+//! -> check (report what remains).
 //!
 //! # Subcommands
 //!
 //! | Command   | Mutates?                 | Description                                                                 |
 //! | --------- | ------------------------ | --------------------------------------------------------------------------- |
-//! | `fix`     | yes (unless `--dry-run`) | Realign GFM markdown tables                                                 |
+//! | `fix`     | yes (unless `--dry-run`) | Realign tables, fix fence markers, hoist links                               |
 //! | `reorder` | yes (unless `--dry-run`) | Reorder items into canonical order                                          |
 //! | `vis`     | yes (unless `--dry-run`) | Narrow bare `pub` in restricted-visibility modules (crate-aware by default) |
 //! | `check`   | no                       | Report documentation and test-naming lint findings                          |
@@ -80,14 +81,15 @@ enum Command {
     /// Read-only: never writes files. Exits non-zero when any error-severity
     /// diagnostic is found.
     Check(PathsArgs),
-    /// Fix table alignment, reorder, narrow visibility, then check in one pass.
+    /// Fix tables, nested fence delimiters, and repeated inline links, reorder,
+    /// narrow visibility, then check in one pass.
     ///
     /// Collects `.rs` and `.md` files. Markdown files are fixed (table
     /// alignment); Rust files are fixed, reordered, visibility-narrowed, and
     /// checked. Mutates files unless --dry-run is given.
     All(PathsArgs),
-    /// Fix auto-fixable style issues (markdown table alignment and nested
-    /// fence delimiters).
+    /// Fix auto-fixable style issues (markdown table alignment, nested
+    /// fence delimiter safety, and repeated inline links).
     ///
     /// Mutates files in place unless --dry-run is given.
     Fix(PathsArgs),
@@ -132,11 +134,11 @@ fn main() -> anyhow::Result<()> {
 // Subcommand handlers
 // ---------------------------------------------------------------------------
 
-/// `all` - fix (tables and fences), reorder, then check in one pass.
+/// `all` - fix (tables, fences, and links), reorder, then check in one pass.
 ///
 /// Collects both `.rs` and `.md` files. Markdown files are only fixed (table
-/// alignment and fence delimiters); reordering and checking apply only
-/// to Rust source files.
+/// alignment, fence delimiter safety, and inline-link hoisting); reordering
+/// and checking apply only to Rust source files.
 fn run_all(args: PathsArgs) -> anyhow::Result<()> {
     let paths = resolve_all(&args.paths, &["rs", "md"])?;
     if paths.is_empty() {
@@ -238,7 +240,8 @@ fn run_check(args: PathsArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// `fix` - realign GFM markdown tables and fix nested fence delimiters in place.
+/// `fix` - realign GFM markdown tables, fix nested fence delimiters, and hoist
+/// repeated inline links in place.
 fn run_fix(args: PathsArgs) -> anyhow::Result<()> {
     let paths = resolve_all(&args.paths, &["rs", "md"])?;
     if paths.is_empty() {
@@ -339,10 +342,12 @@ fn check_file(path: &Path) -> anyhow::Result<usize> {
 // Shared path resolution
 // ---------------------------------------------------------------------------
 
-/// Fix table alignment and nested fence delimiters in a single file.
+/// Fix table alignment, nested fence delimiters, and repeated inline links in a
+/// single file.
 ///
-/// Reads the source, runs [`fix::fix_tables`] then [`fix::fix_fences`], and
-/// writes the result back via [`io::atomic_write`] unless `--dry-run` is given.
+/// Reads the source, runs [`fix::fix_tables`], [`fix::fix_fences`], then
+/// [`fix::fix_links`], and writes the result back via [`io::atomic_write`]
+/// unless `--dry-run` is given.
 ///
 /// On dry-run with multiple files, a neutral `<!-- {path} -->` HTML-comment
 /// header is emitted (valid in both markdown and harmless in stdout).
@@ -353,6 +358,7 @@ fn fix_file(path: &Path, dry_run: bool, multiple_files: bool) -> anyhow::Result<
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let out = fix::fix_tables(&source);
     let out = fix::fix_fences(&out);
+    let out = fix::fix_links(&out);
     if dry_run {
         if multiple_files {
             print!("<!-- {} -->\n{}", path.display(), out);

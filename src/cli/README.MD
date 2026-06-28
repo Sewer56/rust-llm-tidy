@@ -27,7 +27,7 @@ cargo build --release -p rust-llm-tidy-cli
 
 The binary exposes five subcommands:
 
-- `fix` - realign GitHub-Flavored Markdown (GFM) tables
+- `fix` - realign GitHub-Flavored Markdown (GFM) tables, fix nested fence delimiters, and hoist repeated inline links
 - `reorder` - reorder items
 - `vis` - clamp `pub` to its module's reach
 - `check` - read-only documentation linter
@@ -48,7 +48,7 @@ rust-llm-tidy reorder --dry-run src
 ```
 
 ```bash
-# Realign markdown tables and fix nested code fences in .rs doc comments and .md files
+# Realign GFM tables, fix nested fence delimiters, and hoist repeated inline links in .rs doc comments and .md files
 rust-llm-tidy fix README.md
 
 # Preview fixes without modifying files

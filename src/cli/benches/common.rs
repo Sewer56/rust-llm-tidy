@@ -9,6 +9,10 @@
 //! - `fixtures/vis/`: `crate_small_lib`, `crate_small_foo`,
 //!   `crate_medium_lib`, `crate_medium_foo`, `crate_medium_bar` - multi-file
 //!   crate fixtures for the crate-aware vis bench.
+//! - `fixtures/fences/`: named `<size>_<clean|dirty>` (plus `doc_*`) by fence
+//!   outcome (`clean` = no nested same-marker fences, a borrowed no-op).
+//! - `fixtures/links/`: named `<size>_<clean|dirty>` (plus `doc_*`) by link
+//!   outcome (`clean` = no inline link repeated 2+ times, a borrowed no-op).
 //!
 //! Each fixture is a real `.rs` file from an open-source project, embedded
 //! verbatim with [`include_str!`] (byte-exact copies, so the benchmarks
@@ -95,6 +99,34 @@ pub const FENCE_FIXTURES: &[(&str, &str)] = &[
     ),
     ("doc/clean", include_str!("fixtures/fences/doc_clean.rs")),
     ("doc/dirty", include_str!("fixtures/fences/doc_dirty.rs")),
+];
+/// Link-hoist benchmark fixtures: `(name, source)` pairs, named by size tier and
+/// link state.
+///
+/// `clean` fixtures contain inline links but none repeated 2+ times, so
+/// [`fix_links`] returns the input borrowed (a no-op that still exercises the
+/// tally pass). `dirty` fixtures contain at least one `[text](url)` pair seen
+/// 2+ times, which is rewritten to `[text]` plus an appended `[text]: url`
+/// definition. The `doc/*` variants are Rust source with `///`/`//!`
+/// inline links, exercising the doc-prefix stripping path.
+///
+/// [`fix_links`]: rust_llm_tidy_fix::fix_links
+#[allow(dead_code)] // each bench compiles `common` separately, using one set
+pub const LINK_FIXTURES: &[(&str, &str)] = &[
+    ("small/clean", include_str!("fixtures/links/small_clean.md")),
+    ("small/dirty", include_str!("fixtures/links/small_dirty.md")),
+    (
+        "medium/clean",
+        include_str!("fixtures/links/medium_clean.md"),
+    ),
+    (
+        "medium/dirty",
+        include_str!("fixtures/links/medium_dirty.md"),
+    ),
+    ("large/clean", include_str!("fixtures/links/large_clean.md")),
+    ("large/dirty", include_str!("fixtures/links/large_dirty.md")),
+    ("doc/clean", include_str!("fixtures/links/doc_clean.rs")),
+    ("doc/dirty", include_str!("fixtures/links/doc_dirty.rs")),
 ];
 /// Lint benchmark fixtures: `(name, source)` pairs, named by lint state.
 ///

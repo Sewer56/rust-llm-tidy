@@ -13,8 +13,10 @@
 //! inner-tilde alternation is returned unchanged (as a borrowed [`Cow`]).
 
 use crate::tables::{split_terminator, strip_doc_prefix};
-use scan::{is_fence_candidate, parse_fence};
+use scan::is_fence_candidate;
 use std::borrow::Cow;
+// Re-exported for `crate::fences::parse_fence` callers (e.g. `links`).
+pub(crate) use scan::parse_fence;
 
 mod scan;
 
@@ -550,11 +552,12 @@ deep
 
     #[test]
     fn optimized_matches_reference_on_generated_inputs() {
-        // Deterministic LCG (no external test dependency) builds many inputs
-        // from a fence-flavoured fragment alphabet, including ASCII and
-        // Unicode leading whitespace, doc prefixes, mixed markers, run lengths,
-        // and info strings. The optimized `fix_fences` must stay byte-identical
-        // to the bc51750 reference for every generated input.
+        // Deterministic linear congruential generator (LCG; no external test
+        // dependency) builds many inputs from a fence-flavoured fragment
+        // alphabet, including ASCII and Unicode leading whitespace, doc
+        // prefixes, mixed markers, run lengths, and info strings. The optimized
+        // `fix_fences` must stay byte-identical to the bc51750 reference for
+        // every generated input.
         let mut seed: u64 = 0x9E37_79B9_7F4A_7C15;
         let mut next = || {
             seed = seed
