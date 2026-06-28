@@ -37,10 +37,14 @@
 //! assert!(matches!(fix_links(expected), Cow::Borrowed(_)));
 //! ```
 
-use crate::fences::parse_fence;
 use crate::tables::{split_terminator, strip_doc_prefix};
+use rewrite::{append_definitions, rewrite_links, tally_links};
+use scan::{definition_text, step_fence};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+
+mod rewrite;
+mod scan;
 
 /// Hoist repeated inline links `[text](url)` to reference definitions.
 ///
@@ -148,216 +152,6 @@ pub fn fix_links(input: &str) -> Cow<'_, str> {
     Cow::Owned(buf)
 }
 
-/// Update the open-fence stack for the (doc-prefix-stripped) line `body` and
-/// report whether it is a fence delimiter line. Reuses the byte-exact
-/// [`crate::fences::parse_fence`], so fence skipping stays in lock-step with
-/// `fix_fences`.
-///
-/// `body` is the result of [`strip_doc_prefix`], so the `///` / `//!` marker
-/// (and its indent) is already gone; only an optional inner indent may remain.
-fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
-    // Cheap candidate check: after leading whitespace, a fence must start with
-    // a backtick/tilde run. Non-ASCII-leading lines defer to the full Unicode
-    // `trim_start` (sound superset gate, identical to `fix_fences`'s
-    // `is_fence_candidate`), so typical code/prose lines skip the pipeline.
-    if !is_fence_candidate_body(body) {
-        return false;
-    }
-    let stripped = body.trim_start();
-    let Some((marker, run_len, info)) = parse_fence(stripped) else {
-        return false;
-    };
-    let is_closer = info.is_empty()
-        && stack
-            .last()
-            .map(|(m, r)| *m == marker && *r <= run_len)
-            .unwrap_or(false);
-    if is_closer {
-        stack.pop();
-    } else {
-        stack.push((marker, run_len));
-    }
-    true
-}
-
-/// Cheaply decide whether the doc-prefix-stripped `body` could begin a fence
-/// under the Unicode `body.trim_start()` pipeline.
-///
-/// Sound superset gate (mirrors `fix_fences`'s `is_fence_candidate`): returns
-/// `true` for every line the pipeline treats as a fence, plus a few extras the
-/// pipeline emits verbatim. The common case - an ASCII line whose first
-/// non-whitespace byte is not a marker run - short-circuits with a byte scan.
-///
-/// Whitespace in two tiers: ASCII whitespace (`0x09..=0x0d` plus `0x20`, the
-/// ASCII members of [`char::is_whitespace`]) is skipped directly; a leading
-/// non-ASCII byte (`>= 0x80`) may be Unicode whitespace before a fence, so such
-/// lines defer to the full pipeline.
-#[inline]
-fn is_fence_candidate_body(body: &str) -> bool {
-    let bytes = body.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() && matches!(bytes[i], 0x09..=0x0d | 0x20) {
-        i += 1;
-    }
-    match bytes.get(i).copied() {
-        // ASCII first byte: a fence - after the pipeline's Unicode trim - can
-        // only start with a marker run.
-        Some(b) if b <= 0x7f => b == b'`' || b == b'~',
-        // Non-ASCII leading byte: may be Unicode whitespace before a fence;
-        // defer to the full pipeline, which handles Unicode whitespace exactly.
-        Some(_) => true,
-        // Line was whitespace only (or empty): not a fence.
-        None => false,
-    }
-}
-
-/// If `body` is a reference-definition line (`[text]: url`), return the link
-/// `text`. Otherwise return `None`.
-#[inline]
-fn definition_text(body: &str) -> Option<&str> {
-    let s = body.trim_start();
-    let after = s.strip_prefix('[')?;
-    let close = after.find(']')?;
-    let text = &after[..close];
-    let rest = after[close + 1..].strip_prefix(':')?;
-    // CommonMark requires whitespace (or end-of-line) after the colon.
-    if rest.is_empty() || rest.starts_with(' ') || rest.starts_with('\t') {
-        Some(text)
-    } else {
-        None
-    }
-}
-
-/// Scan `body` for inline links `[text](url)` and tally each `(text, url)`,
-/// recording first-seen order in `order`. Reference-style, autolink, and
-/// whitespace-URL forms never match the inline shape, so they are skipped.
-///
-/// Jumps between `[` bytes with [`str::find`] instead of walking every
-/// character: the cost is O(number of brackets), not O(text). `[` is ASCII, so
-/// byte offsets are valid char boundaries and behavior is identical to a
-/// char-by-char scan.
-fn tally_links<'a>(
-    body: &'a str,
-    counts: &mut HashMap<(&'a str, &'a str), usize>,
-    order: &mut Vec<(&'a str, &'a str)>,
-) {
-    let mut i = 0usize;
-    while let Some(rel) = body[i..].find('[') {
-        let open = i + rel;
-        if let Some((text, url, end)) = parse_inline_link(body, open) {
-            let prev = counts.get(&(text, url)).copied().unwrap_or(0);
-            if prev == 0 {
-                order.push((text, url));
-            }
-            counts.insert((text, url), prev + 1);
-            i = end;
-            continue;
-        }
-        // Not an inline link: step past this `[` (ASCII, so +1 is a char
-        // boundary) and continue the search.
-        i = open + 1;
-    }
-}
-
-/// Rewrite eligible inline links in `body` to `[text]`, then re-attach `prefix`
-/// and `term`. Returns `Some(new_segment)` if any link was rewritten, else
-/// `None` (caller emits the original segment verbatim).
-///
-/// Output is allocated lazily: only once the first hoisted link is found. If
-/// no link in `body` is hoisted, returns `None` with zero allocation. `last`
-/// tracks how far the verbatim prefix of `body` has been emitted; non-hoisted
-/// inline links leave `last` alone so their bytes are emitted verbatim in a
-/// later gap (or the trailing copy), exactly like the eager version.
-fn rewrite_links(
-    prefix: &str,
-    body: &str,
-    term: &str,
-    hoist: &HashSet<(&str, &str)>,
-) -> Option<String> {
-    let mut out: Option<String> = None;
-    let mut last = 0usize;
-    let mut i = 0usize;
-    while let Some(rel) = body[i..].find('[') {
-        let open = i + rel;
-        match parse_inline_link(body, open) {
-            Some((text, url, end)) if hoist.contains(&(text, url)) => {
-                let o = out.get_or_insert_with(|| {
-                    let mut s = String::with_capacity(prefix.len() + body.len() + term.len());
-                    s.push_str(prefix);
-                    s
-                });
-                o.push_str(&body[last..open]);
-                o.push('[');
-                o.push_str(text);
-                o.push(']');
-                last = end;
-                i = end;
-            }
-            // Inline link but not hoisted: skip past it. `last` is unchanged so
-            // its verbatim bytes are emitted in a later gap (or trailing copy).
-            Some((_text, _url, end)) => i = end,
-            // Lone `[` that is not an inline link: step one byte (ASCII
-            // boundary) and continue the search.
-            None => i = open + 1,
-        }
-    }
-    let mut o = out?;
-    o.push_str(&body[last..]);
-    o.push_str(term);
-    Some(o)
-}
-
-/// If `body` at byte index `open` (`[`) opens an inline link `[text](url)`,
-/// return `(text, url, end)` where `end` is one past the closing `)`.
-/// Returns `None` for reference-style forms, autolink `<...>` URLs, URLs
-/// containing whitespace/newline, or unbalanced brackets.
-#[inline]
-fn parse_inline_link(body: &str, open: usize) -> Option<(&str, &str, usize)> {
-    let bytes = body.as_bytes();
-    // Walk to the matching `]`, allowing balanced nested `[ ]`.
-    let mut depth = 1usize;
-    let mut j = open + 1;
-    while j < bytes.len() {
-        match bytes[j] {
-            b'[' => depth += 1,
-            b']' => {
-                depth -= 1;
-                if depth == 0 {
-                    break;
-                }
-            }
-            _ => {}
-        }
-        j += 1;
-    }
-    if depth != 0 || j >= bytes.len() {
-        return None;
-    }
-    let close_bracket = j;
-    let text = &body[open + 1..close_bracket];
-    // Require `(` immediately after `]`.
-    let paren_open = close_bracket + 1;
-    if paren_open >= bytes.len() || bytes[paren_open] != b'(' {
-        return None;
-    }
-    // Walk to `)`, rejecting whitespace/newline inside the URL.
-    let mut k = paren_open + 1;
-    while k < bytes.len() && bytes[k] != b')' {
-        if matches!(bytes[k], b' ' | b'\t' | b'\n' | b'\r') {
-            return None;
-        }
-        k += 1;
-    }
-    if k >= bytes.len() {
-        return None;
-    }
-    let url = &body[paren_open + 1..k];
-    if url.is_empty() || url.starts_with('<') {
-        return None;
-    }
-    Some((text, url, k + 1))
-}
-
 /// Lazily allocate `out`, copying the verbatim prefix `input[..seg_start]`.
 #[inline]
 fn ensure_output<'a>(out: &'a mut Option<String>, input: &str, seg_start: usize) -> &'a mut String {
@@ -366,23 +160,6 @@ fn ensure_output<'a>(out: &'a mut Option<String>, input: &str, seg_start: usize)
         s.push_str(&input[..seg_start]);
         s
     })
-}
-
-/// Append hoisted `[text]: url` definitions at the end of `buf`, each on its
-/// own line. Ensures `buf` ends with a newline so the first definition starts
-/// on its own line; if the document already ends with a reference definition
-/// the new definitions continue that block contiguously.
-fn append_definitions(buf: &mut String, hoist: &[(&str, &str)]) {
-    if !buf.ends_with('\n') {
-        buf.push('\n');
-    }
-    for &(text, url) in hoist {
-        buf.push('[');
-        buf.push_str(text);
-        buf.push_str("]: ");
-        buf.push_str(url);
-        buf.push('\n');
-    }
 }
 
 #[cfg(test)]

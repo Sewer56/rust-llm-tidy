@@ -1,0 +1,102 @@
+//! Two-pass core for [`super::fix_links`]: tally eligible inline links, rewrite
+//! hoisted ones to reference form, and append the trailing `[text]: url`
+//! definitions.
+
+use super::scan::parse_inline_link;
+use std::collections::{HashMap, HashSet};
+
+/// Scan `body` for inline links `[text](url)` and tally each `(text, url)`,
+/// recording first-seen order in `order`. Reference-style, autolink, and
+/// whitespace-URL forms never match the inline shape, so they are skipped.
+///
+/// Jumps between `[` bytes with [`str::find`] instead of walking every
+/// character: the cost is O(number of brackets), not O(text). `[` is ASCII, so
+/// byte offsets are valid char boundaries and behavior is identical to a
+/// char-by-char scan.
+pub(super) fn tally_links<'a>(
+    body: &'a str,
+    counts: &mut HashMap<(&'a str, &'a str), usize>,
+    order: &mut Vec<(&'a str, &'a str)>,
+) {
+    let mut i = 0usize;
+    while let Some(rel) = body[i..].find('[') {
+        let open = i + rel;
+        if let Some((text, url, end)) = parse_inline_link(body, open) {
+            let prev = counts.get(&(text, url)).copied().unwrap_or(0);
+            if prev == 0 {
+                order.push((text, url));
+            }
+            counts.insert((text, url), prev + 1);
+            i = end;
+            continue;
+        }
+        // Not an inline link: step past this `[` (ASCII, so +1 is a char
+        // boundary) and continue the search.
+        i = open + 1;
+    }
+}
+
+/// Rewrite eligible inline links in `body` to `[text]`, then re-attach `prefix`
+/// and `term`. Returns `Some(new_segment)` if any link was rewritten, else
+/// `None` (caller emits the original segment verbatim).
+///
+/// Output is allocated lazily: only once the first hoisted link is found. If
+/// no link in `body` is hoisted, returns `None` with zero allocation. `last`
+/// tracks how far the verbatim prefix of `body` has been emitted; non-hoisted
+/// inline links leave `last` alone so their bytes are emitted verbatim in a
+/// later gap (or the trailing copy), exactly like the eager version.
+pub(super) fn rewrite_links(
+    prefix: &str,
+    body: &str,
+    term: &str,
+    hoist: &HashSet<(&str, &str)>,
+) -> Option<String> {
+    let mut out: Option<String> = None;
+    let mut last = 0usize;
+    let mut i = 0usize;
+    while let Some(rel) = body[i..].find('[') {
+        let open = i + rel;
+        match parse_inline_link(body, open) {
+            Some((text, url, end)) if hoist.contains(&(text, url)) => {
+                let o = out.get_or_insert_with(|| {
+                    let mut s = String::with_capacity(prefix.len() + body.len() + term.len());
+                    s.push_str(prefix);
+                    s
+                });
+                o.push_str(&body[last..open]);
+                o.push('[');
+                o.push_str(text);
+                o.push(']');
+                last = end;
+                i = end;
+            }
+            // Inline link but not hoisted: skip past it. `last` is unchanged so
+            // its verbatim bytes are emitted in a later gap (or trailing copy).
+            Some((_text, _url, end)) => i = end,
+            // Lone `[` that is not an inline link: step one byte (ASCII
+            // boundary) and continue the search.
+            None => i = open + 1,
+        }
+    }
+    let mut o = out?;
+    o.push_str(&body[last..]);
+    o.push_str(term);
+    Some(o)
+}
+
+/// Append hoisted `[text]: url` definitions at the end of `buf`, each on its
+/// own line. Ensures `buf` ends with a newline so the first definition starts
+/// on its own line; if the document already ends with a reference definition
+/// the new definitions continue that block contiguously.
+pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)]) {
+    if !buf.ends_with('\n') {
+        buf.push('\n');
+    }
+    for &(text, url) in hoist {
+        buf.push('[');
+        buf.push_str(text);
+        buf.push_str("]: ");
+        buf.push_str(url);
+        buf.push('\n');
+    }
+}
