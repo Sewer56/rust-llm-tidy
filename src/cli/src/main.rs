@@ -30,7 +30,6 @@
 
 use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand};
-use proc_macro2::fallback::force;
 use rust_llm_tidy_fix as fix;
 use rust_llm_tidy_lint::check;
 use rust_llm_tidy_model::io;
@@ -40,8 +39,8 @@ use rust_llm_tidy_model::safety;
 use rust_llm_tidy_reorder::graph;
 use rust_llm_tidy_reorder::reorder::Permutation;
 use rust_llm_tidy_vis::{
-    ModuleTree, ReexportSet, build_module_tree, collect_crate_reexports, discover_crate_root,
-    narrow_vis_in_tree,
+    ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
+    discover_crate_root, narrow_vis_in_tree,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -115,10 +114,6 @@ struct PathsArgs {
 }
 
 fn main() -> anyhow::Result<()> {
-    // Span-location support: proc_macro2 needs this for accurate span
-    // byte ranges when parsing with syn.
-    force();
-
     let cli = Cli::parse();
 
     match cli.command {
@@ -134,11 +129,11 @@ fn main() -> anyhow::Result<()> {
 // Subcommand handlers
 // ---------------------------------------------------------------------------
 
-/// `all` - fix (tables, fences, and links), reorder, then check in one pass.
+/// `all` - fix (tables, fences, and links), reorder, narrow visibility, then check in one pass.
 ///
 /// Collects both `.rs` and `.md` files. Markdown files are only fixed (table
-/// alignment, fence delimiter safety, and inline-link hoisting); reordering
-/// and checking apply only to Rust source files.
+/// alignment, fence delimiter safety, and inline-link hoisting); reordering,
+/// visibility narrowing, and checking apply only to Rust source files.
 fn run_all(args: PathsArgs) -> anyhow::Result<()> {
     let paths = resolve_all(&args.paths, &["rs", "md"])?;
     if paths.is_empty() {
@@ -454,23 +449,28 @@ fn resolve_vis_context(paths: &[PathBuf]) -> Option<VisContext> {
             // Canonicalizing here keeps the BFS root consistent with the
             // canonicalized source paths.
             let root = fs::canonicalize(&root).unwrap_or(root);
-            // Collect every .rs file under the crate src dir, parse, build tree.
+            // Collect every .rs file under the crate src dir, parse once, build
+            // tree. Each file is parsed into a `ParsedFile` reused by both the
+            // module-tree build and the crate-wide re-export scan (single parse
+            // per file, vs. the prior double parse).
             let crate_dir = root.parent().unwrap_or_else(|| Path::new("."));
             let mut rs_files: Vec<PathBuf> = Vec::new();
             let _ = collect_files(crate_dir, &["rs"], &mut rs_files);
-            let mut sources: Vec<(PathBuf, String)> = Vec::new();
+            let mut files: Vec<ParsedFile> = Vec::new();
             for f in &rs_files {
                 if let Ok(src) = fs::read_to_string(f) {
                     // Canonicalize so tree keys match the per-file floor_for lookup
                     // (collect_files yields absolute paths; CLI inputs may be relative).
-                    sources.push((fs::canonicalize(f).unwrap_or_else(|_| f.clone()), src));
+                    let path = fs::canonicalize(f).unwrap_or_else(|_| f.clone());
+                    // tree-sitter error-recovers, so a `ParsedFile` is virtually
+                    // always produced; a parse failure (no tree) skips the file.
+                    match ParsedFile::new(path, src) {
+                        Ok(pf) => files.push(pf),
+                        Err(e) => eprintln!("warning: could not parse {}: {e}", f.display()),
+                    }
                 }
             }
-            let parsed: Vec<syn::File> = sources
-                .iter()
-                .filter_map(|(_, s)| syn::parse_str(s).ok())
-                .collect();
-            let tree = match build_module_tree(&root, &sources) {
+            let tree = match build_module_tree(&root, &files) {
                 Ok(t) => t,
                 Err(e) => {
                     eprintln!("warning: failed to build module tree ({e:?})");
@@ -480,7 +480,7 @@ fn resolve_vis_context(paths: &[PathBuf]) -> Option<VisContext> {
             for w in tree.warnings() {
                 eprintln!("warning: {w}");
             }
-            let reexports = collect_crate_reexports(parsed.iter());
+            let reexports = collect_crate_reexports(&files);
             Some(VisContext { tree, reexports })
         }
         Err(e) => {
@@ -522,15 +522,15 @@ fn vis_file(
                 // example, bench, stray file under tests/). The crate-wide
                 // re-export set would miss this file's own `pub use`, so narrow
                 // standalone with a per-file re-export guard instead.
-                let parsed: syn::File = syn::parse_str(&source)?;
-                let per_file = collect_crate_reexports(std::iter::once(&parsed));
+                let pf = ParsedFile::new(path.to_path_buf(), source.clone())?;
+                let per_file = collect_crate_reexports(std::iter::once(&pf));
                 narrow_vis_in_tree(&source, None, &per_file)
             }
         }
         None => {
             // Standalone: build a per-file re-export guard from this file only.
-            let parsed: syn::File = syn::parse_str(&source)?;
-            let reexports = collect_crate_reexports(std::iter::once(&parsed));
+            let pf = ParsedFile::new(path.to_path_buf(), source.clone())?;
+            let reexports = collect_crate_reexports(std::iter::once(&pf));
             narrow_vis_in_tree(&source, None, &reexports)
         }
     }

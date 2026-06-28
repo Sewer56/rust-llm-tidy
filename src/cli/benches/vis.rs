@@ -22,7 +22,6 @@ mod common;
 /// fixtures. The crate context (module tree + crate-wide re-export set) is built
 /// once per fixture in setup; the hot loop measures only the per-file narrowing.
 fn vis_crate_aware(c: &mut Criterion) {
-    common::force_span_fallback();
     let mut group = c.benchmark_group("vis_crate_aware");
     for (name, sources) in common::CRATE_FIXTURES {
         let (tree, reexports, owned) = common::build_crate_context(sources);

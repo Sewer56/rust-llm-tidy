@@ -20,10 +20,6 @@ mod common;
 
 /// Benchmark the lint pass (`parse_source` + [`check::run_all`]) per fixture.
 fn lint_pass(c: &mut Criterion) {
-    // Span-location support: matches the CLI, which forces the proc_macro2
-    // fallback so byte ranges resolve correctly.
-    common::force_span_fallback();
-
     let mut group = c.benchmark_group("lint");
     for (name, source) in common::LINT_FIXTURES {
         group.throughput(Throughput::Bytes(source.len() as u64));

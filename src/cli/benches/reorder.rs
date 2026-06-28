@@ -25,10 +25,6 @@ mod common;
 /// Benchmark the reorder pass (`parse_source` + [`compute_order`] +
 /// [`Permutation::new`] + [`emit`] + [`verify_line_preservation`]) per fixture.
 fn reorder_pass(c: &mut Criterion) {
-    // Span-location support: matches the CLI, which forces the proc_macro2
-    // fallback so byte ranges resolve correctly.
-    common::force_span_fallback();
-
     let mut group = c.benchmark_group("reorder");
     for (name, source) in common::REORDER_FIXTURES {
         group.throughput(Throughput::Bytes(source.len() as u64));

@@ -50,8 +50,8 @@ correctness gate. These remain impossible or unsafe even with cross-file mode:
 
 - **Cross-crate reachability**: a downstream crate can `pub use` an item, keeping
   it effectively `pub`. Cannot be detected without compiling dependencies.
-- **Macro-generated `mod` decls**: invisible to `syn` scanning (proc-macro /
-  `macro_rules!` expansion).
+- **Macro-generated `mod` decls**: invisible to the source-tree scan
+  (proc-macro / `macro_rules!` expansion is not visible to tree-sitter).
 - **`#[cfg]`-gated modules**: treated as present (conservative).
 - **Re-export completeness**: the crate-wide guard covers same-crate `pub use`
   only; cross-crate re-exports also defeat narrowing.
@@ -109,13 +109,25 @@ assert!(out.contains("pub(crate) fn f"));
 ### Crate-aware
 
 ```rust,ignore
-use rust_llm_tidy_vis::{narrow_vis_in_tree, build_module_tree, discover_crate_root, collect_crate_reexports};
+use rust_llm_tidy_vis::{
+    ParsedFile, build_module_tree, collect_crate_reexports, discover_crate_root,
+    narrow_vis_in_tree,
+};
+use std::path::PathBuf;
 
 let root = discover_crate_root(std::path::Path::new("src/lib.rs")).unwrap();
-let sources = vec![/* (path, source) for every .rs in the crate */];
-let tree = build_module_tree(&root, &sources).unwrap();
-let reexports = collect_crate_reexports(/* parsed files */);
-let out = narrow_vis_in_tree("pub fn f() {}\n", tree.floor_for(path), &reexports).unwrap();
+// (path, source) for every .rs in the crate.
+let sources: Vec<(PathBuf, String)> = vec![/* ... */];
+// Parse each file once; the parsed files feed both the module tree and the
+// crate-wide re-export scan (single parse per file).
+let files: Vec<ParsedFile> = sources
+    .into_iter()
+    .filter_map(|(p, s)| ParsedFile::new(p, s).ok())
+    .collect();
+let tree = build_module_tree(&root, &files).unwrap();
+let reexports = collect_crate_reexports(&files);
+let path = PathBuf::from("src/foo.rs");
+let out = narrow_vis_in_tree("pub fn f() {}\n", tree.floor_for(&path), &reexports).unwrap();
 ```
 
 ## License

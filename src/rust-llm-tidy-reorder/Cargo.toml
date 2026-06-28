@@ -8,7 +8,7 @@ license = "Apache-2.0"
 include = ["src/**/*"]
 readme = "README.MD"
 # keywords (search terms): https://crates.io/keywords
-keywords = ["rust", "syn", "ast", "reorder", "refactor"]
+keywords = ["rust", "tree-sitter", "ast", "reorder", "refactor"]
 # categories (fixed list): https://crates.io/categories
 categories = ["development-tools"]
 

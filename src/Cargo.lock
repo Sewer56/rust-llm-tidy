@@ -674,13 +674,11 @@ dependencies = [
  "anyhow",
  "clap",
  "criterion",
- "proc-macro2",
  "rust-llm-tidy-fix",
  "rust-llm-tidy-lint",
  "rust-llm-tidy-model",
  "rust-llm-tidy-reorder",
  "rust-llm-tidy-vis",
- "syn",
 ]
 
 [[package]]
@@ -726,9 +724,8 @@ dependencies = [
  "ahash",
  "anyhow",
  "cargo_metadata",
- "memchr",
- "proc-macro2",
- "syn",
+ "tree-sitter",
+ "tree-sitter-rust",
 ]
 
 [[package]]
