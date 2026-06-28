@@ -219,7 +219,7 @@ for sorting, grouping, and merging.
 - [rust-llm-tidy-reorder]: Reordering library - reference-graph ordering of items into canonical 10-phase order
 - [rust-llm-tidy-vis]: Visibility narrowing - narrows bare `pub` items inside restricted-visibility inline modules to the module's visibility
 - [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/`# Arguments`, placeholder, and test-naming checks
-- [rust-llm-tidy-fix]: Table alignment, fence safety, and link hoisting - realigns GFM tables, fixes nested fence delimiters, and hoists repeated inline links in `.rs` doc comments and `.md` files
+- [rust-llm-tidy-fix]: Markdown/doc-comment tidying - realigns GFM tables, fixes nested fence delimiters, and hoists repeated inline links in `.rs` doc comments and `.md` files
 - [cli]: Unified command-line interface (`fix`, `reorder`, `vis`, `check`, `all`)
 
 ## Git Hook (optional)
