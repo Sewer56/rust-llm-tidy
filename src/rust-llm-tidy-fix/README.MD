@@ -84,13 +84,15 @@ The pass skips links that would not benefit or would break:
   discipline as `fix_fences`).
 
 The function is idempotent: an already-hoisted document is returned unchanged.
+The hoisted `[text]: url` definitions use the source's dominant line ending
+(`\r\n` or `\n`), so a CRLF document stays CRLF after hoisting.
 
 ## Usage
 
 ```rust
 use rust_llm_tidy_fix::{fix_tables, fix_links};
 
-| let input = " | a   | bb |
+let input = " | a   | bb |
 | ------------- | --- |
 | ccc           | d   |
 ";

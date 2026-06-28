@@ -1,8 +1,9 @@
 // Partially vendored from rust-reorder (MIT).
-// Modified based on https://github.com/umilt-ai/rust-reorder.
+// Modified based on https://github.com/umwelt-ai/rust-reorder.
 // Line-multiset safety verification.
 
 use crate::line_count::count_lines;
+use crate::line_endings::dominant_line_ending;
 use anyhow::{Result, bail, ensure};
 
 /// Verify that every non-blank line in `original` appears exactly once in `output`.
@@ -11,6 +12,10 @@ use anyhow::{Result, bail, ensure};
 /// byte-slicing bugs that drop, duplicate, or corrupt lines.
 /// Whitespace-only lines are ignored because the reorder pass intentionally
 /// re-normalizes blank lines between item groups.
+///
+/// It also guards the source's dominant line ending: a CRLF -> LF flip (or
+/// vice versa) is rejected even when every line's content survives, so an
+/// in-place transform cannot silently change line endings.
 ///
 /// # Algorithm
 ///
@@ -22,9 +27,18 @@ use anyhow::{Result, bail, ensure};
 ///
 /// # Errors
 ///
-/// Returns an error describing the first line whose count differs between
-/// `original` and `output`.
+/// Returns an error if:
+/// - The dominant line ending of `original` and `output` differ (CRLF vs LF).
+/// - A non-blank line appears in `output` but not in `original`.
+/// - A non-blank line appears more times in `output` than in `original`.
+/// - A non-blank line from `original` is absent from `output` (dropped).
 pub fn verify_line_preservation(original: &str, output: &str) -> Result<()> {
+    let orig_le = dominant_line_ending(original);
+    let out_le = dominant_line_ending(output);
+    ensure!(
+        orig_le == out_le,
+        "line-ending mismatch: original dominant {orig_le:?} but output dominant {out_le:?}",
+    );
     let mut counts = count_lines(original);
 
     for line in output.lines() {
@@ -88,5 +102,19 @@ mod tests {
     #[test]
     fn blank_lines_ignored() {
         assert!(verify_line_preservation("a\n\nb\n", "a\nb\n").is_ok());
+    }
+
+    #[test]
+    fn crlf_to_lf_flip_rejected() {
+        // Same content, different dominant ending: the additive guard rejects
+        // a CRLF -> LF flip even though every non-blank line survives. The old
+        // `str::lines()` multiset alone could not detect this.
+        assert!(verify_line_preservation("a\r\nb\r\n", "a\nb\n").is_err());
+    }
+
+    #[test]
+    fn crlf_preserved_reorder_passes() {
+        // Reordered CRLF: content multiset equal and dominant ending preserved.
+        assert!(verify_line_preservation("a\r\nb\r\n", "b\r\na\r\n").is_ok());
     }
 }

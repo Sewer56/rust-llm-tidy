@@ -172,6 +172,42 @@ fn fix_recursive_directory_collects_md_and_rs() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// In-place `fix` on a CRLF markdown file with a repeated inline link
+/// preserves `\r\n` in the hoisted `[text]: url` definition. CRLF input is
+/// built in-memory (committed fixtures would be git-normalized on checkout).
+#[test]
+fn fix_links_in_place_preserves_crlf() {
+    let tmp = temp_file("md");
+    let input = "see [A](http://x) and [A](http://x)\r\n";
+    fs::write(&tmp, input).unwrap();
+
+    let output = run_command(&["fix"], &tmp);
+    assert!(
+        output.status.success(),
+        "fix in-place should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(&tmp).unwrap();
+    let _ = fs::remove_file(&tmp);
+
+    // The hoisted definition must be present and use `\r\n`.
+    assert!(
+        actual.contains("[A]: http://x"),
+        "definition hoisted: {actual:?}"
+    );
+    assert!(
+        actual.contains("[A]: http://x\r\n"),
+        "hoisted definition must end with CRLF: {actual:?}"
+    );
+    // No bare LF: every `\n` is part of `\r\n`.
+    assert_eq!(
+        actual.matches('\n').count(),
+        actual.matches("\r\n").count(),
+        "every newline must be CRLF after fix: {actual:?}"
+    );
+}
+
 /// The directory holding `fix` fixtures.
 fn fixture_dir() -> std::path::PathBuf {
     manifest_dir().join("tests").join("fixtures").join("fix")

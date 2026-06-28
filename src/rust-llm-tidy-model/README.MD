@@ -45,6 +45,8 @@ for item in &parsed.items {
   carries a `#[test]` attribute.
 - **Safety** - Verify line-multiset equality between original and transformed
   output.
+- **Line endings** - Detect the source's dominant line ending (`\r\n` or
+  `\n`) so transforms can preserve it on in-place writes.
 - **I/O** - Atomic file writes via tempfile + rename.
 
 ## License

@@ -646,4 +646,22 @@ mod tests {
         );
         assert!(!out.contains("pub fn g"), "bare inline pub gone: {out}");
     }
+
+    #[test]
+    fn crlf_line_endings_preserved_when_narrowing() {
+        force();
+        // CRLF source: bare `pub fn f` inside a `pub(crate)` inline module is
+        // narrowed to `pub(crate) fn f` via a byte-range `replace_range` swap
+        // that touches only the `pub` token bytes, so every `\r\n` survives.
+        let src = "pub(crate) mod m {\r\n    pub fn f() {}\r\n}\r\n";
+        let out = narrow(src).unwrap();
+        let owned = out.into_owned();
+        assert!(owned.contains("pub(crate) fn f"), "narrowed: {owned}");
+        assert!(!owned.contains("pub fn f"), "bare pub gone: {owned}");
+        assert_eq!(
+            owned.matches('\n').count(),
+            owned.matches("\r\n").count(),
+            "every newline must be CRLF (no LF flip): {owned:?}"
+        );
+    }
 }

@@ -38,7 +38,7 @@
 //! ```
 
 use crate::tables::{split_terminator, strip_doc_prefix};
-use rewrite::{append_definitions, rewrite_links, tally_links};
+use rewrite::{append_definitions, dominant_line_ending, rewrite_links, tally_links};
 use scan::{definition_text, step_fence};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -142,12 +142,15 @@ pub fn fix_links(input: &str) -> Cow<'_, str> {
     }
 
     // Append hoisted `[text]: url` definitions at the end of the document.
+    // Definitions use the source's dominant line ending so a CRLF document
+    // stays CRLF after hoisting.
+    let le = dominant_line_ending(input);
     let mut buf = out.unwrap_or_else(|| {
         let mut s = String::with_capacity(input.len());
         s.push_str(input);
         s
     });
-    append_definitions(&mut buf, &hoist);
+    append_definitions(&mut buf, &hoist, le);
 
     Cow::Owned(buf)
 }
@@ -312,5 +315,73 @@ after
             let twice = fix_links(&once).into_owned();
             assert_eq!(twice, once, "not idempotent for input {input:?}");
         }
+    }
+
+    #[test]
+    fn crlf_definitions_use_crlf() {
+        // CRLF input: the hoisted `[A]: http://x` definition must end with
+        // `\r\n`, and every `\n` in the appended block is part of `\r\n`.
+        let input = "see [A](http://x) and [A](http://x)\r\n";
+        let out = fix_links(input);
+        let s = out.into_owned();
+        assert!(
+            s.contains("[A]: http://x\r\n"),
+            "hoisted definition must end with CRLF: {s:?}"
+        );
+        assert_eq!(
+            s.matches('\n').count(),
+            s.matches("\r\n").count(),
+            "every newline must be CRLF: {s:?}"
+        );
+    }
+
+    #[test]
+    fn lf_definitions_use_lf() {
+        // LF input: no `\r` should appear in the appended definition.
+        let input = "see [A](http://x) and [A](http://x)\n";
+        let out = fix_links(input);
+        let s = out.into_owned();
+        assert!(
+            s.contains("[A]: http://x\n"),
+            "hoisted definition must end with LF: {s:?}"
+        );
+        assert!(!s.contains('\r'), "no CR in LF output: {s:?}");
+    }
+
+    #[test]
+    fn crlf_no_trailing_newline_uses_crlf_guard() {
+        // CRLF input without a trailing newline: the `ends_with('\n')` guard
+        // in `append_definitions` must push `le` ("\r\n") before the first
+        // definition, and every `\n` in the output must be part of `\r\n`.
+        let input = "intro\r\nsee [A](http://x) and [A](http://x)";
+        let out = fix_links(input);
+        let s = out.into_owned();
+        assert!(
+            s.contains("[A]: http://x\r\n"),
+            "hoisted definition must end with CRLF: {s:?}"
+        );
+        assert_eq!(
+            s.matches('\n').count(),
+            s.matches("\r\n").count(),
+            "every newline must be CRLF: {s:?}"
+        );
+    }
+
+    #[test]
+    fn idempotent_on_crlf_output() {
+        // Re-running on CRLF reference-style output must stay CRLF (borrowed).
+        let input = "see [A](http://x) and [A](http://x)\r\n";
+        let once = fix_links(input).into_owned();
+        let twice = fix_links(&once);
+        assert!(
+            matches!(twice, Cow::Borrowed(_)),
+            "idempotent re-run must be borrowed"
+        );
+        assert_eq!(&*twice, &once, "idempotent on CRLF output");
+        assert_eq!(
+            once.matches('\n').count(),
+            once.matches("\r\n").count(),
+            "every newline must be CRLF: {once:?}"
+        );
     }
 }

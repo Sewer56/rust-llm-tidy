@@ -14,6 +14,8 @@
 pub mod io;
 /// Frequency multiset of source lines for the safety check.
 pub(crate) mod line_count;
+/// Dominant line-ending detection (`\r\n` vs `\n`) for source-preserving transforms.
+pub mod line_endings;
 /// Top-level item parsing, classification, and the [`parse::SourceItem`] model.
 pub mod parse;
 /// Line-multiset safety verification for source-preserving transforms.

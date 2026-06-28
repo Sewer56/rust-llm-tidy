@@ -256,7 +256,7 @@ inner
     }
 
     #[test]
-    fn outer_tilde_inner_tilde_flips_inner_to_backtick() {
+    fn outer_tilde_inner_backtick_noop() {
         let input = "\
 ~~~text
 text
@@ -274,7 +274,7 @@ inner
 ~~~
 ";
         let out = fix_fences(input);
-        assert_eq!(&*out, expected, "inner tildes should flip to backticks");
+        assert_eq!(&*out, expected, "inner backtick under tilde root stays backtick (already canonical)");
     }
 
     #[test]
@@ -612,5 +612,23 @@ deep
                 "Cow variant divergence for generated input {input:?}"
             );
         }
+    }
+
+    #[test]
+    fn crlf_doc_comment_fences_preserved() {
+        // CRLF input with nested fences inside a `///` doc comment: only the
+        // inner backtick fence should flip to tildes; every line ending must
+        // stay `\r\n` (the pass only swaps marker chars, never line terminators
+        // - `split_inclusive('\n')` keeps `\r\n` in-segment and `emit_fence`
+        // reuses the segment's terminator).
+        let input = "/// ```text\r\n/// ```rust\r\n/// inner\r\n/// ```\r\n/// ```\r\n";
+        let expected = "/// ```text\r\n/// ~~~rust\r\n/// inner\r\n/// ~~~\r\n/// ```\r\n";
+        let out = fix_fences(input);
+        assert_eq!(&*out, expected, "inner flips to tildes, CRLF preserved");
+        assert_eq!(
+            out.matches('\n').count(),
+            out.matches("\r\n").count(),
+            "every newline must be CRLF: {out:?}"
+        );
     }
 }

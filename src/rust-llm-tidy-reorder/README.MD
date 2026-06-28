@@ -21,7 +21,7 @@ Library for automatically reordering Rust source code. Built for LLM workflows.
 - **Graph** - Walks the `syn` AST to collect reference edges and compute a
   10-phase ordering
 - **Reorder** - Emit reordered source by byte-slicing the original, preserving
-  preamble and trailer
+  preamble, trailer, and the source's dominant line endings (CRLF or LF)
 - **Safety** - Verify line multiset equality between original and reordered
   output
 - **I/O** - Atomic file writes via tempfile + rename

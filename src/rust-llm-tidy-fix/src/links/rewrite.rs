@@ -5,6 +5,14 @@
 use super::scan::parse_inline_link;
 use std::collections::{HashMap, HashSet};
 
+// Mirrors `rust_llm_tidy_model::line_endings::dominant_line_ending`.
+// Duplicated to keep this crate zero-dependency; keep in sync.
+pub(super) fn dominant_line_ending(source: &str) -> &'static str {
+    let crlf = source.matches("\r\n").count();
+    let lf = source.matches('\n').count().saturating_sub(crlf);
+    if crlf > 0 && crlf >= lf { "\r\n" } else { "\n" }
+}
+
 /// Scan `body` for inline links `[text](url)` and tally each `(text, url)`,
 /// recording first-seen order in `order`. Reference-style, autolink, and
 /// whitespace-URL forms never match the inline shape, so they are skipped.
@@ -85,18 +93,20 @@ pub(super) fn rewrite_links(
 }
 
 /// Append hoisted `[text]: url` definitions at the end of `buf`, each on its
-/// own line. Ensures `buf` ends with a newline so the first definition starts
-/// on its own line; if the document already ends with a reference definition
-/// the new definitions continue that block contiguously.
-pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)]) {
+/// own line using the source's dominant line ending (`le`), so a CRLF
+/// document stays CRLF after hoisting. Ensures `buf` ends with a newline so
+/// the first definition starts on its own line; if the document already ends
+/// with a reference definition the new definitions continue that block
+/// contiguously.
+pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &str) {
     if !buf.ends_with('\n') {
-        buf.push('\n');
+        buf.push_str(le);
     }
     for &(text, url) in hoist {
         buf.push('[');
         buf.push_str(text);
         buf.push_str("]: ");
         buf.push_str(url);
-        buf.push('\n');
+        buf.push_str(le);
     }
 }
