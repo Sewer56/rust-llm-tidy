@@ -1,29 +1,37 @@
-//! Intra-file reference-edge collection via `syn::visit::Visit`.
+//! Intra-file reference-edge collection via a tree-sitter tree walk.
 //!
-//! [`ReferenceCollector`] walks a parsed AST and records `(item_index,
-//! referenced_item_index)` edges for every bare path reference whose first
-//! segment matches a known top-level item name. Edges to local macros are
-//! reversed so a macro definition precedes its use sites.
+//! [`ReferenceCollector`] walks a parsed syntax tree and records
+//! `(item_index, referenced_item_index)` edges for every bare path reference
+//! whose first segment matches a known top-level item name. Edges to local
+//! macros are reversed so a macro definition precedes its use sites.
 //!
 //! # Allocation strategy
 //!
 //! Identifiers are probed against the name map by writing each one into a
 //! single reused scratch [`String`] (via its `fmt::Write` impl), so the hot
-//! `visit_path` / token-scan paths perform zero per-ident heap allocation.
-//! Edges are stored as item indices, not owned strings.
+//! reference paths perform zero per-ident heap allocation. Edges are stored as
+//! item indices, not owned strings.
+//!
+//! # Walk model
+//!
+//! Only NAMED top-level items push an index onto the item stack (functions,
+//! structs, enums, unions, type aliases, consts, statics, traits, and
+//! `macro_rules!` definitions). Impls, modules, uses, extern crates, and
+//! macro invocations are NOT pushed, so references inside them are ignored -
+//! mirroring the prior `syn::visit::Visit` behavior. Within a pushed item,
+//! every reference position (a path/type identifier or a scoped identifier)
+//! whose first segment names a top-level item records an edge; macro calls
+//! (`ident!`) to a local macro record a reversed edge so the definition
+//! precedes its use.
 
 use ahash::{AHashMap, AHashSet};
-use std::fmt::Write as _;
-use syn::visit::Visit;
-use syn::{
-    ItemConst, ItemEnum, ItemFn, ItemMacro, ItemStatic, ItemStruct, ItemTrait, ItemType, ItemUnion,
-};
+use tree_sitter::{Node, Tree};
 
-/// Collects intra-file reference edges by walking the AST with `syn::visit::Visit`.
+/// Collects intra-file reference edges by walking a tree-sitter tree.
 ///
 /// Tracks which top-level item we are currently inside (`item_stack`, by index)
-/// and records `(referencer_index, referenced_index)` edges for every bare path
-/// reference whose first segment matches a known top-level item name.
+/// and records `(referencer_index, referenced_index)` edges for every reference
+/// whose first segment matches a known top-level item name.
 ///
 /// The `name_to_idx` map and `macro_names` set borrow `&str` slices from the
 /// parsed items (lifetime `'names`); they are only queried, never mutated.
@@ -39,7 +47,7 @@ pub struct ReferenceCollector<'names> {
     edges: Vec<(usize, usize)>,
     /// Reused buffer for ident -> `&str` conversion during probing. Writing an
     /// ident via `fmt::Write` fills existing capacity instead of allocating,
-    /// so the hot Visit paths never heap-allocate per ident.
+    /// so the hot walk paths never heap-allocate per ident.
     scratch: String,
 }
 
@@ -60,9 +68,10 @@ impl<'names> ReferenceCollector<'names> {
         }
     }
 
-    /// Walk `file` and record reference edges for later retrieval via [`into_edges`](Self::into_edges).
-    pub fn collect(&mut self, file: &syn::File) {
-        self.visit_file(file);
+    /// Walk `tree` and record reference edges for later retrieval via [`into_edges`](Self::into_edges).
+    /// `source` is the full source text, used to extract identifier text.
+    pub fn collect(&mut self, tree: &Tree, source: &[u8]) {
+        self.walk(tree.root_node(), source);
     }
 
     /// Consume the collector and return discovered reference edges as
@@ -71,187 +80,215 @@ impl<'names> ReferenceCollector<'names> {
         self.edges
     }
 
-    /// Write `ident` into the scratch buffer and return its item index if it
-    /// names a top-level item. One reusable buffer, no per-ident allocation.
-    fn probe(&mut self, ident: &proc_macro2::Ident) -> Option<usize> {
-        self.scratch.clear();
-        let _ = write!(self.scratch, "{ident}");
-        self.name_to_idx.get(self.scratch.as_str()).copied()
-    }
+    /// Recursive tree walk. Pushes named item indices, records reference edges
+    /// for path/type identifiers, and recurses into compound nodes.
+    fn walk(&mut self, node: Node, source: &[u8]) {
+        match node.kind() {
+            // Pushed item kinds: determine index by name, push, recurse, pop.
+            "function_item" | "struct_item" | "enum_item" | "union_item" | "type_item"
+            | "const_item" | "static_item" | "trait_item" | "macro_definition" => {
+                let pushed = self
+                    .name_index_of_decl(node, source)
+                    .inspect(|&idx| self.item_stack.push(idx));
+                self.recurse(node, source);
+                if pushed.is_some() {
+                    self.item_stack.pop();
+                }
+            }
 
-    /// Scan a macro body's token stream for references to top-level items.
-    ///
-    /// Macro bodies (`macro_rules!` / macro 2.0) are raw `TokenStream`s that
-    /// `syn` does not parse into AST nodes, so the default `Visit` traversal
-    /// never fires `visit_path` inside them. This recovers those references by
-    /// scanning tokens directly. An `ident` naming a top-level item records a
-    /// `(current, target)` edge; if the ident is followed by `!` (a macro call)
-    /// and the target is a local macro, the edge is reversed to
-    /// `(target, current)` so the referenced macro definition precedes its use.
-    /// `Group` delimiters (parentheses, braces, brackets) are recursed into.
-    ///
-    /// Iteration uses a `peekable` iterator over the (cloned) stream so the
-    /// `!` lookahead needs no materialized `Vec<TokenTree>`.
-    fn collect_refs_from_tokens(&mut self, tokens: &proc_macro2::TokenStream, current_idx: usize) {
-        use proc_macro2::TokenTree;
-        let mut iter = tokens.clone().into_iter().peekable();
-        while let Some(tree) = iter.next() {
-            match &tree {
-                TokenTree::Ident(ident) => {
-                    self.scratch.clear();
-                    let _ = write!(self.scratch, "{ident}");
-                    let name = self.scratch.as_str();
-                    if let Some(&target_idx) = self.name_to_idx.get(name)
-                        && target_idx != current_idx
-                    {
-                        let is_macro_call = matches!(
-                            iter.peek(),
-                            Some(TokenTree::Punct(p)) if p.as_char() == '!'
-                        );
-                        if is_macro_call && self.macro_names.contains(name) {
-                            self.edges.push((target_idx, current_idx));
-                        } else {
-                            self.edges.push((current_idx, target_idx));
-                        }
-                    }
+            // `macro_invocation` is a reference site (its `macro` field is a
+            // macro-call path). Record it once and do NOT recurse: the macro
+            // path identifier is recorded here, and re-walking it would
+            // double-record. The invocation's argument token_tree is not
+            // scanned (mirrors syn, which only scanned macro *definition*
+            // bodies, not invocation arguments).
+            "macro_invocation" => {
+                if let Some(mac) = node.child_by_field_name("macro") {
+                    self.record_ref(mac, source);
                 }
-                TokenTree::Group(g) => {
-                    self.collect_refs_from_tokens(&g.stream(), current_idx);
+            }
+
+            // A scoped identifier or scoped type identifier is a single path:
+            // record its FIRST segment only, do not recurse into segments.
+            "scoped_identifier" | "scoped_type_identifier" => {
+                self.record_ref(node, source);
+            }
+
+            // A generic type (`Vec<Foo>`): record the outer type's first
+            // segment, then recurse into `type_arguments` to catch inner type
+            // references (e.g. `Foo` in `Vec<Foo>`).
+            "generic_type" => {
+                if let Some(ty) = node.child_by_field_name("type") {
+                    self.record_ref(ty, source);
                 }
-                _ => {}
+                self.recurse(node, source);
+            }
+
+            // A bare identifier / type_identifier in a reference position.
+            "identifier" | "type_identifier" => {
+                if !is_decl_position(node) {
+                    self.record_ref(node, source);
+                }
+            }
+
+            // Non-pushed, non-reference nodes: recurse into children. This
+            // covers blocks, expressions, parameters, field lists, type
+            // arguments, etc. - their interior references are found on
+            // recursion. (When the item stack is empty - e.g. inside an impl
+            // body at top level - `record_ref` records nothing.)
+            _ => {
+                self.recurse(node, source);
             }
         }
+    }
+
+    /// Recurse into the named children of `node`.
+    fn recurse(&mut self, node: Node, source: &[u8]) {
+        let count = node.named_child_count() as u32;
+        for i in 0..count {
+            if let Some(child) = node.named_child(i) {
+                self.walk(child, source);
+            }
+        }
+    }
+
+    /// Look up the top-level item index for a declaration node's name, if any.
+    fn name_index_of_decl(&mut self, node: Node, source: &[u8]) -> Option<usize> {
+        let name_node = node.child_by_field_name("name")?;
+        self.probe_first_segment(name_node, source)
+    }
+
+    /// Record a reference edge from the current item to the item named by the
+    /// first segment of `node` (a path/type identifier), if it names a
+    /// top-level item other than the current one. Macro calls to a local
+    /// macro reverse the edge so the definition precedes its use.
+    fn record_ref(&mut self, node: Node, source: &[u8]) {
+        let Some(&current_idx) = self.item_stack.last() else {
+            // Not inside a named top-level item: no edge (mirrors syn, which
+            // only recorded edges when item_stack was non-empty).
+            return;
+        };
+        let is_macro_call = self.is_macro_call(node);
+        // `probe_first_segment` writes the first segment into `self.scratch`
+        // and returns the target index (copied), so no borrow is held across
+        // the edge push. `self.scratch` still holds the name afterwards.
+        let Some(target_idx) = self.probe_first_segment(node, source) else {
+            return;
+        };
+        if target_idx == current_idx {
+            return;
+        }
+        let is_macro_target = is_macro_call && self.macro_names.contains(self.scratch.as_str());
+        if is_macro_target {
+            // Macro definitions must precede their uses, so reverse the edge.
+            self.edges.push((target_idx, current_idx));
+        } else {
+            self.edges.push((current_idx, target_idx));
+        }
+    }
+
+    /// True when `node` (an identifier/scoped identifier) is immediately
+    /// followed by `!`, i.e. it is a macro call path.
+    fn is_macro_call(&self, node: Node) -> bool {
+        node.next_sibling().is_some_and(|s| s.kind() == "!")
+    }
+
+    /// Write the first segment's text of `node` into the scratch buffer and
+    /// return its top-level item index, if any. Leaves `self.scratch` holding
+    /// the segment text on success.
+    fn probe_first_segment(&mut self, node: Node, source: &[u8]) -> Option<usize> {
+        let seg = first_segment_node(node)?;
+        if !matches!(seg.kind(), "identifier" | "type_identifier") {
+            return None;
+        }
+        self.scratch.clear();
+        // Copy the segment text (borrowed from `source`) into the reusable
+        // scratch buffer, then probe by `&str`. No per-ident allocation.
+        if let Ok(text) = seg.utf8_text(source) {
+            self.scratch.push_str(text);
+        }
+        self.name_to_idx.get(self.scratch.as_str()).copied()
     }
 }
 
-impl<'ast, 'names> Visit<'ast> for ReferenceCollector<'names> {
-    fn visit_item_fn(&mut self, f: &'ast ItemFn) {
-        if let Some(idx) = self.probe(&f.sig.ident) {
-            self.item_stack.push(idx);
-            syn::visit::visit_item_fn(self, f);
-            self.item_stack.pop();
-        } else {
-            syn::visit::visit_item_fn(self, f);
-        }
+/// Leftmost segment node of a path/type node.
+fn first_segment_node(node: Node) -> Option<Node> {
+    match node.kind() {
+        "identifier" | "type_identifier" => Some(node),
+        "scoped_identifier" | "scoped_type_identifier" => node
+            .child_by_field_name("path")
+            .and_then(first_segment_node),
+        "generic_type" => node
+            .child_by_field_name("type")
+            .and_then(first_segment_node),
+        _ => None,
     }
+}
 
-    fn visit_item_struct(&mut self, s: &'ast ItemStruct) {
-        if let Some(idx) = self.probe(&s.ident) {
-            self.item_stack.push(idx);
-            syn::visit::visit_item_struct(self, s);
-            self.item_stack.pop();
-        } else {
-            syn::visit::visit_item_struct(self, s);
-        }
-    }
+/// True when `node` (an `identifier`/`type_identifier`) is in a declaration
+/// position (an item name, a binding pattern, an alias) rather than a
+/// reference position. Declaration names are not recorded as references.
+fn is_decl_position(node: Node) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+    let field = parent_field_name(node);
+    matches!(
+        (parent.kind(), field),
+        // Item declaration names.
+        ("function_item", Some("name"))
+            | ("struct_item", Some("name"))
+            | ("enum_item", Some("name"))
+            | ("union_item", Some("name"))
+            | ("trait_item", Some("name"))
+            | ("type_item", Some("name"))
+            | ("const_item", Some("name"))
+            | ("static_item", Some("name"))
+            | ("mod_item", Some("name"))
+            | ("macro_definition", Some("name"))
+            | ("enum_variant", Some("name"))
+            // Binding patterns and aliases.
+            | ("parameter", Some("pattern"))
+            | ("let_declaration", Some("pattern"))
+            | ("use_as_clause", Some("alias"))
+            | ("extern_crate_declaration", Some("alias"))
+            | ("for_expression", Some("pattern"))
+    )
+}
 
-    fn visit_item_enum(&mut self, e: &'ast ItemEnum) {
-        if let Some(idx) = self.probe(&e.ident) {
-            self.item_stack.push(idx);
-            syn::visit::visit_item_enum(self, e);
-            self.item_stack.pop();
-        } else {
-            syn::visit::visit_item_enum(self, e);
+/// Field name of `node` within its parent, if any.
+fn parent_field_name(node: Node) -> Option<&'static str> {
+    let parent = node.parent()?;
+    // Find the child index of `node` among the parent's children (named +
+    // anonymous) and look up its field name.
+    let count = parent.child_count() as u32;
+    for i in 0..count {
+        if parent.child(i) == Some(node) {
+            return parent.field_name_for_child(i);
         }
     }
-
-    fn visit_item_union(&mut self, u: &'ast ItemUnion) {
-        if let Some(idx) = self.probe(&u.ident) {
-            self.item_stack.push(idx);
-            syn::visit::visit_item_union(self, u);
-            self.item_stack.pop();
-        } else {
-            syn::visit::visit_item_union(self, u);
-        }
-    }
-
-    fn visit_item_type(&mut self, t: &'ast ItemType) {
-        if let Some(idx) = self.probe(&t.ident) {
-            self.item_stack.push(idx);
-            syn::visit::visit_item_type(self, t);
-            self.item_stack.pop();
-        } else {
-            syn::visit::visit_item_type(self, t);
-        }
-    }
-
-    fn visit_item_const(&mut self, c: &'ast ItemConst) {
-        if let Some(idx) = self.probe(&c.ident) {
-            self.item_stack.push(idx);
-            syn::visit::visit_item_const(self, c);
-            self.item_stack.pop();
-        } else {
-            syn::visit::visit_item_const(self, c);
-        }
-    }
-
-    fn visit_item_static(&mut self, s: &'ast ItemStatic) {
-        if let Some(idx) = self.probe(&s.ident) {
-            self.item_stack.push(idx);
-            syn::visit::visit_item_static(self, s);
-            self.item_stack.pop();
-        } else {
-            syn::visit::visit_item_static(self, s);
-        }
-    }
-
-    fn visit_item_trait(&mut self, t: &'ast ItemTrait) {
-        if let Some(idx) = self.probe(&t.ident) {
-            self.item_stack.push(idx);
-            syn::visit::visit_item_trait(self, t);
-            self.item_stack.pop();
-        } else {
-            syn::visit::visit_item_trait(self, t);
-        }
-    }
-
-    fn visit_item_macro(&mut self, m: &'ast ItemMacro) {
-        // `m.ident` is `Some` only for named macro definitions (macro_rules!,
-        // macro 2.0); `None` for invocations like `foo!()`.
-        if let Some(ident) = &m.ident
-            && let Some(idx) = self.probe(ident)
-        {
-            // Macro bodies are raw TokenStreams that syn does not parse
-            // into AST nodes, so the default visitor never fires visit_path
-            // on references inside them (e.g. `macro_rules! foo` calling
-            // `bar!()` in its body). Scan the token stream directly.
-            self.collect_refs_from_tokens(&m.mac.tokens, idx);
-            return;
-        }
-        syn::visit::visit_item_macro(self, m);
-    }
-
-    fn visit_path(&mut self, path: &'ast syn::Path) {
-        if let Some(&current_idx) = self.item_stack.last()
-            && let Some(first_seg) = path.segments.first()
-        {
-            self.scratch.clear();
-            let _ = write!(self.scratch, "{}", first_seg.ident);
-            let name = self.scratch.as_str();
-            if let Some(&target_idx) = self.name_to_idx.get(name)
-                && target_idx != current_idx
-            {
-                if self.macro_names.contains(name) {
-                    // Macro definitions must precede their uses, so reverse
-                    // the edge: (macro, consumer) instead of (consumer, macro).
-                    self.edges.push((target_idx, current_idx));
-                } else {
-                    self.edges.push((current_idx, target_idx));
-                }
-            }
-        }
-        syn::visit::visit_path(self, path);
-    }
+    None
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_llm_tidy_model::parse::parse_source;
 
     /// Build a name-to-index map assigning each name a position index in the
     /// order given (decoupled from source item order, so unit tests stay stable).
     fn idx_map(names: &[&'static str]) -> AHashMap<&'static str, usize> {
         names.iter().enumerate().map(|(i, &n)| (n, i)).collect()
+    }
+
+    /// Parse `source`, collect edges with a `name_to_idx` seeded from `names`,
+    /// and return the edges.
+    fn edges_for(source: &str, names: &[&'static str]) -> Vec<(usize, usize)> {
+        let parsed = parse_source(source).unwrap();
+        let tree = parsed.syntax_tree();
+        let mut collector = ReferenceCollector::new(idx_map(names), AHashSet::new());
+        collector.collect(tree, source.as_bytes());
+        collector.into_edges()
     }
 
     /// Macro references are inverted so the macro definition precedes its use.
@@ -262,12 +299,13 @@ mod tests {
             macro_rules! a { () => {}; }
         "#;
 
+        let parsed = parse_source(source).unwrap();
         let name_to_idx = idx_map(&["b", "a"]);
         let macro_names: AHashSet<&str> = ["a"].into_iter().collect();
 
-        let file: syn::File = syn::parse_str(source).unwrap();
+        let tree = parsed.syntax_tree();
         let mut collector = ReferenceCollector::new(name_to_idx, macro_names);
-        collector.visit_file(&file);
+        collector.collect(tree, source.as_bytes());
         let edges = collector.into_edges();
 
         // b(0) calls macro a(1); reversed edge (a=1, b=0).
@@ -302,9 +340,10 @@ mod tests {
         // Indices: a=0, b=1, Foo=2 (listed order, decoupled from source).
         let name_to_idx = idx_map(&["a", "b", "Foo"]);
 
-        let file: syn::File = syn::parse_str(source).unwrap();
+        let parsed = parse_source(source).unwrap();
+        let tree = parsed.syntax_tree();
         let mut collector = ReferenceCollector::new(name_to_idx, AHashSet::new());
-        collector.visit_file(&file);
+        collector.collect(tree, source.as_bytes());
         let edges = collector.into_edges();
 
         // fn a(0) references Foo(2) (type), fn b(1) references a(0) (fn)
@@ -327,9 +366,10 @@ mod tests {
         // Indices: A=0, B=1 (listed order).
         let name_to_idx = idx_map(&["A", "B"]);
 
-        let file: syn::File = syn::parse_str(source).unwrap();
+        let parsed = parse_source(source).unwrap();
+        let tree = parsed.syntax_tree();
         let mut collector = ReferenceCollector::new(name_to_idx, AHashSet::new());
-        collector.visit_file(&file);
+        collector.collect(tree, source.as_bytes());
         let edges = collector.into_edges();
 
         // B(1) references A(0).

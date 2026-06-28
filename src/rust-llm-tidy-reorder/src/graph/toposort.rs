@@ -117,33 +117,6 @@ pub fn toposort(fns: &[&str], edges: &[(usize, usize)], tie_break: TieBreak) -> 
     order
 }
 
-/// Extract a bare function name from a call expression's function path.
-///
-/// Returns `Some("foo")` for bare `foo()` calls. Returns `None` for:
-/// - Qualified paths: `mod::foo()`, `crate::foo()`
-/// - Method calls: `self.foo()`, `x.foo()`
-/// - Associated function calls: `Foo::bar()`
-/// - Closures or other expressions
-#[cfg(test)]
-#[allow(dead_code)]
-fn extract_bare_fn_name(expr: &syn::Expr) -> Option<String> {
-    let inner = if let syn::Expr::Call(call) = expr {
-        &call.func
-    } else {
-        expr
-    };
-    if let syn::Expr::Path(syn::ExprPath { path, .. }) = inner
-        && path.leading_colon.is_none()
-        && path.segments.len() == 1
-    {
-        let seg = &path.segments[0];
-        if seg.arguments.is_empty() {
-            return Some(seg.ident.to_string());
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,29 +206,6 @@ mod tests {
 
         let order = toposort(&fns, &edges, TieBreak::Stable);
         assert_eq!(order, vec![0, 1, 2]);
-    }
-
-    /// Unit test for `extract_bare_fn_name`: accepts `foo()`,
-    /// rejects `mod::foo()`, `self.foo()`, `Foo::bar()`.
-    #[test]
-    fn test_bare_calls_only() {
-        fn extract_from_source(src: &str) -> Option<String> {
-            if let Ok(call) = syn::parse_str::<syn::ExprCall>(src) {
-                return extract_bare_fn_name(&call.func);
-            }
-            if let Ok(expr) = syn::parse_str::<syn::Expr>(src) {
-                return extract_bare_fn_name(&expr);
-            }
-            None
-        }
-
-        assert_eq!(extract_from_source("foo()"), Some("foo".to_string()));
-        assert_eq!(extract_from_source("bar()"), Some("bar".to_string()));
-        assert_eq!(extract_from_source("mod::foo()"), None);
-        assert_eq!(extract_from_source("self::foo()"), None);
-        assert_eq!(extract_from_source("crate::foo()"), None);
-        assert_eq!(extract_from_source("Foo::bar()"), None);
-        assert_eq!(extract_from_source("self.foo()"), None);
     }
 
     /// `toposort` with `Alphabetical` tie-break sorts independent items by name.

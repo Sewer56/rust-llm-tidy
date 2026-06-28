@@ -60,9 +60,9 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
 
     // ── 2. Collect reference edges, reusing the syntax tree stored in the
     //        parse result instead of re-parsing `parsed.source` ──
-    let file = parsed.syntax_file();
+    let tree = parsed.syntax_tree();
     let mut collector = ReferenceCollector::new(name_to_idx, macro_names.clone());
-    collector.collect(file);
+    collector.collect(tree, parsed.source.as_bytes());
     let edges = collector.into_edges();
 
     // ── 3. Group items by kind. Phases hold item *indices* only; names are

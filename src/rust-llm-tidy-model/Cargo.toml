@@ -13,9 +13,8 @@ categories = ["development-tools"]
 
 [dependencies]
 anyhow = "1"
-syn = { version = "2", features = ["full", "visit", "parsing"] }
-quote = "1"
-proc-macro2 = { version = "1", features = ["span-locations"] }
+tree-sitter = "0.26"
+tree-sitter-rust = "0.24"
 memchr = "2"
 ahash = "0.8"
 tempfile = "3"

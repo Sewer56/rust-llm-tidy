@@ -1,24 +1,35 @@
-//! Adapted from rust-reorder (MIT).
-//! Modified based on <https://github.com/umwelt-ai/rust-reorder>.
 //! Provides span extraction, comment pinning, preamble/trailer detection.
 //!
 //! This module orchestrates parsing: it splits source text into top-level
 //! items with byte spans (comment-pinning prefix comments/attributes to each
 //! item), classifies them, and exposes the data model. Public types are
 //! re-exported from this module for downstream use.
+//!
+//! Parsing is performed with tree-sitter (the `tree-sitter-rust` grammar),
+//! which yields byte offsets directly - no line/column conversion is needed.
 
-use crate::parse::classify::classify_item;
+use crate::parse::classify::{PendingTrivia, classify_item, is_attachable, is_transparent_comment};
 pub use item::{ItemKind, ParseResult, SourceItem, VisibilityTier};
-use syn::spanned::Spanned;
 
 mod classify;
 mod item;
 
+/// A raw top-level item entry: the item body node (or the wrapping
+/// `expression_statement` for a top-level macro invocation) plus its pending
+/// attachable trivia (attributes + outer doc comments).
+struct RawEntry<'a> {
+    /// Node whose byte range covers the item body (incl. trailing `;` for
+    /// macro invocations wrapped in `expression_statement`).
+    body: tree_sitter::Node<'a>,
+    /// Attachable trivia immediately preceding the item.
+    pending: PendingTrivia<'a>,
+}
+
 /// Parse a Rust source file and extract items with spans.
 ///
-/// Uses `syn` to parse the file and walk the AST, extracting byte spans for
-/// each top-level item. Comments and attributes that syntactically precede an
-/// item are pinned to it (comment-pinning).
+/// Uses tree-sitter to parse the file and walk the syntax tree, extracting byte
+/// spans for each top-level item. Comments and attributes that syntactically
+/// precede an item are pinned to it (comment-pinning).
 ///
 /// Spans are laid back-to-back so each item carries the blank lines and `//`
 /// comments preceding it when reordered: each item's `end` is the byte after
@@ -27,37 +38,28 @@ mod item;
 ///
 /// # Errors
 ///
-/// Returns a parse error when `source` is not valid Rust syntax
-/// (propagated from `syn::parse_str`).
+/// Returns an error when tree-sitter cannot allocate a parse. tree-sitter
+/// performs error recovery, so syntactically invalid Rust still yields a tree
+/// (possibly with `ERROR` nodes) rather than a parse error.
 pub fn parse_source(source: &str) -> anyhow::Result<ParseResult> {
-    let file: syn::File = syn::parse_str(source)?;
+    let lang = rust_language()?;
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&lang)?;
+    let tree = parser
+        .parse(source, None)
+        .ok_or_else(|| anyhow::anyhow!("tree-sitter parse returned no tree"))?;
 
-    // Byte offset of the start of every line. Built once so each syn
-    // line->offset conversion is an O(1) lookup, making the whole span
-    // extraction O(source_len + items) instead of O(items * source_len).
     let line_starts = line_start_offsets(source);
-    let item_spans = syn_item_spans(&file, &line_starts);
+    let raw = collect_item_entries(tree.root_node());
+    let items = build_items(&raw, source, &line_starts);
 
-    if item_spans.is_empty() {
-        return Ok(ParseResult {
-            items: Vec::new(),
-            source: source.to_string(),
-            file,
-            preamble_end: 0,
-            trailer_start: source.len(),
-        });
-    }
-
-    let preamble_end = item_spans[0].0;
-    let items = build_items(&file.items, source, &line_starts, &item_spans, preamble_end);
-
-    // Trailer: everything after the last item's extended end.
+    let preamble_end = items.first().map(|it| it.start).unwrap_or(0);
     let trailer_start = items.last().map_or(source.len(), |last| last.end);
 
     Ok(ParseResult {
         items,
         source: source.to_string(),
-        file,
+        tree,
         preamble_end,
         trailer_start,
     })
@@ -81,56 +83,41 @@ pub fn parse_source(source: &str) -> anyhow::Result<ParseResult> {
 /// item `a` ends right after its own newline; item `b` starts there, so
 /// `source[b.start..b.end]` contains the blank line and `// header`.
 ///
-/// `start_line` and classification use the SYN start, not the trivia-extended
-/// `start`, so diagnostic line numbers stay on the real body.
-///
-/// One advancing cursor over `line_starts` computes every `start_line` and
-/// `end`; syn_start/syn_end are monotonic (items are in source order), so this
-/// is a single O(items + lines) sweep, not O(items * log lines) binary searches.
-///
-/// # Arguments
-///
-/// * `items` - syn items in source order; indexed in parallel with `item_spans`.
-/// * `source` - the full source text; classified names and spans index into it.
-/// * `line_starts` - byte offset of the start of each line (from
-///   `line_start_offsets`); sorted ascending, `starts[0] == 0`.
-/// * `item_spans` - per-item `(syn_start, syn_end)` byte offsets, parallel to
-///   `items`; each tuple's start/end are the SYN body boundaries (not yet
-///   newline-extended).
-/// * `preamble_end` - byte offset where the first item's span begins (end of
-///   the leading file doc/attrs); seeds the back-to-back chain.
-fn build_items(
-    items: &[syn::Item],
-    source: &str,
-    line_starts: &[usize],
-    item_spans: &[(usize, usize)],
-    preamble_end: usize,
-) -> Vec<SourceItem> {
+/// `start_line` uses the item's attached-trivia start (the first preceding
+/// `#[...]` attribute or `///` doc comment) so diagnostic line numbers point at
+/// the real leading docs/attrs; with no attached trivia it falls back to the
+/// item body start.
+fn build_items(raw: &[RawEntry<'_>], source: &str, line_starts: &[usize]) -> Vec<SourceItem> {
     let source_len = source.len();
-    let mut out = Vec::with_capacity(items.len());
-    // prev_end seeds the first item's start with preamble_end, so no special
-    // case is needed for it.
-    let mut prev_end = preamble_end;
-    let mut line_cursor: usize = 0;
+    let mut out = Vec::with_capacity(raw.len());
+    let mut prev_end: usize = 0;
+    let mut first = true;
 
-    for (item, &(syn_start, syn_end)) in items.iter().zip(item_spans) {
-        let start = prev_end;
+    for entry in raw {
+        let body = entry.body;
+        let body_start = body.start_byte();
+        let body_end = body.end_byte();
 
-        // 1-based start_line: count of line-start offsets at or before
-        // syn_start (not the gap-extended start).
-        while line_cursor < line_starts.len() && line_starts[line_cursor] <= syn_start {
-            line_cursor += 1;
-        }
-        let start_line = line_cursor;
+        // attached_start = start of first preceding attr/outer-doc, else body.
+        let attached_start = entry.pending.attached_start().unwrap_or(body_start);
 
-        // `end` extends syn_end to the byte after its terminating newline.
-        while line_cursor < line_starts.len() && line_starts[line_cursor] <= syn_end {
-            line_cursor += 1;
-        }
-        let end = line_starts.get(line_cursor).copied().unwrap_or(source_len);
-        prev_end = end;
+        // Gap-anchored start: the first item seeds with its attached_start
+        // (= preamble_end); later items chain from the previous item's end so
+        // the inter-item gap falls inside this item's span.
+        let start = if first {
+            first = false;
+            attached_start
+        } else {
+            prev_end
+        };
 
-        let class = classify_item(item, source, syn_start);
+        // `end` extends body_end to the byte after its terminating newline:
+        // the first line-start strictly greater than body_end.
+        let end = next_line_start(line_starts, body_end).unwrap_or(source_len);
+
+        let start_line = line_of(line_starts, attached_start);
+
+        let class = classify_item(body, source, &entry.pending);
         out.push(SourceItem::new(
             start,
             end,
@@ -146,8 +133,42 @@ fn build_items(
             class.params,
             class.is_test_fn,
         ));
+        prev_end = end;
     }
     out
+}
+
+/// Walk the `source_file` children in byte order and collect one [`RawEntry`]
+/// per recognized top-level item, attaching the contiguous run of preceding
+/// attributes and outer doc comments to each.
+///
+/// Non-attachable nodes (plain `//` comments, inner `//!` docs, empty
+/// statements) are transparent: they neither attach to an item nor break a
+/// pending run of attachable trivia.
+fn collect_item_entries(root: tree_sitter::Node<'_>) -> Vec<RawEntry<'_>> {
+    let mut entries = Vec::new();
+    let mut pending = PendingTrivia::new();
+    let count = root.named_child_count() as u32;
+    for i in 0..count {
+        let Some(child) = root.named_child(i) else {
+            continue;
+        };
+        if is_attachable(child) {
+            pending.push(child);
+        } else if is_transparent_comment(child) {
+            // Transparent: ignored, pending run preserved.
+        } else if let Some(entry) = item_entry_for(child) {
+            entries.push(RawEntry {
+                body: entry,
+                pending: std::mem::take(&mut pending),
+            });
+        } else {
+            // Unrecognized non-item top-level node (e.g. a stray
+            // `expression_statement` that is not a macro invocation): treat as
+            // transparent so it does not break attachment of surrounding trivia.
+        }
+    }
+    entries
 }
 
 /// Byte offset of the start of every line in `source`.
@@ -171,48 +192,73 @@ fn line_start_offsets(source: &str) -> Vec<usize> {
     starts
 }
 
-/// Byte spans of each top-level item, converted from syn's (1-based line,
-/// 0-based byte column) coordinates via the `line_starts` table.
-///
-/// # Arguments
-///
-/// * `file` - parsed source; its `items` are walked in source order.
-/// * `line_starts` - byte offset of the start of each line; used to turn
-///   syn's (line, column) into a flat byte offset via `linecol_to_byte`.
-///
-/// Returns `(syn_start_byte, syn_end_byte)` per item - the SYN body
-/// boundaries, before any newline/trivia extension.
-fn syn_item_spans(file: &syn::File, line_starts: &[usize]) -> Vec<(usize, usize)> {
-    file.items
-        .iter()
-        .map(|item| {
-            let span = item.span();
-            let start = linecol_to_byte(line_starts, span.start().line, span.start().column);
-            let end = linecol_to_byte(line_starts, span.end().line, span.end().column);
-            (start, end)
-        })
-        .collect()
+/// The tree-sitter-rust language, constructed once.
+fn rust_language() -> anyhow::Result<tree_sitter::Language> {
+    Ok(tree_sitter_rust::LANGUAGE.into())
 }
 
-/// Convert line/column (1-based line, 0-based byte column) to a byte offset
-/// using the precomputed `line_starts` table for an O(1) lookup.
-fn linecol_to_byte(line_starts: &[usize], line: usize, column: usize) -> usize {
-    // syn line is 1-based; table index 0 holds line 1's start offset.
-    let idx = line.saturating_sub(1);
-    let base = line_starts.get(idx).copied().unwrap_or(usize::MAX);
-    base + column
+/// If `node` is a recognized top-level item, return the body node to classify.
+///
+/// Top-level macro invocations are wrapped in `expression_statement`; the
+/// body node returned is the `expression_statement` (so its byte range covers
+/// the trailing `;`), with classification reading the inner `macro_invocation`.
+fn item_entry_for(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
+    match node.kind() {
+        "function_item"
+        | "struct_item"
+        | "enum_item"
+        | "union_item"
+        | "type_item"
+        | "impl_item"
+        | "mod_item"
+        | "trait_item"
+        | "const_item"
+        | "static_item"
+        | "use_declaration"
+        | "extern_crate_declaration"
+        | "macro_definition"
+        | "foreign_mod_item"
+        | "macro_invocation" => Some(node),
+        // A top-level `foo!();` parses as `expression_statement` wrapping a
+        // `macro_invocation`.
+        "expression_statement" => is_macro_invocation_stmt(node).then_some(node),
+        _ => None,
+    }
+}
+
+/// 1-based line number of `byte` (count of line-starts at or before `byte`).
+fn line_of(line_starts: &[usize], byte: usize) -> usize {
+    line_starts.partition_point(|&s| s <= byte)
+}
+
+/// The first line-start strictly greater than `byte`, or `None` if none.
+fn next_line_start(line_starts: &[usize], byte: usize) -> Option<usize> {
+    // partition_point returns the count of starts <= byte, i.e. the index of
+    // the first start strictly greater than byte.
+    let idx = line_starts.partition_point(|&s| s <= byte);
+    line_starts.get(idx).copied()
+}
+
+/// True when an `expression_statement`'s single named child is a
+/// `macro_invocation`.
+fn is_macro_invocation_stmt(stmt: tree_sitter::Node) -> bool {
+    stmt.named_child_count() == 1
+        && stmt
+            .named_child(0)
+            .is_some_and(|c| c.kind() == "macro_invocation")
 }
 
 #[cfg(test)]
 mod tests {
     use super::parse_source;
+    use crate::parse::ItemKind;
 
     /// Gap-anchored spans: each non-first item's `start` is the previous
     /// item's `end`, `end` includes the trailing newline, and `start_line`
-    /// tracks the SYN start (not the gap-extended start).
+    /// tracks the attached-trivia start (the SYN body start when no attached
+    /// attrs/docs precede it).
     #[test]
     fn gap_anchored_spans_and_start_lines() {
-        proc_macro2::fallback::force();
         // Line map (1-based):
         //   1: //! doc
         //   2: fn b() {}
@@ -233,7 +279,8 @@ fn a() {}\n";
         // Two top-level items: b (line 2), a (line 6).
         assert_eq!(parsed.items.len(), 2, "two top-level items");
 
-        // start_line uses the SYN start, not the gap-extended start.
+        // start_line uses the body start (no attached attrs/docs); the plain
+        // `// section header` does not lower item a's start_line.
         assert_eq!(parsed.items[0].start_line(), 2, "item 0 on line 2");
         assert_eq!(parsed.items[1].start_line(), 6, "item 1 on line 6");
 
@@ -275,7 +322,6 @@ fn a() {}\n";
     /// Last item without a trailing newline: `end` extends to `source.len()`.
     #[test]
     fn last_item_no_trailing_newline() {
-        proc_macro2::fallback::force();
         let source = "fn a() {}\nfn b() {}"; // no final \n
         let parsed = parse_source(source).unwrap();
         assert_eq!(parsed.items.len(), 2);
@@ -291,7 +337,6 @@ fn a() {}\n";
     /// Single item: start == preamble_end, end extends through trailing newline.
     #[test]
     fn single_item() {
-        proc_macro2::fallback::force();
         let source = "//! doc\nfn main() {}\n";
         let parsed = parse_source(source).unwrap();
         assert_eq!(parsed.items.len(), 1);
@@ -300,5 +345,41 @@ fn a() {}\n";
         let body = &source[parsed.items[0].start..parsed.items[0].end];
         assert!(body.starts_with("fn main"));
         assert!(body.ends_with('\n'));
+    }
+
+    /// `#[cfg(test)]` attaches to the following `mod`, lowering its start to
+    /// the attribute and marking it a test module.
+    #[test]
+    fn cfg_test_attaches_to_mod() {
+        let source = "#[cfg(test)]\npub mod tests {}";
+        let parsed = parse_source(source).unwrap();
+        assert_eq!(parsed.items.len(), 1);
+        assert!(parsed.items[0].is_test_module());
+        // Attached trivia lowers start_line to the attribute line.
+        assert_eq!(parsed.items[0].start_line(), 1);
+        assert_eq!(parsed.items[0].start, 0);
+    }
+
+    /// Outer `///` doc comments attach to the following fn.
+    #[test]
+    fn outer_doc_attaches_to_fn() {
+        let source = "/// Does the thing.\npub fn thing() {}";
+        let parsed = parse_source(source).unwrap();
+        assert_eq!(parsed.items.len(), 1);
+        assert_eq!(parsed.items[0].doc_comments(), &[" Does the thing."]);
+        assert_eq!(parsed.items[0].start_line(), 1);
+    }
+
+    /// A top-level macro invocation (`foo!();`) is classified as
+    /// [`ItemKind::MacroInvocation`].
+    #[test]
+    fn top_level_macro_invocation() {
+        let source = "println!(\"x\");\nmacro_rules! m { () => {}; }\n";
+        let parsed = parse_source(source).unwrap();
+        assert_eq!(parsed.items.len(), 2);
+        assert_eq!(parsed.items[0].kind(), &ItemKind::MacroInvocation);
+        assert_eq!(parsed.items[0].name(), Some("println"));
+        assert_eq!(parsed.items[1].kind(), &ItemKind::Macro);
+        assert_eq!(parsed.items[1].name(), Some("m"));
     }
 }
