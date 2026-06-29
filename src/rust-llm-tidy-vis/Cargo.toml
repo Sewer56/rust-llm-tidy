@@ -21,4 +21,4 @@ syn = { version = "2", features = ["full", "parsing"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 ahash = "0.8"
 memchr = "2"
-cargo_metadata = "0.19" # crate-root discovery for cross-file vis (P1); pin/adjust to latest 0.x
+cargo_metadata = "0.23" # crate-root discovery for cross-file vis (P1); pin/adjust to latest 0.x
