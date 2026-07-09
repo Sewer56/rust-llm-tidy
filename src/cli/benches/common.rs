@@ -202,7 +202,9 @@ pub fn build_crate_context(
     // and the crate-wide re-export scan (single parse per file).
     let files: Vec<ParsedFile> = owned
         .iter()
-        .filter_map(|(p, s)| ParsedFile::new(std::path::PathBuf::from(p), s.clone()).ok())
+        .map(|(p, s)| {
+            ParsedFile::new(std::path::PathBuf::from(p), s.clone()).expect("fixture must parse")
+        })
         .collect();
     let root = std::path::PathBuf::from(&owned[0].0);
     let tree = build_module_tree(&root, &files).expect("crate fixture must resolve");
