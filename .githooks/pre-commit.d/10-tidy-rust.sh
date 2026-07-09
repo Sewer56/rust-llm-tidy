@@ -9,15 +9,12 @@ repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
 # Collect staged .rs files (added/copied/modified/renamed); skip deletions.
-# Skip hand-curated test fixtures: they are intentional before/after pairs,
-# not compilable units, so fixing/reordering would corrupt them.
+# Skip deletions only. Hand-curated test fixtures are excluded by the
+# repo-root `.rust-llm-tidy.yml` (auto-discovered when this hook runs
+# `rust-llm-tidy all` from repo root), so no shell filtering is needed here.
 files=()
 while IFS= read -r f; do
   [ -f "$f" ] || continue
-  case "$f" in
-    */tests/fixtures/*) continue ;;
-    */benches/fixtures/*) continue ;;
-  esac
   files+=("$f")
 done < <(git diff --cached --name-only --diff-filter=ACMR -- '*.rs')
 

@@ -216,7 +216,7 @@ fn fixture_dir() -> std::path::PathBuf {
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
 fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
     let mut cmd = Command::new(binary());
-    cmd.args(args).arg(path);
+    cmd.args(["--no-config"]).args(args).arg(path);
     cmd.output()
         .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
 }

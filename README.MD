@@ -26,13 +26,14 @@ rust-llm-tidy-reorder = "0.1.0"
 
 ### CLI
 
-The binary exposes five subcommands:
+The binary exposes six subcommands:
 
 - `fix` - realign GitHub-Flavored Markdown (GFM) tables, fix nested fence delimiters, and hoist repeated inline links
-- `reorder` - the original behavior
+- `reorder` - reorder items into canonical 10-phase order
 - `vis` - clamp `pub` to its module's reach
 - `check` - a read-only documentation linter
 - `all` - fix, reorder, vis, then check in one pass
+- `validate` - check the YAML config without processing files; exits non-zero on any config error or when no config is found
 
 ```bash
 # Reorder a file in place
@@ -94,6 +95,49 @@ non-zero when any error-severity finding is present (warnings do not fail).
 traits, consts, and statics. Modules are skipped: they are documented via `//!`
 inner docs that may live in a separate file this single-file checker does not
 parse.
+
+### Configuration
+
+`rust-llm-tidy` reads an optional YAML config file named
+`.rust-llm-tidy.yml`. It supports three keys:
+
+- `exclude` - a list of globs; matched files are skipped entirely (no fix,
+  reorder, vis, check, or post-process).
+- `exclude_rules` - a list of groups, each with `paths` (globs) and `rules`
+  (lint codes or fix/operation names to disable for matched files).
+- `post_process` - external commands run on processed files after tidying,
+  only on mutating commands (`fix`/`reorder`/`vis`/`all`), not on `check` or
+  `validate`. Each entry has `command`, `args` (default empty), and
+  `extensions` (default empty = all). File path appended as last arg. Uses
+  `std::process::Command` - no shell injection. Skipped under `--dry-run`
+  and for excluded files. Collects non-zero exit or spawn failures and
+  exits non-zero.
+
+Globs are relative to the config file's directory and use `literal_separator`
+semantics (`*` does not cross `/`; `**` recurses). Disabled rule names are the
+lint codes above plus the fix/operation names `tables`, `fences`, `links`,
+`reorder`, and `vis`.
+
+The config is discovered automatically: `rust-llm-tidy` walks up from the
+current directory to the repo root (the first ancestor containing `.git`),
+checking each level for `.rust-llm-tidy.yml`; the first found wins. Override
+with `--config <PATH>`; disable all discovery and loading with `--no-config`.
+
+Every config error - bad YAML, unknown rule name, bad glob syntax, or a pattern
+matching zero files - produces a non-zero exit on every command. There is no
+"warn and continue" mode. Use the `validate` subcommand to check the config
+without processing files (useful in CI).
+
+```bash
+# Validate the config without processing files
+rust-llm-tidy validate
+
+# Run with an explicit config path
+rust-llm-tidy --config ./my-config.yml all src
+
+# Disable config discovery for an ad-hoc run
+rust-llm-tidy --no-config fix src
+```
 
 ### Programmatic
 
@@ -220,11 +264,11 @@ for sorting, grouping, and merging.
 - [rust-llm-tidy-vis]: Visibility narrowing - narrows bare `pub` items inside restricted-visibility inline modules to the module's visibility
 - [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/`# Arguments`, placeholder, and test-naming checks
 - [rust-llm-tidy-fix]: Markdown/doc-comment tidying - realigns GFM tables, fixes nested fence delimiters, and hoists repeated inline links in `.rs` doc comments and `.md` files
-- [cli]: Unified command-line interface (`fix`, `reorder`, `vis`, `check`, `all`)
+- [cli]: Unified command-line interface (`fix`, `reorder`, `vis`, `check`, `all`, `validate`)
 
 ## Git Hook (optional)
 
-Auto-reorder and format staged `.rs` files on commit. One-time setup per clone:
+Auto-tidy staged `.rs` files on commit (fix + reorder + vis + check + rustfmt). One-time setup per clone:
 
 ```bash
 git config core.hooksPath .githooks
@@ -237,11 +281,9 @@ there. Works on Linux, macOS, and Windows (Git for Windows).
 
 Bundled hooks, in run order:
 
-- `10-reorder-rust.sh` - reorders staged `.rs` files. Uses an installed
-  `rust-llm-tidy` binary if present, else `cargo run`.
-- `20-rustfmt.sh` - runs `rustfmt --edition 2021` on staged `.rs` files so
-  import sorting/grouping (handled by rustfmt) and general formatting apply
-  after the reorder step.
+- `10-tidy-rust.sh` - runs `rust-llm-tidy all` on staged `.rs` files (fix,
+  reorder, vis, check), then `rustfmt` via the config `post_process` step. Uses
+  an installed `rust-llm-tidy` binary if present, else `cargo run`.
 
 ## Developer Manual
 

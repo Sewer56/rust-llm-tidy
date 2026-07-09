@@ -46,6 +46,10 @@ rust-llm-tidy-fix = { path = "../rust-llm-tidy-fix", version = "0.1.0" }
 rust-llm-tidy-vis = { path = "../rust-llm-tidy-vis", version = "0.1.0" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_yml = "0.0"
+globset = "0.4"
+glob = "0.3"
 
 [dev-dependencies]
 criterion = "0.8"

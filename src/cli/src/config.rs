@@ -1,0 +1,459 @@
+//! Configuration: YAML config file parsing, glob compilation, and runtime
+//! per-file policy computation for `rust-llm-tidy`.
+//!
+//! A config file (`.rust-llm-tidy.yml`) lets users exclude files from all
+//! processing, disable specific lint/fix rules per path, and run external
+//! post-processing commands (e.g. `rustfmt`) on every processed file.
+//!
+//! All patterns are globs relative to the config file's directory and are
+//! compiled with `literal_separator(true)`, so `*` does not cross `/` and
+//! `**` recurses across directories. Files outside the config directory never
+//! match (the prefix strip fails).
+//!
+//! # Hard-fail policy
+//!
+//! Any config error - bad YAML, bad glob syntax, unknown rule name, or a
+//! pattern matching zero files - causes [`load_and_compile`] to return `Err`,
+//! which the CLI propagates as a non-zero exit on every command. The
+//! `validate` subcommand exists for CI to check the config without processing
+//! files.
+
+use anyhow::{Context, anyhow, bail};
+use glob::glob as fs_glob;
+use globset::{GlobBuilder, GlobSet};
+use rust_llm_tidy_lint::check::LINT_CODES;
+use serde::Deserialize;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+
+/// Fix/operation names that can be disabled via `exclude_rules`. Kept in sync
+/// with the per-file dispatch in `main.rs` (`fix_file`, `reorder_file`,
+/// `vis_file`).
+pub const KNOWN_FIX_OPS: &[&str] = &["tables", "fences", "links", "reorder", "vis"];
+
+/// A loaded and validated config, ready to answer `policy_for` queries.
+#[derive(Debug)]
+pub struct CompiledConfig {
+    /// Canonicalized directory of the config file. Patterns are resolved
+    /// relative to this.
+    config_dir: PathBuf,
+    /// Matches `exclude` patterns.
+    exclude_set: GlobSet,
+    /// One group per `exclude_rules` entry.
+    rule_groups: Vec<RuleGroup>,
+    /// Stored so the CLI can run the post-processing pass without re-parsing.
+    post_process: Vec<PostProcessStep>,
+}
+
+/// Raw serde view of `.rust-llm-tidy.yml`. Paths/globs are relative to the
+/// config file's directory.
+#[derive(Debug, Deserialize, Default)]
+pub struct Config {
+    /// Skip all processing for files matching any pattern.
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    /// Disable specific rules for files matching any group's patterns.
+    #[serde(default)]
+    pub exclude_rules: Vec<ExcludeRule>,
+    /// External commands run on every processed file after rust-llm-tidy.
+    #[serde(default)]
+    pub post_process: Vec<PostProcessStep>,
+}
+
+/// Runtime policy for a single file: whether to skip it entirely and which
+/// rules are disabled for it.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct FilePolicy {
+    /// Matched by an `exclude` pattern.
+    pub skip: bool,
+    /// Union of `rules` from all matched `exclude_rules` groups.
+    pub disabled: HashSet<String>,
+}
+
+/// One entry under `exclude_rules`: a list of path globs and the rule names to
+/// disable for files they match.
+#[derive(Debug, Deserialize)]
+pub struct ExcludeRule {
+    pub paths: Vec<String>,
+    pub rules: Vec<String>,
+}
+
+/// One external post-processing step. The processed file path is appended as
+/// the last argument by the CLI's `run_post_process` (see `main.rs`).
+#[derive(Debug, Deserialize, Clone)]
+pub struct PostProcessStep {
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Empty = run on every file regardless of extension.
+    #[serde(default)]
+    pub extensions: Vec<String>,
+}
+
+/// A compiled `exclude_rules` group: one glob set plus its disabled rule
+/// names.
+#[derive(Debug)]
+struct RuleGroup {
+    set: GlobSet,
+    rules: Vec<String>,
+}
+
+impl CompiledConfig {
+    /// Borrow the post-processing steps so the CLI can run them after the
+    /// per-file loop.
+    pub fn post_process_steps(&self) -> &[PostProcessStep] {
+        &self.post_process
+    }
+
+    /// Test-only accessor for the canonicalized config directory. Used by the
+    /// unit tests to reconstruct canonical paths matching `policy_for`.
+    #[cfg(test)]
+    pub fn config_dir_canonical_for_test(&self) -> &Path {
+        &self.config_dir
+    }
+
+    /// Compute the [`FilePolicy`] for `file`.
+    ///
+    /// `file` is canonicalized, the `config_dir` prefix is stripped, and the
+    /// relative path is tested against every compiled glob set. A file outside
+    /// `config_dir` (prefix strip fails) returns an empty policy.
+    pub fn policy_for(&self, file: &Path) -> FilePolicy {
+        let Ok(canon) = file.canonicalize() else {
+            return FilePolicy::default();
+        };
+        // Outside the config directory: never matches.
+        let Some(rel) = canon.strip_prefix(&self.config_dir).ok() else {
+            return FilePolicy::default();
+        };
+        let rel_str = rel.to_string_lossy();
+        let mut policy = FilePolicy::default();
+        if self.exclude_set.is_match(&*rel_str) {
+            policy.skip = true;
+        }
+        for group in &self.rule_groups {
+            if group.set.is_match(&*rel_str) {
+                policy.disabled.extend(group.rules.iter().cloned());
+            }
+        }
+        policy
+    }
+}
+
+/// Resolve the config file path.
+///
+/// - `no_config == true` -> `None`.
+/// - Explicit `arg` -> that path (used as-is).
+/// - Else walk up from `std::env::current_dir()` towards the filesystem root.
+///   At each level checked (including the starting dir), look for
+///   `.rust-llm-tidy.yml`; the first one found wins. Stop at the first ancestor
+///   that contains a `.git` entry (the repo root) if no config appeared there;
+///   if no `.git` is found, continue to the filesystem root. Returns `None`
+///   when no config file is found.
+pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathBuf> {
+    if no_config {
+        return None;
+    }
+    if let Some(p) = arg {
+        return Some(p.to_path_buf());
+    }
+    let cwd = std::env::current_dir().ok()?;
+    let mut dir: &Path = &cwd;
+    loop {
+        let candidate = dir.join(".rust-llm-tidy.yml");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        if dir.join(".git").exists() {
+            // Reached the repo root without finding a config; stop walking up.
+            return None;
+        }
+        match dir.parent() {
+            Some(parent) => dir = parent,
+            None => return None,
+        }
+    }
+}
+
+/// Read, parse, validate, and compile the config at `path`.
+///
+/// Steps:
+/// 1. Read the file and `serde_yml::from_str` it (YAML error -> `Err`).
+/// 2. Canonicalize the config directory (patterns resolve relative to it).
+/// 3. Validate every `exclude_rules` rule name against `known_rules()`; compile
+///    each group's patterns into a `GlobSet` with `literal_separator(true)`.
+/// 4. Compile the `exclude` patterns into one `GlobSet`.
+/// 5. Semantic check: expand each pattern via `glob::glob()` joined with
+///    `config_dir`; a pattern yielding zero results is stale -> `Err`.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The file cannot be read or parsed as YAML.
+/// - The config path has no parent directory.
+/// - The config directory cannot be canonicalized.
+/// - Any `exclude_rules` rule name is not in [`known_rules()`].
+/// - Any glob pattern has invalid syntax.
+/// - Any pattern matches zero files under the config directory.
+///
+/// On success, returns a [`CompiledConfig`] ready for `policy_for`.
+pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read config {}", path.display()))?;
+    let config: Config = serde_yml::from_str(&raw)
+        .with_context(|| format!("failed to parse YAML config {}", path.display()))?;
+
+    let config_dir = path
+        .parent()
+        .with_context(|| format!("config path {} has no parent", path.display()))?
+        .canonicalize()
+        .with_context(|| format!("failed to canonicalize config dir {}", path.display()))?;
+
+    // Validate rule names + compile rule groups.
+    let valid = known_rules();
+    let mut rule_groups: Vec<RuleGroup> = Vec::with_capacity(config.exclude_rules.len());
+    for rule in &config.exclude_rules {
+        for r in &rule.rules {
+            if !valid.contains(&r.as_str()) {
+                bail!(
+                    "unknown rule `{r}` in exclude_rules; valid rules: {}",
+                    valid.join(", ")
+                );
+            }
+        }
+        let set = compile_glob_set(&rule.paths, &config_dir)?;
+        rule_groups.push(RuleGroup {
+            set,
+            rules: rule.rules.clone(),
+        });
+    }
+
+    let exclude_set = compile_glob_set(&config.exclude, &config_dir)?;
+
+    // Semantic check: every pattern must match at least one file when expanded
+    // against the filesystem from `config_dir`.
+    for pat in &config.exclude {
+        check_pattern_matches(&config_dir, pat)?;
+    }
+    for group in &config.exclude_rules {
+        for pat in &group.paths {
+            check_pattern_matches(&config_dir, pat)?;
+        }
+    }
+
+    Ok(CompiledConfig {
+        config_dir,
+        exclude_set,
+        rule_groups,
+        post_process: config.post_process,
+    })
+}
+
+/// Return every rule name accepted by `exclude_rules`: lint codes followed by
+/// fix/operation names. The CLI validates rule names against this list.
+pub fn known_rules() -> Vec<&'static str> {
+    let mut rules: Vec<&'static str> = LINT_CODES.to_vec();
+    rules.extend_from_slice(KNOWN_FIX_OPS);
+    rules
+}
+
+/// Expand `pattern` joined with `config_dir` via `glob::glob()` and require at
+/// least one match. Descends only the pattern's prefix subtree, so cost scales
+/// with the number/depth of patterns, not repo size.
+fn check_pattern_matches(config_dir: &Path, pattern: &str) -> anyhow::Result<()> {
+    let full = config_dir.join(pattern);
+    let full_str = full.to_string_lossy().into_owned();
+    let mut matches = fs_glob(&full_str)
+        .map_err(|e| anyhow!("invalid glob pattern `{pattern}`: {e}"))?
+        .filter_map(Result::ok);
+    if matches.next().is_none() {
+        bail!(
+            "config pattern `{pattern}` matched no files under {}",
+            config_dir.display()
+        );
+    }
+    Ok(())
+}
+
+/// Build a `GlobSet` from `patterns`, each compiled with `literal_separator(true)`.
+fn compile_glob_set(patterns: &[String], _config_dir: &Path) -> anyhow::Result<GlobSet> {
+    let mut builder = GlobSet::builder();
+    for p in patterns {
+        let g = GlobBuilder::new(p)
+            .literal_separator(true)
+            .build()
+            .with_context(|| format!("invalid glob pattern `{p}`"))?;
+        builder.add(g);
+    }
+    builder
+        .build()
+        .map_err(|e| anyhow!("failed to build glob set: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    static COMPILE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+    /// Write a YAML config and a sibling matching file under a temp dir, then
+    /// load+compile. Returns the `CompiledConfig`. The temp dir is NOT cleaned
+    /// up here so callers can exercise `policy_for` on existing files.
+    fn compile(yaml: &str, files: &[(&str, &str)]) -> CompiledConfig {
+        let dir = std::env::temp_dir().join(format!(
+            "rlt-cfg-unit-{}-{}",
+            std::process::id(),
+            COMPILE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed,),
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (name, body) in files {
+            let p = dir.join(name);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            let mut f = std::fs::File::create(&p).unwrap();
+            f.write_all(body.as_bytes()).unwrap();
+        }
+        let cfg_path = dir.join(".rust-llm-tidy.yml");
+        std::fs::write(&cfg_path, yaml).unwrap();
+        let compiled = load_and_compile(&cfg_path).expect("config should compile");
+        compiled
+    }
+
+    #[test]
+    fn empty_config_compiles_to_no_op() {
+        let cc = compile("exclude: []\n", &[("src/lib.rs", "pub fn example() {}\n")]);
+        // Use a file that actually exists inside the config dir so
+        // canonicalize succeeds and the no-pattern-match path is exercised.
+        let dir = cc.config_dir_canonical_for_test();
+        let policy = cc.policy_for(&dir.join("src").join("lib.rs"));
+        assert!(!policy.skip);
+        assert!(policy.disabled.is_empty());
+    }
+
+    #[test]
+    fn bad_glob_syntax_is_rejected() {
+        // `[` opens an unclosed character class across both `globset` and
+        // `glob`, so this fails at compile time.
+        let dir = std::env::temp_dir().join(format!("rlt-cfg-bad-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // The pattern must be invalid regardless of matching files.
+        std::fs::write(dir.join("a.rs"), "pub fn x() {}\n").unwrap();
+        let cfg_path = dir.join(".rust-llm-tidy.yml");
+        std::fs::write(&cfg_path, "exclude:\n  - \"[unclosed\"\n").unwrap();
+        let err = load_and_compile(&cfg_path).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("invalid glob pattern") || msg.contains("glob"),
+            "bad glob syntax should surface as an error: {msg}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unknown_rule_is_rejected() {
+        let dir = std::env::temp_dir().join(format!("rlt-cfg-rule-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lib.rs"), "pub fn x() {}\n").unwrap();
+        let cfg_path = dir.join(".rust-llm-tidy.yml");
+        std::fs::write(
+            &cfg_path,
+            "exclude_rules:\n  - paths: [\"lib.rs\"]\n    rules: [\"BOGUS\"]\n",
+        )
+        .unwrap();
+        let err = load_and_compile(&cfg_path).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("unknown rule") && msg.contains("BOGUS"),
+            "unknown rule should be reported: {msg}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn non_matching_pattern_is_rejected() {
+        let dir = std::env::temp_dir().join(format!("rlt-cfg-nomatch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_path = dir.join(".rust-llm-tidy.yml");
+        std::fs::write(&cfg_path, "exclude:\n  - \"nope/**\"\n").unwrap();
+        let err = load_and_compile(&cfg_path).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("matched no files"),
+            "non-matching pattern should be reported: {msg}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn policy_for_matches_relative_path() {
+        let cc = compile(
+            "exclude:\n  - \"src/lib.rs\"\nexclude_rules:\n  - paths: [\"src/lib.rs\"]\n    rules: [\"links\"]\n",
+            &[("src/lib.rs", "pub fn example() {}\n")],
+        );
+        // Re-open the same path the compile helper used to canonicalize.
+        let dir = cc.config_dir_canonical_for_test();
+        let lib = dir.join("src").join("lib.rs");
+        let policy = cc.policy_for(&lib);
+        assert!(policy.skip, "exclude should mark the file skipped");
+        assert!(
+            policy.disabled.contains("links"),
+            "exclude_rules should disable `links`: {policy:?}"
+        );
+    }
+
+    #[test]
+    fn file_outside_config_dir_returns_empty_policy() {
+        let cc = compile(
+            "exclude:\n  - \"**\"\n",
+            &[("src/lib.rs", "pub fn example() {}\n")],
+        );
+        // A file that exists but is outside the config dir yields an empty
+        // policy via the strip_prefix failure path (canonicalize succeeds).
+        let outside_dir =
+            std::env::temp_dir().join(format!("rlt-cfg-outside-dir-{}", std::process::id()));
+        std::fs::create_dir_all(&outside_dir).unwrap();
+        let outside = outside_dir.join("outside.rs");
+        std::fs::write(&outside, "pub fn x() {}\n").unwrap();
+        let policy = cc.policy_for(&outside);
+        assert!(!policy.skip);
+        assert!(policy.disabled.is_empty());
+        let _ = std::fs::remove_dir_all(&outside_dir);
+    }
+
+    #[test]
+    fn literal_separator_star_does_not_cross_slash() {
+        // `*.rs` must match a file directly under the config dir, but NOT a
+        // file nested under a subdirectory (because `*` does not cross `/`).
+        let cc = compile(
+            "exclude:\n  - \"*.rs\"\n",
+            &[
+                ("top.rs", "pub fn top() {}\n"),
+                ("sub/nested.rs", "pub fn nested() {}\n"),
+            ],
+        );
+        let dir = cc.config_dir_canonical_for_test();
+        let top = dir.join("top.rs");
+        let nested = dir.join("sub").join("nested.rs");
+        assert!(
+            cc.policy_for(&top).skip,
+            "*.rs should match a top-level .rs file"
+        );
+        assert!(
+            !cc.policy_for(&nested).skip,
+            "*.rs must NOT cross / and match a nested file"
+        );
+    }
+
+    #[test]
+    fn known_rules_lists_every_code_and_op() {
+        let rules = known_rules();
+        // The seven lint codes plus the five fix/operation names.
+        for code in [
+            "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "TEST001",
+        ] {
+            assert!(rules.iter().any(|r| *r == code), "missing lint code {code}");
+        }
+        for op in ["tables", "fences", "links", "reorder", "vis"] {
+            assert!(rules.iter().any(|r| *r == op), "missing fix/operation {op}");
+        }
+    }
+}

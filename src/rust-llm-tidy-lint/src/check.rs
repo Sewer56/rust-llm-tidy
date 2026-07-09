@@ -30,20 +30,32 @@ const ARGUMENTS_HEADERS: &[&str] = &[
     "# Params",
     "# Param",
 ];
+/// All lint codes accepted by `exclude_rules`, in the order they run. The CLI
+/// validates `exclude_rules` rule names against this slice plus
+/// `KNOWN_FIX_OPS` (defined in the CLI crate's `config` module).
+pub const LINT_CODES: &[&str] = &[
+    CODE_MISSING_DOCS,
+    CODE_MISSING_ERRORS,
+    CODE_VAGUE_ERRORS,
+    CODE_MISSING_ARGUMENTS,
+    CODE_UNDOCUMENTED_PARAM,
+    CODE_DOC_PLACEHOLDER,
+    CODE_TEST_NAMING,
+];
 /// Rule code for placeholder text in doc comments.
-pub(crate) const CODE_DOC_PLACEHOLDER: &str = "DOC006";
+pub const CODE_DOC_PLACEHOLDER: &str = "DOC006";
 /// Rule code for a missing `# Arguments` section.
-pub(crate) const CODE_MISSING_ARGUMENTS: &str = "DOC004";
+pub const CODE_MISSING_ARGUMENTS: &str = "DOC004";
 /// Rule code for missing doc comments.
-pub(crate) const CODE_MISSING_DOCS: &str = "DOC001";
+pub const CODE_MISSING_DOCS: &str = "DOC001";
 /// Rule code for a missing `# Errors` section.
-pub(crate) const CODE_MISSING_ERRORS: &str = "DOC002";
+pub const CODE_MISSING_ERRORS: &str = "DOC002";
 /// Rule code for a discouraged test-function name.
-pub(crate) const CODE_TEST_NAMING: &str = "TEST001";
+pub const CODE_TEST_NAMING: &str = "TEST001";
 /// Rule code for an undocumented parameter.
-pub(crate) const CODE_UNDOCUMENTED_PARAM: &str = "DOC005";
+pub const CODE_UNDOCUMENTED_PARAM: &str = "DOC005";
 /// Rule code for a vague `# Errors` section.
-pub(crate) const CODE_VAGUE_ERRORS: &str = "DOC003";
+pub const CODE_VAGUE_ERRORS: &str = "DOC003";
 
 /// Run every documentation check over `parsed` and return all diagnostics.
 ///
@@ -66,7 +78,7 @@ pub fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
 }
 
 // ---------------------------------------------------------------------------
-// Check 1 - DOC001: missing doc comments
+// Check 6 - DOC006: placeholder text in doc comments
 // ---------------------------------------------------------------------------
 
 /// `DOC006` - doc comments must not contain placeholder text.
@@ -97,7 +109,7 @@ pub fn doc_placeholder(item: &SourceItem) -> Vec<Diagnostic> {
 }
 
 // ---------------------------------------------------------------------------
-// Check 7 - TEST001: test-function naming
+// Check 4 - DOC004: missing `# Arguments` section
 // ---------------------------------------------------------------------------
 
 /// `DOC004` - `pub fn` with parameters must have an `# Arguments` section.
@@ -124,7 +136,7 @@ pub fn missing_arguments_section(item: &SourceItem) -> Vec<Diagnostic> {
 }
 
 // ---------------------------------------------------------------------------
-// Check 5 - DOC005: undocumented parameter
+// Check 1 - DOC001: missing doc comments
 // ---------------------------------------------------------------------------
 
 /// `DOC001` - non-private documentable items must have a `///` doc comment.
@@ -186,7 +198,7 @@ pub fn missing_errors_section(item: &SourceItem) -> Vec<Diagnostic> {
 }
 
 // ---------------------------------------------------------------------------
-// Check 3 - DOC003: vague `# Errors` section
+// Check 7 - TEST001: test-function naming
 // ---------------------------------------------------------------------------
 
 /// `TEST001` - test functions should use behavioral names.
@@ -221,7 +233,7 @@ pub fn test_naming(item: &SourceItem) -> Vec<Diagnostic> {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Check 5 - DOC005: undocumented parameter
 // ---------------------------------------------------------------------------
 
 /// `DOC005` - `# Arguments` section must mention every parameter name.
@@ -263,7 +275,7 @@ pub fn undocumented_param(item: &SourceItem) -> Vec<Diagnostic> {
 }
 
 // ---------------------------------------------------------------------------
-// Check 6 - DOC006: placeholder text in doc comments
+// Check 3 - DOC003: vague `# Errors` section
 // ---------------------------------------------------------------------------
 
 /// `DOC003` - `# Errors` section must name concrete error variants.
@@ -296,10 +308,6 @@ pub fn vague_errors(item: &SourceItem) -> Vec<Diagnostic> {
         item_name: item.name().map(str::to_string),
     }]
 }
-
-// ---------------------------------------------------------------------------
-// Check 4 - DOC004: missing `# Arguments` section
-// ---------------------------------------------------------------------------
 
 /// True when `text` contains a placeholder marker: a whole-word `TODO`,
 /// `FIXME`, or `TBD` (case-insensitive), or a literal `...`.
@@ -739,5 +747,30 @@ mod tests {
         let diags = missing_docs(&item);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].line, 3);
+    }
+
+    #[test]
+    fn lint_codes_lists_all_seven_codes() {
+        // `LINT_CODES` is the source of truth the CLI's `exclude_rules`
+        // validator reads. It must enumerate every code produced by `run_all`.
+        assert_eq!(
+            LINT_CODES.len(),
+            7,
+            "LINT_CODES must list exactly seven codes: {LINT_CODES:?}"
+        );
+        for code in [
+            CODE_MISSING_DOCS,
+            CODE_MISSING_ERRORS,
+            CODE_VAGUE_ERRORS,
+            CODE_MISSING_ARGUMENTS,
+            CODE_UNDOCUMENTED_PARAM,
+            CODE_DOC_PLACEHOLDER,
+            CODE_TEST_NAMING,
+        ] {
+            assert!(
+                LINT_CODES.iter().any(|c| *c == code),
+                "LINT_CODES is missing {code}"
+            );
+        }
     }
 }

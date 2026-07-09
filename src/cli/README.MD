@@ -25,13 +25,20 @@ cargo build --release -p rust-llm-tidy-cli
 
 ## Usage
 
-The binary exposes five subcommands:
+The binary exposes six subcommands:
 
 - `fix` - realign GitHub-Flavored Markdown (GFM) tables, fix nested fence delimiters, and hoist repeated inline links
 - `reorder` - reorder items
 - `vis` - clamp `pub` to its module's reach
 - `check` - read-only documentation linter
 - `all` - fix, reorder, vis, then check
+- `validate` - check the YAML config without processing files (exits non-zero on any config error or when no config is found)
+
+An optional YAML config file (`.rust-llm-tidy.yml`) may exclude files from
+processing, disable specific rules per path, and run external programs (e.g.
+`rustfmt`) on every processed file. Pass `--config <PATH>` to use an explicit
+config or `--no-config` to disable discovery. See the repository README for
+the full schema.
 
 ```bash
 # Reorder a single file in place

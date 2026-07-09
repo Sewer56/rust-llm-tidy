@@ -6,7 +6,7 @@
 //! - **fix**: realign GitHub-Flavored Markdown (GFM) tables, fix nested fence delimiters, and
 //!   hoist repeated inline links in `.rs` doc comments and `.md` files (auto-fixable).
 //! - **reorder**: reorder Rust source file items into a canonical 10-phase
-//!   ordering (the original behavior).
+//!   ordering.
 //! - **vis**: narrow bare `pub` items nested inside restricted-visibility
 //!   inline modules to the module's visibility (crate-aware by default).
 //! - **check**: lint for missing documentation and incomplete `# Errors`
@@ -18,18 +18,36 @@
 //!
 //! # Subcommands
 //!
-//! | Command   | Mutates?                 | Description                                                                 |
-//! | --------- | ------------------------ | --------------------------------------------------------------------------- |
-//! | `fix`     | yes (unless `--dry-run`) | Realign tables, fix fence markers, hoist links                               |
-//! | `reorder` | yes (unless `--dry-run`) | Reorder items into canonical order                                          |
-//! | `vis`     | yes (unless `--dry-run`) | Narrow bare `pub` in restricted-visibility modules (crate-aware by default) |
-//! | `check`   | no                       | Report documentation and test-naming lint findings                          |
-//! | `all`     | yes (unless `--dry-run`) | Fix, reorder, vis, then check                                               |
+//! | Command    | Mutates?                 | Description                                                                 |
+//! | ---------- | ------------------------ | --------------------------------------------------------------------------- |
+//! | `fix`      | yes (unless `--dry-run`) | Realign tables, fix fence markers, hoist links                              |
+//! | `reorder`  | yes (unless `--dry-run`) | Reorder items into canonical order                                          |
+//! | `vis`      | yes (unless `--dry-run`) | Narrow bare `pub` in restricted-visibility modules (crate-aware by default) |
+//! | `check`    | no                       | Report documentation and test-naming lint findings                          |
+//! | `all`      | yes (unless `--dry-run`) | Fix, reorder, vis, then check                                               |
+//! | `validate` | no                       | Validate the YAML config without processing files                           |
 //!
 //! Multiple paths are accepted; each directory is expanded recursively.
+//!
+//! # Configuration
+//!
+//! An optional YAML config file (`.rust-llm-tidy.yml`) can exclude files from
+//! all processing, disable specific rules per path, and run external programs
+//! (e.g. `rustfmt`) on every processed file after rust-llm-tidy finishes.
+//! Discovery walks up from the current directory to the repo root (first
+//! ancestor with `.git`), checking each level for the config. Override with
+//! `--config <PATH>`; disable all discovery with `--no-config`.
+//!
+//! Every config error (bad YAML, unknown rule, bad glob syntax, or a pattern
+//! matching zero files) produces a non-zero exit on every command. The
+//! `validate` subcommand checks the config without processing files.
+//!
+//! `post_process` steps run only on mutating commands (`fix`/`reorder`/`vis`/
+//! `all`), not on `check` or `validate`, and are skipped under `--dry-run`.
 
 use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand};
+use config::{CompiledConfig, PostProcessStep};
 use rust_llm_tidy_fix as fix;
 use rust_llm_tidy_lint::check;
 use rust_llm_tidy_model::io;
@@ -42,8 +60,11 @@ use rust_llm_tidy_vis::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
     discover_crate_root, narrow_vis_in_tree,
 };
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+mod config;
 
 #[derive(Parser)]
 #[command(
@@ -53,6 +74,12 @@ use std::path::{Path, PathBuf};
 struct Cli {
     #[command(subcommand)]
     command: Command,
+    /// Path to a `.rust-llm-tidy.yml` config file. Overrides auto-discovery.
+    #[arg(long, global = true)]
+    config: Option<PathBuf>,
+    /// Disable config discovery and loading entirely.
+    #[arg(long, global = true, conflicts_with = "config")]
+    no_config: bool,
 }
 
 /// Crate-aware context for the `vis` step: a prebuilt module tree (per-file
@@ -92,6 +119,11 @@ enum Command {
     ///
     /// Mutates files in place unless --dry-run is given.
     Fix(PathsArgs),
+    /// Validate the YAML config without processing files.
+    ///
+    /// Exits 0 when the config is valid; non-zero on any config error (bad
+    /// YAML, unknown rule, non-matching path) or when no config is found.
+    Validate,
 }
 
 /// Shared path and dry-run arguments for every subcommand.
@@ -116,12 +148,23 @@ struct PathsArgs {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    // Discover and compile the config up front so any config error hard-fails
+    // every command (including `validate`). `--no-config` and "no file found"
+    // yield `None` and run with current (zero-exclusion) behavior; `validate`
+    // is the exception and treats `None` as failure.
+    let compiled: Option<CompiledConfig> =
+        config::discover_config_path(cli.config.as_deref(), cli.no_config)
+            .map(|p| config::load_and_compile(&p))
+            .transpose()?;
+    let config_ref = compiled.as_ref();
+
     match cli.command {
-        Command::Reorder(args) => run_reorder(args),
-        Command::Vis(args) => run_vis(args),
-        Command::Check(args) => run_check(args),
-        Command::All(args) => run_all(args),
-        Command::Fix(args) => run_fix(args),
+        Command::Reorder(args) => run_reorder(args, config_ref),
+        Command::Vis(args) => run_vis(args, config_ref),
+        Command::Check(args) => run_check(args, config_ref),
+        Command::All(args) => run_all(args, config_ref),
+        Command::Fix(args) => run_fix(args, config_ref),
+        Command::Validate => run_validate(cli.config.as_deref(), cli.no_config),
     }
 }
 
@@ -134,7 +177,7 @@ fn main() -> anyhow::Result<()> {
 /// Collects both `.rs` and `.md` files. Markdown files are only fixed (table
 /// alignment, fence delimiter safety, and inline-link hoisting); reordering,
 /// visibility narrowing, and checking apply only to Rust source files.
-fn run_all(args: PathsArgs) -> anyhow::Result<()> {
+fn run_all(args: PathsArgs, config: Option<&CompiledConfig>) -> anyhow::Result<()> {
     let paths = resolve_all(&args.paths, &["rs", "md"])?;
     if paths.is_empty() {
         return Ok(());
@@ -143,13 +186,27 @@ fn run_all(args: PathsArgs) -> anyhow::Result<()> {
     let multiple_files = paths.len() > 1;
     let mut error_count = 0usize;
     let mut failed = Vec::new();
+    let mut processed: Vec<PathBuf> = Vec::new();
 
     // Build VisContext once for the crate-aware default in the vis step.
     let ctx = resolve_vis_context(&paths);
 
     for path in &paths {
+        let (skip, disabled) = match config {
+            Some(c) => {
+                let p = c.policy_for(path);
+                (p.skip, p.disabled)
+            }
+            None => (false, HashSet::new()),
+        };
+        if skip {
+            // Excluded files are never mutated or post-processed.
+            continue;
+        }
+        processed.push(path.clone());
+
         // Fix table alignment first (auto-fixable formatting).
-        if let Err(e) = fix_file(path, args.dry_run, multiple_files) {
+        if let Err(e) = fix_file(path, args.dry_run, multiple_files, &disabled) {
             eprintln!("error processing {}: {e:?}", path.display());
             failed.push(path);
             continue;
@@ -165,7 +222,7 @@ fn run_all(args: PathsArgs) -> anyhow::Result<()> {
         }
 
         // Reorder next (fixes ordering). Failures abort the check for this file.
-        if let Err(e) = reorder_file(path, args.dry_run, multiple_files) {
+        if let Err(e) = reorder_file(path, args.dry_run, multiple_files, &disabled) {
             eprintln!("error processing {}: {e:?}", path.display());
             failed.push(path);
             continue;
@@ -174,18 +231,27 @@ fn run_all(args: PathsArgs) -> anyhow::Result<()> {
         // restricted-visibility inline modules). Runs after reorder (canonical
         // item layout) and before check (narrowing can flip VisibilityTier and
         // newly suppress/trigger missing-docs diagnostics).
-        if let Err(e) = vis_file(path, args.dry_run, multiple_files, ctx.as_ref()) {
+        if let Err(e) = vis_file(path, args.dry_run, multiple_files, ctx.as_ref(), &disabled) {
             eprintln!("error processing {}: {e:?}", path.display());
             failed.push(path);
             continue;
         }
         // Then check (reports remaining doc gaps).
-        match check_file(path) {
+        match check_file(path, &disabled) {
             Ok(errs) => error_count += errs,
             Err(e) => {
                 eprintln!("error processing {}: {e:?}", path.display());
                 failed.push(path);
             }
+        }
+    }
+
+    if let Some(c) = config
+        && !args.dry_run
+    {
+        let pp_failed = run_post_process(c.post_process_steps(), &processed);
+        if !pp_failed.is_empty() {
+            bail!("post_process failed on {} file(s)", pp_failed.len());
         }
     }
 
@@ -205,7 +271,7 @@ fn run_all(args: PathsArgs) -> anyhow::Result<()> {
 // ---------------------------------------------------------------------------
 
 /// `check` - report documentation diagnostics.
-fn run_check(args: PathsArgs) -> anyhow::Result<()> {
+fn run_check(args: PathsArgs, _config: Option<&CompiledConfig>) -> anyhow::Result<()> {
     let paths = resolve_all(&args.paths, &["rs"])?;
     if paths.is_empty() {
         return Ok(());
@@ -215,7 +281,19 @@ fn run_check(args: PathsArgs) -> anyhow::Result<()> {
     let mut failed = Vec::new();
 
     for path in &paths {
-        match check_file(path) {
+        // `check` honors `exclude` (skip) and `exclude_rules` (disable codes)
+        // when a config is loaded; it never runs `post_process`.
+        let disabled = match _config {
+            Some(c) => {
+                let p = c.policy_for(path);
+                if p.skip {
+                    continue;
+                }
+                p.disabled
+            }
+            None => HashSet::new(),
+        };
+        match check_file(path, &disabled) {
             Ok(errs) => error_count += errs,
             Err(e) => {
                 eprintln!("error processing {}: {e:?}", path.display());
@@ -237,7 +315,7 @@ fn run_check(args: PathsArgs) -> anyhow::Result<()> {
 
 /// `fix` - realign GFM markdown tables, fix nested fence delimiters, and hoist
 /// repeated inline links in place.
-fn run_fix(args: PathsArgs) -> anyhow::Result<()> {
+fn run_fix(args: PathsArgs, config: Option<&CompiledConfig>) -> anyhow::Result<()> {
     let paths = resolve_all(&args.paths, &["rs", "md"])?;
     if paths.is_empty() {
         return Ok(());
@@ -245,11 +323,32 @@ fn run_fix(args: PathsArgs) -> anyhow::Result<()> {
 
     let multiple_files = paths.len() > 1;
     let mut failed = Vec::new();
+    let mut processed: Vec<PathBuf> = Vec::new();
 
     for path in &paths {
-        if let Err(e) = fix_file(path, args.dry_run, multiple_files) {
+        let (skip, disabled) = match config {
+            Some(c) => {
+                let p = c.policy_for(path);
+                (p.skip, p.disabled)
+            }
+            None => (false, HashSet::new()),
+        };
+        if skip {
+            continue;
+        }
+        processed.push(path.clone());
+        if let Err(e) = fix_file(path, args.dry_run, multiple_files, &disabled) {
             eprintln!("error processing {}: {e:?}", path.display());
             failed.push(path);
+        }
+    }
+
+    if let Some(c) = config
+        && !args.dry_run
+    {
+        let pp_failed = run_post_process(c.post_process_steps(), &processed);
+        if !pp_failed.is_empty() {
+            bail!("post_process failed on {} file(s)", pp_failed.len());
         }
     }
 
@@ -261,7 +360,7 @@ fn run_fix(args: PathsArgs) -> anyhow::Result<()> {
 }
 
 /// `reorder` - reorder items into canonical order.
-fn run_reorder(args: PathsArgs) -> anyhow::Result<()> {
+fn run_reorder(args: PathsArgs, config: Option<&CompiledConfig>) -> anyhow::Result<()> {
     let paths = resolve_all(&args.paths, &["rs"])?;
     if paths.is_empty() {
         return Ok(());
@@ -269,11 +368,32 @@ fn run_reorder(args: PathsArgs) -> anyhow::Result<()> {
 
     let multiple_files = paths.len() > 1;
     let mut failed = Vec::new();
+    let mut processed: Vec<PathBuf> = Vec::new();
 
     for path in &paths {
-        if let Err(e) = reorder_file(path, args.dry_run, multiple_files) {
+        let (skip, disabled) = match config {
+            Some(c) => {
+                let p = c.policy_for(path);
+                (p.skip, p.disabled)
+            }
+            None => (false, HashSet::new()),
+        };
+        if skip {
+            continue;
+        }
+        processed.push(path.clone());
+        if let Err(e) = reorder_file(path, args.dry_run, multiple_files, &disabled) {
             eprintln!("error processing {}: {e:?}", path.display());
             failed.push(path);
+        }
+    }
+
+    if let Some(c) = config
+        && !args.dry_run
+    {
+        let pp_failed = run_post_process(c.post_process_steps(), &processed);
+        if !pp_failed.is_empty() {
+            bail!("post_process failed on {} file(s)", pp_failed.len());
         }
     }
 
@@ -284,8 +404,30 @@ fn run_reorder(args: PathsArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// `validate` - parse and validate the config without processing files.
+///
+/// `config` is the explicit `--config <PATH>` argument (if any); `no_config`
+/// is the `--no-config` flag. The path is re-discovered (or re-used from the
+/// explicit arg) so this function works standalone in CI.
+///
+/// Exits 0 when the config is valid, non-zero when no config was found,
+/// `--no-config` was passed, or `load_and_compile` returned an error (already
+/// propagated from `main` before dispatch).
+fn run_validate(config: Option<&Path>, no_config: bool) -> anyhow::Result<()> {
+    if no_config {
+        bail!("--no-config was passed; no config to validate");
+    }
+    let path = config::discover_config_path(config, false)
+        .context("no config file found; run from a directory with .rust-llm-tidy.yml")?;
+    // `main` already ran `load_and_compile`; re-running ensures `validate`
+    // works standalone and prints the source path.
+    config::load_and_compile(&path)?;
+    println!("config valid: {}", path.display());
+    Ok(())
+}
+
 /// `vis` - crate-aware when a crate root is discovered, else standalone.
-fn run_vis(args: PathsArgs) -> anyhow::Result<()> {
+fn run_vis(args: PathsArgs, config: Option<&CompiledConfig>) -> anyhow::Result<()> {
     let paths = resolve_all(&args.paths, &["rs"])?;
     if paths.is_empty() {
         return Ok(());
@@ -293,10 +435,32 @@ fn run_vis(args: PathsArgs) -> anyhow::Result<()> {
     let ctx = resolve_vis_context(&paths);
     let multiple_files = paths.len() > 1;
     let mut failed = Vec::new();
+    let mut processed: Vec<PathBuf> = Vec::new();
+
     for path in &paths {
-        if let Err(e) = vis_file(path, args.dry_run, multiple_files, ctx.as_ref()) {
+        let (skip, disabled) = match config {
+            Some(c) => {
+                let p = c.policy_for(path);
+                (p.skip, p.disabled)
+            }
+            None => (false, HashSet::new()),
+        };
+        if skip {
+            continue;
+        }
+        processed.push(path.clone());
+        if let Err(e) = vis_file(path, args.dry_run, multiple_files, ctx.as_ref(), &disabled) {
             eprintln!("error processing {}: {e:?}", path.display());
             failed.push(path);
+        }
+    }
+
+    if let Some(c) = config
+        && !args.dry_run
+    {
+        let pp_failed = run_post_process(c.post_process_steps(), &processed);
+        if !pp_failed.is_empty() {
+            bail!("post_process failed on {} file(s)", pp_failed.len());
         }
     }
 
@@ -310,14 +474,15 @@ fn run_vis(args: PathsArgs) -> anyhow::Result<()> {
 /// Check a single source file and print any diagnostics to stderr.
 ///
 /// Returns the number of error-severity diagnostics found.
-fn check_file(path: &Path) -> anyhow::Result<usize> {
+fn check_file(path: &Path, disabled: &HashSet<String>) -> anyhow::Result<usize> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
 
     let parsed = model_parse::parse_source(&source)
         .with_context(|| format!("failed to parse {}", path.display()))?;
 
-    let diagnostics = check::run_all(&parsed);
+    let mut diagnostics = check::run_all(&parsed);
+    diagnostics.retain(|d| !disabled.contains(d.code));
 
     let error_count = diagnostics
         .iter()
@@ -348,12 +513,24 @@ fn check_file(path: &Path) -> anyhow::Result<usize> {
 /// header is emitted (valid in both markdown and harmless in stdout).
 ///
 /// `fix` never fails on content; it exits non-zero only on I/O errors.
-fn fix_file(path: &Path, dry_run: bool, multiple_files: bool) -> anyhow::Result<()> {
+fn fix_file(
+    path: &Path,
+    dry_run: bool,
+    multiple_files: bool,
+    disabled: &HashSet<String>,
+) -> anyhow::Result<()> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
-    let out = fix::fix_tables(&source);
-    let out = fix::fix_fences(&out);
-    let out = fix::fix_links(&out);
+    let mut out: String = source.clone();
+    if !disabled.contains("tables") {
+        out = fix::fix_tables(&out).into_owned();
+    }
+    if !disabled.contains("fences") {
+        out = fix::fix_fences(&out).into_owned();
+    }
+    if !disabled.contains("links") {
+        out = fix::fix_links(&out).into_owned();
+    }
     if dry_run {
         if multiple_files {
             print!("<!-- {} -->\n{}", path.display(), out);
@@ -372,7 +549,15 @@ fn fix_file(path: &Path, dry_run: bool, multiple_files: bool) -> anyhow::Result<
 /// When processing multiple files in dry-run mode, a comment header with the
 /// file path is emitted before each file's output so the results can be
 /// distinguished.
-fn reorder_file(path: &Path, dry_run: bool, multiple_files: bool) -> anyhow::Result<()> {
+fn reorder_file(
+    path: &Path,
+    dry_run: bool,
+    multiple_files: bool,
+    disabled: &HashSet<String>,
+) -> anyhow::Result<()> {
+    if disabled.contains("reorder") {
+        return Ok(());
+    }
     // 1. Read source
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
@@ -490,6 +675,56 @@ fn resolve_vis_context(paths: &[PathBuf]) -> Option<VisContext> {
     }
 }
 
+/// Run every `post_process` step over the processed files.
+///
+/// For each step and each file: if `step.extensions` is non-empty, skip files
+/// whose extension is not in the list; otherwise run
+/// `Command::new(&step.command).args(&step.args).arg(file).output()` (no shell,
+/// no injection). Returns the list of files that failed (non-zero exit or spawn
+/// failure); each failure is also printed to stderr. `--dry-run` callers do not
+/// invoke this function.
+fn run_post_process(steps: &[PostProcessStep], files: &[PathBuf]) -> Vec<PathBuf> {
+    let mut failed = Vec::new();
+    for step in steps {
+        for file in files {
+            if !step.extensions.is_empty() {
+                let ext_ok = file
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .is_some_and(|e| step.extensions.iter().any(|x| x == e));
+                if !ext_ok {
+                    continue;
+                }
+            }
+            let output = std::process::Command::new(&step.command)
+                .args(&step.args)
+                .arg(file)
+                .output();
+            match output {
+                Ok(out) if out.status.success() => {}
+                Ok(out) => {
+                    eprintln!(
+                        "post_process `{}` failed on {}: {}",
+                        step.command,
+                        file.display(),
+                        String::from_utf8_lossy(&out.stderr).trim()
+                    );
+                    failed.push(file.clone());
+                }
+                Err(e) => {
+                    eprintln!(
+                        "post_process `{}` failed to spawn on {}: {e}",
+                        step.command,
+                        file.display()
+                    );
+                    failed.push(file.clone());
+                }
+            }
+        }
+    }
+    failed
+}
+
 /// Narrow visibility in a single source file. With a [`VisContext`] (crate
 /// root discovered) the file's tree floor + crate-wide re-export guard apply,
 /// but only when the file is a node in the resolved crate module tree; a file
@@ -503,7 +738,11 @@ fn vis_file(
     dry_run: bool,
     multiple_files: bool,
     ctx: Option<&VisContext>,
+    disabled: &HashSet<String>,
 ) -> anyhow::Result<()> {
+    if disabled.contains("vis") {
+        return Ok(());
+    }
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
 

@@ -1,0 +1,81 @@
+# rust-llm-tidy config.
+#
+# Controls which files rust-llm-tidy processes and which rules it enforces.
+# All paths/globs are relative to this file's
+# directory. rust-llm-tidy discovers this file automatically by walking from
+# the current directory up to the repo root (the first ancestor containing .git),
+# checking each level for `.rust-llm-tidy.yml`. The first match wins.
+# Override with `--config <PATH>`; disable with `--no-config`.
+#
+# Every config error - bad YAML, unknown rule name, bad glob syntax, or a
+# pattern matching zero files - causes a non-zero exit on every command. Run
+# `rust-llm-tidy validate` to check the config without processing files.
+
+# Skip ALL processing for files matching any pattern. Patterns use glob
+# semantics with literal separators (`*` does not cross `/`; `**` recurses).
+exclude:
+  # Hand-curated before/after test fixtures are intentional fragments, not
+  # compilable units; fixing/reordering would corrupt them. Converted
+  # from pre-commit hook shell scripts 10-tidy-rust.sh and
+  # 20-rustfmt.sh (since removed).
+  - "**/tests/fixtures/**"
+  - "**/benches/fixtures/**"
+
+# Disable specific rules for files matching a group's patterns. `rules` may
+# name any lint code (listed below) or any fix/operation name:
+#
+#   Lint codes:
+#     - DOC001   missing doc comment
+#     - DOC002   missing `# Errors` section
+#     - DOC003   vague `# Errors` section
+#     - DOC004   missing `# Arguments` section
+#     - DOC005   undocumented parameter
+#     - DOC006   placeholder text (TODO/FIXME/...)
+#     - TEST001  test function naming convention
+#   Fix/ops:
+#     - tables   align markdown tables
+#     - fences   alternate fence markers
+#     - links    hoist repeated inline links
+#     - reorder  reorder items into canonical 10-phase order
+#     - vis      narrow excessive visibility
+#
+# Unlike `exclude` (which skips a file entirely), `exclude_rules` lets the
+# rest of the pipeline run on the file (`fix`, `reorder`, `vis`, `check`, and
+# the configured `post_process` commands) and only disables the named rules.
+exclude_rules:
+  # Integration tests embed markdown (e.g. `[text](url)`) in Rust string
+  # literals. `fix_links` would emit a trailing `[text]: url` definition
+  # line outside the literal, breaking compilation. Disable `links`.
+  - paths:
+      - "src/cli/tests/**"
+    rules:
+      - links
+  # The README has a nested-fence before+after example that `fix_fences` would
+  # corrupt. Disable `fences` for this file only.
+  - paths:
+      - "src/rust-llm-tidy-fix/README.MD"
+    rules:
+      - fences
+
+# Commented examples (uncomment and tailor paths to enable):
+#
+# exclude_rules:
+#   - paths:
+#       - "src/cli/examples/**"
+#     rules:
+#       - DOC001
+#   - paths:
+#       - "**/generated/**"
+#     rules:
+#       - reorder
+#       - vis
+
+# Runs a command on every modified file. File path appended as last arg.
+#
+# `extensions` filters by extension (empty = all). Mutating commands only;
+# skipped under --dry-run and for excluded files. Non-zero exit or spawn
+# failure propagates.
+post_process:
+  - command: "rustfmt"
+    args: ["--edition", "2024"]
+    extensions: ["rs"]  # only run on .rs files
