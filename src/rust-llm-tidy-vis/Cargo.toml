@@ -8,17 +8,17 @@ license = "Apache-2.0"
 include = ["src/**/*"]
 readme = "README.MD"
 # keywords (search terms): https://crates.io/keywords
-keywords = ["rust", "syn", "visibility", "refactor", "lint"]
+keywords = ["rust", "tree-sitter", "visibility", "refactor", "lint"]
 # categories (fixed list): https://crates.io/categories
 categories = ["development-tools"]
 
 [dependencies]
-# `narrow_vis_in_tree` only needs the parsed `syn::File`, so it parses directly
-# with `syn::parse_str` and does not depend on `rust-llm-tidy-model` (whose
-# gap-anchored span extraction and item classification it would discard).
+# `narrow_vis_in_tree` and `build_module_tree` walk a tree-sitter CST directly
+# (byte offsets, no line/column conversion), so this crate does not depend on
+# `rust-llm-tidy-model` (whose gap-anchored span extraction and item
+# classification it would discard). Parses with the `tree-sitter-rust` grammar.
 anyhow = "1"
-syn = { version = "2", features = ["full", "parsing"] }
-proc-macro2 = { version = "1", features = ["span-locations"] }
+tree-sitter = "0.26"
+tree-sitter-rust = "0.24"
 ahash = "0.8"
-memchr = "2"
 cargo_metadata = "0.23" # crate-root discovery for cross-file vis (P1); pin/adjust to latest 0.x

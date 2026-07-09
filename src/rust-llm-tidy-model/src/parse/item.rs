@@ -13,10 +13,11 @@ pub struct ParseResult {
     pub items: Vec<SourceItem>,
     /// The original source text.
     pub source: String,
-    /// The parsed syntax tree, retained so downstream passes (e.g. the reorder
-    /// reference-graph walk) can reuse it instead of re-parsing `source`.
-    /// `pub(crate)`: read it through [`ParseResult::syntax_file`].
-    pub(crate) file: syn::File,
+    /// The parsed tree-sitter syntax tree, retained so downstream passes (e.g.
+    /// the reorder reference-graph walk) can reuse it instead of re-parsing
+    /// `source`.
+    /// `pub(crate)`: read it through [`ParseResult::syntax_tree`].
+    pub(crate) tree: tree_sitter::Tree,
     /// Byte offset where the preamble ends.
     ///
     /// The preamble is everything before the first top-level item. It may
@@ -197,10 +198,10 @@ pub enum VisibilityTier {
 }
 
 impl ParseResult {
-    /// The parsed [`syn::File`], reused from parsing so downstream passes avoid
-    /// a second `syn::parse_str` of [`ParseResult::source`].
-    pub fn syntax_file(&self) -> &syn::File {
-        &self.file
+    /// The parsed [`tree_sitter::Tree`], reused from parsing so downstream
+    /// passes avoid a second parse of [`ParseResult::source`].
+    pub fn syntax_tree(&self) -> &tree_sitter::Tree {
+        &self.tree
     }
 }
 
@@ -337,9 +338,8 @@ impl fmt::Debug for ParseResult {
             .field("source", &self.source)
             .field("preamble_end", &self.preamble_end)
             .field("trailer_start", &self.trailer_start)
-            // `file` is intentionally omitted: `syn::File` has no `Debug`
-            // impl without the `extra-traits` feature, and the syntax tree is
-            // already represented by `items` + `source`.
+            // `tree` is intentionally omitted: its `Debug` output is verbose and
+            // the syntax tree is already represented by `items` + `source`.
             .finish_non_exhaustive()
     }
 }

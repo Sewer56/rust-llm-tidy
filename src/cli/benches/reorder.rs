@@ -14,7 +14,7 @@ criterion_group!(benches, reorder_pass);
 
 criterion_main!(benches);
 
-use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rust_llm_tidy_model::{parse, safety};
 use rust_llm_tidy_reorder::graph;
 use rust_llm_tidy_reorder::reorder::{Permutation, emit};
@@ -25,10 +25,6 @@ mod common;
 /// Benchmark the reorder pass (`parse_source` + [`compute_order`] +
 /// [`Permutation::new`] + [`emit`] + [`verify_line_preservation`]) per fixture.
 fn reorder_pass(c: &mut Criterion) {
-    // Span-location support: matches the CLI, which forces the proc_macro2
-    // fallback so byte ranges resolve correctly.
-    common::force_span_fallback();
-
     let mut group = c.benchmark_group("reorder");
     for (name, source) in common::REORDER_FIXTURES {
         group.throughput(Throughput::Bytes(source.len() as u64));
@@ -40,7 +36,7 @@ fn reorder_pass(c: &mut Criterion) {
                     Permutation::new(parsed.items.len(), order).expect("permutation must build");
                 let output = emit(&parsed, &permutation).expect("emit must succeed");
                 safety::verify_line_preservation(source, &output).expect("lines must be preserved");
-                black_box(output);
+                std::hint::black_box(output);
             });
         });
     }

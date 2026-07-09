@@ -11,7 +11,7 @@ criterion_group!(benches, lint_pass);
 
 criterion_main!(benches);
 
-use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rust_llm_tidy_lint::check;
 use rust_llm_tidy_model::parse;
 
@@ -20,10 +20,6 @@ mod common;
 
 /// Benchmark the lint pass (`parse_source` + [`check::run_all`]) per fixture.
 fn lint_pass(c: &mut Criterion) {
-    // Span-location support: matches the CLI, which forces the proc_macro2
-    // fallback so byte ranges resolve correctly.
-    common::force_span_fallback();
-
     let mut group = c.benchmark_group("lint");
     for (name, source) in common::LINT_FIXTURES {
         group.throughput(Throughput::Bytes(source.len() as u64));
@@ -31,7 +27,7 @@ fn lint_pass(c: &mut Criterion) {
             bencher.iter(|| {
                 let parsed = parse::parse_source(source).expect("fixture must parse");
                 let diagnostics = check::run_all(&parsed);
-                black_box(diagnostics);
+                std::hint::black_box(diagnostics);
             });
         });
     }

@@ -12,7 +12,7 @@ criterion_group!(benches, vis_crate_aware);
 
 criterion_main!(benches);
 
-use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rust_llm_tidy_vis::narrow_vis_in_tree;
 
 #[path = "common.rs"]
@@ -22,7 +22,6 @@ mod common;
 /// fixtures. The crate context (module tree + crate-wide re-export set) is built
 /// once per fixture in setup; the hot loop measures only the per-file narrowing.
 fn vis_crate_aware(c: &mut Criterion) {
-    common::force_span_fallback();
     let mut group = c.benchmark_group("vis_crate_aware");
     for (name, sources) in common::CRATE_FIXTURES {
         let (tree, reexports, owned) = common::build_crate_context(sources);
@@ -34,7 +33,7 @@ fn vis_crate_aware(c: &mut Criterion) {
                     let floor = tree.floor_for(std::path::Path::new(path));
                     let out =
                         narrow_vis_in_tree(src, floor, &reexports).expect("fixture must parse");
-                    black_box(out);
+                    std::hint::black_box(out);
                 }
             });
         });

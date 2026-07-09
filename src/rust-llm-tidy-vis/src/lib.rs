@@ -7,12 +7,45 @@
 #![doc = include_str!(concat!("../", env!("CARGO_PKG_README")))]
 
 use ahash::AHashSet;
-pub use modules::{ModuleTree, build_module_tree, discover_crate_root};
 use std::borrow::Cow;
-use syn::Visibility;
-use syn::spanned::Spanned;
+use std::path::PathBuf;
+use tree_sitter::{Node, Tree};
+
+pub use modules::{ModuleTree, build_module_tree, discover_crate_root};
 
 mod modules;
+
+/// One parsed source file: its path, source text, and tree-sitter tree.
+///
+/// Built once (via [`ParsedFile::new`]) and reused by [`build_module_tree`] and
+/// [`collect_crate_reexports`], so the crate-wide passes parse each file exactly
+/// once instead of re-parsing per pass. The [`Tree`] stores byte offsets (not
+/// references), so it stays valid for `source`'s bytes as long as they are not
+/// mutated.
+pub struct ParsedFile {
+    /// Canonical file path (matches [`ModuleTree`] keys when crate-aware).
+    pub path: PathBuf,
+    /// The verbatim source text the tree was parsed from.
+    pub source: String,
+    /// The tree-sitter syntax tree. `pub(crate)`: the narrowing and
+    /// re-export passes access it; external callers use `path`/`source`.
+    pub(crate) tree: Tree,
+}
+
+impl ParsedFile {
+    /// Parse `source` (from the file at `path`) into a [`ParsedFile`].
+    ///
+    /// # Errors
+    ///
+    /// tree-sitter performs error recovery, so syntactically invalid Rust still
+    /// yields a tree (possibly with `ERROR` nodes) rather than a parse error;
+    /// the `Result` is only `Err` when the parser cannot be allocated or the
+    /// language is not set.
+    pub fn new(path: PathBuf, source: String) -> anyhow::Result<Self> {
+        let tree = parse(&source)?;
+        Ok(Self { path, source, tree })
+    }
+}
 
 /// Crate-wide set of simple names re-exported via `pub use` across every file
 /// in a crate, plus the glob sentinel `"*"`.
@@ -20,7 +53,7 @@ mod modules;
 /// Built by [`collect_crate_reexports`]. A glob (`pub use p::*`) in ANY file
 /// records `"*"`, which (soundness) disables narrowing for every named child
 /// across the crate - matching the per-file glob behavior at a crate scope.
-/// This is the conservative default for Open Q6 (cross-file glob scope); a
+/// This is the conservative default for cross-file glob scope; a
 /// finer-grained per-module-path glob is left as future work.
 #[derive(Default)]
 pub struct ReexportSet(AHashSet<String>);
@@ -52,22 +85,20 @@ impl ReexportSet {
 /// items (top-level and nested in inline modules). Mirrors the shared
 /// `collect_reexports` (private, same logic) but unions across all files.
 ///
-/// This is the P3 hard-correctness gate's data source: a missed cross-file
+/// This is the hard-correctness gate's data source: a missed cross-file
 /// re-export turns a safe narrowing into a soundness bug, so the caller MUST
 /// pass every `.rs` file in the crate.
-pub fn collect_crate_reexports<'a>(files: impl IntoIterator<Item = &'a syn::File>) -> ReexportSet {
+pub fn collect_crate_reexports<'a>(files: impl IntoIterator<Item = &'a ParsedFile>) -> ReexportSet {
     let mut out = ReexportSet::new();
-    for file in files {
+    for pf in files {
         let mut per_file: Option<AHashSet<String>> = None;
-        collect_reexports(&file.items, &mut per_file);
+        collect_reexports(pf.tree.root_node(), pf.source.as_bytes(), &mut per_file);
         if let Some(names) = per_file {
             out.0.extend(names);
         }
     }
     out
 }
-
-// `ReexportSet` + `collect_crate_reexports` are defined in this file.
 
 /// Narrow bare `pub` items using cross-file module visibility (the file's
 /// effective floor from a [`ModuleTree`]) plus a crate-wide re-export guard
@@ -88,52 +119,50 @@ pub fn collect_crate_reexports<'a>(files: impl IntoIterator<Item = &'a syn::File
 ///
 /// # Idempotency
 ///
-/// Already-narrowed children have `Visibility::Restricted` and are skipped on a
+/// Already-narrowed children have a restricted visibility and are skipped on a
 /// second run.
 ///
 /// # Allocation
 ///
-/// The input is parsed directly with [`syn::parse_str`] - only the parsed
-/// [`syn::File`] is needed, never the gap-anchored spans the reorder/lint model
-/// computes. When no child needs narrowing (no restricted-visibility inline
-/// module with bare-`pub` children, or an idempotent re-run), the input is
-/// borrowed back unchanged ([`Cow::Borrowed`]) with zero allocation; otherwise
-/// the rewritten buffer is returned as [`Cow::Owned`].
+/// The input is parsed directly with tree-sitter - only the CST is needed,
+/// never the gap-anchored spans the reorder/lint model computes. Visibility
+/// spans come straight from node byte offsets, so no line/column conversion or
+/// `proc_macro2` span hack is required. When no child needs narrowing (no
+/// restricted-visibility inline module with bare-`pub` children, or an
+/// idempotent re-run), the input is borrowed back unchanged ([`Cow::Borrowed`])
+/// with zero allocation; otherwise the rewritten buffer is returned as
+/// [`Cow::Owned`].
 ///
 /// # Errors
 ///
-/// Returns [`syn::Error`] when `source` is not valid Rust.
+/// tree-sitter performs error recovery, so syntactically invalid Rust still
+/// yields a tree (possibly with `ERROR` nodes) rather than a parse error; the
+/// `Result` is only `Err` when the parser cannot be allocated or the language
+/// is not set.
 pub fn narrow_vis_in_tree<'a>(
     source: &'a str,
     floor: Option<&'a str>,
     crate_reexports: &ReexportSet,
 ) -> anyhow::Result<Cow<'a, str>> {
-    let file: syn::File = syn::parse_str(source)?;
-    let line_starts = line_start_offsets(source);
-    let mut edits: Vec<(usize, usize, Cow<'_, str>)> = Vec::new();
+    let tree = parse(source)?;
+    let root = tree.root_node();
+    let mut edits: Vec<(usize, usize, Cow<'a, str>)> = Vec::new();
     let names = crate_reexports.names();
 
     // Top-level items: narrow against the file's tree floor. With `floor = None`
     // (standalone, no crate context) this loop is skipped and only inline mods
     // narrow via `walk()`.
     if let Some(f) = floor {
-        for item in &file.items {
-            // Floor text is NOT a slice of `source` (it comes from the parent
-            // declaration), so it is owned per edit (small, rare-path alloc).
-            narrow_if_eligible_owned(item, f, &line_starts, Some(names), &mut edits);
+        let count = root.named_child_count() as u32;
+        for i in 0..count {
+            let item = root.named_child(i).unwrap();
+            narrow_if_eligible_owned(item, f, source, Some(names), &mut edits);
         }
     }
 
     // Inline-mod recursion: tighter inline floors propagate; floor slices here
     // ARE into `source` (zero-alloc).
-    walk(
-        &file.items,
-        floor,
-        source,
-        &line_starts,
-        Some(names),
-        &mut edits,
-    );
+    walk(root, floor, source, Some(names), &mut edits);
 
     if edits.is_empty() {
         Ok(Cow::Borrowed(source))
@@ -142,31 +171,43 @@ pub fn narrow_vis_in_tree<'a>(
     }
 }
 
-/// Byte offset of the start of every line in `source` (line 1 starts at 0).
-///
-/// Built with a single SIMD-accelerated [`memchr`] scan, matching the sibling
-/// `rust-llm-tidy-model` crate's approach.
-pub(crate) fn line_start_offsets(source: &str) -> Vec<usize> {
-    let bytes = source.as_bytes();
-    // Heuristic preallocation. Capacity = bytes/D; no regrowth when the file's
-    // average bytes/line >= D (the same D=21 the sibling model crate uses).
-    let mut starts: Vec<usize> = Vec::with_capacity(bytes.len() / 21 + 1);
-    starts.push(0);
-    let mut from = 0;
-    while let Some(pos) = memchr::memchr(b'\n', &bytes[from..]) {
-        from += pos + 1;
-        starts.push(from);
+/// The `visibility_modifier` child of `node`, if present (bare `pub`,
+/// `pub(crate)`, etc.). `None` for private (inherited-visibility) items.
+#[inline]
+pub(crate) fn visibility_node<'a>(node: Node<'a>) -> Option<Node<'a>> {
+    let count = node.named_child_count() as u32;
+    for i in 0..count {
+        let c = node.named_child(i)?;
+        if c.kind() == "visibility_modifier" {
+            return Some(c);
+        }
     }
-    starts
+    None
 }
 
-/// Convert a 1-based line and 0-based byte column into a byte offset using the
-/// precomputed `line_starts` table.
+/// First named child of `node` whose kind equals `kind`.
 #[inline]
-pub(crate) fn linecol_to_byte(line_starts: &[usize], line: usize, column: usize) -> usize {
-    let idx = line.saturating_sub(1);
-    let base = line_starts.get(idx).copied().unwrap_or(usize::MAX);
-    base + column
+pub(crate) fn child_of_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
+    let count = node.named_child_count() as u32;
+    (0..count).find_map(|i| {
+        let c = node.named_child(i)?;
+        (c.kind() == kind).then_some(c)
+    })
+}
+
+/// Parse `source` with the `tree-sitter-rust` grammar. The returned [`Tree`]
+/// stores byte offsets (not references), so it stays valid for the caller's
+/// source bytes as long as those bytes are not mutated.
+fn parse(source: &str) -> anyhow::Result<Tree> {
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&rust_language()?)?;
+    parser
+        .parse(source, None)
+        .ok_or_else(|| anyhow::anyhow!("tree-sitter parse returned no tree"))
+}
+
+fn rust_language() -> anyhow::Result<tree_sitter::Language> {
+    Ok(tree_sitter_rust::LANGUAGE.into())
 }
 
 /// Apply byte edits back-to-front (descending start offset) so earlier offsets
@@ -186,115 +227,169 @@ fn apply_edits(source: &str, mut edits: Vec<(usize, usize, Cow<'_, str>)>) -> St
     out
 }
 
-/// Collect the simple names re-exported by any `pub use` (visibility `Public`)
-/// found at any depth in `items` - top-level and inside inline modules. A glob
-/// (`pub use p::*`) records the sentinel "*".
+/// Collect the simple names re-exported by any `pub use` (bare-`pub` visibility)
+/// found at any depth in `container` - top-level and inside inline modules. A
+/// glob (`pub use p::*`) records the sentinel "*".
 ///
 /// The set is allocated lazily via the `Option`: it stays `None` (no
 /// allocation) for files with no `pub use`, which is the common case.
-fn collect_reexports(items: &[syn::Item], out: &mut Option<AHashSet<String>>) {
-    for item in items {
-        if let syn::Item::Use(u) = item
-            && matches!(u.vis, Visibility::Public(_))
-        {
-            let set = out.get_or_insert_with(AHashSet::new);
-            collect_use_tree(&u.tree, set);
-        }
-        if let syn::Item::Mod(m) = item
-            && let Some((_, content)) = &m.content
-        {
-            collect_reexports(content, out);
+fn collect_reexports(container: Node, source: &[u8], out: &mut Option<AHashSet<String>>) {
+    let count = container.named_child_count() as u32;
+    for i in 0..count {
+        let item = container.named_child(i).unwrap();
+        match item.kind() {
+            "use_declaration" => {
+                // Only a bare `pub use` widens reach; `pub(crate) use` does not.
+                if visibility_node(item).is_some_and(is_bare_pub)
+                    && let Some(arg) = item.child_by_field_name("argument")
+                {
+                    let set = out.get_or_insert_with(AHashSet::new);
+                    collect_use_clause(arg, source, set);
+                }
+            }
+            "mod_item" => {
+                if let Some(body) = item.child_by_field_name("body") {
+                    collect_reexports(body, source, out);
+                }
+            }
+            _ => {}
         }
     }
 }
 
-/// Same as `narrow_if_eligible` but the floor text is owned (tree path), so the
-/// pushed edit wraps `Cow::Owned(floor.to_string())`. Kept as a thin twin to
-/// preserve `walk()`'s hot path `&'src str` borrowing (no allocation).
-fn narrow_if_eligible_owned(
-    item: &syn::Item,
-    floor: &str,
-    line_starts: &[usize],
+/// Expand a single `use` clause (the `argument` of a `use_declaration`) into
+/// its re-exported simple names. Mirrors the prior `syn::UseTree` walk:
+///
+/// - terminal `identifier`/`type_identifier` -> its text.
+/// - `scoped_identifier` (`a::b::c`) -> the last segment (`name` field).
+/// - `use_as_clause` (`x as alias`) -> the `alias` field.
+/// - `use_wildcard` (`a::*`) -> the sentinel `"*"`.
+/// - `scoped_use_list` (`a::{b, c}`) -> recurse the `list`, ignoring the path
+///   prefix; a `self` in the list re-exports the path's last segment.
+/// - `use_list` (`{b, c}`) -> recurse each child.
+fn collect_use_clause(node: Node, source: &[u8], out: &mut AHashSet<String>) {
+    match node.kind() {
+        "identifier" | "type_identifier" => {
+            if let Ok(t) = node.utf8_text(source) {
+                out.insert(t.to_string());
+            }
+        }
+        "scoped_identifier" => {
+            if let Some(name) = node.child_by_field_name("name")
+                && let Ok(t) = name.utf8_text(source)
+            {
+                out.insert(t.to_string());
+            }
+        }
+        "use_as_clause" => {
+            if let Some(alias) = node.child_by_field_name("alias")
+                && let Ok(t) = alias.utf8_text(source)
+            {
+                out.insert(t.to_string());
+            }
+        }
+        "use_wildcard" => {
+            out.insert(String::from("*"));
+        }
+        "scoped_use_list" => {
+            // A `self` in the list re-exports the path prefix's last segment.
+            let path_last = node
+                .child_by_field_name("path")
+                .and_then(|p| last_segment_text(p, source))
+                .map(str::to_string);
+            if let Some(list) = node.child_by_field_name("list") {
+                let n = list.named_child_count() as u32;
+                for i in 0..n {
+                    let child = list.named_child(i).unwrap();
+                    if child.kind() == "self" {
+                        if let Some(name) = &path_last {
+                            out.insert(name.clone());
+                        }
+                    } else {
+                        collect_use_clause(child, source, out);
+                    }
+                }
+            }
+        }
+        "use_list" => {
+            let n = node.named_child_count() as u32;
+            for i in 0..n {
+                collect_use_clause(node.named_child(i).unwrap(), source, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Same as `narrow_if_eligible` but the floor text is owned (the tree path, not
+/// a slice of `source`), so the pushed edit wraps `Cow::Owned(floor.to_string())`.
+/// Kept as a thin twin to preserve `walk()`'s hot-path `&'a str` borrowing (no
+/// allocation).
+fn narrow_if_eligible_owned<'a, 'n>(
+    item: Node<'n>,
+    floor: &'a str,
+    source: &'a str,
     reexported: Option<&AHashSet<String>>,
-    edits: &mut Vec<(usize, usize, Cow<'_, str>)>,
+    edits: &mut Vec<(usize, usize, Cow<'a, str>)>,
 ) {
-    let Some((vis, ident)) = eligible_vis_and_ident(item) else {
+    let Some(name) = eligible_name(item) else {
         return;
     };
-    let Visibility::Public(_) = vis else {
-        return;
+    let Some(vis) = visibility_node(item) else {
+        return; // private (no visibility) - not bare `pub`
     };
-    if let Some(set) = reexported {
-        let name = ident.to_string();
-        if set.contains(&name) || set.contains("*") {
-            return;
-        }
+    if !is_bare_pub(vis) {
+        return; // already restricted - idempotent skip
     }
-    let span = vis.span();
-    let start = linecol_to_byte(line_starts, span.start().line, span.start().column);
-    let end = linecol_to_byte(line_starts, span.end().line, span.end().column);
-    edits.push((start, end, Cow::Owned(floor.to_string())));
+    if let Some(set) = reexported
+        && let Ok(n) = name.utf8_text(source.as_bytes())
+        && (set.contains(n) || set.contains("*"))
+    {
+        return;
+    }
+    edits.push((
+        vis.start_byte(),
+        vis.end_byte(),
+        Cow::Owned(floor.to_string()),
+    ));
 }
 
-/// Recursively walk items, descending only into inline `Item::Mod` bodies.
+/// Recursively walk items, descending only into inline `mod_item` bodies.
 ///
 /// `floor` is the verbatim visibility text of the innermost restricted ancestor
 /// module (e.g. `"pub(crate)"`), or `None` at the crate root / inside a
 /// non-restricted ancestor. Children of a restricted module are narrowed in
 /// place; the walk then recurses so the floor propagates transitively.
-fn walk<'src>(
-    items: &[syn::Item],
-    floor: Option<&'src str>,
-    source: &'src str,
-    line_starts: &[usize],
+fn walk<'a, 'n>(
+    container: Node<'n>,
+    floor: Option<&'a str>,
+    source: &'a str,
     reexported: Option<&AHashSet<String>>,
-    edits: &mut Vec<(usize, usize, Cow<'src, str>)>,
+    edits: &mut Vec<(usize, usize, Cow<'a, str>)>,
 ) {
-    for item in items {
-        let syn::Item::Mod(m) = item else {
+    let count = container.named_child_count() as u32;
+    for i in 0..count {
+        let item = container.named_child(i).unwrap();
+        if item.kind() != "mod_item" {
             continue;
-        };
-        let Some((_, content)) = &m.content else {
-            continue;
+        }
+        let Some(body) = item.child_by_field_name("body") else {
+            continue; // `mod foo;` (file form) - no inline body to narrow
         };
 
         // A restricted-visibility inline module becomes the new floor; a `pub`
         // or private module inherits the enclosing floor (transitive).
-        let new_floor = match &m.vis {
-            Visibility::Restricted(_) => {
-                let span = m.vis.span();
-                let start = linecol_to_byte(line_starts, span.start().line, span.start().column);
-                let end = linecol_to_byte(line_starts, span.end().line, span.end().column);
-                Some(&source[start..end])
-            }
+        let new_floor = match visibility_node(item) {
+            Some(v) if v.named_child_count() >= 1 => Some(&source[v.start_byte()..v.end_byte()]),
             _ => floor,
         };
 
-        for child in content {
-            narrow_if_eligible(child, new_floor, line_starts, reexported, edits);
+        let m = body.named_child_count() as u32;
+        for j in 0..m {
+            let child = body.named_child(j).unwrap();
+            narrow_if_eligible(child, new_floor, source, reexported, edits);
         }
-        walk(content, new_floor, source, line_starts, reexported, edits);
-    }
-}
-
-/// Expand a single `use` tree into its re-exported simple names.
-fn collect_use_tree(tree: &syn::UseTree, out: &mut AHashSet<String>) {
-    match tree {
-        syn::UseTree::Path(p) => collect_use_tree(&p.tree, out),
-        syn::UseTree::Name(n) => {
-            out.insert(n.ident.to_string());
-        }
-        syn::UseTree::Rename(r) => {
-            out.insert(r.rename.to_string());
-        }
-        syn::UseTree::Glob(_) => {
-            out.insert(String::from("*"));
-        }
-        syn::UseTree::Group(g) => {
-            for t in &g.items {
-                collect_use_tree(t, out);
-            }
-        }
+        walk(body, new_floor, source, reexported, edits);
     }
 }
 
@@ -305,78 +400,98 @@ fn collect_use_tree(tree: &syn::UseTree, out: &mut AHashSet<String>) {
 /// of it), so no per-edit [`String`] is allocated. The re-export guard's name
 /// is materialized lazily: only when a `pub use` exists AND the child is bare
 /// `pub`, so the common path allocates nothing.
-fn narrow_if_eligible<'src>(
-    item: &syn::Item,
-    floor: Option<&'src str>,
-    line_starts: &[usize],
+fn narrow_if_eligible<'a, 'n>(
+    item: Node<'n>,
+    floor: Option<&'a str>,
+    source: &'a str,
     reexported: Option<&AHashSet<String>>,
-    edits: &mut Vec<(usize, usize, Cow<'src, str>)>,
+    edits: &mut Vec<(usize, usize, Cow<'a, str>)>,
 ) {
     let Some(floor) = floor else {
         return;
     };
-    let Some((vis, ident)) = eligible_vis_and_ident(item) else {
+    let Some(name) = eligible_name(item) else {
         return;
     };
-
-    // Only narrow a bare `pub`.
-    let Visibility::Public(_) = vis else {
-        return;
+    let Some(vis) = visibility_node(item) else {
+        return; // private - not bare `pub`
     };
+    if !is_bare_pub(vis) {
+        return; // already restricted - idempotent skip
+    }
 
     // Re-export guard: skip items whose name is re-exported via `pub use`. A
     // glob sentinel ("*") disables narrowing for every named child. The name
-    // String is only built when a re-export set exists (rare path).
-    if let Some(set) = reexported {
-        let name = ident.to_string();
-        if set.contains(name.as_str()) || set.contains("*") {
-            return;
-        }
+    // is only read when a re-export set exists (rare path).
+    if let Some(set) = reexported
+        && let Ok(n) = name.utf8_text(source.as_bytes())
+        && (set.contains(n) || set.contains("*"))
+    {
+        return;
     }
 
-    let span = vis.span();
-    let start = linecol_to_byte(line_starts, span.start().line, span.start().column);
-    let end = linecol_to_byte(line_starts, span.end().line, span.end().column);
-    edits.push((start, end, Cow::Borrowed(floor)));
+    edits.push((vis.start_byte(), vis.end_byte(), Cow::Borrowed(floor)));
 }
 
-/// Return the visibility reference and identifier for item kinds eligible for
-/// narrowing (fn, struct, enum, union, type, const, static, mod, trait, extern
-/// crate). Returns `None` for `use`, `impl`, `macro_rules!`, macro invocations,
-/// and other kinds (those are never narrowed).
+/// The `name` field node of an item kind eligible for narrowing (fn, struct,
+/// enum, union, type, const, static, mod, trait, extern crate). Returns `None`
+/// for `use`, `impl`, `macro_rules!`, macro invocations, and other kinds (those
+/// are never narrowed).
 ///
-/// Returning a borrowed `&Visibility` and `&Ident` (rather than an owned name
-/// [`String`]) lets the caller defer - and usually skip - the name allocation,
-/// since the name is only needed by the rare re-export guard.
+/// Returning the borrowed name node (rather than an owned [`String`]) lets the
+/// caller defer - and usually skip - the name allocation, since the name is
+/// only read by the rare re-export guard.
 #[inline]
-fn eligible_vis_and_ident(item: &syn::Item) -> Option<(&Visibility, &proc_macro2::Ident)> {
-    match item {
-        syn::Item::Fn(f) => Some((&f.vis, &f.sig.ident)),
-        syn::Item::Struct(s) => Some((&s.vis, &s.ident)),
-        syn::Item::Enum(e) => Some((&e.vis, &e.ident)),
-        syn::Item::Union(u) => Some((&u.vis, &u.ident)),
-        syn::Item::Type(t) => Some((&t.vis, &t.ident)),
-        syn::Item::Const(c) => Some((&c.vis, &c.ident)),
-        syn::Item::Static(s) => Some((&s.vis, &s.ident)),
-        syn::Item::Mod(m) => Some((&m.vis, &m.ident)),
-        syn::Item::Trait(t) => Some((&t.vis, &t.ident)),
-        syn::Item::ExternCrate(e) => Some((&e.vis, &e.ident)),
+fn eligible_name<'a>(node: Node<'a>) -> Option<Node<'a>> {
+    let name = node.child_by_field_name("name")?;
+    match node.kind() {
+        "function_item"
+        | "struct_item"
+        | "enum_item"
+        | "union_item"
+        | "type_item"
+        | "const_item"
+        | "static_item"
+        | "mod_item"
+        | "trait_item"
+        | "extern_crate_declaration" => Some(name),
+        _ => None,
+    }
+}
+
+/// True when a `visibility_modifier` node is a bare `pub` (no restriction). The
+/// `pub` keyword is an anonymous token, so a bare `pub` has zero named
+/// children; `pub(crate)`/`pub(super)`/`pub(in path)` each have one named child.
+#[inline]
+fn is_bare_pub(vis: Node<'_>) -> bool {
+    vis.named_child_count() == 0
+}
+
+/// Last path-segment text of a path node (`identifier`/`type_identifier`, or the
+/// `name` field of a `scoped_identifier`). `None` for non-path nodes - mirroring
+/// syn, which only matched `Type::Path`.
+fn last_segment_text<'a>(node: Node<'a>, source: &'a [u8]) -> Option<&'a str> {
+    match node.kind() {
+        "identifier" | "type_identifier" => node.utf8_text(source).ok(),
+        "scoped_identifier" => node
+            .child_by_field_name("name")
+            .and_then(|n| n.utf8_text(source).ok()),
         _ => None,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ReexportSet, collect_crate_reexports, narrow_vis_in_tree};
-    use syn::parse_str as syn_parse;
+    use super::{ParsedFile, ReexportSet, collect_crate_reexports, narrow_vis_in_tree};
+    use std::path::PathBuf;
 
-    /// Force proc_macro2 fallback so span byte ranges are accurate.
-    fn force() {
-        proc_macro2::fallback::force();
+    fn src() -> PathBuf {
+        PathBuf::from("test.rs")
     }
 
-    fn parse(src: &str) -> syn::File {
-        syn_parse(src).expect("test source must parse")
+    /// Parse `src` into a [`ParsedFile`] (test helper).
+    fn parse(text: &str) -> ParsedFile {
+        ParsedFile::new(src(), text.to_string()).expect("test source must parse")
     }
 
     /// Standalone narrowing through the tree entry point: `floor = None` (no
@@ -384,14 +499,13 @@ mod tests {
     /// itself. Exercises the same inline-mod path `walk()` takes; the unit tests
     /// below call it to cover inline narrowing, floors, and the re-export guard.
     fn narrow<'a>(src: &'a str) -> anyhow::Result<std::borrow::Cow<'a, str>> {
-        let parsed: syn::File = syn_parse(src)?;
-        let reexports = collect_crate_reexports(std::iter::once(&parsed));
+        let pf = parse(src);
+        let reexports = collect_crate_reexports(std::iter::once(&pf));
         narrow_vis_in_tree(src, None, &reexports)
     }
 
     #[test]
     fn narrows_pub_inside_pub_crate_mod() {
-        force();
         let src = "pub(crate) mod m {\n    pub fn f() {}\n}\n";
         let out = narrow(src).unwrap();
         assert!(out.contains("pub(crate) fn f"), "narrowed: {out}");
@@ -400,7 +514,6 @@ mod tests {
 
     #[test]
     fn narrows_struct_const_static() {
-        force();
         let src = "pub(crate) mod m {\n    pub struct S;\n    pub const C: u32 = 0;\n    pub static G: u32 = 1;\n}\n";
         let out = narrow(src).unwrap();
         assert!(out.contains("pub(crate) struct S"), "{out}");
@@ -410,7 +523,6 @@ mod tests {
 
     #[test]
     fn leaves_pub_use_untouched() {
-        force();
         let src = "pub(crate) mod m {\n    pub use crate::x;\n}\n";
         let out = narrow(src).unwrap();
         assert!(out.contains("pub use crate::x"), "pub use untouched: {out}");
@@ -418,7 +530,6 @@ mod tests {
 
     #[test]
     fn narrows_pub_super_floor() {
-        force();
         let src = "pub(super) mod m {\n    pub fn f() {}\n}\n";
         let out = narrow(src).unwrap();
         assert!(out.contains("pub(super) fn f"), "{out}");
@@ -426,7 +537,6 @@ mod tests {
 
     #[test]
     fn narrows_pub_in_path_floor() {
-        force();
         let src = "pub(in crate::a) mod m {\n    pub fn f() {}\n}\n";
         let out = narrow(src).unwrap();
         assert!(out.contains("pub(in crate::a) fn f"), "{out}");
@@ -434,7 +544,6 @@ mod tests {
 
     #[test]
     fn nested_transitive_floor() {
-        force();
         // outer is pub(crate); inner is bare `pub` (inherits pub(crate) floor).
         let src = "pub(crate) mod outer {\n    pub mod inner {\n        pub fn f() {}\n    }\n}\n";
         let out = narrow(src).unwrap();
@@ -447,7 +556,6 @@ mod tests {
 
     #[test]
     fn skips_macro_rules() {
-        force();
         let src = "pub(crate) mod m {\n    macro_rules! mac {\n        () => {};\n    }\n}\n";
         let out = narrow(src).unwrap();
         assert_eq!(&*out, src, "macro_rules! must not be narrowed");
@@ -455,7 +563,6 @@ mod tests {
 
     #[test]
     fn skips_impl_methods() {
-        force();
         // struct narrowed; impl method `pub fn f` untouched (no descent into impl).
         let src = "pub(crate) mod m {\n    pub struct S;\n    impl S {\n        pub fn f() {}\n    }\n}\n";
         let out = narrow(src).unwrap();
@@ -465,7 +572,6 @@ mod tests {
 
     #[test]
     fn reexport_guard_skips_narrowing() {
-        force();
         let src = "pub use m::f;\npub(crate) mod m {\n    pub fn f() {}\n}\n";
         let out = narrow(src).unwrap();
         assert!(
@@ -476,7 +582,6 @@ mod tests {
 
     #[test]
     fn reexport_guard_group() {
-        force();
         let src = "pub use m::{f, g};\npub(crate) mod m {\n    pub fn f() {}\n    pub fn g() {}\n    pub fn h() {}\n}\n";
         let out = narrow(src).unwrap();
         assert!(
@@ -495,17 +600,14 @@ mod tests {
 
     #[test]
     fn idempotent() {
-        force();
         let src = "pub(crate) mod m {\n    pub fn f() {}\n}\n";
         let once = narrow(src).unwrap();
-        force();
         let twice = narrow(&once).unwrap();
         assert_eq!(once, twice, "narrow must be idempotent");
     }
 
     #[test]
     fn no_top_level_narrowing() {
-        force();
         // Top-level pub fn is not narrowed (module visibility is out of scope).
         let src = "pub fn f() {}\n";
         let out = narrow(src).unwrap();
@@ -514,7 +616,6 @@ mod tests {
 
     #[test]
     fn clean_input_is_borrowed() {
-        force();
         // No restricted-visibility inline module: a no-op, returned borrowed.
         let src = "pub fn f() {}\nfn g() {}\n";
         let out = narrow(src).unwrap();
@@ -527,7 +628,6 @@ mod tests {
 
     #[test]
     fn dirty_input_is_owned() {
-        force();
         let src = "pub(crate) mod m {\n    pub fn f() {}\n}\n";
         let out = narrow(src).unwrap();
         assert!(
@@ -555,7 +655,7 @@ mod tests {
     #[test]
     fn crate_reexports_glob_in_any_file_disables_crate_wide() {
         // A glob in ONE file sets the sentinel; every named child is blocked
-        // crate-wide (conservative soundness default, Open Q6).
+        // crate-wide (conservative soundness default).
         let a = parse("pub fn untouched() {}\n");
         let b = parse("pub use crate::foo::*;\n");
         let set = collect_crate_reexports([&a, &b]);
@@ -575,11 +675,19 @@ mod tests {
         );
     }
 
+    #[test]
+    fn crate_reexports_self_keys_by_path_last_segment() {
+        // `pub use a::b::{self};` re-exports module `b` under the name `b`.
+        let a = parse("pub use a::b::{self};\n");
+        let set = collect_crate_reexports([&a]);
+        assert!(set.blocks("b"), "self re-exports the path's last segment");
+        assert!(!set.blocks("a"), "path prefix is not re-exported by name");
+    }
+
     // --- T3: narrow_vis_in_tree tests ---
 
     #[test]
     fn narrow_vis_in_tree_narrows_top_level_with_floor() {
-        force();
         // foo.rs top-level bare pub, narrowed by the cross-file pub(crate) floor
         // declared in its parent (a standalone file with no floor is left pub).
         let src = "pub fn f() {}\n";
@@ -594,7 +702,6 @@ mod tests {
 
     #[test]
     fn narrow_vis_in_tree_respects_crate_reexport_guard() {
-        force();
         // f is re-exported somewhere in the crate -> must stay pub (soundness).
         // Build via the real builder so no test-only ctor is needed on ReexportSet.
         let reexports =
@@ -609,7 +716,6 @@ mod tests {
 
     #[test]
     fn narrow_vis_in_tree_clean_input_is_borrowed() {
-        force();
         // No bare-pub eligible child under a floor: no edits -> borrowed.
         let src = "struct S;\n";
         let reexports = ReexportSet::new();
@@ -622,11 +728,9 @@ mod tests {
 
     #[test]
     fn narrow_vis_in_tree_idempotent() {
-        force();
         let src = "pub fn f() {}\n";
         let reexports = ReexportSet::new();
         let once = narrow_vis_in_tree(src, Some("pub(crate)"), &reexports).unwrap();
-        force();
         // Second pass: `pub(crate) fn f` is already restricted -> no edit.
         let twice = narrow_vis_in_tree(&once, Some("pub(crate)"), &reexports).unwrap();
         assert_eq!(&*once, &*twice, "narrow_vis_in_tree must be idempotent");
@@ -634,7 +738,6 @@ mod tests {
 
     #[test]
     fn narrow_vis_in_tree_inline_mod_inherits_file_floor() {
-        force();
         // The file's tree floor (pub(crate)) must propagate into inline mods
         // via walk(); an inline `pub fn g` must narrow to pub(crate).
         let src = "pub mod inner {\n    pub fn g() {}\n}\n";
@@ -649,7 +752,6 @@ mod tests {
 
     #[test]
     fn crlf_line_endings_preserved_when_narrowing() {
-        force();
         // CRLF source: bare `pub fn f` inside a `pub(crate)` inline module is
         // narrowed to `pub(crate) fn f` via a byte-range `replace_range` swap
         // that touches only the `pub` token bytes, so every `\r\n` survives.

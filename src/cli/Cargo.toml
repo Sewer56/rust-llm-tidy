@@ -46,8 +46,6 @@ rust-llm-tidy-fix = { path = "../rust-llm-tidy-fix", version = "0.1.0" }
 rust-llm-tidy-vis = { path = "../rust-llm-tidy-vis", version = "0.1.0" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-proc-macro2 = { version = "1", features = ["span-locations"] }
-syn = { version = "2", features = ["full", "parsing"] }
 
 [dev-dependencies]
 criterion = "0.8"

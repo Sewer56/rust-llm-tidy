@@ -274,7 +274,10 @@ inner
 ~~~
 ";
         let out = fix_fences(input);
-        assert_eq!(&*out, expected, "inner backtick under tilde root stays backtick (already canonical)");
+        assert_eq!(
+            &*out, expected,
+            "inner backtick under tilde root stays backtick (already canonical)"
+        );
     }
 
     #[test]

@@ -19,7 +19,9 @@
 //! reflect realistic parse characteristics). Provenance (repo, path, pinned
 //! permalink) is documented in the header comment of each fixture file.
 
-use rust_llm_tidy_vis::{ModuleTree, ReexportSet};
+use rust_llm_tidy_vis::{
+    ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
+};
 
 /// Multi-file crate fixtures for the crate-aware vis bench: each entry is a
 /// small crate as `(name, root_relative_path, [(path, source)])`. The parent
@@ -27,7 +29,7 @@ use rust_llm_tidy_vis::{ModuleTree, ReexportSet};
 /// crate-aware pass narrows cross-file.
 ///
 /// Sources are embedded inline (no filesystem I/O at bench time): the resolver
-/// API `build_module_tree(root, &[(path, source)])` accepts in-memory pairs.
+/// API `build_module_tree(root, &[ParsedFile])` accepts in-memory parsed files.
 #[allow(dead_code)]
 pub const CRATE_FIXTURES: &[(&str, &[(&str, &str)])] = &[
     (
@@ -192,35 +194,20 @@ pub const REORDER_FIXTURES: &[(&str, &str)] = &[
 pub fn build_crate_context(
     sources: &[(&str, &str)],
 ) -> (ModuleTree, ReexportSet, Vec<(String, String)>) {
-    use rust_llm_tidy_vis::{build_module_tree, collect_crate_reexports};
     let owned: Vec<(String, String)> = sources
         .iter()
         .map(|(p, s)| (p.to_string(), s.to_string()))
         .collect();
-    let parsed: Vec<syn::File> = owned
+    // Parse each file once into a `ParsedFile` shared by the module-tree build
+    // and the crate-wide re-export scan (single parse per file).
+    let files: Vec<ParsedFile> = owned
         .iter()
-        .filter_map(|(_, s)| syn::parse_str(s).ok())
+        .map(|(p, s)| {
+            ParsedFile::new(std::path::PathBuf::from(p), s.clone()).expect("fixture must parse")
+        })
         .collect();
     let root = std::path::PathBuf::from(&owned[0].0);
-    let tree = build_module_tree(
-        &root,
-        &owned
-            .iter()
-            .map(|(p, s)| (std::path::PathBuf::from(p), s.clone()))
-            .collect::<Vec<_>>(),
-    )
-    .expect("crate fixture must resolve");
-    let reexports = collect_crate_reexports(parsed.iter());
+    let tree = build_module_tree(&root, &files).expect("crate fixture must resolve");
+    let reexports = collect_crate_reexports(&files);
     (tree, reexports, owned)
-}
-
-/// Force the [`proc_macro2`] fallback span impl once.
-///
-/// Mirrors the CLI's [`main`], which calls [`proc_macro2::fallback::force`] so
-/// that byte-range spans are accurate when parsing outside a proc-macro context.
-///
-/// [`main`]: rust_llm_tidy_cli
-#[allow(dead_code)] // each bench compiles `common` separately; the fences bench does not call this
-pub fn force_span_fallback() {
-    proc_macro2::fallback::force();
 }

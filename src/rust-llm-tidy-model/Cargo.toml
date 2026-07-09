@@ -7,15 +7,14 @@ repository = "https://github.com/Sewer56/rust-llm-tidy"
 license = "Apache-2.0"
 include = ["src/**/*"]
 # keywords (search terms): https://crates.io/keywords
-keywords = ["rust", "syn", "ast", "source", "model"]
+keywords = ["rust", "tree-sitter", "ast", "source", "model"]
 # categories (fixed list): https://crates.io/categories
 categories = ["development-tools"]
 
 [dependencies]
 anyhow = "1"
-syn = { version = "2", features = ["full", "visit", "parsing"] }
-quote = "1"
-proc-macro2 = { version = "1", features = ["span-locations"] }
+tree-sitter = "0.26"
+tree-sitter-rust = "0.24"
 memchr = "2"
 ahash = "0.8"
 tempfile = "3"

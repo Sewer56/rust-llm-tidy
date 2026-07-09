@@ -10,7 +10,7 @@ criterion_group!(benches, fence_pass);
 
 criterion_main!(benches);
 
-use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rust_llm_tidy_fix::fix_fences;
 
 #[path = "common.rs"]
@@ -24,7 +24,7 @@ fn fence_pass(c: &mut Criterion) {
         group.bench_function(*name, |bencher| {
             bencher.iter(|| {
                 let out = fix_fences(source);
-                black_box(out);
+                std::hint::black_box(out);
             });
         });
     }
