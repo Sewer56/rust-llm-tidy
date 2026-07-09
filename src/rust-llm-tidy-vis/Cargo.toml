@@ -21,4 +21,5 @@ anyhow = "1"
 tree-sitter = "0.26"
 tree-sitter-rust = "0.24"
 ahash = "0.8"
-cargo_metadata = "0.19" # crate-root discovery for cross-file vis; pin/adjust to latest 0.x
+memchr = "2"
+cargo_metadata = "0.23" # crate-root discovery for cross-file vis (P1); pin/adjust to latest 0.x
