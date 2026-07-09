@@ -281,16 +281,6 @@ mod tests {
         names.iter().enumerate().map(|(i, &n)| (n, i)).collect()
     }
 
-    /// Parse `source`, collect edges with a `name_to_idx` seeded from `names`,
-    /// and return the edges.
-    fn edges_for(source: &str, names: &[&'static str]) -> Vec<(usize, usize)> {
-        let parsed = parse_source(source).unwrap();
-        let tree = parsed.syntax_tree();
-        let mut collector = ReferenceCollector::new(idx_map(names), AHashSet::new());
-        collector.collect(tree, source.as_bytes());
-        collector.into_edges()
-    }
-
     /// Macro references are inverted so the macro definition precedes its use.
     #[test]
     fn test_reference_collector_macro_edge_reversed() {

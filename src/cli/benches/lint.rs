@@ -11,7 +11,7 @@ criterion_group!(benches, lint_pass);
 
 criterion_main!(benches);
 
-use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rust_llm_tidy_lint::check;
 use rust_llm_tidy_model::parse;
 
@@ -27,7 +27,7 @@ fn lint_pass(c: &mut Criterion) {
             bencher.iter(|| {
                 let parsed = parse::parse_source(source).expect("fixture must parse");
                 let diagnostics = check::run_all(&parsed);
-                black_box(diagnostics);
+                std::hint::black_box(diagnostics);
             });
         });
     }

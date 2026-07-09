@@ -14,7 +14,7 @@ criterion_group!(benches, reorder_pass);
 
 criterion_main!(benches);
 
-use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rust_llm_tidy_model::{parse, safety};
 use rust_llm_tidy_reorder::graph;
 use rust_llm_tidy_reorder::reorder::{Permutation, emit};
@@ -36,7 +36,7 @@ fn reorder_pass(c: &mut Criterion) {
                     Permutation::new(parsed.items.len(), order).expect("permutation must build");
                 let output = emit(&parsed, &permutation).expect("emit must succeed");
                 safety::verify_line_preservation(source, &output).expect("lines must be preserved");
-                black_box(output);
+                std::hint::black_box(output);
             });
         });
     }

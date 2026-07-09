@@ -12,7 +12,7 @@ criterion_group!(benches, vis_crate_aware);
 
 criterion_main!(benches);
 
-use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rust_llm_tidy_vis::narrow_vis_in_tree;
 
 #[path = "common.rs"]
@@ -33,7 +33,7 @@ fn vis_crate_aware(c: &mut Criterion) {
                     let floor = tree.floor_for(std::path::Path::new(path));
                     let out =
                         narrow_vis_in_tree(src, floor, &reexports).expect("fixture must parse");
-                    black_box(out);
+                    std::hint::black_box(out);
                 }
             });
         });
