@@ -13,7 +13,7 @@ use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-/// Run `rust-llm-tidy --dry-run` against `<name>_before.rs` in `tests/fixtures/reorder/`.
+/// Run `rust-llm-tidy --include reorder --dry-run` against `<name>_before.rs` in `tests/fixtures/reorder/`.
 ///
 /// Returns `(actual_stdout, expected_after_content)`.
 macro_rules! run_fixture {
@@ -204,7 +204,7 @@ fn test_in_place_write() {
     )
     .unwrap();
 
-    let output = run_command(&["reorder"], &tmp);
+    let output = run_command(&["--include", "reorder"], &tmp);
     assert!(
         output.status.success(),
         "rust-llm-tidy (no --dry-run) failed"
@@ -235,7 +235,7 @@ fn test_nonexistent_path() {
         std::process::id()
     ));
 
-    let output = run_command(&["reorder"], &nonexistent);
+    let output = run_command(&["--include", "reorder"], &nonexistent);
     assert!(
         !output.status.success(),
         "non-existent path should exit non-zero"
@@ -266,7 +266,7 @@ fn test_recursive_directory() {
     )
     .unwrap();
 
-    let output = run_command(&["reorder"], &dir);
+    let output = run_command(&["--include", "reorder"], &dir);
     assert!(
         output.status.success(),
         "directory run failed: {}",
@@ -486,7 +486,7 @@ fn run(content: &str, args: &[&str]) -> (String, String, i32) {
     let file = dir.join(format!("rust-llm-tidy-test-{}-{}.rs", pid, seq));
     fs::write(&file, content).unwrap();
 
-    let mut full_args = vec!["reorder"];
+    let mut full_args = vec!["--include", "reorder"];
     full_args.extend(args);
     let output = run_command(&full_args, &file);
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -506,7 +506,7 @@ fn run_and_read(content: &str) -> String {
     let file = dir.join(format!("rust-llm-tidy-test-{}-{}.rs", pid, seq));
     fs::write(&file, content).unwrap();
 
-    let output = run_command(&["reorder"], &file);
+    let output = run_command(&["--include", "reorder"], &file);
     assert!(
         output.status.success(),
         "rust-llm-tidy failed: {}",
@@ -520,7 +520,7 @@ fn run_and_read(content: &str) -> String {
 
 /// Run `rust-llm-tidy` on a directory with optional arguments.
 fn run_dir(dir: &std::path::Path, args: &[&str]) -> (String, String, i32) {
-    let mut full_args = vec!["reorder"];
+    let mut full_args = vec!["--include", "reorder"];
     full_args.extend(args);
     let output = run_command(&full_args, dir);
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -534,7 +534,7 @@ fn run_dir(dir: &std::path::Path, args: &[&str]) -> (String, String, i32) {
 ///
 /// Panics if the command fails.
 fn run_dry_run(path: &std::path::Path) -> String {
-    let output = run_command(&["reorder", "--dry-run"], path);
+    let output = run_command(&["--include", "reorder", "--dry-run"], path);
 
     assert!(
         output.status.success(),

@@ -2,8 +2,8 @@
 //! per-file policy computation for `rust-llm-tidy`.
 //!
 //! A config file (`.rust-llm-tidy.yml`) lets users exclude files from all
-//! processing, disable specific lint/fix rules per path, and run external
-//! post-processing commands (e.g. `rustfmt`) on every processed file.
+//! processing, whitelist or blacklist specific lint/fix rules per path, and run
+//! external post-processing commands (e.g. `rustfmt`) on every processed file.
 //!
 //! All patterns are globs relative to the config file's directory and are
 //! compiled with `literal_separator(true)`, so `*` does not cross `/` and
@@ -15,7 +15,7 @@
 //! Any config error - bad YAML, bad glob syntax, unknown rule name, or a
 //! pattern matching zero files - causes [`load_and_compile`] to return `Err`,
 //! which the CLI propagates as a non-zero exit on every command. The
-//! `validate` subcommand exists for CI to check the config without processing
+//! `--validate` flag exists for CI to check the config without processing
 //! files.
 
 use anyhow::{Context, anyhow, bail};
@@ -26,10 +26,10 @@ use serde::Deserialize;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-/// Fix/operation names that can be disabled via `exclude_rules`. Kept in sync
-/// with the per-file dispatch in `main.rs` (`fix_file`, `reorder_file`,
-/// `vis_file`).
-pub const KNOWN_FIX_OPS: &[&str] = &["tables", "fences", "links", "reorder", "vis"];
+/// Fix/operation names that can be disabled/excluded. Kept in sync with the
+/// per-file dispatch in `main.rs` (`fix_file`, `reorder_file`, `vis_file`,
+/// `check_file`). `lints` gates the lint pass.
+pub const KNOWN_FIX_OPS: &[&str] = &["tables", "fences", "links", "reorder", "vis", "lints"];
 
 /// A loaded and validated config, ready to answer `policy_for` queries.
 #[derive(Debug)]
@@ -37,10 +37,12 @@ pub struct CompiledConfig {
     /// Canonicalized directory of the config file. Patterns are resolved
     /// relative to this.
     config_dir: PathBuf,
-    /// Matches `exclude` patterns.
-    exclude_set: GlobSet,
-    /// One group per `exclude_rules` entry.
-    rule_groups: Vec<RuleGroup>,
+    /// Matches `exclude_files` patterns.
+    exclude_files_set: GlobSet,
+    /// One group per `include` entry (whitelist mode).
+    include_groups: Vec<CompiledRuleGroup>,
+    /// One group per `exclude` entry (blacklist mode).
+    exclude_groups: Vec<CompiledRuleGroup>,
     /// Stored so the CLI can run the post-processing pass without re-parsing.
     post_process: Vec<PostProcessStep>,
 }
@@ -49,32 +51,45 @@ pub struct CompiledConfig {
 /// config file's directory.
 #[derive(Debug, Deserialize, Default)]
 pub struct Config {
-    /// Skip all processing for files matching any pattern.
+    /// Whitelist: for matched paths, run ONLY these rules. Mutually exclusive
+    /// with `exclude` (both present -> config-load error). Empty/absent = not
+    /// whitelist mode.
     #[serde(default)]
-    pub exclude: Vec<String>,
-    /// Disable specific rules for files matching any group's patterns.
+    pub include: Vec<RuleGroup>,
+    /// Blacklist: for matched paths, never run these rules. Mutually exclusive
+    /// with `include`.
     #[serde(default)]
-    pub exclude_rules: Vec<ExcludeRule>,
+    pub exclude: Vec<RuleGroup>,
+    /// Skip ALL processing for files matching any pattern (was `exclude`).
+    #[serde(default)]
+    pub exclude_files: Vec<String>,
     /// External commands run on every processed file after rust-llm-tidy.
     #[serde(default)]
     pub post_process: Vec<PostProcessStep>,
 }
 
-/// Runtime policy for a single file: whether to skip it entirely and which
-/// rules are disabled for it.
-#[derive(Debug, Default, PartialEq, Eq)]
+/// Runtime policy for a single file: whether to skip it entirely, which ops are
+/// enabled, and (for blacklist/default mode) which rules are disabled.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct FilePolicy {
-    /// Matched by an `exclude` pattern.
+    /// Matched by an `exclude_files` pattern.
     pub skip: bool,
-    /// Union of `rules` from all matched `exclude_rules` groups.
+    /// Ops/rules enabled for this file (whitelist mode) or `None` for the
+    /// blacklist/default mode (caller disables via `disabled`).
+    pub enabled: Option<HashSet<String>>,
+    /// Union of `rules` from all matched `exclude` groups (blacklist/default
+    /// mode). Empty in whitelist mode.
     pub disabled: HashSet<String>,
 }
 
-/// One entry under `exclude_rules`: a list of path globs and the rule names to
-/// disable for files they match.
-#[derive(Debug, Deserialize)]
-pub struct ExcludeRule {
+/// One entry under `include` or `exclude`: a list of path globs and the rule
+/// names to (include|exclude) for files they match. An omitted `paths` matches
+/// every file (implied `["**"]`).
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct RuleGroup {
+    #[serde(default)]
     pub paths: Vec<String>,
+    #[serde(default)]
     pub rules: Vec<String>,
 }
 
@@ -90,10 +105,9 @@ pub struct PostProcessStep {
     pub extensions: Vec<String>,
 }
 
-/// A compiled `exclude_rules` group: one glob set plus its disabled rule
-/// names.
+/// A compiled `include`/`exclude` group: one glob set plus its rule names.
 #[derive(Debug)]
-struct RuleGroup {
+struct CompiledRuleGroup {
     set: GlobSet,
     rules: Vec<String>,
 }
@@ -121,19 +135,33 @@ impl CompiledConfig {
         let Ok(canon) = file.canonicalize() else {
             return FilePolicy::default();
         };
-        // Outside the config directory: never matches.
         let Some(rel) = canon.strip_prefix(&self.config_dir).ok() else {
             return FilePolicy::default();
         };
         let rel_str = rel.to_string_lossy();
         let mut policy = FilePolicy::default();
-        if self.exclude_set.is_match(&*rel_str) {
+        if self.exclude_files_set.is_match(&*rel_str) {
             policy.skip = true;
         }
-        for group in &self.rule_groups {
-            if group.set.is_match(&*rel_str) {
-                policy.disabled.extend(group.rules.iter().cloned());
-            }
+        let matched_include: HashSet<String> = self
+            .include_groups
+            .iter()
+            .filter(|g| g.set.is_match(&*rel_str))
+            .flat_map(|g| g.rules.iter().cloned())
+            .collect();
+        let matched_exclude: HashSet<String> = self
+            .exclude_groups
+            .iter()
+            .filter(|g| g.set.is_match(&*rel_str))
+            .flat_map(|g| g.rules.iter().cloned())
+            .collect();
+        if !self.include_groups.is_empty() {
+            // Whitelist mode: a file matching NO include group runs nothing.
+            policy.enabled = Some(matched_include);
+        } else {
+            // Blacklist/default mode: disable matched_exclude rules.
+            policy.disabled = matched_exclude;
+            policy.enabled = None;
         }
         policy
     }
@@ -179,10 +207,12 @@ pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathB
 /// Steps:
 /// 1. Read the file and `serde_yml::from_str` it (YAML error -> `Err`).
 /// 2. Canonicalize the config directory (patterns resolve relative to it).
-/// 3. Validate every `exclude_rules` rule name against `known_rules()`; compile
-///    each group's patterns into a `GlobSet` with `literal_separator(true)`.
-/// 4. Compile the `exclude` patterns into one `GlobSet`.
-/// 5. Semantic check: expand each pattern via `glob::glob()` joined with
+/// 3. Reject `include` + `exclude` co-presence (xor).
+/// 4. Validate every rule name against `known_rules()`; compile each group's
+///    patterns into a `GlobSet` with `literal_separator(true)`. An
+///    empty/missing `paths` in a group is treated as `["**"]`.
+/// 5. Compile the `exclude_files` patterns into one `GlobSet`.
+/// 6. Semantic check: expand each pattern via `glob::glob()` joined with
 ///    `config_dir`; a pattern yielding zero results is stale -> `Err`.
 ///
 /// # Errors
@@ -191,7 +221,8 @@ pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathB
 /// - The file cannot be read or parsed as YAML.
 /// - The config path has no parent directory.
 /// - The config directory cannot be canonicalized.
-/// - Any `exclude_rules` rule name is not in [`known_rules()`].
+/// - `include` and `exclude` are both non-empty.
+/// - Any rule name is not in [`known_rules()`].
 /// - Any glob pattern has invalid syntax.
 /// - Any pattern matches zero files under the config directory.
 ///
@@ -208,33 +239,72 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         .canonicalize()
         .with_context(|| format!("failed to canonicalize config dir {}", path.display()))?;
 
-    // Validate rule names + compile rule groups.
+    // XOR: include + exclude both present -> error.
+    if !config.include.is_empty() && !config.exclude.is_empty() {
+        bail!("cannot use `include` (whitelist) and `exclude` (blacklist) together; pick one");
+    }
+
     let valid = known_rules();
-    let mut rule_groups: Vec<RuleGroup> = Vec::with_capacity(config.exclude_rules.len());
-    for rule in &config.exclude_rules {
+
+    // Validate rule names + compile include groups.
+    let mut include_groups: Vec<CompiledRuleGroup> = Vec::with_capacity(config.include.len());
+    for rule in &config.include {
         for r in &rule.rules {
             if !valid.contains(&r.as_str()) {
                 bail!(
-                    "unknown rule `{r}` in exclude_rules; valid rules: {}",
+                    "unknown rule `{r}` in include.rules; valid rules: {}",
                     valid.join(", ")
                 );
             }
         }
-        let set = compile_glob_set(&rule.paths, &config_dir)?;
-        rule_groups.push(RuleGroup {
+        let paths = if rule.paths.is_empty() {
+            vec!["**".to_string()]
+        } else {
+            rule.paths.clone()
+        };
+        let set = compile_glob_set(&paths, &config_dir)?;
+        include_groups.push(CompiledRuleGroup {
             set,
             rules: rule.rules.clone(),
         });
     }
 
-    let exclude_set = compile_glob_set(&config.exclude, &config_dir)?;
+    // Validate rule names + compile exclude groups.
+    let mut exclude_groups: Vec<CompiledRuleGroup> = Vec::with_capacity(config.exclude.len());
+    for rule in &config.exclude {
+        for r in &rule.rules {
+            if !valid.contains(&r.as_str()) {
+                bail!(
+                    "unknown rule `{r}` in exclude.rules; valid rules: {}",
+                    valid.join(", ")
+                );
+            }
+        }
+        let paths = if rule.paths.is_empty() {
+            vec!["**".to_string()]
+        } else {
+            rule.paths.clone()
+        };
+        let set = compile_glob_set(&paths, &config_dir)?;
+        exclude_groups.push(CompiledRuleGroup {
+            set,
+            rules: rule.rules.clone(),
+        });
+    }
+
+    let exclude_files_set = compile_glob_set(&config.exclude_files, &config_dir)?;
 
     // Semantic check: every pattern must match at least one file when expanded
     // against the filesystem from `config_dir`.
-    for pat in &config.exclude {
+    for pat in &config.exclude_files {
         check_pattern_matches(&config_dir, pat)?;
     }
-    for group in &config.exclude_rules {
+    for group in &config.include {
+        for pat in &group.paths {
+            check_pattern_matches(&config_dir, pat)?;
+        }
+    }
+    for group in &config.exclude {
         for pat in &group.paths {
             check_pattern_matches(&config_dir, pat)?;
         }
@@ -242,14 +312,16 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
 
     Ok(CompiledConfig {
         config_dir,
-        exclude_set,
-        rule_groups,
+        exclude_files_set,
+        include_groups,
+        exclude_groups,
         post_process: config.post_process,
     })
 }
 
-/// Return every rule name accepted by `exclude_rules`: lint codes followed by
-/// fix/operation names. The CLI validates rule names against this list.
+/// Return every rule name accepted by `include.rules`, `exclude.rules`,
+/// `--include`, and `--exclude`: lint codes followed by fix/operation names.
+/// The CLI validates rule names against this list.
 pub fn known_rules() -> Vec<&'static str> {
     let mut rules: Vec<&'static str> = LINT_CODES.to_vec();
     rules.extend_from_slice(KNOWN_FIX_OPS);
@@ -320,13 +392,17 @@ mod tests {
 
     #[test]
     fn empty_config_compiles_to_no_op() {
-        let cc = compile("exclude: []\n", &[("src/lib.rs", "pub fn example() {}\n")]);
+        let cc = compile(
+            "exclude_files: []\n",
+            &[("src/lib.rs", "pub fn example() {}\n")],
+        );
         // Use a file that actually exists inside the config dir so
         // canonicalize succeeds and the no-pattern-match path is exercised.
         let dir = cc.config_dir_canonical_for_test();
         let policy = cc.policy_for(&dir.join("src").join("lib.rs"));
         assert!(!policy.skip);
         assert!(policy.disabled.is_empty());
+        assert_eq!(policy.enabled, None);
     }
 
     #[test]
@@ -338,7 +414,7 @@ mod tests {
         // The pattern must be invalid regardless of matching files.
         std::fs::write(dir.join("a.rs"), "pub fn x() {}\n").unwrap();
         let cfg_path = dir.join(".rust-llm-tidy.yml");
-        std::fs::write(&cfg_path, "exclude:\n  - \"[unclosed\"\n").unwrap();
+        std::fs::write(&cfg_path, "exclude_files:\n  - \"[unclosed\"\n").unwrap();
         let err = load_and_compile(&cfg_path).unwrap_err();
         let msg = format!("{err:#}");
         assert!(
@@ -356,7 +432,7 @@ mod tests {
         let cfg_path = dir.join(".rust-llm-tidy.yml");
         std::fs::write(
             &cfg_path,
-            "exclude_rules:\n  - paths: [\"lib.rs\"]\n    rules: [\"BOGUS\"]\n",
+            "exclude:\n  - paths: [\"lib.rs\"]\n    rules: [\"BOGUS\"]\n",
         )
         .unwrap();
         let err = load_and_compile(&cfg_path).unwrap_err();
@@ -373,7 +449,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("rlt-cfg-nomatch-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let cfg_path = dir.join(".rust-llm-tidy.yml");
-        std::fs::write(&cfg_path, "exclude:\n  - \"nope/**\"\n").unwrap();
+        std::fs::write(&cfg_path, "exclude_files:\n  - \"nope/**\"\n").unwrap();
         let err = load_and_compile(&cfg_path).unwrap_err();
         let msg = format!("{err:#}");
         assert!(
@@ -386,24 +462,24 @@ mod tests {
     #[test]
     fn policy_for_matches_relative_path() {
         let cc = compile(
-            "exclude:\n  - \"src/lib.rs\"\nexclude_rules:\n  - paths: [\"src/lib.rs\"]\n    rules: [\"links\"]\n",
+            "exclude_files:\n  - \"src/lib.rs\"\nexclude:\n  - paths: [\"src/lib.rs\"]\n    rules: [\"links\"]\n",
             &[("src/lib.rs", "pub fn example() {}\n")],
         );
         // Re-open the same path the compile helper used to canonicalize.
         let dir = cc.config_dir_canonical_for_test();
         let lib = dir.join("src").join("lib.rs");
         let policy = cc.policy_for(&lib);
-        assert!(policy.skip, "exclude should mark the file skipped");
+        assert!(policy.skip, "exclude_files should mark the file skipped");
         assert!(
             policy.disabled.contains("links"),
-            "exclude_rules should disable `links`: {policy:?}"
+            "exclude should disable `links`: {policy:?}"
         );
     }
 
     #[test]
     fn file_outside_config_dir_returns_empty_policy() {
         let cc = compile(
-            "exclude:\n  - \"**\"\n",
+            "exclude_files:\n  - \"**\"\n",
             &[("src/lib.rs", "pub fn example() {}\n")],
         );
         // A file that exists but is outside the config dir yields an empty
@@ -424,7 +500,7 @@ mod tests {
         // `*.rs` must match a file directly under the config dir, but NOT a
         // file nested under a subdirectory (because `*` does not cross `/`).
         let cc = compile(
-            "exclude:\n  - \"*.rs\"\n",
+            "exclude_files:\n  - \"*.rs\"\n",
             &[
                 ("top.rs", "pub fn top() {}\n"),
                 ("sub/nested.rs", "pub fn nested() {}\n"),
@@ -446,13 +522,13 @@ mod tests {
     #[test]
     fn known_rules_lists_every_code_and_op() {
         let rules = known_rules();
-        // The seven lint codes plus the five fix/operation names.
+        // The seven lint codes plus the six fix/operation names (including lints).
         for code in [
             "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "TEST001",
         ] {
             assert!(rules.iter().any(|r| *r == code), "missing lint code {code}");
         }
-        for op in ["tables", "fences", "links", "reorder", "vis"] {
+        for op in ["tables", "fences", "links", "reorder", "vis", "lints"] {
             assert!(rules.iter().any(|r| *r == op), "missing fix/operation {op}");
         }
     }

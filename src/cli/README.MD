@@ -25,106 +25,66 @@ cargo build --release -p rust-llm-tidy-cli
 
 ## Usage
 
-The binary exposes six subcommands:
-
-- `fix` - realign GitHub-Flavored Markdown (GFM) tables, fix nested fence delimiters, and hoist repeated inline links
-- `reorder` - reorder items
-- `vis` - clamp `pub` to its module's reach
-- `check` - read-only documentation linter
-- `all` - fix, reorder, vis, then check
-- `validate` - check the YAML config without processing files (exits non-zero on any config error or when no config is found)
-
-An optional YAML config file (`.rust-llm-tidy.yml`) may exclude files from
-processing, disable specific rules per path, and run external programs (e.g.
-`rustfmt`) on every processed file. Pass `--config <PATH>` to use an explicit
-config or `--no-config` to disable discovery. See the repository README for
-the full schema.
+`rust-llm-tidy` is a single command that runs the full pipeline (fix,
+reorder, vis, lints) by default on `.rs` and `.md` files:
 
 ```bash
-# Reorder a single file in place
-rust-llm-tidy reorder src/main.rs
+# Tidy a file in place
+rust-llm-tidy src/main.rs
 
 # Preview changes without modifying the file
-rust-llm-tidy reorder --dry-run src/main.rs
+rust-llm-tidy --dry-run src/main.rs
 
-# Recursively reorder every .rs file under a directory
-rust-llm-tidy reorder src
+# Tidy every .rs/.md file under a directory recursively
+rust-llm-tidy src
 
-# Preview recursive changes
-rust-llm-tidy reorder --dry-run src
+# No paths given -> process the changed files in the current git diff
+rust-llm-tidy
+
+# Run only specific ops (repeatable); overrides the config `include` mode
+rust-llm-tidy --include vis src/lib.rs
+rust-llm-tidy --include reorder --include vis src
+
+# Skip an op for this run (additive to config `exclude`)
+rust-llm-tidy --exclude lints src
+
+# Validate the config without processing files
+rust-llm-tidy --validate
 ```
 
-```bash
-# Realign GFM tables, fix nested fence delimiters, and hoist repeated inline links in .rs doc comments and .md files
-rust-llm-tidy fix README.md
+### Flags
 
-# Preview fixes without modifying files
-rust-llm-tidy fix --dry-run src
+| Flag | Effect |
+| ---- | ------ |
+| `--dry-run` | Print results to stdout instead of modifying files |
+| `--config <PATH>` | Explicit config path (overrides auto-discovery) |
+| `--no-config` | Disable config discovery and loading |
+| `--validate` | Validate config and exit (no files processed) |
+| `--include <OP>` | Run only these ops/lint-codes (repeatable) |
+| `--exclude <OP>` | Skip these ops/lint-codes (repeatable) |
 
-# Recursively fix every .rs and .md file under a directory
-rust-llm-tidy fix docs
-```
+### Operations
 
-```bash
-# Clamp `pub` to its module's reach
-rust-llm-tidy vis src/lib.rs
+| Op | Does | Mutates | Default on? |
+| -- | ---- | ------- | ----------- |
+| `tables` | align GFM tables | yes | yes |
+| `fences` | alternate nested fence delimiters | yes | yes |
+| `links` | hoist repeated inline links | yes | yes |
+| `reorder` | canonical item ordering | yes | yes |
+| `vis` | narrow bare `pub` in restricted modules | yes | yes |
+| `lints` | run DOC001-DOC006 + TEST001 checks | no | yes |
 
-# Preview visibility clamping without modifying files
-rust-llm-tidy vis --dry-run src
-```
-
-```bash
-# Check documentation coverage (read-only, never writes)
-rust-llm-tidy check src
-
-# Fix, reorder, clamp `pub`, then check in one pass
-rust-llm-tidy all src
-```
+An optional YAML config file (`.rust-llm-tidy.yml`) may exclude files from
+processing, whitelist or blacklist specific rules per path, and run external
+programs (e.g. `rustfmt`) on every processed file. Pass `--config <PATH>` to
+use an explicit config or `--no-config` to disable discovery. See the
+repository README for the full schema.
 
 ## Ordering Rules
 
 The algorithm orders top-level items across phases. Within most phases, an item
-comes before any item it references; alphabetical order breaks ties. An annotated example:
-
-```rust,ignore
-// 1. extern crate and uncategorized items (items not matching any other phase) stay in original order.
-extern crate serde;
-
-// 2. use declarations.
-use std::collections::HashMap;
-use std::fs;
-
-// 3. mod declarations sort alphabetically by name.
-mod alpha;
-mod beta;
-
-// 4. Macros come before their first use.
-macro_rules! say_hello { () => {}; }
-
-// 5-7. const/static, type items, and traits (referrers before referenced items).
-const MAX: usize = 100;
-struct App { config: Config }
-struct Config { value: i32 }
-trait Drawable {}
-
-// 8. impl blocks follow their type; inherent impls come before trait impls.
-impl App {}
-impl Drawable for App {}
-
-// 9. Free functions by visibility tier: pub -> restricted -> private.
-//    Within each tier, main comes first and callers precede callees.
-pub fn public_fn() {}
-fn main() {}
-fn private_helper() {}
-
-// 10. #[cfg(test)] mod tests always comes last.
-#[cfg(test)]
-mod tests {}
-```
-
-`fn main()` always comes first in its visibility tier. `#[cfg(test)] mod tests`
-always comes last. See the [rust-llm-tidy-reorder documentation](../rust-llm-tidy-reorder/README.MD)
-for the full rules.
+comes before any item it references; alphabetical order breaks ties. See
+[docs/reorder.md](../../docs/reorder.md) for an annotated 10-phase example.
 
 ## License
 

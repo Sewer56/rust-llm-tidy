@@ -26,97 +26,84 @@ rust-llm-tidy-reorder = "0.1.0"
 
 ### CLI
 
-The binary exposes six subcommands:
-
-- `fix` - realign GitHub-Flavored Markdown (GFM) tables, fix nested fence delimiters, and hoist repeated inline links
-- `reorder` - reorder items into canonical 10-phase order
-- `vis` - clamp `pub` to its module's reach
-- `check` - a read-only documentation linter
-- `all` - fix, reorder, vis, then check in one pass
-- `validate` - check the YAML config without processing files; exits non-zero on any config error or when no config is found
+`rust-llm-tidy` is a single command that runs the full pipeline (fix,
+reorder, vis, lints) by default on `.rs` and `.md` files:
 
 ```bash
-# Reorder a file in place
-rust-llm-tidy reorder src/main.rs
+# Tidy a file in place
+rust-llm-tidy src/main.rs
 
 # Preview changes without modifying the file
-rust-llm-tidy reorder --dry-run src/main.rs
+rust-llm-tidy --dry-run src/main.rs
 
-# Reorder every .rs file under a directory recursively
-rust-llm-tidy reorder src
+# Tidy every .rs/.md file under a directory recursively
+rust-llm-tidy src
 
-# Reorder multiple paths in one invocation (files and/or directories)
-rust-llm-tidy reorder src/main.rs src/lib.rs tests
+# No paths given -> process the changed files in the current git diff
+rust-llm-tidy
+
+# Run only specific ops (repeatable); overrides the config `include` mode
+rust-llm-tidy --include vis src/lib.rs
+rust-llm-tidy --include reorder --include vis src
+
+# Skip an op for this run (additive to config `exclude`)
+rust-llm-tidy --exclude lints src
+
+# Validate the config without processing files
+rust-llm-tidy --validate
 ```
 
-```bash
-# Realign GFM tables, fix nested fence delimiters, and hoist repeated inline links in .rs doc comments and .md files
-rust-llm-tidy fix README.md
+Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
+`--include <OP>` (repeatable), `--exclude <OP>` (repeatable).
 
-# Preview fixes without modifying files
-rust-llm-tidy fix --dry-run src
+#### Operations
 
-# Fix every .rs and .md file under a directory recursively
-rust-llm-tidy fix docs
-```
+| Op | Does | Mutates | Default on? |
+| -- | ---- | ------- | ----------- |
+| `tables` | align GFM tables | yes | yes |
+| `fences` | alternate nested fence delimiters | yes | yes |
+| `links` | hoist repeated inline links | yes | yes |
+| `reorder` | canonical item ordering | yes | yes |
+| `vis` | narrow bare `pub` in restricted modules | yes | yes |
+| `lints` | run DOC001-DOC006 + TEST001 checks | no | yes |
 
-```bash
-# Clamp `pub` to its module's reach (crate-aware by default)
-rust-llm-tidy vis src/lib.rs
+#### Feature documentation
 
-# Preview visibility clamping without modifying files
-rust-llm-tidy vis --dry-run src
-```
-
-```bash
-# Lint for missing docs, incomplete `# Errors`/`# Arguments` sections, placeholders, and test naming (read-only)
-rust-llm-tidy check src
-
-# Fix, reorder, clamp `pub`, then check in one pass
-rust-llm-tidy all src
-```
-
-#### `check` rules
-
-`check` reports the following diagnostics. It never writes files and exits
-non-zero when any error-severity finding is present (warnings do not fail).
-
-| Code      | Severity | Fires when                                                             |
-| --------- | -------- | ---------------------------------------------------------------------- |
-| `DOC001`  | Error    | A non-private item has no `///` doc comment.                           |
-| `DOC002`  | Error    | A `pub fn` returning `Result` has no `# Errors` section.               |
-| `DOC003`  | Warning  | A `# Errors` section names no concrete error variant.                  |
-| `DOC004`  | Warning  | A `pub fn` with parameters has no `# Arguments` section.               |
-| `DOC005`  | Warning  | A `# Arguments` section does not mention every parameter name.         |
-| `DOC006`  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`/...).    |
-| `TEST001` | Warning  | A `#[test]` fn uses a `test_*` or `case_*` name, not a behavioral one. |
-
-`DOC001` covers non-private functions, structs, enums, unions, type aliases,
-traits, consts, and statics. Modules are skipped: they are documented via `//!`
-inner docs that may live in a separate file this single-file checker does not
-parse.
+| Feature | Page |
+| ------- | ---- |
+| Reorder | [docs/reorder.md](./docs/reorder.md) |
+| Visibility narrowing | [docs/vis.md](./docs/vis.md) |
+| Table alignment | [docs/tables.md](./docs/tables.md) |
+| Fence delimiters | [docs/fences.md](./docs/fences.md) |
+| Link hoisting | [docs/links.md](./docs/links.md) |
+| Lints (DOC001-DOC006, TEST001) | [docs/lints.md](./docs/lints.md) |
 
 ### Configuration
 
 `rust-llm-tidy` reads an optional YAML config file named
-`.rust-llm-tidy.yml`. It supports three keys:
+`.rust-llm-tidy.yml`. It supports three rule-selection keys:
 
-- `exclude` - a list of globs; matched files are skipped entirely (no fix,
-  reorder, vis, check, or post-process).
-- `exclude_rules` - a list of groups, each with `paths` (globs) and `rules`
-  (lint codes or fix/operation names to disable for matched files).
-- `post_process` - external commands run on processed files after tidying,
-  only on mutating commands (`fix`/`reorder`/`vis`/`all`), not on `check` or
-  `validate`. Each entry has `command`, `args` (default empty), and
-  `extensions` (default empty = all). File path appended as last arg. Uses
+- `include` - whitelist mode: for matched paths, run ONLY these rules.
+  A file matching NO `include` group runs nothing.
+- `exclude` - blacklist mode: for matched paths, never run these rules.
+- `exclude_files` - skip ALL processing for matched files.
+
+`include` and `exclude` are mutually exclusive (both non-empty -> config-load
+error). Omitting `paths` in an `include` or `exclude` group implies `["**"]`
+(all paths).
+
+Additionally:
+
+- `post_process` - external commands run on processed files after tidying.
+  Each entry has `command`, `args` (default empty), and `extensions`
+  (default empty = all). File path appended as last arg. Uses
   `std::process::Command` - no shell injection. Skipped under `--dry-run`
-  and for excluded files. Collects non-zero exit or spawn failures and
-  exits non-zero.
+  and for excluded files.
 
 Globs are relative to the config file's directory and use `literal_separator`
-semantics (`*` does not cross `/`; `**` recurses). Disabled rule names are the
-lint codes above plus the fix/operation names `tables`, `fences`, `links`,
-`reorder`, and `vis`.
+semantics (`*` does not cross `/`; `**` recurses). Rule names are the seven
+lint codes (DOC001-DOC006, TEST001) plus the six ops: `tables`, `fences`,
+`links`, `reorder`, `vis`, `lints`.
 
 The config is discovered automatically: `rust-llm-tidy` walks up from the
 current directory to the repo root (the first ancestor containing `.git`),
@@ -125,18 +112,18 @@ with `--config <PATH>`; disable all discovery and loading with `--no-config`.
 
 Every config error - bad YAML, unknown rule name, bad glob syntax, or a pattern
 matching zero files - produces a non-zero exit on every command. There is no
-"warn and continue" mode. Use the `validate` subcommand to check the config
-without processing files (useful in CI).
+"warn and continue" mode. Use `--validate` to check the config without
+processing files (useful in CI).
 
 ```bash
 # Validate the config without processing files
-rust-llm-tidy validate
+rust-llm-tidy --validate
 
 # Run with an explicit config path
-rust-llm-tidy --config ./my-config.yml all src
+rust-llm-tidy --config ./my-config.yml src
 
 # Disable config discovery for an ad-hoc run
-rust-llm-tidy --no-config fix src
+rust-llm-tidy --no-config --include tables README.md
 ```
 
 ### Programmatic
@@ -168,57 +155,7 @@ See the [rust-llm-tidy crate documentation] for detailed usage.
 The algorithm orders top-level items across phases. Within most phases, an item
 comes before any item it references; alphabetical order breaks ties.
 
-Below is an annotated example of the output order. The comments show which
-phase each item belongs to and why.
-
-```rust,ignore
-// Phase 1: extern crate and uncategorized items (items not matching any other phase) stay in original order.
-extern crate serde;
-
-// Phase 2: use declarations.
-use std::collections::HashMap;
-use std::fs;
-
-// Phase 3: mod declarations sort alphabetically by name.
-mod alpha;
-mod beta;
-
-// Phase 4: Macros come before their first use. A top-level invocation of a
-// locally-defined macro follows its definition (Rust macro_rules! use textual
-// scoping). External macros (no local def) stay in phase 1.
-macro_rules! say_hello { () => {}; }
-say_hello!();
-
-// Phase 5: const and static items (referrers before referenced items).
-const MAX: usize = 100;
-static COUNT: AtomicUsize = AtomicUsize::new(0);
-
-// Phase 6: Type items (referrers before referenced items). App references
-// Config, so App comes first.
-struct App { config: Config }
-struct Config { value: i32 }
-
-// Phase 7: Trait items.
-trait Drawable { fn draw(&self); }
-
-// Phase 8: impl blocks follow their type. Inherent impls come before trait
-// impls for the same type. Orphan impls (impls for a type not defined in this
-// file) come last.
-impl App { fn new() -> Self { todo!() } }
-impl Drawable for App { fn draw(&self) { todo!() } }
-
-// Phase 9: Free functions by visibility tier: pub -> restricted -> private.
-// Within each tier, main comes first, callers precede callees, and alphabetical
-// order breaks ties.
-pub fn public_fn() { private_helper(); }
-pub(crate) fn crate_fn() {}
-fn main() {}
-fn private_helper() {}
-
-// Phase 10: #[cfg(test)] mod tests always comes last.
-#[cfg(test)]
-mod tests {}
-```
+See [docs/reorder.md](./docs/reorder.md) for an annotated 10-phase example.
 
 ### Dependencies
 
@@ -264,11 +201,11 @@ for sorting, grouping, and merging.
 - [rust-llm-tidy-vis]: Visibility narrowing - narrows bare `pub` items inside restricted-visibility inline modules to the module's visibility
 - [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/`# Arguments`, placeholder, and test-naming checks
 - [rust-llm-tidy-fix]: Markdown/doc-comment tidying - realigns GFM tables, fixes nested fence delimiters, and hoists repeated inline links in `.rs` doc comments and `.md` files
-- [cli]: Unified command-line interface (`fix`, `reorder`, `vis`, `check`, `all`, `validate`)
+- [cli]: Unified command-line interface (fix, reorder, vis, lints)
 
 ## Git Hook (optional)
 
-Auto-tidy staged `.rs` files on commit (fix + reorder + vis + check + rustfmt). One-time setup per clone:
+Auto-tidy staged `.rs` files on commit (fix + reorder + vis + lints + rustfmt). One-time setup per clone:
 
 ```bash
 git config core.hooksPath .githooks
@@ -281,8 +218,8 @@ there. Works on Linux, macOS, and Windows (Git for Windows).
 
 Bundled hooks, in run order:
 
-- `10-tidy-rust.sh` - runs `rust-llm-tidy all` on staged `.rs` files (fix,
-  reorder, vis, check), then `rustfmt` via the config `post_process` step. Uses
+- `10-tidy-rust.sh` - runs `rust-llm-tidy` on staged `.rs` files (fix,
+  reorder, vis, lints), then `rustfmt` via the config `post_process` step. Uses
   an installed `rust-llm-tidy` binary if present, else `cargo run`.
 
 ## Developer Manual

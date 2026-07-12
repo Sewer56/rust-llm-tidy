@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hook: run rust-llm-tidy `all` on staged Rust files.
+# Hook: run rust-llm-tidy (full pipeline) on staged Rust files.
 #
 # Cross-platform: Linux, macOS (bash 3.2), Windows (Git for Windows bash).
 # macOS note: avoids `mapfile` and `set -u` empty-array expansion.
@@ -11,7 +11,7 @@ cd "$repo_root"
 # Collect staged .rs files (added/copied/modified/renamed); skip deletions.
 # Skip deletions only. Hand-curated test fixtures are excluded by the
 # repo-root `.rust-llm-tidy.yml` (auto-discovered when this hook runs
-# `rust-llm-tidy all` from repo root), so no shell filtering is needed here.
+# `rust-llm-tidy` from repo root), so no shell filtering is needed here.
 files=()
 while IFS= read -r f; do
   [ -f "$f" ] || continue
@@ -31,10 +31,10 @@ else
   tidy=(cargo run --quiet --manifest-path src/Cargo.toml -p rust-llm-tidy-cli --)
 fi
 
-echo "rust-llm-tidy: running all on ${#files[@]} staged file(s)"
+echo "rust-llm-tidy: running on ${#files[@]} staged file(s)"
 
-if ! "${tidy[@]}" all "${files[@]}"; then
-  echo "rust-llm-tidy: all failed" >&2
+if ! "${tidy[@]}" "${files[@]}"; then
+  echo "rust-llm-tidy: failed" >&2
   exit 1
 fi
 

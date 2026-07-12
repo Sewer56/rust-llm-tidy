@@ -16,7 +16,7 @@ static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 #[test]
 fn all_clean_file() {
     let path = fixture_dir().join("clean.rs");
-    let output = run_command(&["all", "--dry-run"], &path);
+    let output = run_command(&["--dry-run"], &path);
 
     assert!(
         output.status.success(),
@@ -30,7 +30,7 @@ fn all_clean_file() {
 fn all_md_dry_run_fixes_tables() {
     let before = fix_fixture_dir().join("table_md_before.md");
     let expected = fs::read_to_string(fix_fixture_dir().join("table_md_after.md")).unwrap();
-    let output = run_command(&["all", "--dry-run"], &before);
+    let output = run_command(&["--dry-run"], &before);
 
     assert!(
         output.status.success(),
@@ -52,7 +52,7 @@ fn all_md_in_place_fixes_tables() {
     )
     .unwrap();
 
-    let output = run_command(&["all"], &tmp);
+    let output = run_command(&[], &tmp);
     assert!(
         output.status.success(),
         "all on markdown file should succeed: {}",
@@ -74,7 +74,7 @@ fn all_reports_remaining_doc_gaps() {
     let file = dir.join("gap.rs");
     std::fs::write(&file, "pub fn undocumented() {}\n").unwrap();
 
-    let output = run_command(&["all"], &file);
+    let output = run_command(&[], &file);
 
     assert!(
         !output.status.success(),
@@ -98,7 +98,7 @@ fn check_nonexistent_path_fails() {
         TEST_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
 
-    let output = run_command(&["check"], &nonexistent);
+    let output = run_command(&["--include", "lints"], &nonexistent);
 
     assert!(
         !output.status.success(),
@@ -120,7 +120,7 @@ fn check_recursive_directory() {
     // Undocumented file in a nested dir.
     std::fs::write(sub.join("dirty.rs"), "pub fn dirty() {}\n").unwrap();
 
-    let output = run_command(&["check"], &dir);
+    let output = run_command(&["--include", "lints"], &dir);
 
     assert!(
         !output.status.success(),
@@ -449,7 +449,7 @@ fn fix_fixture_dir() -> std::path::PathBuf {
 /// Run `rust-llm-tidy check <fixture>` and return (stderr, exit_code).
 fn run_check_fixture(name: &str) -> (String, i32) {
     let path = fixture_dir().join(name);
-    let output = run_command(&["check"], &path);
+    let output = run_command(&["--include", "lints"], &path);
     (
         String::from_utf8_lossy(&output.stderr).to_string(),
         output.status.code().unwrap_or(-1),
