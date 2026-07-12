@@ -195,10 +195,7 @@ pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathB
             // Reached the repo root without finding a config; stop walking up.
             return None;
         }
-        match dir.parent() {
-            Some(parent) => dir = parent,
-            None => return None,
-        }
+        dir = dir.parent()?;
     }
 }
 
