@@ -41,7 +41,14 @@ pub(crate) fn resolve_all(inputs: &[PathBuf], exts: &[&str]) -> anyhow::Result<V
 /// for deterministic ordering.
 fn resolve_paths(path: &Path, exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
     if path.is_file() {
-        return Ok(vec![path.to_path_buf()]);
+        if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| exts.contains(&e))
+        {
+            return Ok(vec![path.to_path_buf()]);
+        }
+        return Ok(Vec::new());
     }
 
     if !path.exists() {
