@@ -19,8 +19,8 @@
 //! | Flag                 | Effect                                      |
 //! | -------------------- | ------------------------------------------- |
 //! | `--validate`         | Validate config and exit (no files touched) |
-//! | `--include <OP>`     | Run only these ops (repeatable, overrides config) |
-//! | `--exclude <OP>`     | Skip these ops (repeatable, additive)       |
+//! | `--include <RULE>`   | Run only these rules (repeatable, overrides config) |
+//! | `--exclude <RULE>`   | Skip these rules (repeatable, additive)       |
 //! | `--dry-run`          | Print results to stdout                     |
 //! | `--config <PATH>`    | Explicit config path                        |
 //! | `--no-config`        | Disable config discovery                    |
@@ -67,11 +67,11 @@ pub(crate) struct Cli {
     /// Validate the config and exit; do not process files.
     #[arg(long)]
     validate: bool,
-    /// Run only these ops/lint-codes (repeatable). Overrides config `include`.
-    #[arg(long, value_name = "OP")]
+    /// Run only these rules/lint-codes (repeatable). Overrides config `include`.
+    #[arg(long, value_name = "RULE")]
     include: Vec<String>,
-    /// Skip these ops/lint-codes (repeatable). Additive to config `exclude`.
-    #[arg(long, value_name = "OP")]
+    /// Skip these rules/lint-codes (repeatable). Additive to config `exclude`.
+    #[arg(long, value_name = "RULE")]
     exclude: Vec<String>,
     /// Path to a `.rust-llm-tidy.yml` config file. Overrides auto-discovery.
     #[arg(long, global = true)]
