@@ -111,6 +111,7 @@ mod tests {
 
     // ── DOC004: missing_arguments_section ──
 
+    // pub fn with params, no # Arguments section -> warning.
     #[test]
     fn test_missing_arguments_no_section() {
         let item = parse_one("/// Greets.\npub fn greet(name: &str) {}");
@@ -120,6 +121,7 @@ mod tests {
         assert_eq!(diags[0].severity, Severity::Warning);
     }
 
+    // Has an # Arguments section -> no warning.
     #[test]
     fn test_missing_arguments_has_section() {
         let item = parse_one(
@@ -128,6 +130,7 @@ mod tests {
         assert!(missing_arguments_section(&item).is_empty());
     }
 
+    // Any recognized header alias suppresses the warning.
     #[test]
     fn test_missing_arguments_accepts_all_header_variants() {
         // Every accepted alias should suppress DOC004 when params are documented.
@@ -154,6 +157,7 @@ mod tests {
         }
     }
 
+    // Unrecognized header (# Inputs) still triggers the warning.
     #[test]
     fn test_missing_arguments_rejects_unknown_header() {
         // A non-recognized header should still trigger DOC004.
@@ -167,12 +171,14 @@ mod tests {
         );
     }
 
+    // No parameters -> not applicable, no warning.
     #[test]
     fn test_missing_arguments_no_params() {
         let item = parse_one("/// Greets.\npub fn greet() {}");
         assert!(missing_arguments_section(&item).is_empty());
     }
 
+    // Private fn -> skipped, no warning.
     #[test]
     fn test_missing_arguments_private_skipped() {
         let item = parse_one("fn greet(name: &str) {}");
@@ -181,6 +187,7 @@ mod tests {
 
     // ── DOC005: undocumented_param ──
 
+    // One param (fmt) missing from # Arguments -> warning.
     #[test]
     fn test_undocumented_param_missing() {
         let item = parse_one(
@@ -192,6 +199,7 @@ mod tests {
         assert!(diags[0].message.contains("fmt"));
     }
 
+    // All params documented -> no warning.
     #[test]
     fn test_undocumented_param_all_documented() {
         let item = parse_one(
@@ -200,6 +208,7 @@ mod tests {
         assert!(undocumented_param(&item).is_empty());
     }
 
+    // Params documented under any recognized header alias -> no warning.
     #[test]
     fn test_undocumented_param_accepts_header_variants() {
         // DOC005 should detect documented params under any accepted header alias.
@@ -215,6 +224,7 @@ mod tests {
         }
     }
 
+    // No # Arguments section at all -> not applicable, skipped.
     #[test]
     fn test_undocumented_param_no_section() {
         let item = parse_one("/// Builds.\npub fn build(name: &str) {}");
