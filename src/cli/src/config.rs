@@ -233,11 +233,16 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
     let config: Config = serde_yml::from_str(&raw)
         .with_context(|| format!("failed to parse YAML config {}", path.display()))?;
 
-    let config_dir = path
+    let config_parent = path
         .parent()
-        .with_context(|| format!("config path {} has no parent", path.display()))?
-        .canonicalize()
-        .with_context(|| format!("failed to canonicalize config dir {}", path.display()))?;
+        .with_context(|| format!("config path {} has no parent", path.display()))?;
+    let config_dir = if config_parent.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        config_parent
+    }
+    .canonicalize()
+    .with_context(|| format!("failed to canonicalize config dir {}", path.display()))?;
 
     // XOR: include + exclude both present -> error.
     if !config.include.is_empty() && !config.exclude.is_empty() {
