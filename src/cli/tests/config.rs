@@ -538,18 +538,12 @@ fn post_process_not_run_on_check() {
     .unwrap();
 
     let output = Command::new(binary())
-        .args([
-            "--config",
-            cfg.to_str().unwrap(),
-            "--include",
-            "lints",
-            "--dry-run",
-        ])
+        .args(["--config", cfg.to_str().unwrap(), "--include", "lints"])
         .arg(&tmp)
         .output()
         .expect("failed to spawn rust-llm-tidy");
-    // `lints` (read-only, with --dry-run) has no post-process pass, so `false`
-    // never runs and the only possible failure is error-severity diagnostics.
+    // `lints` is read-only and has no post-process pass, so `false` never runs
+    // and the only possible failure is error-severity diagnostics.
     // We assert the binary did not fail *because of post_process* by checking
     // stderr has no "post_process" mention.
     let stderr = String::from_utf8_lossy(&output.stderr);

@@ -50,8 +50,6 @@ pub(crate) fn run_pipeline(
             // Excluded files are never mutated or post-processed.
             continue;
         }
-        processed.push(path.clone());
-
         // CLI --include overrides the config mode for this run.
         if let Some(include) = cli_include {
             policy.enabled = Some(include.clone());
@@ -68,6 +66,12 @@ pub(crate) fn run_pipeline(
 
         let enabled = &policy.enabled;
         let disabled = &policy.disabled;
+        if ["tables", "fences", "links", "reorder", "vis"]
+            .iter()
+            .any(|op| op_enabled(op, enabled, disabled))
+        {
+            processed.push(path.clone());
+        }
 
         // Fix table alignment first (auto-fixable formatting).
         if (op_enabled("tables", enabled, disabled)
