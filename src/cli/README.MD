@@ -54,25 +54,25 @@ rust-llm-tidy --validate
 
 ### Flags
 
-| Flag | Effect |
-| ---- | ------ |
-| `--dry-run` | Print results to stdout instead of modifying files |
-| `--config <PATH>` | Explicit config path (overrides auto-discovery) |
-| `--no-config` | Disable config discovery and loading |
-| `--validate` | Validate config and exit (no files processed) |
-| `--include <OP>` | Run only these ops/lint-codes (repeatable) |
-| `--exclude <OP>` | Skip these ops/lint-codes (repeatable) |
+| Flag              | Effect                                             |
+| ----------------- | -------------------------------------------------- |
+| `--dry-run`       | Print results to stdout instead of modifying files |
+| `--config <PATH>` | Explicit config path (overrides auto-discovery)    |
+| `--no-config`     | Disable config discovery and loading               |
+| `--validate`      | Validate config and exit (no files processed)      |
+| `--include <OP>`  | Run only these ops/lint-codes (repeatable)         |
+| `--exclude <OP>`  | Skip these ops/lint-codes (repeatable)             |
 
 ### Operations
 
-| Op | Does | Mutates | Default on? |
-| -- | ---- | ------- | ----------- |
-| `tables` | align GFM tables | yes | yes |
-| `fences` | alternate nested fence delimiters | yes | yes |
-| `links` | hoist repeated inline links | yes | yes |
-| `reorder` | canonical item ordering | yes | yes |
-| `vis` | narrow bare `pub` in restricted modules | yes | yes |
-| `lints` | run DOC001-DOC006 + TEST001 checks | no | yes |
+| Op        | Does                                    | Mutates | Default on? |
+| --------- | --------------------------------------- | ------- | ----------- |
+| `tables`  | align GFM tables                        | yes     | yes         |
+| `fences`  | alternate nested fence delimiters       | yes     | yes         |
+| `links`   | hoist repeated inline links             | yes     | yes         |
+| `reorder` | canonical item ordering                 | yes     | yes         |
+| `vis`     | narrow bare `pub` in restricted modules | yes     | yes         |
+| `lints`   | run DOC001-DOC006 + TEST001 checks      | no      | yes         |
 
 An optional YAML config file (`.rust-llm-tidy.yml`) may exclude files from
 processing, whitelist or blacklist specific rules per path, and run external
