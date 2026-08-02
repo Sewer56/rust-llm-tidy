@@ -125,6 +125,18 @@ rust-llm-tidy --config ./my-config.yml src
 rust-llm-tidy --no-config --include tables README.md
 ```
 
+#### Opt-in example
+
+[`.rust-llm-tidy.example.yml`](./.rust-llm-tidy.example.yml) shows whitelist
+configuration with feature levels. It is not auto-discovered. Copy it to
+`.rust-llm-tidy.yml`, or pass it explicitly with `--config`.
+
+#### Rule updates
+
+Consider pinning `rust-llm-tidy` in CI for reproducible checks. When you want to
+update or enable new rules, upgrade the pinned version deliberately. This avoids
+unexpected lint failures after a tool update.
+
 ### Programmatic
 
 ```rust
