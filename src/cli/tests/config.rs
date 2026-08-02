@@ -707,22 +707,31 @@ fn include_single_lint_code_runs_only_that_code() {
     let dir = temp_dir();
     fs::create_dir(&dir).unwrap();
     let tmp = dir.join("lib.rs");
-    // DOC001 (missing doc on a public item) fires on each bare pub fn.
-    fs::write(&tmp, "pub fn one() {}\npub fn two() {}\n").unwrap();
+    // Undocumented Result-returning pub fn triggers DOC001 and DOC002.
+    fs::write(&tmp, "pub fn load() -> Result<(), String> { Ok(()) }\n").unwrap();
     let output = Command::new(binary())
         .args(["--no-config", "--include", "DOC001"])
         .arg(&tmp)
         .output()
         .expect("failed to spawn");
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         !output.status.success(),
         "--include DOC001 must surface DOC001 diagnostics: {}",
-        String::from_utf8_lossy(&output.stderr)
+        stderr
+    );
+    assert!(
+        stderr.contains("DOC001"),
+        "--include DOC001 must report DOC001: {stderr:?}"
+    );
+    assert!(
+        !stderr.contains("DOC002"),
+        "--include DOC001 must not report DOC002: {stderr:?}"
     );
     // No fix/reorder/vis in the whitelist -> file untouched.
     let actual = fs::read_to_string(&tmp).unwrap();
     assert_eq!(
-        actual, "pub fn one() {}\npub fn two() {}\n",
+        actual, "pub fn load() -> Result<(), String> { Ok(()) }\n",
         "file must be unmutated by the DOC001-only lint pass"
     );
     let _ = fs::remove_dir_all(&dir);
