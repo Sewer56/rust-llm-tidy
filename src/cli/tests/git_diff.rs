@@ -24,11 +24,13 @@ fn no_args_processes_git_diff() {
     git(&repo, &["config", "user.email", "t@t"]);
     git(&repo, &["config", "user.name", "t"]);
     // Commit the canonical (caller-first) state.
-    fs::write(repo.join("a.rs"), "fn b() { a(); }\nfn a() {}\n").unwrap();
-    git(&repo, &["add", "a.rs"]);
+    let file = "a file 'quoted'.rs";
+    fs::write(repo.join(file), "fn b() { a(); }\nfn a() {}\n").unwrap();
+    git(&repo, &["add", file]);
     git(&repo, &["commit", "--quiet", "-m", "init"]);
-    // Un-sort the file (unstaged change): callee-first is non-canonical.
-    fs::write(repo.join("a.rs"), "fn a() {}\nfn b() { a(); }\n").unwrap();
+    // Stage an unsorted change: callee-first is non-canonical.
+    fs::write(repo.join(file), "fn a() {}\nfn b() { a(); }\n").unwrap();
+    git(&repo, &["add", file]);
     let out = Command::new(binary())
         .current_dir(&repo)
         .args(["--no-config", "--include", "reorder"])
@@ -39,14 +41,14 @@ fn no_args_processes_git_diff() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let actual = fs::read_to_string(repo.join("a.rs")).unwrap();
+    let actual = fs::read_to_string(repo.join(file)).unwrap();
     assert!(actual.find("fn b").unwrap() < actual.find("fn a").unwrap()); // caller first
     let _ = fs::remove_dir_all(&repo);
 }
 
-/// No args + untracked new file -> processed.
+/// No args + tracked change and untracked file -> only tracked file processed.
 #[test]
-fn no_args_processes_untracked_file() {
+fn no_args_ignores_untracked_file() {
     if !git_available() {
         return;
     }
@@ -58,7 +60,9 @@ fn no_args_processes_untracked_file() {
     fs::write(repo.join("a.rs"), "fn a() {}\n").unwrap();
     git(&repo, &["add", "a.rs"]);
     git(&repo, &["commit", "--quiet", "-m", "init"]);
-    // Untracked, un-sorted new file (callee-first is non-canonical).
+    // Tracked, un-sorted change (callee-first is non-canonical).
+    fs::write(repo.join("a.rs"), "fn a() {}\nfn b() { a(); }\n").unwrap();
+    // Untracked file must not be included.
     fs::write(repo.join("b.rs"), "fn a() {}\nfn b() { a(); }\n").unwrap();
     let out = Command::new(binary())
         .current_dir(&repo)
@@ -70,8 +74,10 @@ fn no_args_processes_untracked_file() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let actual = fs::read_to_string(repo.join("b.rs")).unwrap();
+    let actual = fs::read_to_string(repo.join("a.rs")).unwrap();
     assert!(actual.find("fn b").unwrap() < actual.find("fn a").unwrap());
+    let untracked = fs::read_to_string(repo.join("b.rs")).unwrap();
+    assert!(untracked.find("fn a").unwrap() < untracked.find("fn b").unwrap());
     let _ = fs::remove_dir_all(&repo);
 }
 

@@ -1,8 +1,8 @@
 //! Git-diff file collection for `rust-llm-tidy`.
 //!
 //! When the CLI is invoked with no path arguments, [`changed_files`]
-//! collects the files changed in the current `git` diff (staged + unstaged
-//! vs `HEAD`, plus untracked), filtered to the caller's extensions and
+//! collects tracked files changed in the current `git` diff (staged + unstaged),
+//! filtered to the caller's extensions and
 //! skipping deletions and missing files. Shells out to `git` via
 //! `std::process::Command`; no new dependencies.
 
@@ -12,9 +12,8 @@ use std::process::Command;
 
 /// Changed files in the current git repository, filtered to `exts`.
 ///
-/// Combines `git diff HEAD` (staged + unstaged, deletions excluded) with
-/// untracked files (`git ls-files --others --exclude-standard`), deduped and
-/// rooted at the repo top-level so it works from any cwd inside the repo.
+/// Combines unstaged and staged tracked paths (deletions excluded), deduped
+/// and rooted at the repo top-level so it works from any cwd inside the repo.
 /// Returns absolute, sorted, deduped `PathBuf`s that exist and match `exts`.
 pub fn changed_files(exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
     let root_raw = git_stdout(&["rev-parse", "--show-toplevel"])?;
@@ -32,35 +31,31 @@ pub fn changed_files(exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
 }
 
 fn changed_lines(_root: &Path) -> anyhow::Result<Vec<String>> {
-    // Try `git diff HEAD` (normal case). On an unborn HEAD (fresh repo, no
-    // commits) fall back to unstaged + staged diffs against the empty tree.
-    match git_stdout_opt(&["diff", "--name-only", "--diff-filter=ACMR", "HEAD"]) {
-        Ok(Some(s)) if !s.trim().is_empty() => {
-            return Ok(s.lines().map(String::from).collect());
-        }
-        Ok(_) => {}
-        Err(_) => {}
-    }
-    let mut out = String::new();
-    out.push_str(&git_stdout(&["diff", "--name-only", "--diff-filter=ACMR"])?);
-    out.push('\n');
-    out.push_str(&git_stdout(&[
+    // Combine unstaged and staged tracked paths. NUL output keeps Git's path
+    // names verbatim, including names requiring quoting. Untracked paths are
+    // intentionally ignored.
+    let mut paths = nul_paths(&git_stdout(&[
+        "diff",
+        "--name-only",
+        "--diff-filter=ACMR",
+        "-z",
+    ])?);
+    paths.extend(nul_paths(&git_stdout(&[
         "diff",
         "--cached",
         "--name-only",
         "--diff-filter=ACMR",
-    ])?);
-    out.push('\n');
-    out.push_str(&git_stdout(&[
-        "ls-files",
-        "--others",
-        "--exclude-standard",
-    ])?);
-    Ok(out
-        .lines()
-        .filter(|l| !l.is_empty())
+        "-z",
+    ])?));
+    Ok(paths)
+}
+
+fn nul_paths(output: &str) -> Vec<String> {
+    output
+        .split('\0')
+        .filter(|path| !path.is_empty())
         .map(String::from)
-        .collect())
+        .collect()
 }
 
 fn git_stdout(args: &[&str]) -> anyhow::Result<String> {
