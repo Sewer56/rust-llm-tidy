@@ -235,11 +235,16 @@ fn all_excludes_reorder_rule() {
     )
     .unwrap();
 
-    let _output = Command::new(binary())
+    let output = Command::new(binary())
         .args(["--config", cfg.to_str().unwrap()])
         .arg(&tmp)
         .output()
         .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "pipeline should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     // Default pipeline runs fix/reorder/vis/lints. With `reorder` disabled, the
     // non-canonical input order (callee before caller) must be preserved.
     // Without the disable, it would reorder to caller-before-callee.
