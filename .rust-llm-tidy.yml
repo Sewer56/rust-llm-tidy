@@ -3,6 +3,7 @@
 # Paths/globs are relative to this file's directory and use glob semantics
 # (`*` does not cross `/`; `**` recurses). The config is discovered by walking
 # up from the current directory to the repo root; the first match wins.
+#
 # Override with `--config <PATH>`; disable with `--no-config`. Every config
 # error - bad YAML, unknown rule, bad glob, or a pattern matching zero files -
 # exits non-zero; run `rust-llm-tidy --validate` to check without processing.
@@ -12,6 +13,7 @@
 #                   A file matching no group runs nothing.
 #   exclude:        blacklist - never run these rules for matched paths.
 #   exclude_files:  skip ALL processing for matched files.
+# 
 # Omitting `paths` in a group implies `["**"]` (all paths).
 #
 # Rule names (used in include.rules, exclude.rules, --include, --exclude):
@@ -21,8 +23,7 @@
 # Skip ALL processing for files matching any pattern.
 exclude_files:
   # Test fixtures are intentional fragments, not compilable units; tidying
-  # would corrupt them. Converted from pre-commit hooks 10-tidy-rust.sh
-  # and 20-rustfmt.sh (since removed).
+  # would corrupt them.
   - "**/tests/fixtures/**"
   - "**/benches/fixtures/**"
 
