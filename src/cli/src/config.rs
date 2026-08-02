@@ -50,6 +50,7 @@ pub struct CompiledConfig {
 /// Raw serde view of `.rust-llm-tidy.yml`. Paths/globs are relative to the
 /// config file's directory.
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)] // Reject hallucinated config keys at parse time.
 pub struct Config {
     /// Whitelist: for matched paths, run ONLY these rules. Mutually exclusive
     /// with `exclude` (both present -> config-load error). Empty/absent = not
@@ -86,6 +87,7 @@ pub struct FilePolicy {
 /// names to (include|exclude) for files they match. An omitted `paths` matches
 /// every file (implied `["**"]`).
 #[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)] // Reject hallucinated config keys at parse time.
 pub struct RuleGroup {
     #[serde(default)]
     pub paths: Vec<String>,
@@ -96,6 +98,7 @@ pub struct RuleGroup {
 /// One external post-processing step. The processed file path is appended as
 /// the last argument by the CLI's `run_post_process` (see `main.rs`).
 #[derive(Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)] // Reject hallucinated config keys at parse time.
 pub struct PostProcessStep {
     pub command: String,
     #[serde(default)]
