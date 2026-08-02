@@ -20,7 +20,7 @@ pub(crate) fn run_pipeline(
     cli: &Cli,
     config: Option<&CompiledConfig>,
     cli_include: Option<&HashSet<String>>,
-    cli_exclude: &HashSet<String>,
+    cli_disabled: &HashSet<String>,
 ) -> anyhow::Result<()> {
     let paths = paths::resolve_inputs(cli, &["rs", "md"])?;
     // Empty input (empty git diff, or explicit dir with no matching files)
@@ -57,11 +57,12 @@ pub(crate) fn run_pipeline(
             policy.enabled = Some(include.clone());
             policy.disabled.clear();
         }
-        // CLI --exclude is additive.
-        if !cli_exclude.is_empty() {
-            match &mut policy.enabled {
-                Some(set) => set.retain(|r| !cli_exclude.contains(r)),
-                None => policy.disabled.extend(cli_exclude.iter().cloned()),
+        // CLI --exclude is additive and must remain in the disabled set so
+        // lint-code exclusions survive whitelist mode.
+        if !cli_disabled.is_empty() {
+            policy.disabled.extend(cli_disabled.iter().cloned());
+            if let Some(set) = &mut policy.enabled {
+                set.retain(|r| !cli_disabled.contains(r));
             }
         }
 
@@ -107,12 +108,13 @@ pub(crate) fn run_pipeline(
             continue;
         }
         // Then lints (reports remaining doc gaps).
-        let lints_on = match enabled {
-            Some(set) => {
-                set.contains("lints") || check::LINT_CODES.iter().any(|c| set.contains(*c))
-            }
-            None => !disabled.contains("lints"),
-        };
+        let lints_on = !disabled.contains("lints")
+            && match enabled {
+                Some(set) => {
+                    set.contains("lints") || check::LINT_CODES.iter().any(|c| set.contains(*c))
+                }
+                None => true,
+            };
         if lints_on {
             // In whitelist mode without `lints` in the set, only whitelisted
             // lint codes should run; disable the rest.
@@ -121,6 +123,7 @@ pub(crate) fn run_pipeline(
                     .iter()
                     .filter(|c| !set.contains(**c))
                     .map(|c| c.to_string())
+                    .chain(disabled.iter().cloned())
                     .collect(),
                 _ => disabled.clone(),
             };

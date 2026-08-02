@@ -125,9 +125,9 @@ fn main() -> anyhow::Result<()> {
     } else {
         Some(cli.include.iter().cloned().collect())
     };
-    let cli_exclude: HashSet<String> = cli.exclude.iter().cloned().collect();
+    let cli_disabled: HashSet<String> = cli.exclude.iter().cloned().collect();
 
-    pipeline::run_pipeline(&cli, config_ref, cli_include.as_ref(), &cli_exclude)
+    pipeline::run_pipeline(&cli, config_ref, cli_include.as_ref(), &cli_disabled)
 }
 
 // ---------------------------------------------------------------------------

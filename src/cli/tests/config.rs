@@ -798,6 +798,48 @@ fn include_and_exclude_cli_combine_in_whitelist_mode() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// --include lints with --exclude DOC001 keeps DOC001 disabled in whitelist mode.
+#[test]
+fn include_lints_exclude_lint_code() {
+    let dir = temp_dir();
+    fs::create_dir(&dir).unwrap();
+    let tmp = dir.join("lib.rs");
+    fs::write(&tmp, "pub fn undocumented() {}\n").unwrap();
+    let output = Command::new(binary())
+        .args(["--no-config", "--include", "lints", "--exclude", "DOC001"])
+        .arg(&tmp)
+        .output()
+        .expect("failed to spawn");
+    assert!(
+        output.status.success(),
+        "--exclude DOC001 must suppress DOC001 with --include lints: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("DOC001"));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// --exclude lints suppresses all lint codes, including specifically included ones.
+#[test]
+fn exclude_lints_overrides_included_lint_code() {
+    let dir = temp_dir();
+    fs::create_dir(&dir).unwrap();
+    let tmp = dir.join("lib.rs");
+    fs::write(&tmp, "pub fn undocumented() {}\n").unwrap();
+    let output = Command::new(binary())
+        .args(["--no-config", "--include", "DOC001", "--exclude", "lints"])
+        .arg(&tmp)
+        .output()
+        .expect("failed to spawn");
+    assert!(
+        output.status.success(),
+        "--exclude lints must suppress included DOC001: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("DOC001"));
+    let _ = fs::remove_dir_all(&dir);
+}
+
 // -- Helpers (mirrors fix.rs) -----------------------------------
 
 /// Create a numbered temporary directory.
