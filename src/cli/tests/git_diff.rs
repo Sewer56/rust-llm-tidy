@@ -46,9 +46,9 @@ fn no_args_processes_git_diff() {
     let _ = fs::remove_dir_all(&repo);
 }
 
-/// No args + tracked change and untracked file -> only tracked file processed.
+/// No args + tracked change and untracked file -> both files processed.
 #[test]
-fn no_args_ignores_untracked_file() {
+fn no_args_processes_tracked_and_untracked_files() {
     if !git_available() {
         return;
     }
@@ -62,7 +62,7 @@ fn no_args_ignores_untracked_file() {
     git(&repo, &["commit", "--quiet", "-m", "init"]);
     // Tracked, un-sorted change (callee-first is non-canonical).
     fs::write(repo.join("a.rs"), "fn a() {}\nfn b() { a(); }\n").unwrap();
-    // Untracked file must not be included.
+    // Untracked file must be included alongside tracked changes.
     fs::write(repo.join("b.rs"), "fn a() {}\nfn b() { a(); }\n").unwrap();
     let out = Command::new(binary())
         .current_dir(&repo)
@@ -77,7 +77,7 @@ fn no_args_ignores_untracked_file() {
     let actual = fs::read_to_string(repo.join("a.rs")).unwrap();
     assert!(actual.find("fn b").unwrap() < actual.find("fn a").unwrap());
     let untracked = fs::read_to_string(repo.join("b.rs")).unwrap();
-    assert!(untracked.find("fn a").unwrap() < untracked.find("fn b").unwrap());
+    assert!(untracked.find("fn b").unwrap() < untracked.find("fn a").unwrap());
     let _ = fs::remove_dir_all(&repo);
 }
 

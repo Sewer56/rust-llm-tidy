@@ -1,7 +1,8 @@
 //! Git-diff file collection for `rust-llm-tidy`.
 //!
 //! When the CLI is invoked with no path arguments, [`changed_files`]
-//! collects tracked files changed in the current `git` diff (staged + unstaged),
+//! collects tracked files changed in the current `git` diff (staged + unstaged)
+//! and untracked files,
 //! filtered to the caller's extensions and
 //! skipping deletions and missing files. Shells out to `git` via
 //! `std::process::Command`; no new dependencies.
@@ -31,9 +32,8 @@ pub fn changed_files(exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
 }
 
 fn changed_lines(_root: &Path) -> anyhow::Result<Vec<String>> {
-    // Combine unstaged and staged tracked paths. NUL output keeps Git's path
-    // names verbatim, including names requiring quoting. Untracked paths are
-    // intentionally ignored.
+    // Combine tracked and untracked paths. NUL output keeps Git's path names
+    // verbatim, including names requiring quoting.
     let mut paths = nul_paths(&git_stdout(&[
         "diff",
         "--name-only",
@@ -45,6 +45,13 @@ fn changed_lines(_root: &Path) -> anyhow::Result<Vec<String>> {
         "--cached",
         "--name-only",
         "--diff-filter=ACMR",
+        "-z",
+    ])?));
+    paths.extend(nul_paths(&git_stdout(&[
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "--full-name",
         "-z",
     ])?));
     Ok(paths)
