@@ -46,9 +46,6 @@ pub fn vague_errors(item: &SourceItem) -> Vec<Diagnostic> {
     };
 
     let body = section_body(item.doc_comments(), start);
-    if body.is_empty() {
-        return Vec::new();
-    }
     if section_names_variant(&body) {
         return Vec::new();
     }
@@ -133,6 +130,17 @@ mod tests {
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_VAGUE_ERRORS);
         assert_eq!(diags[0].severity, Severity::Warning);
+    }
+
+    // # Errors section is empty (no body) -> still vague, warning.
+    #[test]
+    fn test_vague_errors_empty_section() {
+        let item = parse_one(
+            "/// Loads.\n///\n/// # Errors\npub fn load() -> Result<(), String> { Ok(()) }",
+        );
+        let diags = vague_errors(&item);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, CODE_VAGUE_ERRORS);
     }
 
     // # Errors names a concrete variant (rustdoc link) -> no warning.
