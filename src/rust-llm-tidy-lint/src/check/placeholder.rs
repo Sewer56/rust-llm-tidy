@@ -2,8 +2,8 @@
 //!
 //! [`doc_placeholder`] fires on documentable items whose doc comments contain a
 //! placeholder marker (`TODO`, `FIXME`, `TBD`, or `...`). Detection is
-//! delegated to the module-private [`contains_placeholder`] and
-//! [`contains_word`] helpers.
+//! delegated to the module-private [`contains_placeholder`] and the
+//! crate-visible [`contains_word`] helper.
 
 use crate::check::CODE_DOC_PLACEHOLDER;
 use crate::check::is_documentable;
@@ -50,17 +50,20 @@ fn contains_placeholder(text: &str) -> bool {
 ///
 /// A word boundary is any non-alphanumeric, non-underscore character (or the
 /// start/end of the text), so `todo` matches in `// TODO:` but not in
-/// `todolist`.
-fn contains_word(haystack: &str, needle: &str) -> bool {
+/// `todolist`, and `name` matches in `` `name` `` but not in `filename`.
+///
+/// Used by DOC006 ([`contains_placeholder`]) and DOC005 in `check::arguments`.
+pub(crate) fn contains_word(haystack: &str, needle: &str) -> bool {
     let h = haystack.to_ascii_lowercase();
+    let n = needle.to_ascii_lowercase();
     let mut start = 0;
-    while let Some(pos) = h[start..].find(needle) {
+    while let Some(pos) = h[start..].find(&n) {
         let abs = start + pos;
         let before_ok = h[..abs]
             .chars()
             .next_back()
             .is_none_or(|c| !c.is_alphanumeric() && c != '_');
-        let after_idx = abs + needle.len();
+        let after_idx = abs + n.len();
         let after_ok = h[after_idx..]
             .chars()
             .next()
@@ -68,7 +71,7 @@ fn contains_word(haystack: &str, needle: &str) -> bool {
         if before_ok && after_ok {
             return true;
         }
-        start = abs + needle.len();
+        start = abs + n.len();
     }
     false
 }

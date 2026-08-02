@@ -6,6 +6,7 @@
 //! [`ARGUMENTS_HEADERS`], [`find_arguments_section`], and
 //! [`is_pub_fn_with_params`].
 
+use crate::check::placeholder::contains_word;
 use crate::check::section_body;
 use crate::check::{CODE_MISSING_ARGUMENTS, CODE_UNDOCUMENTED_PARAM};
 use crate::diagnostic::{Diagnostic, Severity};
@@ -64,7 +65,7 @@ pub fn undocumented_param(item: &SourceItem) -> Vec<Diagnostic> {
     let undocumented: Vec<&str> = item
         .params()
         .iter()
-        .filter(|p| !body.iter().any(|line| line.contains(p.as_str())))
+        .filter(|p| !body.iter().any(|line| contains_word(line, p.as_str())))
         .map(String::as_str)
         .collect();
 
@@ -197,6 +198,17 @@ mod tests {
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_UNDOCUMENTED_PARAM);
         assert!(diags[0].message.contains("fmt"));
+    }
+
+    // Param name that only appears as a substring (name in filename) -> warning.
+    #[test]
+    fn test_undocumented_param_whole_word() {
+        let item = parse_one(
+            "/// Builds.\n///\n/// # Arguments\n///\n/// `filename` - the file.\npub fn build(name: &str) {}",
+        );
+        let diags = undocumented_param(&item);
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("name"));
     }
 
     // All params documented -> no warning.
