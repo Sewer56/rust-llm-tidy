@@ -19,7 +19,7 @@ toggleable through the same rule namespace as the ops, so
 | `DOC002` | Error | A `pub fn` returning `Result` has no `# Errors` section. | `pub fn load() -> Result<(), E> { ... }` |
 | `DOC003` | Warning | A `# Errors` section names no concrete error variant. | `# Errors\n\nReturns an error if it fails.` |
 | `DOC004` | Warning | A `pub fn` with parameters has no `# Arguments` section. | `pub fn greet(name: &str) {}` |
-| `DOC005` | Warning | A `# Arguments` section does not mention every parameter name. | `# Arguments\n\n* `name`...\n` (omits `fmt`) |
+| `DOC005` | Warning | A `# Arguments` section does not mention every parameter name. | `# Arguments\n\n` * `name` … (omits `fmt`) |
 | `DOC006` | Warning | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`/...). | `/// TODO: finish this` |
 | `TEST001` | Warning | A `#[test]` fn uses a `test_*` or `case_*` name, not a behavioral one. | `#[test] fn test_foo() {}` |
 
