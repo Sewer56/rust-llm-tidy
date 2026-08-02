@@ -1,4 +1,4 @@
-//! Integration tests for the `validate` subcommand and config-driven
+//! Integration tests for the `--validate` mode and config-driven
 //! exclusions of `rust-llm-tidy`.
 //!
 //! Mirrors the helper pattern from `fix.rs`/`doc_check.rs` (`run_command`,
@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-// ── validate ──
+// ── --validate ──
 
 /// `--validate` exits 0 on a syntactically valid config with at least one match
 /// per pattern.
@@ -128,7 +128,7 @@ fn validate_fails_when_no_config_found() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// `validate --no-config` exits non-zero because there is no config to
+/// `--validate --no-config` exits non-zero because there is no config to
 /// validate.
 #[test]
 fn validate_fails_with_no_config_flag() {
@@ -142,9 +142,9 @@ fn validate_fails_with_no_config_flag() {
     );
 }
 
-// ── exclude + exclude_rules on subcommands ──
+// ── exclude + exclude_rules on pipeline operations ──
 
-/// Bare default command with `exclude: [links]` does NOT hoist links on a
+/// Bare default pipeline with `exclude: [links]` does NOT hoist links on a
 /// file that needs link hoisting, while tables/fences are still applied.
 #[test]
 fn fix_excludes_links_rule() {
@@ -172,7 +172,7 @@ fn fix_excludes_links_rule() {
         .expect("failed to spawn rust-llm-tidy");
     assert!(
         output.status.success(),
-        "default command should succeed: {}",
+        "default pipeline should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -189,7 +189,7 @@ fn fix_excludes_links_rule() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Default command with `exclude_files` for the fixture leaves the file unchanged.
+/// Default pipeline with `exclude_files` for the fixture leaves the file unchanged.
 #[test]
 fn fix_exclude_skips_file() {
     let dir = temp_dir();
@@ -207,7 +207,7 @@ fn fix_exclude_skips_file() {
         .expect("failed to spawn rust-llm-tidy");
     assert!(
         output.status.success(),
-        "default command should succeed even when the file is excluded: {}",
+        "default pipeline should succeed even when the file is excluded: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -216,7 +216,7 @@ fn fix_exclude_skips_file() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Default command with `exclude: [reorder]` fixes/vis/lints but does
+/// Default pipeline with `exclude: [reorder]` fixes/vis/lints but does
 /// not reorder (the input is reordered on a normal run; under `reorder` being
 /// disabled it must remain in input order).
 #[test]
@@ -240,7 +240,7 @@ fn all_excludes_reorder_rule() {
         .arg(&tmp)
         .output()
         .expect("failed to spawn rust-llm-tidy");
-    // Default command runs fix/reorder/vis/lints. With `reorder` disabled, the
+    // Default pipeline runs fix/reorder/vis/lints. With `reorder` disabled, the
     // non-canonical input order (callee before caller) must be preserved.
     // Without the disable, it would reorder to caller-before-callee.
     let actual = fs::read_to_string(&tmp).unwrap();
@@ -251,7 +251,7 @@ fn all_excludes_reorder_rule() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Default command with `exclude: [DOC001]` suppresses DOC001 findings.
+/// Default pipeline with `exclude: [DOC001]` suppresses DOC001 findings.
 #[test]
 fn check_excludes_doc001_rule() {
     let dir = temp_dir();
@@ -508,7 +508,7 @@ fn post_process_skipped_under_dry_run() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// `post_process` does not run on `check` (read-only).
+/// `post_process` does not run on `lints` (read-only).
 #[test]
 fn post_process_not_run_on_check() {
     let dir = temp_dir();
