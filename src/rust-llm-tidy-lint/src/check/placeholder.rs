@@ -6,7 +6,7 @@
 //! [`contains_word`] helpers.
 
 use crate::check::CODE_DOC_PLACEHOLDER;
-use crate::check::shared::is_documentable;
+use crate::check::is_documentable;
 use crate::diagnostic::{Diagnostic, Severity};
 use rust_llm_tidy_model::parse::SourceItem;
 

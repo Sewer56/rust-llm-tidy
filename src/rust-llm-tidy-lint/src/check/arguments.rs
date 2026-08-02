@@ -6,7 +6,7 @@
 //! [`ARGUMENTS_HEADERS`], [`find_arguments_section`], and
 //! [`is_pub_fn_with_params`].
 
-use crate::check::shared::section_body;
+use crate::check::section_body;
 use crate::check::{CODE_MISSING_ARGUMENTS, CODE_UNDOCUMENTED_PARAM};
 use crate::diagnostic::{Diagnostic, Severity};
 use rust_llm_tidy_model::parse::{SourceItem, VisibilityTier};

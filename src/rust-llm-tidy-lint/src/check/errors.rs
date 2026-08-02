@@ -5,7 +5,7 @@
 //! body names no concrete error variant. Both share [`is_pub_result_fn`],
 //! [`find_errors_section`], and [`section_names_variant`].
 
-use crate::check::shared::section_body;
+use crate::check::section_body;
 use crate::check::{CODE_MISSING_ERRORS, CODE_VAGUE_ERRORS};
 use crate::diagnostic::{Diagnostic, Severity};
 use rust_llm_tidy_model::parse::{SourceItem, VisibilityTier};
