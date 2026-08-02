@@ -96,8 +96,7 @@ Additionally:
 
 - `post_process` - external commands run on processed files after tidying.
   Each entry has `command`, `args` (default empty), and `extensions`
-  (default empty = all). File path appended as last arg. Uses
-  `std::process::Command` - no shell injection. Skipped under `--dry-run`
+  (default empty = all). File path appended as last arg. Skipped under `--dry-run`
   and for excluded files.
 
 Globs are relative to the config file's directory and use `literal_separator`
@@ -111,9 +110,9 @@ checking each level for `.rust-llm-tidy.yml`; the first found wins. Override
 with `--config <PATH>`; disable all discovery and loading with `--no-config`.
 
 Every config error - bad YAML, unknown rule name, bad glob syntax, or a pattern
-matching zero files - produces a non-zero exit on every command. There is no
-"warn and continue" mode. Use `--validate` to check the config without
-processing files (useful in CI).
+matching zero files - produces a non-zero exit on every command. This is so LLMs
+can immediately detect config errors. There is no "warn and continue" mode.
+Use `--validate` to check the config without processing files (useful in CI).
 
 ```bash
 # Validate the config without processing files
