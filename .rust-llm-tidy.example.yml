@@ -1,0 +1,39 @@
+# Opt-in rust-llm-tidy config example.
+#
+# This file is not discovered automatically. Copy it to
+# `.rust-llm-tidy.yml`, or run:
+#
+#   rust-llm-tidy --config .rust-llm-tidy.example.yml
+#
+# `include` is whitelist mode: only listed rules run. New rules added by a
+# future rust-llm-tidy release stay disabled until added here. Otherwise, pin
+# the rust-llm-tidy version used by CI and upgrade it deliberately when you
+# want to review new or changed rules.
+
+include:
+  - paths: ["**"]
+    rules:
+      # Level 1: Markdown/doc-comment formatting.
+      - tables
+      - fences
+      - links
+
+      # Level 2: Rust source cleanup.
+      # Uncomment these when wanted.
+      # - reorder
+      # - vis
+
+      # Level 3: all documentation and test-name checks.
+      # `lints` enables DOC001-DOC006 and TEST001 together.
+      # Uncomment to enable the complete lint pass.
+      # - lints
+
+      # Pin lint checks instead of enabling the whole `lints` group when
+      # future lint additions must stay disabled until explicitly accepted.
+      # - DOC001
+      # - DOC002
+      # - DOC003
+      # - DOC004
+      # - DOC005
+      # - DOC006
+      # - TEST001

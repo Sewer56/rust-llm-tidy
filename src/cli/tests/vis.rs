@@ -25,7 +25,7 @@ pub(crate) mod m {
     let tmp = temp_file("rs");
     fs::write(&tmp, source).unwrap();
 
-    let output = run_command(&["all"], &tmp);
+    let output = run_command(&[], &tmp);
     assert!(
         output.status.success(),
         "all should succeed: {}",
@@ -50,7 +50,7 @@ pub(crate) mod m {
 fn vis_crate_aware_narrows_cross_file() {
     let lib_path = make_temp_crate("pub(crate) mod foo;\n", "pub fn f() {}\n");
     let foo_path = src_sibling(&lib_path, "foo.rs");
-    let output = run_command(&["vis"], &foo_path);
+    let output = run_command(&["--include", "vis"], &foo_path);
     assert!(
         output.status.success(),
         "vis crate-aware should succeed: {}",
@@ -69,7 +69,7 @@ fn vis_crate_aware_narrows_cross_file() {
 fn vis_dry_run_matches_after() {
     let before = fixture_dir().join("narrow_pub_crate_before.rs");
     let expected = fs::read_to_string(fixture_dir().join("narrow_pub_crate_after.rs")).unwrap();
-    let output = run_command(&["vis", "--dry-run"], &before);
+    let output = run_command(&["--include", "vis", "--dry-run"], &before);
 
     assert!(
         output.status.success(),
@@ -89,7 +89,7 @@ fn vis_idempotent_on_after_fixtures() {
     for name in ["narrow_pub_crate_after.rs", "reexport_guard_after.rs"] {
         let path = fixture_dir().join(name);
         let expected = fs::read_to_string(&path).unwrap();
-        let output = run_command(&["vis", "--dry-run"], &path);
+        let output = run_command(&["--include", "vis", "--dry-run"], &path);
         assert!(
             output.status.success(),
             "vis --dry-run on {name} should succeed"
@@ -113,7 +113,7 @@ fn vis_in_place_write() {
     )
     .unwrap();
 
-    let output = run_command(&["vis"], &tmp);
+    let output = run_command(&["--include", "vis"], &tmp);
     assert!(
         output.status.success(),
         "vis in-place should succeed: {}",
@@ -133,7 +133,7 @@ fn vis_nonexistent_path_fails() {
         std::process::id(),
         TEST_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
-    let output = run_command(&["vis"], &nonexistent);
+    let output = run_command(&["--include", "vis"], &nonexistent);
     assert!(
         !output.status.success(),
         "non-existent path should exit non-zero"
@@ -145,7 +145,7 @@ fn vis_nonexistent_path_fails() {
 fn vis_reexport_guard_unchanged() {
     let before = fixture_dir().join("reexport_guard_before.rs");
     let expected = fs::read_to_string(fixture_dir().join("reexport_guard_after.rs")).unwrap();
-    let output = run_command(&["vis", "--dry-run"], &before);
+    let output = run_command(&["--include", "vis", "--dry-run"], &before);
 
     assert!(
         output.status.success(),
@@ -165,7 +165,7 @@ fn vis_reexport_guard_unchanged() {
 fn vis_standalone_without_cargo_toml() {
     let tmp = temp_file("rs");
     fs::write(&tmp, "pub(crate) mod m {\n    pub fn f() {}\n}\n").unwrap();
-    let output = run_command(&["vis"], &tmp);
+    let output = run_command(&["--include", "vis"], &tmp);
     // May warn about no Cargo.toml on stderr, but must succeed and still narrow.
     let stderr = String::from_utf8_lossy(&output.stderr);
     let actual = fs::read_to_string(&tmp).unwrap();
@@ -185,7 +185,7 @@ fn vis_standalone_without_cargo_toml() {
 fn vis_warns_on_unresolved_mod() {
     let lib_path = make_temp_crate("pub(crate) mod foo;\nmod missing;\n", "pub fn f() {}\n");
     let foo_path = src_sibling(&lib_path, "foo.rs");
-    let output = run_command(&["vis"], &foo_path);
+    let output = run_command(&["--include", "vis"], &foo_path);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let foo_actual = fs::read_to_string(src_sibling(&lib_path, "foo.rs")).unwrap();
     let _ = fs::remove_dir_all(lib_path.parent().unwrap().parent().unwrap());
@@ -234,7 +234,7 @@ fn make_temp_crate(lib_src: &str, foo_src: &str) -> PathBuf {
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
 fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
     let mut cmd = Command::new(binary());
-    cmd.args(args).arg(path);
+    cmd.args(["--no-config"]).args(args).arg(path);
     cmd.output()
         .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
 }

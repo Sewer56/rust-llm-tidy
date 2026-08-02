@@ -15,7 +15,7 @@ static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 fn fix_doc_comment_dry_run_matches_after() {
     let before = fixture_dir().join("table_doc_comment_before.rs");
     let expected = fs::read_to_string(fixture_dir().join("table_doc_comment_after.rs")).unwrap();
-    let output = run_command(&["fix", "--dry-run"], &before);
+    let output = run_command(&["--include", "tables", "--dry-run"], &before);
 
     assert!(
         output.status.success(),
@@ -34,7 +34,7 @@ fn fix_doc_comment_dry_run_matches_after() {
 fn fix_fence_md_dry_run_matches_after() {
     let before = fixture_dir().join("fence_md_before.md");
     let expected = fs::read_to_string(fixture_dir().join("fence_md_after.md")).unwrap();
-    let output = run_command(&["fix", "--dry-run"], &before);
+    let output = run_command(&["--include", "fences", "--dry-run"], &before);
 
     assert!(
         output.status.success(),
@@ -51,14 +51,10 @@ fn fix_fence_md_dry_run_matches_after() {
 /// Idempotency: running `fix --dry-run` on an `_after` fixture is a no-op.
 #[test]
 fn fix_idempotent_on_after_fixtures() {
-    for name in [
-        "table_md_after.md",
-        "fence_md_after.md",
-        "table_doc_comment_after.rs",
-    ] {
+    for name in ["table_md_after.md", "table_doc_comment_after.rs"] {
         let path = fixture_dir().join(name);
         let expected = fs::read_to_string(&path).unwrap();
-        let output = run_command(&["fix", "--dry-run"], &path);
+        let output = run_command(&["--include", "tables", "--dry-run"], &path);
         assert!(
             output.status.success(),
             "fix --dry-run on {name} should succeed"
@@ -67,6 +63,21 @@ fn fix_idempotent_on_after_fixtures() {
         assert_eq!(
             &*stdout, &*expected,
             "{name} must be idempotent (output unchanged)"
+        );
+    }
+    // Fence fixture uses --include fences.
+    {
+        let path = fixture_dir().join("fence_md_after.md");
+        let expected = fs::read_to_string(&path).unwrap();
+        let output = run_command(&["--include", "fences", "--dry-run"], &path);
+        assert!(
+            output.status.success(),
+            "fix --dry-run on fence_md_after.md should succeed"
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert_eq!(
+            &*stdout, &*expected,
+            "fence_md_after.md must be idempotent (output unchanged)"
         );
     }
 }
@@ -82,7 +93,7 @@ fn fix_in_place_write() {
     )
     .unwrap();
 
-    let output = run_command(&["fix"], &tmp);
+    let output = run_command(&["--include", "tables"], &tmp);
     assert!(
         output.status.success(),
         "fix in-place should succeed: {}",
@@ -99,7 +110,7 @@ fn fix_in_place_write() {
 fn fix_md_dry_run_matches_after() {
     let before = fixture_dir().join("table_md_before.md");
     let expected = fs::read_to_string(fixture_dir().join("table_md_after.md")).unwrap();
-    let output = run_command(&["fix", "--dry-run"], &before);
+    let output = run_command(&["--include", "tables", "--dry-run"], &before);
 
     assert!(
         output.status.success(),
@@ -121,7 +132,7 @@ fn fix_nonexistent_path_fails() {
         std::process::id(),
         TEST_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
-    let output = run_command(&["fix"], &nonexistent);
+    let output = run_command(&["--include", "tables"], &nonexistent);
     assert!(
         !output.status.success(),
         "non-existent path should exit non-zero"
@@ -148,7 +159,7 @@ fn fix_recursive_directory_collects_md_and_rs() {
     )
     .unwrap();
 
-    let output = run_command(&["fix"], &dir);
+    let output = run_command(&["--include", "tables"], &dir);
     assert!(
         output.status.success(),
         "fix directory should succeed: {}",
@@ -181,7 +192,7 @@ fn fix_links_in_place_preserves_crlf() {
     let input = "see [A](http://x) and [A](http://x)\r\n";
     fs::write(&tmp, input).unwrap();
 
-    let output = run_command(&["fix"], &tmp);
+    let output = run_command(&["--include", "links"], &tmp);
     assert!(
         output.status.success(),
         "fix in-place should succeed: {}",
@@ -216,7 +227,7 @@ fn fixture_dir() -> std::path::PathBuf {
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
 fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
     let mut cmd = Command::new(binary());
-    cmd.args(args).arg(path);
+    cmd.args(["--no-config"]).args(args).arg(path);
     cmd.output()
         .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
 }
