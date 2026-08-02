@@ -1,6 +1,7 @@
 //! Documentation checks that run over a parsed source file.
 //!
-//! Each check is a pure function over a [`SourceItem`] that returns a
+//! Each check is a pure function over a
+//! [`rust_llm_tidy_model::parse::SourceItem`] that returns a
 //! [`Vec<Diagnostic>`]. [`run_all`] runs every check and concatenates results.
 //!
 //! # Checks

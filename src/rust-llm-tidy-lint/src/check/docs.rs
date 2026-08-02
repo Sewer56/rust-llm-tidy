@@ -4,8 +4,8 @@
 //! items of documentable kinds that carry no leading `///` doc comment. Test
 //! modules are skipped.
 
-use crate::check::shared::is_documentable;
 use crate::check::CODE_MISSING_DOCS;
+use crate::check::shared::is_documentable;
 use crate::diagnostic::{Diagnostic, Severity};
 use rust_llm_tidy_model::parse::{SourceItem, VisibilityTier};
 
