@@ -399,7 +399,7 @@ fn auto_discovery_walks_up_to_git_root() {
 
 // ── post_process ──
 
-/// A `post_process` step running `true` on a .rs file runs and exit is 0.
+/// A successful `post_process` step on a .rs file runs and exits 0.
 #[test]
 fn post_process_runs_on_matching_extension() {
     let dir = temp_dir();
@@ -409,7 +409,10 @@ fn post_process_runs_on_matching_extension() {
     let cfg = dir.join(".rust-llm-tidy.yml");
     fs::write(
         &cfg,
-        "post_process:\n  - command: \"true\"\n    extensions: [\"rs\"]\n",
+        format!(
+            "post_process:\n  - {}\n    extensions: [\"rs\"]\n",
+            post_process_command(0)
+        ),
     )
     .unwrap();
 
@@ -420,7 +423,7 @@ fn post_process_runs_on_matching_extension() {
         .expect("failed to spawn rust-llm-tidy");
     assert!(
         output.status.success(),
-        "post_process `true` should succeed: {}",
+        "successful post_process should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let _ = fs::remove_dir_all(&dir);
@@ -435,10 +438,14 @@ fn post_process_skips_non_matching_extension() {
     let tmp = dir.join("lib.rs");
     fs::write(&tmp, "pub fn example() {}\n").unwrap();
     let cfg = dir.join(".rust-llm-tidy.yml");
-    // `false` would fail if invoked; restricting to .md means it must not run.
+    // A failing command would fail if invoked; restricting to .md means it must
+    // not run.
     fs::write(
         &cfg,
-        "post_process:\n  - command: \"false\"\n    extensions: [\"md\"]\n",
+        format!(
+            "post_process:\n  - {}\n    extensions: [\"md\"]\n",
+            post_process_command(1)
+        ),
     )
     .unwrap();
 
@@ -465,7 +472,10 @@ fn post_process_failure_exits_nonzero() {
     let cfg = dir.join(".rust-llm-tidy.yml");
     fs::write(
         &cfg,
-        "post_process:\n  - command: \"false\"\n    extensions: [\"rs\"]\n",
+        format!(
+            "post_process:\n  - {}\n    extensions: [\"rs\"]\n",
+            post_process_command(1)
+        ),
     )
     .unwrap();
 
@@ -865,4 +875,15 @@ fn binary() -> std::path::PathBuf {
     path.pop();
     path.pop();
     path.join("rust-llm-tidy")
+}
+
+/// Return platform-specific command YAML for a command with requested exit code.
+/// `true` and `false` are not available as standalone commands on Windows.
+fn post_process_command(exit_code: u8) -> String {
+    if cfg!(windows) {
+        format!("command: \"cmd.exe\"\n    args: [\"/C\", \"exit\", \"{exit_code}\"]")
+    } else {
+        let command = if exit_code == 0 { "true" } else { "false" };
+        format!("command: \"{command}\"")
+    }
 }
