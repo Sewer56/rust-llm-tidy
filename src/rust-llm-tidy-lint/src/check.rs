@@ -30,8 +30,9 @@ const ARGUMENTS_HEADERS: &[&str] = &[
     "# Params",
     "# Param",
 ];
-/// All lint codes accepted by `exclude_rules`, in the order they run. The CLI
-/// validates `exclude_rules` rule names against this slice plus
+/// All lint codes accepted through `include.rules`, `exclude.rules`,
+/// `--include`, and `--exclude`, in the order they run. The CLI validates rule
+/// names against this slice plus
 /// `KNOWN_FIX_OPS` (defined in the CLI crate's `config` module).
 pub const LINT_CODES: &[&str] = &[
     CODE_MISSING_DOCS,
@@ -751,8 +752,8 @@ mod tests {
 
     #[test]
     fn lint_codes_lists_all_seven_codes() {
-        // `LINT_CODES` is the source of truth the CLI's `exclude_rules`
-        // validator reads. It must enumerate every code produced by `run_all`.
+        // `LINT_CODES` is the source of truth for CLI rule validation. It must
+        // enumerate every code produced by `run_all`.
         assert_eq!(
             LINT_CODES.len(),
             7,
