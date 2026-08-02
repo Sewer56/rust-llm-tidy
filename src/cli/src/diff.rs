@@ -34,26 +34,29 @@ pub fn changed_files(exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
 fn changed_lines(_root: &Path) -> anyhow::Result<Vec<String>> {
     // Combine tracked and untracked paths. NUL output keeps Git's path names
     // verbatim, including names requiring quoting.
-    let mut paths = nul_paths(&git_stdout(&[
-        "diff",
-        "--name-only",
-        "--diff-filter=ACMR",
-        "-z",
-    ])?);
-    paths.extend(nul_paths(&git_stdout(&[
-        "diff",
-        "--cached",
-        "--name-only",
-        "--diff-filter=ACMR",
-        "-z",
-    ])?));
-    paths.extend(nul_paths(&git_stdout(&[
-        "ls-files",
-        "--others",
-        "--exclude-standard",
-        "--full-name",
-        "-z",
-    ])?));
+    let mut paths = nul_paths(
+        &git_stdout_opt(&["diff", "--name-only", "--diff-filter=ACMR", "-z"])?.unwrap_or_default(),
+    );
+    paths.extend(nul_paths(
+        &git_stdout_opt(&[
+            "diff",
+            "--cached",
+            "--name-only",
+            "--diff-filter=ACMR",
+            "-z",
+        ])?
+        .unwrap_or_default(),
+    ));
+    paths.extend(nul_paths(
+        &git_stdout_opt(&[
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "--full-name",
+            "-z",
+        ])?
+        .unwrap_or_default(),
+    ));
     Ok(paths)
 }
 
