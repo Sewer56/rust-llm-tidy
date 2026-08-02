@@ -2,27 +2,23 @@
 
 ## What it does
 
-Narrows bare `pub` items declared inside a restricted-visibility inline
-module (`pub(crate) mod`, `pub(super) mod`, ...) down to the module's
-visibility. Crate-aware by default: when a crate root is discovered, the
-module tree floor and the crate-wide re-export set are computed once and
-applied per file. Files outside the crate `src/` tree (integration tests,
-benches, fixtures) narrow standalone with a per-file re-export guard.
+Items inside a limited-visibility module (`pub(crate) mod`, `pub(super) mod`,
+...) written as `pub` get narrowed to match the module: `pub(crate) mod` items
+become `pub(crate)`, `pub(super)` become `pub(super)`.
 
-Re-exported names keep `pub` (they are part of the crate's public API); the
-guard prevents narrowing an item that is `pub use`-d elsewhere.
+Exception: names re-exported (`pub use`) keep `pub`. They're public API.
 
-## Before
+By default it sees the whole crate - reads the module tree and re-exports once,
+applies to each file. Files outside `src/` (tests, benches, fixtures) work
+alone, checking only their own re-exports.
 
 ```rust,ignore
+// Before
 pub(crate) mod m {
     pub fn f() {}
 }
-```
 
-## After
-
-```rust,ignore
+// After
 pub(crate) mod m {
     pub(crate) fn f() {}
 }
