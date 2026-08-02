@@ -72,3 +72,43 @@ fn contains_word(haystack: &str, needle: &str) -> bool {
     }
     false
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::check::tests::parse_one;
+
+    // ── DOC006: doc_placeholder ──
+
+    #[test]
+    fn test_doc_placeholder_todo() {
+        let item = parse_one("/// TODO: implement.\npub fn task() {}");
+        let diags = doc_placeholder(&item);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, CODE_DOC_PLACEHOLDER);
+    }
+
+    #[test]
+    fn test_doc_placeholder_fixme() {
+        let item = parse_one("/// FIXME: broken.\npub fn task() {}");
+        assert_eq!(doc_placeholder(&item).len(), 1);
+    }
+
+    #[test]
+    fn test_doc_placeholder_ellipsis() {
+        let item = parse_one("/// Something ... here.\npub fn task() {}");
+        assert_eq!(doc_placeholder(&item).len(), 1);
+    }
+
+    #[test]
+    fn test_doc_placeholder_clean() {
+        let item = parse_one("/// A clean doc.\npub fn task() {}");
+        assert!(doc_placeholder(&item).is_empty());
+    }
+
+    #[test]
+    fn test_doc_placeholder_non_documentable() {
+        let item = parse_one("/// TODO.\nimpl Foo {}");
+        assert!(doc_placeholder(&item).is_empty());
+    }
+}

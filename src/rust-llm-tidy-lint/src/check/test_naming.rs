@@ -58,3 +58,43 @@ fn is_test_plus_digits(name: &str) -> bool {
     };
     !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::check::tests::parse_one;
+
+    // ── TEST001: test_naming ──
+
+    #[test]
+    fn test_naming_test_prefix() {
+        let item = parse_one("#[test]\nfn test_foo() {}");
+        let diags = test_naming(&item);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, CODE_TEST_NAMING);
+    }
+
+    #[test]
+    fn test_naming_test_digits() {
+        let item = parse_one("#[test]\nfn test1() {}");
+        assert_eq!(test_naming(&item).len(), 1);
+    }
+
+    #[test]
+    fn test_naming_case_prefix() {
+        let item = parse_one("#[test]\nfn case_1() {}");
+        assert_eq!(test_naming(&item).len(), 1);
+    }
+
+    #[test]
+    fn test_naming_behavioral() {
+        let item = parse_one("#[test]\nfn should_pass_when_valid() {}");
+        assert!(test_naming(&item).is_empty());
+    }
+
+    #[test]
+    fn test_naming_non_test() {
+        let item = parse_one("fn helper() {}");
+        assert!(test_naming(&item).is_empty());
+    }
+}

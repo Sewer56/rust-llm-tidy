@@ -40,3 +40,59 @@ pub fn missing_docs(item: &SourceItem) -> Vec<Diagnostic> {
         item_name: item.name().map(str::to_string),
     }]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::check::tests::parse_one;
+
+    // ── DOC001: missing_docs ──
+
+    #[test]
+    fn test_missing_docs_pub_fn() {
+        let item = parse_one("pub fn do_thing() {}");
+        let diags = missing_docs(&item);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, CODE_MISSING_DOCS);
+        assert_eq!(diags[0].severity, Severity::Error);
+    }
+
+    #[test]
+    fn test_missing_docs_documented() {
+        let item = parse_one("/// Does the thing.\npub fn do_thing() {}");
+        assert!(missing_docs(&item).is_empty());
+    }
+
+    #[test]
+    fn test_missing_docs_private_skipped() {
+        let item = parse_one("fn helper() {}");
+        assert!(missing_docs(&item).is_empty());
+    }
+
+    #[test]
+    fn test_missing_docs_pub_struct() {
+        let item = parse_one("pub struct Foo;");
+        let diags = missing_docs(&item);
+        assert_eq!(diags.len(), 1);
+    }
+
+    #[test]
+    fn test_missing_docs_pub_crate() {
+        let item = parse_one("pub(crate) fn internal() {}");
+        let diags = missing_docs(&item);
+        assert_eq!(diags.len(), 1);
+    }
+
+    #[test]
+    fn test_missing_docs_test_mod_skipped() {
+        let source = "#[cfg(test)]\npub mod tests {}";
+        let item = parse_one(source);
+        assert!(missing_docs(&item).is_empty());
+    }
+
+    #[test]
+    fn test_missing_docs_use_skipped() {
+        let item = parse_one("pub use std::io;");
+        assert!(missing_docs(&item).is_empty());
+    }
+}

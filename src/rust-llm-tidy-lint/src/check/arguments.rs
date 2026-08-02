@@ -103,3 +103,121 @@ fn find_arguments_section(docs: &[String]) -> Option<usize> {
 fn is_pub_fn_with_params(item: &SourceItem) -> bool {
     item.is_fn() && item.visibility() == Some(VisibilityTier::Pub) && !item.params().is_empty()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::check::tests::parse_one;
+
+    // ── DOC004: missing_arguments_section ──
+
+    #[test]
+    fn test_missing_arguments_no_section() {
+        let item = parse_one("/// Greets.\npub fn greet(name: &str) {}");
+        let diags = missing_arguments_section(&item);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, CODE_MISSING_ARGUMENTS);
+        assert_eq!(diags[0].severity, Severity::Warning);
+    }
+
+    #[test]
+    fn test_missing_arguments_has_section() {
+        let item = parse_one(
+            "/// Greets.\n///\n/// # Arguments\n///\n/// `name` - the name.\npub fn greet(name: &str) {}",
+        );
+        assert!(missing_arguments_section(&item).is_empty());
+    }
+
+    #[test]
+    fn test_missing_arguments_accepts_all_header_variants() {
+        // Every accepted alias should suppress DOC004 when params are documented.
+        for header in [
+            "# Arguments",
+            "# Argument",
+            "# Parameters",
+            "# Parameter",
+            "# Params",
+            "# Param",
+            // Case-insensitivity
+            "# arguments",
+            "# ARGUMENTS",
+            "# pArAmS",
+        ] {
+            let source = format!(
+                "/// Greets.\n///\n/// {header}\n///\n/// `name` - the name.\npub fn greet(name: &str) {{}}",
+            );
+            let item = parse_one(&source);
+            assert!(
+                missing_arguments_section(&item).is_empty(),
+                "header `{header}` should suppress DOC004"
+            );
+        }
+    }
+
+    #[test]
+    fn test_missing_arguments_rejects_unknown_header() {
+        // A non-recognized header should still trigger DOC004.
+        let item = parse_one(
+            "/// Greets.\n///\n/// # Inputs\n///\n/// `name` - the name.\npub fn greet(name: &str) {}",
+        );
+        assert_eq!(
+            missing_arguments_section(&item).len(),
+            1,
+            "`# Inputs` is not a recognized arguments header"
+        );
+    }
+
+    #[test]
+    fn test_missing_arguments_no_params() {
+        let item = parse_one("/// Greets.\npub fn greet() {}");
+        assert!(missing_arguments_section(&item).is_empty());
+    }
+
+    #[test]
+    fn test_missing_arguments_private_skipped() {
+        let item = parse_one("fn greet(name: &str) {}");
+        assert!(missing_arguments_section(&item).is_empty());
+    }
+
+    // ── DOC005: undocumented_param ──
+
+    #[test]
+    fn test_undocumented_param_missing() {
+        let item = parse_one(
+            "/// Builds.\n///\n/// # Arguments\n///\n/// `name` - the name.\npub fn build(name: &str, fmt: &str) {}",
+        );
+        let diags = undocumented_param(&item);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, CODE_UNDOCUMENTED_PARAM);
+        assert!(diags[0].message.contains("fmt"));
+    }
+
+    #[test]
+    fn test_undocumented_param_all_documented() {
+        let item = parse_one(
+            "/// Builds.\n///\n/// # Arguments\n///\n/// `name` - the name.\n/// `fmt` - the format.\npub fn build(name: &str, fmt: &str) {}",
+        );
+        assert!(undocumented_param(&item).is_empty());
+    }
+
+    #[test]
+    fn test_undocumented_param_accepts_header_variants() {
+        // DOC005 should detect documented params under any accepted header alias.
+        for header in ["# Parameters", "# Params", "# Parameter", "# Param"] {
+            let source = format!(
+                "/// Builds.\n///\n/// {header}\n///\n/// `name` - the name.\n/// `fmt` - the format.\npub fn build(name: &str, fmt: &str) {{}}",
+            );
+            let item = parse_one(&source);
+            assert!(
+                undocumented_param(&item).is_empty(),
+                "header `{header}` should be recognized by DOC005"
+            );
+        }
+    }
+
+    #[test]
+    fn test_undocumented_param_no_section() {
+        let item = parse_one("/// Builds.\npub fn build(name: &str) {}");
+        assert!(undocumented_param(&item).is_empty());
+    }
+}

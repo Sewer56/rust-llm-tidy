@@ -81,3 +81,66 @@ fn section_names_variant(lines: &[&str]) -> bool {
         !t.is_empty() && (t.contains('[') || t.contains("::"))
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::check::tests::parse_one;
+
+    // ── DOC002: missing_errors_section ──
+
+    #[test]
+    fn test_missing_errors_no_section() {
+        let item = parse_one("pub fn load() -> Result<(), String> { Ok(()) }");
+        let diags = missing_errors_section(&item);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, CODE_MISSING_ERRORS);
+    }
+
+    #[test]
+    fn test_missing_errors_has_section() {
+        let item = parse_one(
+            "/// Loads a file.\n///\n/// # Errors\n///\n/// Returns nothing.\npub fn load() -> Result<(), String> { Ok(()) }",
+        );
+        assert!(missing_errors_section(&item).is_empty());
+    }
+
+    #[test]
+    fn test_missing_errors_not_result() {
+        let item = parse_one("pub fn load() -> u32 { 0 }");
+        assert!(missing_errors_section(&item).is_empty());
+    }
+
+    #[test]
+    fn test_missing_errors_private_skipped() {
+        let item = parse_one("fn load() -> Result<(), String> { Ok(()) }");
+        assert!(missing_errors_section(&item).is_empty());
+    }
+
+    // ── DOC003: vague_errors ──
+
+    #[test]
+    fn test_vague_errors_no_variants() {
+        let item = parse_one(
+            "/// Loads.\n///\n/// # Errors\n///\n/// Returns an error if loading fails.\npub fn load() -> Result<(), String> { Ok(()) }",
+        );
+        let diags = vague_errors(&item);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, CODE_VAGUE_ERRORS);
+        assert_eq!(diags[0].severity, Severity::Warning);
+    }
+
+    #[test]
+    fn test_vague_errors_with_variants() {
+        let item = parse_one(
+            "/// Loads.\n///\n/// # Errors\n///\n/// Returns [Error::NotFound] if missing.\npub fn load() -> Result<(), String> { Ok(()) }",
+        );
+        assert!(vague_errors(&item).is_empty());
+    }
+
+    #[test]
+    fn test_vague_errors_no_section_skipped() {
+        let item = parse_one("pub fn load() -> Result<(), String> { Ok(()) }");
+        assert!(vague_errors(&item).is_empty());
+    }
+}
