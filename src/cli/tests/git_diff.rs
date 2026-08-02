@@ -46,9 +46,9 @@ fn no_args_processes_git_diff() {
     let _ = fs::remove_dir_all(&repo);
 }
 
-/// No args + tracked change and untracked file -> both files processed.
+/// No args from nested cwd + relative diff -> root-level tracked file is processed.
 #[test]
-fn no_args_processes_tracked_and_untracked_files() {
+fn no_args_nested_cwd_ignores_relative_diff_config() {
     if !git_available() {
         return;
     }
@@ -60,12 +60,12 @@ fn no_args_processes_tracked_and_untracked_files() {
     fs::write(repo.join("a.rs"), "fn a() {}\n").unwrap();
     git(&repo, &["add", "a.rs"]);
     git(&repo, &["commit", "--quiet", "-m", "init"]);
-    // Tracked, un-sorted change (callee-first is non-canonical).
     fs::write(repo.join("a.rs"), "fn a() {}\nfn b() { a(); }\n").unwrap();
-    // Untracked file must be included alongside tracked changes.
-    fs::write(repo.join("b.rs"), "fn a() {}\nfn b() { a(); }\n").unwrap();
+    git(&repo, &["config", "diff.relative", "true"]);
+    let nested = repo.join("nested");
+    fs::create_dir_all(&nested).unwrap();
     let out = Command::new(binary())
-        .current_dir(&repo)
+        .current_dir(&nested)
         .args(["--no-config", "--include", "reorder"])
         .output()
         .expect("failed to spawn");
@@ -76,8 +76,6 @@ fn no_args_processes_tracked_and_untracked_files() {
     );
     let actual = fs::read_to_string(repo.join("a.rs")).unwrap();
     assert!(actual.find("fn b").unwrap() < actual.find("fn a").unwrap());
-    let untracked = fs::read_to_string(repo.join("b.rs")).unwrap();
-    assert!(untracked.find("fn b").unwrap() < untracked.find("fn a").unwrap());
     let _ = fs::remove_dir_all(&repo);
 }
 
