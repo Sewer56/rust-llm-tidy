@@ -89,6 +89,7 @@ mod tests {
 
     // ── DOC002: missing_errors_section ──
 
+    // pub fn returns Result, no # Errors section -> error.
     #[test]
     fn test_missing_errors_no_section() {
         let item = parse_one("pub fn load() -> Result<(), String> { Ok(()) }");
@@ -97,6 +98,7 @@ mod tests {
         assert_eq!(diags[0].code, CODE_MISSING_ERRORS);
     }
 
+    // Has an # Errors section -> no error.
     #[test]
     fn test_missing_errors_has_section() {
         let item = parse_one(
@@ -105,12 +107,14 @@ mod tests {
         assert!(missing_errors_section(&item).is_empty());
     }
 
+    // Does not return Result -> not applicable, no error.
     #[test]
     fn test_missing_errors_not_result() {
         let item = parse_one("pub fn load() -> u32 { 0 }");
         assert!(missing_errors_section(&item).is_empty());
     }
 
+    // Private fn -> skipped, no error.
     #[test]
     fn test_missing_errors_private_skipped() {
         let item = parse_one("fn load() -> Result<(), String> { Ok(()) }");
@@ -119,6 +123,7 @@ mod tests {
 
     // ── DOC003: vague_errors ──
 
+    // # Errors body names no concrete variant -> warning.
     #[test]
     fn test_vague_errors_no_variants() {
         let item = parse_one(
@@ -130,6 +135,7 @@ mod tests {
         assert_eq!(diags[0].severity, Severity::Warning);
     }
 
+    // # Errors names a concrete variant (rustdoc link) -> no warning.
     #[test]
     fn test_vague_errors_with_variants() {
         let item = parse_one(
@@ -138,6 +144,7 @@ mod tests {
         assert!(vague_errors(&item).is_empty());
     }
 
+    // No # Errors section at all -> not applicable, skipped.
     #[test]
     fn test_vague_errors_no_section_skipped() {
         let item = parse_one("pub fn load() -> Result<(), String> { Ok(()) }");

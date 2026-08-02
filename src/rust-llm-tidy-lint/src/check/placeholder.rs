@@ -80,6 +80,7 @@ mod tests {
 
     // ── DOC006: doc_placeholder ──
 
+    // TODO marker in doc -> warning.
     #[test]
     fn test_doc_placeholder_todo() {
         let item = parse_one("/// TODO: implement.\npub fn task() {}");
@@ -88,24 +89,28 @@ mod tests {
         assert_eq!(diags[0].code, CODE_DOC_PLACEHOLDER);
     }
 
+    // FIXME marker in doc -> warning.
     #[test]
     fn test_doc_placeholder_fixme() {
         let item = parse_one("/// FIXME: broken.\npub fn task() {}");
         assert_eq!(doc_placeholder(&item).len(), 1);
     }
 
+    // Ellipsis (...) in doc -> warning.
     #[test]
     fn test_doc_placeholder_ellipsis() {
         let item = parse_one("/// Something ... here.\npub fn task() {}");
         assert_eq!(doc_placeholder(&item).len(), 1);
     }
 
+    // Clean doc, no placeholder -> no warning.
     #[test]
     fn test_doc_placeholder_clean() {
         let item = parse_one("/// A clean doc.\npub fn task() {}");
         assert!(doc_placeholder(&item).is_empty());
     }
 
+    // todo inside non-documentable item (impl) -> skipped.
     #[test]
     fn test_doc_placeholder_non_documentable() {
         let item = parse_one("/// TODO.\nimpl Foo {}");

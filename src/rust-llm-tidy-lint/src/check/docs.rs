@@ -48,6 +48,7 @@ mod tests {
 
     // ── DOC001: missing_docs ──
 
+    // Public function with no doc comment -> reports an error.
     #[test]
     fn test_missing_docs_pub_fn() {
         let item = parse_one("pub fn do_thing() {}");
@@ -57,18 +58,21 @@ mod tests {
         assert_eq!(diags[0].severity, Severity::Error);
     }
 
+    // Has a doc comment -> no error.
     #[test]
     fn test_missing_docs_documented() {
         let item = parse_one("/// Does the thing.\npub fn do_thing() {}");
         assert!(missing_docs(&item).is_empty());
     }
 
+    // Private item -> skipped, no error.
     #[test]
     fn test_missing_docs_private_skipped() {
         let item = parse_one("fn helper() {}");
         assert!(missing_docs(&item).is_empty());
     }
 
+    // Public struct with no doc comment -> reports an error.
     #[test]
     fn test_missing_docs_pub_struct() {
         let item = parse_one("pub struct Foo;");
@@ -76,6 +80,7 @@ mod tests {
         assert_eq!(diags.len(), 1);
     }
 
+    // pub(crate) item with no doc comment -> reports an error.
     #[test]
     fn test_missing_docs_pub_crate() {
         let item = parse_one("pub(crate) fn internal() {}");
@@ -83,6 +88,7 @@ mod tests {
         assert_eq!(diags.len(), 1);
     }
 
+    // Test module -> skipped, no error.
     #[test]
     fn test_missing_docs_test_mod_skipped() {
         let source = "#[cfg(test)]\npub mod tests {}";
@@ -90,6 +96,7 @@ mod tests {
         assert!(missing_docs(&item).is_empty());
     }
 
+    // use statement -> not documentable, skipped.
     #[test]
     fn test_missing_docs_use_skipped() {
         let item = parse_one("pub use std::io;");
