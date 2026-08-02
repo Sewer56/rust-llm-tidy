@@ -66,12 +66,9 @@ pub(crate) fn run_pipeline(
 
         let enabled = &policy.enabled;
         let disabled = &policy.disabled;
-        if ["tables", "fences", "links", "reorder", "vis"]
+        let should_post_process = ["tables", "fences", "links", "reorder", "vis"]
             .iter()
-            .any(|op| op_enabled(op, enabled, disabled))
-        {
-            processed.push(path.clone());
-        }
+            .any(|op| op_enabled(op, enabled, disabled));
 
         // Fix table alignment first (auto-fixable formatting).
         if (op_enabled("tables", enabled, disabled)
@@ -90,6 +87,9 @@ pub(crate) fn run_pipeline(
             .and_then(|e| e.to_str())
             .is_some_and(|e| e == "rs");
         if !is_rust {
+            if should_post_process {
+                processed.push(path.clone());
+            }
             continue;
         }
 
@@ -136,8 +136,13 @@ pub(crate) fn run_pipeline(
                 Err(e) => {
                     eprintln!("error processing {}: {e:?}", path.display());
                     failed.push(path);
+                    continue;
                 }
             }
+        }
+
+        if should_post_process {
+            processed.push(path.clone());
         }
     }
 
