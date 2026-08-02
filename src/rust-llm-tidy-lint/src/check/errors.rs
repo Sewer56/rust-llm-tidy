@@ -67,7 +67,8 @@ fn is_pub_result_fn(item: &SourceItem) -> bool {
 
 /// Index into `doc_comments` of the `# Errors` section header, if present.
 fn find_errors_section(docs: &[String]) -> Option<usize> {
-    docs.iter().position(|d| d.trim() == "# Errors")
+    docs.iter()
+        .position(|d| d.trim().eq_ignore_ascii_case("# errors"))
 }
 
 /// True when any non-blank line in the section body references a concrete
@@ -100,6 +101,15 @@ mod tests {
     fn test_missing_errors_has_section() {
         let item = parse_one(
             "/// Loads a file.\n///\n/// # Errors\n///\n/// Returns nothing.\npub fn load() -> Result<(), String> { Ok(()) }",
+        );
+        assert!(missing_errors_section(&item).is_empty());
+    }
+
+    // Lowercase # errors header is still recognized -> no error.
+    #[test]
+    fn test_missing_errors_lowercase_header() {
+        let item = parse_one(
+            "/// Loads a file.\n///\n/// # errors\n///\n/// Returns nothing.\npub fn load() -> Result<(), String> { Ok(()) }",
         );
         assert!(missing_errors_section(&item).is_empty());
     }
