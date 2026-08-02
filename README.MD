@@ -58,25 +58,25 @@ Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
 
 #### Operations
 
-| Op | Does | Mutates | Default on? |
-| -- | ---- | ------- | ----------- |
-| `tables` | align GFM tables | yes | yes |
-| `fences` | alternate nested fence delimiters | yes | yes |
-| `links` | hoist repeated inline links | yes | yes |
-| `reorder` | canonical item ordering | yes | yes |
-| `vis` | narrow bare `pub` in restricted modules | yes | yes |
-| `lints` | run DOC001-DOC006 + TEST001 checks | no | yes |
+| Op        | Does                                    | Mutates | Default on? |
+| --------- | --------------------------------------- | ------- | ----------- |
+| `tables`  | align GFM tables                        | yes     | yes         |
+| `fences`  | alternate nested fence delimiters       | yes     | yes         |
+| `links`   | hoist repeated inline links             | yes     | yes         |
+| `reorder` | canonical item ordering                 | yes     | yes         |
+| `vis`     | narrow bare `pub` in restricted modules | yes     | yes         |
+| `lints`   | run DOC001-DOC006 + TEST001 checks      | no      | yes         |
 
 #### Feature documentation
 
-| Feature | Page |
-| ------- | ---- |
-| Reorder | [docs/reorder.md](./docs/reorder.md) |
-| Visibility narrowing | [docs/vis.md](./docs/vis.md) |
-| Table alignment | [docs/tables.md](./docs/tables.md) |
-| Fence delimiters | [docs/fences.md](./docs/fences.md) |
-| Link hoisting | [docs/links.md](./docs/links.md) |
-| Lints (DOC001-DOC006, TEST001) | [docs/lints.md](./docs/lints.md) |
+| Feature                        | Page                                 |
+| ------------------------------ | ------------------------------------ |
+| Reorder                        | [docs/reorder.md](./docs/reorder.md) |
+| Visibility narrowing           | [docs/vis.md](./docs/vis.md)         |
+| Table alignment                | [docs/tables.md](./docs/tables.md)   |
+| Fence delimiters               | [docs/fences.md](./docs/fences.md)   |
+| Link hoisting                  | [docs/links.md](./docs/links.md)     |
+| Lints (DOC001-DOC006, TEST001) | [docs/lints.md](./docs/lints.md)     |
 
 ### Configuration
 
