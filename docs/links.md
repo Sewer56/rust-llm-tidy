@@ -3,8 +3,8 @@
 ## What it does
 
 When the same inline link `[text](url)` appears more than once in a file,
-the first occurrence is kept inline and subsequent occurrences are replaced
-with the reference form `[text]`, with a single reference definition
+all occurrences are replaced with the reference form `[text]`, with a single
+reference definition
 `[text]: url` appended. Runs in `.md` files and `.rs` doc comments.
 
 ## Before
@@ -16,7 +16,7 @@ see [A](http://x) and [A](http://x)
 ## After
 
 ```markdown
-see [A](http://x) and [A]
+see [A] and [A]
 
 [A]: http://x
 ```
