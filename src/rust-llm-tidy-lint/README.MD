@@ -20,7 +20,7 @@ placeholders, and discouraged test-function names.
 
 ```toml
 [dependencies]
-rust-llm-tidy-lint = "0.1.0"
+rust-llm-tidy-lint = "0.1.1"
 ```
 
 ## Usage

@@ -14,7 +14,7 @@ the shared parsing primitives.
 
 ```toml
 [dependencies]
-rust-llm-tidy-model = "0.1.0"
+rust-llm-tidy-model = "0.1.1"
 ```
 
 ## Usage

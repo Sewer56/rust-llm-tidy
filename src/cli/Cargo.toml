@@ -1,6 +1,6 @@
 [package]
 name = "rust-llm-tidy-cli"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "CLI for reordering and linting Rust source code. Intended for LLM use."
 repository = "https://github.com/Sewer56/rust-llm-tidy"
@@ -39,11 +39,11 @@ name = "links"
 harness = false
 
 [dependencies]
-rust-llm-tidy-reorder = { path = "../rust-llm-tidy-reorder", version = "0.1.0" }
-rust-llm-tidy-lint = { path = "../rust-llm-tidy-lint", version = "0.1.0" }
-rust-llm-tidy-model = { path = "../rust-llm-tidy-model", version = "0.1.0" }
-rust-llm-tidy-fix = { path = "../rust-llm-tidy-fix", version = "0.1.0" }
-rust-llm-tidy-vis = { path = "../rust-llm-tidy-vis", version = "0.1.0" }
+rust-llm-tidy-reorder = { path = "../rust-llm-tidy-reorder", version = "0.1.1" }
+rust-llm-tidy-lint = { path = "../rust-llm-tidy-lint", version = "0.1.1" }
+rust-llm-tidy-model = { path = "../rust-llm-tidy-model", version = "0.1.1" }
+rust-llm-tidy-fix = { path = "../rust-llm-tidy-fix", version = "0.1.1" }
+rust-llm-tidy-vis = { path = "../rust-llm-tidy-vis", version = "0.1.1" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

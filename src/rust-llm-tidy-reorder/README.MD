@@ -32,7 +32,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rust-llm-tidy-reorder = "0.1.0"
+rust-llm-tidy-reorder = "0.1.1"
 ```
 
 ## Usage

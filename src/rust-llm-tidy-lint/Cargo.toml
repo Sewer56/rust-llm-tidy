@@ -1,6 +1,6 @@
 [package]
 name = "rust-llm-tidy-lint"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Linter for Rust source files. Checks for missing docs, incomplete error/arguments sections, placeholders, and test naming."
 repository = "https://github.com/Sewer56/rust-llm-tidy"
@@ -12,6 +12,6 @@ keywords = ["rust", "lint", "clippy", "docs"]
 categories = ["development-tools"]
 
 [dependencies]
-rust-llm-tidy-model = { path = "../rust-llm-tidy-model", version = "0.1.0" }
+rust-llm-tidy-model = { path = "../rust-llm-tidy-model", version = "0.1.1" }
 
 [dev-dependencies]
