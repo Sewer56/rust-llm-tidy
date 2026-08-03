@@ -23,13 +23,8 @@ if [ "${#files[@]}" -eq 0 ]; then
   exit 0
 fi
 
-# Prefer an installed `rust-llm-tidy` binary; fall back to `cargo run`
-# against this workspace so the hook works with no global install.
-if command -v rust-llm-tidy >/dev/null 2>&1; then
-  tidy=(rust-llm-tidy)
-else
-  tidy=(cargo run --quiet --manifest-path src/Cargo.toml -p rust-llm-tidy-cli --)
-fi
+# Always use the local library via `cargo run` against this workspace.
+tidy=(cargo run --quiet --manifest-path src/Cargo.toml -p rust-llm-tidy-cli --)
 
 echo "rust-llm-tidy: running on ${#files[@]} staged file(s)"
 
