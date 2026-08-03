@@ -25,10 +25,16 @@ use anyhow::{Result, bail, ensure};
 /// positive count afterwards is a dropped line. This is one map and two line
 /// scans instead of the prior two maps and four scans.
 ///
+/// # Arguments
+///
+/// - `original`: the reference text whose non-blank line multiset (and
+///   dominant line ending) must be preserved.
+/// - `output`: the transformed text to verify against `original`.
+///
 /// # Errors
 ///
-/// Returns an error if:
-/// - The dominant line ending of `original` and `output` differ (CRLF vs LF).
+/// Returns an error if any of the following holds:
+/// - [`dominant_line_ending`] of `original` and `output` differ (CRLF vs LF).
 /// - A non-blank line appears in `output` but not in `original`.
 /// - A non-blank line appears more times in `output` than in `original`.
 /// - A non-blank line from `original` is absent from `output` (dropped).

@@ -14,6 +14,11 @@ use rust_llm_tidy_model::parse::{SourceItem, VisibilityTier};
 ///
 /// Fires on fully-public functions (`pub fn`) whose return type ends in
 /// `Result` and whose doc comments contain no `# Errors` header.
+///
+/// # Arguments
+///
+/// - `item` - the parsed source item to inspect for a missing `# Errors`
+///   section on a `pub fn` returning `Result`.
 pub fn missing_errors_section(item: &SourceItem) -> Vec<Diagnostic> {
     if !is_pub_result_fn(item) {
         return Vec::new();
@@ -37,6 +42,10 @@ pub fn missing_errors_section(item: &SourceItem) -> Vec<Diagnostic> {
 /// Fires on `pub fn` returning `Result` when a `# Errors` section exists but
 /// none of its bullets reference a concrete variant (detected by the presence
 /// of a rustdoc link `[...]` or a `::` path).
+///
+/// # Arguments
+///
+/// - `item` - the parsed source item to inspect for a vague `# Errors` section.
 pub fn vague_errors(item: &SourceItem) -> Vec<Diagnostic> {
     if !is_pub_result_fn(item) {
         return Vec::new();

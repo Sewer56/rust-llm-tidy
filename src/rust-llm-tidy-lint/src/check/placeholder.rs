@@ -15,6 +15,11 @@ use rust_llm_tidy_model::parse::SourceItem;
 /// Fires on documentable items whose doc comments contain a placeholder marker
 /// (`TODO`, `FIXME`, `TBD`, or `...`). Such markers signal unfinished docs that
 /// read as finished API documentation.
+///
+/// # Arguments
+///
+/// - `item` - the parsed source item to inspect for placeholder text in its doc
+///   comments.
 pub fn doc_placeholder(item: &SourceItem) -> Vec<Diagnostic> {
     if !is_documentable(item.kind()) {
         return Vec::new();

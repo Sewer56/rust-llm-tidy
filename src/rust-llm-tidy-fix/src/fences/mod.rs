@@ -36,6 +36,11 @@ struct OpenFence {
 /// (depth-0) fence keeps its original marker. Run lengths, info strings,
 /// and any `///` / `//!` doc-comment prefix are preserved. When no fence
 /// changes, the original buffer is borrowed back (idempotent).
+///
+/// # Arguments
+///
+/// - `input`: the markdown (or Rust source with `///` / `//!` doc comments)
+///   to scan for nested fenced code blocks.
 pub fn fix_fences(input: &str) -> Cow<'_, str> {
     // Fast path: no fence markers anywhere means nothing can change.
     if !input.contains('`') && !input.contains('~') {

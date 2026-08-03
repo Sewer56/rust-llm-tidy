@@ -46,6 +46,11 @@ mod realign;
 /// Non-table lines and lines without a pipe are returned verbatim. When no
 /// table changes, the original buffer is borrowed back (idempotent).
 ///
+/// # Arguments
+///
+/// - `input`: the markdown (or Rust source with `///` / `//!` doc-comment
+///   tables) to realign.
+///
 /// # Allocation strategy
 ///
 /// The output buffer is allocated lazily: a single read-only scan runs first,

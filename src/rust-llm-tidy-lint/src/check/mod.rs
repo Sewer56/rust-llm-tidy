@@ -102,6 +102,10 @@ pub const CODE_VAGUE_ERRORS: &str = "DOC003";
 ///
 /// Diagnostics are returned in source order (by item, then by check). The
 /// returned `Vec` is empty when every item passes every check.
+///
+/// # Arguments
+///
+/// - `parsed` - the parsed source result whose items are checked.
 pub fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
     // Each item produces at most a handful of diagnostics; preallocate to the
     // item count to avoid regrowth on the common dirty-file path.

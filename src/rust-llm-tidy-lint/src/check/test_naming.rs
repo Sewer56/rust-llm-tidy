@@ -15,6 +15,10 @@ use rust_llm_tidy_model::parse::SourceItem;
 /// `subject_should_expectation_when_condition`. Behavioral names describe the
 /// behavior under test without the redundant `test_` prefix the test module
 /// already provides.
+///
+/// # Arguments
+///
+/// - `item`: the parsed source item to check for a discouraged test name.
 pub fn test_naming(item: &SourceItem) -> Vec<Diagnostic> {
     if !item.is_test_fn() {
         return Vec::new();

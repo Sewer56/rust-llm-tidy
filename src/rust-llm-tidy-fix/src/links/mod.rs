@@ -50,6 +50,11 @@ mod scan;
 ///
 /// See the module docs for the full rule and constraints. When no link is
 /// hoisted, the original buffer is borrowed back (idempotent).
+///
+/// # Arguments
+///
+/// - `input`: the markdown (or Rust source) whose repeated inline links are
+///   hoisted to trailing `[text]: url` reference definitions.
 pub fn fix_links(input: &str) -> Cow<'_, str> {
     // Fast path: no link-opening bracket means nothing can change.
     if !input.contains('[') {

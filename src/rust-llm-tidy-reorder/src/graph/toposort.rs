@@ -24,6 +24,15 @@ pub enum TieBreak {
 /// Returns a permutation vector `order` where `order[i]` is the index into
 /// `fns` of the item that should appear at position `i`.
 ///
+/// # Arguments
+///
+/// - `fns` - the item names in original file order (borrowed); index `i`
+///   corresponds to the value being sorted.
+/// - `edges` - reference dependency edges as `(referencer_position,
+///   referenced_position)` pairs, already filtered to positions within this
+///   phase.
+/// - `tie_break` - controls ordering of zero-in-degree nodes and cycle nodes.
+///
 /// # Ordering guarantees
 ///
 /// 1. **Entry points first.** `main` sorts before all other functions

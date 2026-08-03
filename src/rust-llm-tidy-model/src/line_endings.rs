@@ -9,6 +9,10 @@
 /// common as bare LF (and at least one CRLF exists); else LF. Rust source
 /// only uses `\n` or `\r\n`, so lone `\r` is ignored. A source with no
 /// newlines defaults to LF.
+///
+/// # Arguments
+///
+/// - `source`: the text whose line endings are examined.
 pub fn dominant_line_ending(source: &str) -> &'static str {
     let crlf = source.matches("\r\n").count();
     let lf = source.matches('\n').count().saturating_sub(crlf);

@@ -14,6 +14,11 @@ use rust_llm_tidy_model::parse::{SourceItem, VisibilityTier};
 /// Fires on `pub` and `pub(crate)`/`pub(super)`/`pub(in path)` items of
 /// documentable kinds (fn, struct, enum, ...) that have zero leading doc
 /// comments. Test modules are skipped.
+///
+/// # Arguments
+///
+/// - `item` - the parsed source item to inspect for a missing `///` doc comment
+///   on a non-private documentable item.
 pub fn missing_docs(item: &SourceItem) -> Vec<Diagnostic> {
     let Some(vis) = item.visibility() else {
         return Vec::new();

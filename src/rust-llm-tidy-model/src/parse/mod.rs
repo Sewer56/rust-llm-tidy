@@ -36,11 +36,20 @@ struct RawEntry<'a> {
 /// its trailing newline, and every non-first item's `start` is the previous
 /// item's `end`. The span mechanics live in `build_items`.
 ///
+/// # Arguments
+///
+/// - `source`: the Rust source text to parse.
+///
 /// # Errors
 ///
-/// Returns an error when tree-sitter cannot allocate a parse. tree-sitter
-/// performs error recovery, so syntactically invalid Rust still yields a tree
-/// (possibly with `ERROR` nodes) rather than a parse error.
+/// Returns an error when tree-sitter cannot allocate a parse:
+/// - `rust_language` fails to construct the tree-sitter-rust language.
+/// - `Parser::set_language` rejects the language (should not happen with the
+///   bundled grammar).
+/// - `Parser::parse` returns `None` (tree-sitter failed to produce a tree).
+///
+/// tree-sitter performs error recovery, so syntactically invalid Rust still
+/// yields a tree (possibly with `ERROR` nodes) rather than a parse error.
 pub fn parse_source(source: &str) -> anyhow::Result<ParseResult> {
     let lang = rust_language()?;
     let mut parser = tree_sitter::Parser::new();

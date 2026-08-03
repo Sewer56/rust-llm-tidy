@@ -10,6 +10,11 @@ use ahash::AHashMap;
 /// Frequency multiset of non-blank lines of `source`, keyed by borrowed slices.
 ///
 /// Whitespace-only lines are skipped. Each key borrows from `source`.
+///
+/// # Arguments
+///
+/// - `source`: the text whose non-blank lines are counted. The returned map's
+///   keys borrow from `source`, so `source` must outlive the map.
 pub fn count_lines(source: &str) -> AHashMap<&str, usize> {
     // Capacity heuristic: one entry per ~24 bytes covers typical line lengths
     // without a second full pass over the source (the previous code called

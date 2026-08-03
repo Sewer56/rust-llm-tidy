@@ -60,6 +60,12 @@ impl ModuleTree {
 /// "innermost restricted ancestor wins" semantics so tree and inline paths
 /// share identical narrowing behavior.
 ///
+/// # Arguments
+///
+/// - `root` - the source file to treat as the crate root (its floor is `None`).
+/// - `files` - every parsed file in the crate, indexed by canonical path for
+///   resolving `mod foo;` edges and slicing visibility spans.
+///
 /// # Errors
 ///
 /// Each file is already parsed into a [`ParsedFile`] (tree-sitter recovers from
@@ -120,6 +126,11 @@ pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<Mo
 /// workspace, so member crates of a virtual workspace would otherwise degrade
 /// to standalone narrowing. The CLI maps failure to a warn + standalone
 /// narrowing.
+///
+/// # Arguments
+///
+/// - `start` - the file or directory to walk up from; the nearest enclosing
+///   `Cargo.toml` owns the crate whose root is returned.
 ///
 /// # Errors
 ///

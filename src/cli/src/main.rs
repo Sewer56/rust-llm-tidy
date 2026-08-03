@@ -51,6 +51,10 @@ mod diff;
 mod paths;
 mod pipeline;
 
+/// Command-line arguments for `rust-llm-tidy`, parsed via `clap`.
+///
+/// Collects the input paths plus flags controlling dry-run, validation, rule
+/// selection, and config discovery. See the `# Flags` table in the crate docs.
 #[derive(Parser)]
 #[command(
     name = "rust-llm-tidy",

@@ -188,8 +188,14 @@ pub const REORDER_FIXTURES: &[(&str, &str)] = &[
 /// bench's setup (outside `iter`), so the hot loop measures only
 /// `narrow_vis_in_tree`.
 ///
-/// Returns `(tree, reexports, owned)` where `owned` is the owned
-/// `(path, source)` pairs narrowed per file in the hot loop.
+/// # Arguments
+///
+/// - `sources`: embedded `(path, source)` pairs forming the crate fixture.
+///
+/// # Returns
+///
+/// `(tree, reexports, owned)` where `owned` is the owned
+/// `(path, source)` pairs consumed (narrowed) per file in the hot loop.
 #[allow(dead_code)]
 pub fn build_crate_context(
     sources: &[(&str, &str)],

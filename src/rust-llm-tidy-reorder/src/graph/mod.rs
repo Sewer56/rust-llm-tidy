@@ -32,9 +32,15 @@ mod toposort;
 /// Returns a `Vec<usize>` suitable for constructing a `Permutation` in the
 /// reorder stage.  Each element is an index into `parsed.items`.
 ///
+/// # Arguments
+///
+/// - `parsed` - the parsed Rust source whose top-level items are ordered.
+///
 /// # Errors
 ///
-/// Returns a parse error when `parsed.source` is not valid Rust syntax.
+/// Returns an [`anyhow::Error`] on internal graph-ordering failure. Because
+/// ordering operates over an already-parsed [`ParseResult`] and never
+/// re-parses, this never fires for a well-formed `parsed`.
 pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
     let n = parsed.items.len();
 

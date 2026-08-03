@@ -88,6 +88,11 @@ impl ReexportSet {
 /// This is the hard-correctness gate's data source: a missed cross-file
 /// re-export turns a safe narrowing into a soundness bug, so the caller MUST
 /// pass every `.rs` file in the crate.
+///
+/// # Arguments
+///
+/// - `files` - iterated over every parsed file; each file's `pub use` items
+///   (top-level and nested in inline modules) are scanned and unioned.
 pub fn collect_crate_reexports<'a>(files: impl IntoIterator<Item = &'a ParsedFile>) -> ReexportSet {
     let mut out = ReexportSet::new();
     for pf in files {
@@ -133,12 +138,21 @@ pub fn collect_crate_reexports<'a>(files: impl IntoIterator<Item = &'a ParsedFil
 /// with zero allocation; otherwise the rewritten buffer is returned as
 /// [`Cow::Owned`].
 ///
+/// # Arguments
+///
+/// - `source` - the Rust source text to narrow in place.
+/// - `floor` - the file's effective floor visibility text (e.g. `"pub(crate)"`),
+///   or `None` for a standalone file with no crate context (only inline
+///   restricted modules narrow).
+/// - `crate_reexports` - the crate-wide re-export guard consulted for every
+///   candidate (named match OR glob sentinel).
+///
 /// # Errors
 ///
 /// tree-sitter performs error recovery, so syntactically invalid Rust still
 /// yields a tree (possibly with `ERROR` nodes) rather than a parse error; the
-/// `Result` is only `Err` when the parser cannot be allocated or the language
-/// is not set.
+/// `Result` is only `Err` with [`anyhow::Error`] when the parser cannot be
+/// allocated, the language is not set, or tree-sitter returns no tree.
 pub fn narrow_vis_in_tree<'a>(
     source: &'a str,
     floor: Option<&'a str>,

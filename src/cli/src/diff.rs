@@ -15,6 +15,18 @@ use std::process::Command;
 /// Combines unstaged and staged tracked paths (deletions excluded), deduped
 /// and rooted at the repo top-level so it works from any cwd inside the repo.
 /// Returns absolute, sorted, deduped `PathBuf`s that exist and match `exts`.
+///
+/// # Arguments
+///
+/// - `exts`: file extensions (without the leading dot, e.g. `"rs"`) to keep.
+///   A changed path is returned only when its extension matches one of these.
+///
+/// # Errors
+///
+/// Returns an error if `git rev-parse --show-toplevel` cannot determine the
+/// repo root (e.g. the current directory is outside a git repository) or if a
+/// `git diff` invocation fails. This is an `anyhow::Result`, so any upstream
+/// I/O or `git` failure is propagated as the error.
 pub fn changed_files(exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
     let root_raw = git_stdout(&["rev-parse", "--show-toplevel"])?;
     let root = PathBuf::from(root_raw.trim());

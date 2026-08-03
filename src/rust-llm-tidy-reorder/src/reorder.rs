@@ -62,11 +62,18 @@ impl Permutation {
 /// preserved. Inter-item spacing is then re-derived from the compact-group
 /// logic below. The preamble and trailer are placed at the start and end.
 ///
+/// # Arguments
+///
+/// - `parsed` - the parsed Rust source being reordered; its `source`, item
+///   byte spans, `preamble_end`, and `trailer_start` drive the output.
+/// - `perm` - the validated [`Permutation`] mapping output position to input
+///   item index.
+///
 /// # Errors
 ///
-/// Returns an error if the permutation is malformed for the parsed items
-/// (e.g. an index out of range, which surfaces as a slice-out-of-bounds
-/// failure).
+/// Returns an [`anyhow::Error`] if the permutation is malformed for the
+/// parsed items (e.g. an index out of range, which surfaces as a
+/// slice-out-of-bounds failure).
 ///
 /// # Line endings
 ///

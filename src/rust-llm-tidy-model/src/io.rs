@@ -11,10 +11,20 @@ use std::path::Path;
 /// target path.  Preserves file permissions by copying them from the
 /// existing file (if any).
 ///
+/// # Arguments
+///
+/// - `path`: the destination file to atomically replace.
+/// - `content`: the bytes to write to `path`.
+///
 /// # Errors
 ///
 /// Returns an error when the temp file cannot be created, written, or
-/// renamed onto the target path.
+/// renamed onto the target path:
+/// - `tempfile::NamedTempFile::new_in` fails to create the temp file (e.g.
+///   the directory does not exist or is not writable).
+/// - `std::fs::write` fails to write `content` into the temp file.
+/// - `tempfile::NamedTempFile::persist` fails to rename the temp file onto
+///   the target path.
 pub fn atomic_write(path: &Path, content: &str) -> Result<()> {
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
 

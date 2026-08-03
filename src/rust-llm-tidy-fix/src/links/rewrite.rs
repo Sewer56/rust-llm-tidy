@@ -5,8 +5,15 @@
 use super::scan::parse_inline_link;
 use std::collections::{HashMap, HashSet};
 
-// Mirrors `rust_llm_tidy_model::line_endings::dominant_line_ending`.
-// Duplicated to keep this crate zero-dependency; keep in sync.
+/// Return the dominant line ending used in `source`: `"\r\n"` when CRLF is at
+/// least as common as LF, otherwise `"\n"`.
+///
+/// # Arguments
+///
+/// - `source`: the text whose line endings are tallied.
+///
+/// Mirrors `rust_llm_tidy_model::line_endings::dominant_line_ending`.
+/// Duplicated to keep this crate zero-dependency; keep in sync.
 pub(super) fn dominant_line_ending(source: &str) -> &'static str {
     let crlf = source.matches("\r\n").count();
     let lf = source.matches('\n').count().saturating_sub(crlf);

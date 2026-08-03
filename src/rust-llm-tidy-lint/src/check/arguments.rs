@@ -30,6 +30,11 @@ const ARGUMENTS_HEADERS: &[&str] = &[
 /// Fires on fully-public functions (`pub fn`) that declare at least one named
 /// parameter (excluding `self`) and whose doc comments contain no `# Arguments`
 /// or `# Parameters` header.
+///
+/// # Arguments
+///
+/// - `item` - the parsed source item to inspect for a missing `# Arguments`
+///   section on a `pub fn` with parameters.
 pub fn missing_arguments_section(item: &SourceItem) -> Vec<Diagnostic> {
     if !is_pub_fn_with_params(item) {
         return Vec::new();
@@ -53,6 +58,11 @@ pub fn missing_arguments_section(item: &SourceItem) -> Vec<Diagnostic> {
 /// Fires on `pub fn` with parameters when an `# Arguments`/`# Parameters`
 /// section exists but at least one parameter name is not mentioned anywhere in
 /// the section body.
+///
+/// # Arguments
+///
+/// - `item` - the parsed source item to inspect for undocumented parameters in
+///   its `# Arguments`/`# Parameters` section.
 pub fn undocumented_param(item: &SourceItem) -> Vec<Diagnostic> {
     if !is_pub_fn_with_params(item) {
         return Vec::new();

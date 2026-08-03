@@ -180,6 +180,13 @@ impl CompiledConfig {
 ///   that contains a `.git` entry (the repo root) if no config appeared there;
 ///   if no `.git` is found, continue to the filesystem root. Returns `None`
 ///   when no config file is found.
+///
+/// # Arguments
+///
+/// - `arg`: an explicit config path from `--config`, or `None` to use
+///   auto-discovery.
+/// - `no_config`: when `true`, disables discovery and loading entirely and
+///   returns `None`.
 pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathBuf> {
     if no_config {
         return None;
@@ -214,6 +221,11 @@ pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathB
 /// 5. Compile the `exclude_files` patterns into one `GlobSet`.
 /// 6. Semantic check: expand each pattern via `glob::glob()` joined with
 ///    `config_dir`; a pattern yielding zero results is stale -> `Err`.
+///
+/// # Arguments
+///
+/// - `path`: the path to the `.rust-llm-tidy.yml` config file to load and
+///   compile.
 ///
 /// # Errors
 ///
