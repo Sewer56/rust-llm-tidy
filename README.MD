@@ -161,50 +161,6 @@ println!("{}", output);
 
 See the [rust-llm-tidy crate documentation] for detailed usage.
 
-## Ordering Rules
-
-The algorithm orders top-level items across phases. Within most phases, an item
-comes before any item it references; alphabetical order breaks ties.
-
-See [docs/reorder.md](./docs/reorder.md) for an annotated 10-phase example.
-
-### Dependencies
-
-Phases 5-7 and 9 put referrers before the items they reference.
-
-- If `B` references `A` by name, `B` appears before `A`.
-- Self-references are ignored.
-- Cycles stay contiguous and sort alphabetically.
-- Edges come from references in fields, bodies, types, supertraits, impl blocks, and macro bodies.
-- Phase 4 is special: macro definitions come before their first use. A macro calling another local macro follows it. Top-level invocations of a locally-defined macro move right after their definition; external macros stay put.
-
-### Function visibility grouping (Phase 9)
-
-Functions split into three visibility tiers:
-
-- Tier 1: `pub` - fully public functions.
-
-- Tier 2: `pub(crate)`, `pub(super)`, `pub(in path)` - restricted visibility.
-
-- Tier 3: private - no visibility modifier.
-
-Within each tier, `main` comes first, callers precede callees, and alphabetical
-order breaks ties.
-
-### `use` handling
-
-`use` declarations are emitted as a contiguous block in their original source
-order - this tool does not sort imports. Use rustfmt (with `reorder_imports`)
-for sorting, grouping, and merging.
-
-### Special cases
-
-- `fn main()` always comes first in its visibility tier.
-
-- `#[cfg(test)] mod tests` always comes last, preserving original source order (stable).
-
-- Macro definitions come before their first use.
-
 ## Crates
 
 - [rust-llm-tidy-model]: Shared source model - parse top-level items with spans, visibility, and doc comments; atomic I/O; line-multiset safety
