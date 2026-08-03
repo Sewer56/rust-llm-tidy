@@ -1,0 +1,3 @@
+[submodule "submodules/action"]
+	path = submodules/action
+	url = https://github.com/Sewer56/rust-llm-tidy-action
