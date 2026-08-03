@@ -7,7 +7,7 @@ repository = "https://github.com/Sewer56/rust-llm-tidy"
 license = "Apache-2.0"
 readme = "README.MD"
 # keywords (search terms): https://crates.io/keywords
-keywords = ["cli", "rust", "rustfmt", "reorder", "lint", "tidy"]
+keywords = ["cli", "rust", "reorder", "lint", "tidy"]
 # categories (fixed list): https://crates.io/categories
 categories = ["command-line-utilities"]
 
