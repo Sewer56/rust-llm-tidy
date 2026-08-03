@@ -17,15 +17,6 @@ opinionated order with dependency resolution. Intended for LLM use.
 
 ## Quick Start
 
-Add to your `Cargo.toml`:
-
-```toml
-[dependencies]
-rust-llm-tidy-reorder = "0.1.0"
-```
-
-### CLI
-
 `rust-llm-tidy` is a single command that runs the full pipeline (fix,
 reorder, vis, lints) by default on `.rs` and `.md` files:
 
@@ -137,30 +128,6 @@ Consider pinning `rust-llm-tidy` in CI for reproducible checks. When you want to
 update or enable new rules, upgrade the pinned version deliberately. This avoids
 unexpected lint failures after a tool update.
 
-### Programmatic
-
-```rust
-use rust_llm_tidy_model::parse;
-use rust_llm_tidy_reorder::graph;
-use rust_llm_tidy_reorder::reorder::Permutation;
-
-let source = r#"
-fn b() { a(); }
-fn a() {}
-"#;
-
-let parsed = parse::parse_source(source).unwrap();
-let order = graph::compute_order(&parsed).unwrap();
-let perm = Permutation::new(parsed.items.len(), order).unwrap();
-let output = rust_llm_tidy_reorder::reorder::emit(&parsed, &perm).unwrap();
-
-println!("{}", output);
-// fn a() {}
-// fn b() { a(); }
-```
-
-See the [rust-llm-tidy crate documentation] for detailed usage.
-
 ## Crates
 
 - [rust-llm-tidy-model]: Shared source model - parse top-level items with spans, visibility, and doc comments; atomic I/O; line-multiset safety
@@ -204,7 +171,6 @@ Licensed under [Apache 2.0].
 [Crates.io]: https://crates.io/crates/rust-llm-tidy-reorder
 [Docs.rs]: https://docs.rs/rust-llm-tidy-reorder
 [CI]: https://github.com/Sewer56/rust-llm-tidy/actions
-[rust-llm-tidy crate documentation]: ./src/rust-llm-tidy-reorder/README.MD
 [rust-llm-tidy-model]: ./src/rust-llm-tidy-model/README.MD
 [rust-llm-tidy-reorder]: ./src/rust-llm-tidy-reorder/README.MD
 [rust-llm-tidy-vis]: ./src/rust-llm-tidy-vis/README.MD
