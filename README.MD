@@ -1,7 +1,7 @@
 # rust-llm-tidy
 
-[![Crates.io](https://img.shields.io/crates/v/rust-llm-tidy-reorder.svg)][Crates.io]
-[![Docs.rs](https://docs.rs/rust-llm-tidy-reorder/badge.svg)][Docs.rs]
+[![Crates.io](https://img.shields.io/crates/v/rust-llm-tidy-cli.svg)][Crates.io CLI]
+[![Docs.rs](https://docs.rs/rust-llm-tidy-cli/badge.svg)][Docs.rs CLI]
 [![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
 
 Rust project for automatically reordering Rust source file items into an
@@ -16,6 +16,20 @@ opinionated order with dependency resolution. Intended for LLM use.
 > Use at your own risk - or don't.
 
 ## Quick Start
+
+### Install
+
+Pick either install method:
+
+```bash
+# From crates.io (builds from source)
+cargo install rust-llm-tidy-cli
+
+# From a GitHub Release (prebuilt binaries)
+# Download the matching <platform>.7z from the latest release
+# (e.g. linux-x64.7z, windows-x64.7z, macos-*.7z) and extract to a
+# directory on your PATH.
+```
 
 `rust-llm-tidy` is a single command that runs the full pipeline (fix,
 reorder, vis, lints) by default on `.rs` and `.md` files:
@@ -170,6 +184,8 @@ Licensed under [Apache 2.0].
 
 [Crates.io]: https://crates.io/crates/rust-llm-tidy-reorder
 [Docs.rs]: https://docs.rs/rust-llm-tidy-reorder
+[Crates.io CLI]: https://crates.io/crates/rust-llm-tidy-cli
+[Docs.rs CLI]: https://docs.rs/rust-llm-tidy-cli
 [CI]: https://github.com/Sewer56/rust-llm-tidy/actions
 [rust-llm-tidy-model]: ./src/rust-llm-tidy-model/README.MD
 [rust-llm-tidy-reorder]: ./src/rust-llm-tidy-reorder/README.MD
