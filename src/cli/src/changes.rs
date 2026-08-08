@@ -134,33 +134,59 @@ fn first_differing_line(a: &str, b: &str) -> Option<usize> {
 
 /// Extract the item kind and simple name from a narrowed output line, which
 /// begins with the floor visibility followed by the kind keyword and the item
-/// name. Returns `None` for lines that are not a narrowed item.
+/// name. Leading modifiers (`async`, `unsafe`, `default`, `extern`, and `const`
+/// before a kind keyword) are skipped so modifier-carrying items still produce
+/// the right record. Returns `None` for lines that are not a narrowed item.
 fn line_kind_name(line: &str) -> Option<(&'static str, String)> {
     let trimmed = line.trim();
     // The line starts with the floor visibility (`pub(crate)`, `pub(super)`,
-    // ...), then the kind keyword, then the item name.
+    // ...), then (possibly modifiers) the kind keyword, then the item name.
     let rest = trimmed.split_once(char::is_whitespace)?.1.trim_start();
-    let mut tokens = rest.split_whitespace();
-    let keyword = tokens.next()?;
-    if keyword == "extern" {
-        // `extern crate foo;` - kind is the two-word phrase, name follows `crate`.
-        let _crate = tokens.next()?;
-        let name = clean_name(tokens.next().unwrap_or(""));
+    let toks: Vec<&str> = rest.split_whitespace().collect();
+
+    // `extern crate foo;` - kind is the two-word phrase, name follows `crate`.
+    if toks.first() == Some(&"extern") && toks.get(1) == Some(&"crate") {
+        let name = clean_name(toks.get(2).copied().unwrap_or(""));
         return Some(("extern crate", name));
     }
-    let kind = match keyword {
-        "fn" => "fn",
-        "struct" => "struct",
-        "enum" => "enum",
-        "union" => "union",
-        "type" => "type",
-        "const" => "const",
-        "static" => "static",
-        "mod" => "mod",
-        "trait" => "trait",
-        _ => return None,
+
+    // Skip leading modifiers until the first kind keyword. `const` is a
+    // modifier only when followed by another modifier or a kind keyword.
+    let mut i = 0;
+    while i < toks.len() {
+        let w = toks[i];
+        if is_modifier(w) {
+            // `extern "C" fn` also skips the ABI string; a bare `extern` (C
+            // ABI) is skipped alone.
+            if w == "extern" && toks.get(i + 1).is_some_and(|t| t.starts_with('"')) {
+                i += 2;
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+        if w == "const" {
+            match toks.get(i + 1).copied() {
+                Some(next) if is_modifier(next) || is_kind(next) => {
+                    i += 1; // `const fn`, `const unsafe fn`, `const trait`
+                    continue;
+                }
+                _ => break, // `const C: u32 = ...` - the kind itself
+            }
+        }
+        break;
+    }
+
+    let kind = kind_for(toks.get(i).copied()?)?;
+    i += 1;
+
+    // `static mut X` - skip the `mut` storage modifier before the name.
+    let name_token = if kind == "static" && toks.get(i) == Some(&"mut") {
+        toks.get(i + 1).copied().unwrap_or("")
+    } else {
+        toks.get(i).copied().unwrap_or("")
     };
-    let name = clean_name(tokens.next().unwrap_or(""));
+    let name = clean_name(name_token);
     Some((kind, name))
 }
 
@@ -172,6 +198,29 @@ fn clean_name(token: &str) -> String {
         .next()
         .unwrap_or("")
         .to_string()
+}
+
+fn is_kind(w: &str) -> bool {
+    kind_for(w).is_some()
+}
+
+fn is_modifier(w: &str) -> bool {
+    matches!(w, "async" | "unsafe" | "default" | "extern")
+}
+
+fn kind_for(w: &str) -> Option<&'static str> {
+    match w {
+        "fn" => Some("fn"),
+        "struct" => Some("struct"),
+        "enum" => Some("enum"),
+        "union" => Some("union"),
+        "type" => Some("type"),
+        "const" => Some("const"),
+        "static" => Some("static"),
+        "mod" => Some("mod"),
+        "trait" => Some("trait"),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -244,6 +293,10 @@ mod tests {
         assert_eq!(changes[1].line, 3);
         assert_eq!(changes[1].message, "narrow visibility of `S` at line 3");
         assert_eq!(changes[1].kind, "struct");
+
+        // A tidy pair reports zero records for modifier-carrying items too.
+        let tidy = "pub(crate) mod m {\n    pub(crate) async fn f() {}\n}\n";
+        assert!(vis_changes(tidy, tidy).is_empty());
     }
 
     #[test]
@@ -259,5 +312,49 @@ mod tests {
         let (kind, name) = line_kind_name("    pub(crate) fn f<T>() {}").unwrap();
         assert_eq!(kind, "fn");
         assert_eq!(name, "f");
+        assert!(line_kind_name("    let x = 1;").is_none());
+        assert!(line_kind_name("    use crate::m;").is_none());
+    }
+
+    #[test]
+    fn line_kind_name_skips_modifier_carrying_items() {
+        for (line, kind, name) in [
+            ("    pub(crate) fn f() {}", "fn", "f"),
+            ("    pub(crate) async fn f() {}", "fn", "f"),
+            ("    pub(crate) unsafe fn g() {}", "fn", "g"),
+            ("    pub(crate) unsafe trait T {}", "trait", "T"),
+            ("    pub(crate) const fn h() {}", "fn", "h"),
+            ("    pub(crate) const unsafe fn j() {}", "fn", "j"),
+            ("    pub(crate) extern \"C\" fn k() {}", "fn", "k"),
+            ("    pub(crate) extern fn l() {}", "fn", "l"),
+            ("    pub(crate) extern crate foo;", "extern crate", "foo"),
+            ("    pub(crate) const C: u32 = 0;", "const", "C"),
+            ("    pub(crate) static X: i32 = 0;", "static", "X"),
+            ("    pub(crate) static mut X: i32 = 0;", "static", "X"),
+        ] {
+            let (got_kind, got_name) = line_kind_name(line).unwrap();
+            assert_eq!((got_kind, got_name.as_str()), (kind, name), "for `{line}`");
+        }
+    }
+
+    #[test]
+    fn vis_changes_reports_modifier_carrying_items() {
+        let source = "pub(crate) mod m {\n    pub async fn f() {}\n    pub unsafe fn g() {}\n    pub unsafe trait T {}\n    pub const fn h() {}\n    pub extern \"C\" fn k() {}\n    pub static mut X: i32 = 0;\n}\n";
+        let output = "pub(crate) mod m {\n    pub(crate) async fn f() {}\n    pub(crate) unsafe fn g() {}\n    pub(crate) unsafe trait T {}\n    pub(crate) const fn h() {}\n    pub(crate) extern \"C\" fn k() {}\n    pub(crate) static mut X: i32 = 0;\n}\n";
+        let changes = vis_changes(source, output);
+        let expected = [
+            (2, "fn", "f"),
+            (3, "fn", "g"),
+            (4, "trait", "T"),
+            (5, "fn", "h"),
+            (6, "fn", "k"),
+            (7, "static", "X"),
+        ];
+        assert_eq!(changes.len(), expected.len());
+        for (c, (line, kind, name)) in changes.iter().zip(expected) {
+            assert_eq!(c.line, line, "line for `{name}`");
+            assert_eq!(c.kind, kind, "kind for `{name}`");
+            assert_eq!(c.name.as_deref(), Some(name), "name for `{name}`");
+        }
     }
 }
