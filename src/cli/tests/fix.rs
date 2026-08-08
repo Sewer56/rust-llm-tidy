@@ -172,17 +172,16 @@ fn fix_in_place_reports_same_records_and_writes() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(
         stderr.matches("success[FIX]").count(),
-        2,
-        "in-place run reports the same two records: {stderr}"
+        1,
+        "in-place run reports the same record: {stderr}"
     );
     assert!(
-        stderr.contains("realign table starting at line 1")
-            && stderr.contains("realign table starting at line 8"),
-        "in-place change lines match dry-run anchors: {stderr}"
+        stderr.contains("tables were aligned"),
+        "in-place change line matches dry-run: {stderr}"
     );
     assert_eq!(
-        stderr.matches("realign table").count(),
-        dry_stderr.matches("realign table").count(),
+        stderr.matches("success[FIX]").count(),
+        dry_stderr.matches("success[FIX]").count(),
         "in-place reports the same change lines as its dry-run twin"
     );
     assert_ne!(
@@ -275,10 +274,9 @@ fn fix_md_dry_run_reports_change() {
 }
 
 /// `fix --include tables --dry-run` on a fixture with two misaligned tables
-/// reports one record per realigned table, each anchored at the table's first
-/// line.
+/// reports one per-file record, not one per table.
 #[test]
-fn fix_multi_entity_dry_run_reports_one_record_per_table() {
+fn fix_multi_entity_dry_run_reports_one_record_per_file() {
     let before = fixture_dir().join("multi_md_before.md");
     let output = run_command(&["--include", "tables", "--dry-run"], &before);
 
@@ -294,16 +292,12 @@ fn fix_multi_entity_dry_run_reports_one_record_per_table() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(
         stderr.matches("success[FIX]").count(),
-        2,
-        "one record per realigned table: {stderr}"
+        1,
+        "one record for the whole file: {stderr}"
     );
     assert!(
-        stderr.contains("realign table starting at line 1"),
-        "first table anchored at line 1: {stderr}"
-    );
-    assert!(
-        stderr.contains("realign table starting at line 8"),
-        "second table anchored at line 8: {stderr}"
+        stderr.contains("tables were aligned"),
+        "record covers both tables with no line: {stderr}"
     );
 }
 

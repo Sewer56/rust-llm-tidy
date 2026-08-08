@@ -6,13 +6,13 @@
 //! kind/name. Records are label-level - they describe the affected region from
 //! its first line and never embed the reconstructed source bytes.
 //!
-//! Reorder records come from the reorder crate's `ReorderMove`. Table/fence fix
+//! Reorder records come from the reorder crate's `ReorderMove`. Fence fix
 //! records come from the per-entity [`rust_llm_tidy_fix::FixAnchor`]s via
-//! [`fix_changes`]; link hoists map the fix crate's before/after pairs to
-//! records via [`link_changes`]. Vis records come from diffing the narrowed
-//! output against the source ([`vis_changes`]).
+//! [`fence_changes`]; tables emit one per-file record via [`table_changes`];
+//! link hoists map the fix crate's before/after pairs to records via
+//! [`link_changes`]. Vis records come from diffing the narrowed output against
+//! the source ([`vis_changes`]).
 
-use rust_llm_tidy_fix::FixKind;
 use std::fmt;
 
 /// A single edit applied by a transformation.
@@ -57,32 +57,24 @@ impl fmt::Display for Change {
     }
 }
 
-/// Map a fix pass's per-entity anchors to one [`Change`] per edited entity.
+/// Map the fences fix pass's per-entity anchors to one [`Change`] per edited
+/// entity.
 ///
-/// Each anchor stands for one edit - a realigned table or a flipped fence
-/// delimiter - anchored at the entity's first line in that pass's input.
-/// `anchors` is empty on a no-op pass, so the mapping yields zero records.
-pub(crate) fn fix_changes(anchors: &[rust_llm_tidy_fix::FixAnchor]) -> Vec<Change> {
+/// Each anchor stands for one edit - a flipped fence delimiter - anchored at
+/// the entity's first line in that pass's input. `anchors` is empty on a
+/// no-op pass, so the mapping yields zero records.
+pub(crate) fn fence_changes(anchors: &[rust_llm_tidy_fix::FixAnchor]) -> Vec<Change> {
     anchors
         .iter()
-        .map(|a| {
-            let (kind, message) = match a.kind {
-                FixKind::Table => (
-                    "table",
-                    format!("realign table starting at line {}", a.line),
-                ),
-                FixKind::Fence => ("fence", format!("flip nested fence at line {}", a.line)),
-            };
-            Change {
-                line: a.line,
-                code: "FIX",
-                message,
-                kind: kind.to_string(),
-                name: None,
-                from: None,
-                to: None,
-                before_name: None,
-            }
+        .map(|a| Change {
+            line: a.line,
+            code: "FIX",
+            message: format!("flip nested fence at line {}", a.line),
+            kind: "fence".to_string(),
+            name: None,
+            from: None,
+            to: None,
+            before_name: None,
         })
         .collect()
 }
@@ -105,6 +97,24 @@ pub(crate) fn link_changes(pairs: &[(String, String)]) -> Vec<Change> {
             before_name: None,
         })
         .collect()
+}
+
+/// The one [`Change`] a file emits when its tables were realigned.
+///
+/// [`fix_tables`](rust_llm_tidy_fix::fix_tables) rewrites whole tables, so a
+/// single per-file record suffices; no diff or line tracking is needed and the
+/// record carries no line (0).
+pub(crate) fn table_changes() -> Change {
+    Change {
+        line: 0,
+        code: "FIX",
+        message: "tables were aligned".to_string(),
+        kind: "table".to_string(),
+        name: None,
+        from: None,
+        to: None,
+        before_name: None,
+    }
 }
 
 /// Derive per-entity vis change records by diffing the narrowed `output`
@@ -264,8 +274,8 @@ mod tests {
         let unnamed = Change {
             line: 3,
             code: "FIX",
-            message: "realign table starting at line 3".to_string(),
-            kind: "table".to_string(),
+            message: "flip nested fence at line 3".to_string(),
+            kind: "fence".to_string(),
             name: None,
             from: None,
             to: None,
@@ -273,37 +283,40 @@ mod tests {
         };
         assert_eq!(
             unnamed.to_string(),
-            "3: success[FIX]: realign table starting at line 3 (table)"
+            "3: success[FIX]: flip nested fence at line 3 (fence)"
         );
     }
 
     #[test]
-    fn fix_changes_maps_one_record_per_anchor() {
-        let anchors = vec![
-            rust_llm_tidy_fix::FixAnchor {
-                line: 3,
-                kind: FixKind::Table,
-                name: None,
-            },
-            rust_llm_tidy_fix::FixAnchor {
-                line: 7,
-                kind: FixKind::Fence,
-                name: None,
-            },
-        ];
-        let changes = fix_changes(&anchors);
-        assert_eq!(changes.len(), 2);
-        assert_eq!(changes[0].line, 3);
-        assert_eq!(changes[0].code, "FIX");
-        assert_eq!(changes[0].kind, "table");
-        assert_eq!(changes[0].message, "realign table starting at line 3");
-        assert_eq!(changes[1].kind, "fence");
-        assert_eq!(changes[1].message, "flip nested fence at line 7");
+    fn change_plaintext_omits_line_when_zero() {
+        let table = table_changes();
+        assert_eq!(
+            table.to_string(),
+            "success[FIX]: tables were aligned (table)"
+        );
+        assert_eq!(table.line, 0);
+        assert_eq!(table.kind, "table");
+        assert_eq!(table.message, "tables were aligned");
     }
 
     #[test]
-    fn fix_changes_is_empty_without_anchors() {
-        assert!(fix_changes(&[]).is_empty());
+    fn fence_changes_maps_one_record_per_anchor() {
+        let anchors = vec![rust_llm_tidy_fix::FixAnchor {
+            line: 7,
+            kind: rust_llm_tidy_fix::FixKind::Fence,
+            name: None,
+        }];
+        let changes = fence_changes(&anchors);
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].line, 7);
+        assert_eq!(changes[0].code, "FIX");
+        assert_eq!(changes[0].kind, "fence");
+        assert_eq!(changes[0].message, "flip nested fence at line 7");
+    }
+
+    #[test]
+    fn fence_changes_is_empty_without_anchors() {
+        assert!(fence_changes(&[]).is_empty());
     }
 
     #[test]

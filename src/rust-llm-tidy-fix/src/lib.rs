@@ -15,8 +15,9 @@
 //! - [`fix_tables`]: realign GFM pipe tables, including those nested inside
 //!   `///` and `//!` doc comments.
 //!
-//! [`fix_tables`]/[`fix_fences`] return a [`FixOutcome`] (text + per-entity
-//! [`FixAnchor`]); [`fix_links`] returns the text plus its before/after pairs.
+//! [`fix_fences`] returns a [`FixOutcome`] (text + per-entity [`FixAnchor`]);
+//! [`fix_links`] returns the text plus its substitution pairs; [`fix_tables`]
+//! returns just the rewritten text.
 
 pub use fences::fix_fences;
 pub use links::fix_links;
@@ -51,15 +52,13 @@ pub struct FixAnchor {
     pub line: usize,
     /// Kind of the edited entity.
     pub kind: FixKind,
-    /// Name of the edited entity (e.g. a hoisted link's text), when it has one.
+    /// Name of the edited entity, when it has one.
     pub name: Option<String>,
 }
 
 /// Kind of edit a fix pass applied, used to select the record wording.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FixKind {
-    /// A GFM pipe table that was realigned.
-    Table,
     /// A nested code fence whose delimiter marker was flipped.
     Fence,
 }

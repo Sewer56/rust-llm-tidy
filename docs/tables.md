@@ -38,23 +38,24 @@ rust-llm-tidy --exclude tables docs
 
 ## Change output
 
-Every run reports each realignment it applies (or would apply under `--dry-run`)
-as one record. In text mode the record prints to stderr:
+Every run reports the realignments it applies (or would apply under
+`--dry-run`) as one record per file. In text mode the record prints to stderr:
 
 ```text
-README.md:1: success[FIX]: realign table starting at line 1 (table)
+README.md: success[FIX]: tables were aligned (table)
 ```
 
-In JSON mode the same record appears on stdout with `severity: "success"`:
+In JSON mode the same record appears on stdout with `severity: "success"`
+(`line` is 0 for table records - one record covers the whole file):
 
 ```json
 [
   {
     "path": "README.md",
-    "line": 1,
+    "line": 0,
     "severity": "success",
     "code": "FIX",
-    "message": "realign table starting at line 1",
+    "message": "tables were aligned",
     "item_kind": "table",
     "item_name": null
   }

@@ -29,11 +29,13 @@ exclude_files:
 
 # Disable specific rules for files matching a group's patterns.
 exclude:
-  # Integration tests embed markdown (`[text](url)`) in Rust string literals.
+  # Integration tests embed markdown (`[text](url)`) in Rust string literals;
   # `fix_links` would emit a `[text]: url` definition outside the literal and
-  # break compilation, so disable `links`.
+  # break compilation. changes.rs's unit tests do the same, so disable `links`
+  # for both.
   - paths:
       - "src/cli/tests/**"
+      - "src/cli/src/changes.rs"
     rules:
       - links
   # The README has a nested-fence before+after example that `fix_fences`

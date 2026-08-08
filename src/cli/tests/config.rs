@@ -308,7 +308,7 @@ fn fix_excludes_links_rule() {
     );
     // Tables are still applied (the `links` disable is selective, not blanket).
     assert!(
-        stderr.contains("realign table"),
+        stderr.contains("tables were aligned"),
         "tables must still be applied when only `links` is disabled: {stderr:?}"
     );
     let _ = fs::remove_dir_all(&dir);

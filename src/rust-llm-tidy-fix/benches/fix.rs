@@ -22,7 +22,7 @@ fn fix_pass(c: &mut Criterion) {
     for (name, source) in common::MD_FIXTURES.iter().chain(common::RS_FIXTURES.iter()) {
         // The canonical (already-aligned) form: realigning it is a no-op, so
         // `fix_tables` borrows the input back unchanged.
-        let canonical = fix_tables(source).text.into_owned();
+        let canonical = fix_tables(source).into_owned();
         // A deliberately misaligned copy: realigning it rebuilds every table.
         let misaligned = common::misalign(source);
 
@@ -30,7 +30,7 @@ fn fix_pass(c: &mut Criterion) {
         // (an Owned result), guarding against a fixture whose tables already
         // survive misaligning unchanged.
         debug_assert!(
-            matches!(fix_tables(&misaligned).text, std::borrow::Cow::Owned(_)),
+            matches!(fix_tables(&misaligned), std::borrow::Cow::Owned(_)),
             "misalign must produce a table fix_tables will realign: {name}"
         );
 

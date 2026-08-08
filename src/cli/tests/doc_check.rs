@@ -499,8 +499,8 @@ fn json_in_place_run_records_fix_changes() {
     assert_eq!(rec["severity"], "success");
     assert_eq!(rec["code"], "FIX");
     assert_eq!(rec["item_kind"], "table");
-    assert_eq!(rec["line"], 1);
-    assert_eq!(rec["message"], "realign table starting at line 1");
+    assert_eq!(rec["line"], 0);
+    assert_eq!(rec["message"], "tables were aligned");
 }
 
 /// A non-dry-run reorder in JSON mode reports `success` records in the same

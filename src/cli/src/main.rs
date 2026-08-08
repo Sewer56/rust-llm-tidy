@@ -149,10 +149,11 @@ pub(crate) fn check_file(
 /// [`fix::fix_links`], and writes the result back via [`io::atomic_write`]
 /// unless `--dry-run` is given.
 ///
-/// Every edited entity reports a [`changes::Change`] in both dry-run and
-/// in-place modes: tables/fences via the fix crate's anchors; link hoists as
-/// one record per before/after pair ([`changes::link_changes`]). A no-op pass
-/// borrows its text back and yields no record.
+/// Every edit reports a [`changes::Change`] in both dry-run and in-place modes:
+/// fences via the fix crate's anchors; tables as one per-file record
+/// ([`changes::table_changes`]); link hoists as one record per before/after
+/// pair ([`changes::link_changes`]). A no-op pass borrows its text back and
+/// yields no record.
 ///
 /// `fix` never fails on content; it exits non-zero only on I/O errors.
 pub(crate) fn fix_file(
@@ -167,10 +168,9 @@ pub(crate) fn fix_file(
     let mut change_records = Vec::new();
     if pipeline::op_enabled("tables", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        let outcome = fix::fix_tables(&prior);
-        match outcome.text {
+        match fix::fix_tables(&prior) {
             Cow::Owned(after) => {
-                change_records.extend(changes::fix_changes(&outcome.anchors));
+                change_records.push(changes::table_changes());
                 out = after;
             }
             Cow::Borrowed(_) => out = prior,
@@ -181,7 +181,7 @@ pub(crate) fn fix_file(
         let outcome = fix::fix_fences(&prior);
         match outcome.text {
             Cow::Owned(after) => {
-                change_records.extend(changes::fix_changes(&outcome.anchors));
+                change_records.extend(changes::fence_changes(&outcome.anchors));
                 out = after;
             }
             Cow::Borrowed(_) => out = prior,
