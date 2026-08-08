@@ -48,10 +48,10 @@ rust-llm-tidy --include fences --dry-run docs
 rust-llm-tidy --exclude fences README.md
 ```
 
-## Dry-run output
+## Change output
 
-`--dry-run` reports each would-be fence flip instead of modifying the file. In
-text mode the record prints to stderr:
+Every run reports each fence flip it applies (or would apply under `--dry-run`)
+as one record. In text mode the record prints to stderr:
 
 ```text
 README.md:3: success[FIX]: flip nested fence at line 3 (fence)
@@ -73,5 +73,4 @@ In JSON mode the same record appears on stdout with `severity: "success"`:
 ]
 ```
 
-See [Dry-run change reporting](./lints.md#dry-run-change-reporting) for the
-shared format.
+See [Change reporting](./lints.md#change-reporting) for the shared format.

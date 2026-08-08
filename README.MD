@@ -38,7 +38,7 @@ reorder, vis, lints) by default on `.rs` and `.md` files:
 # Tidy a file in place
 rust-llm-tidy src/main.rs
 
-# Report the changes that would be made instead of modifying the file
+# Preview the changes that would be made without writing them
 rust-llm-tidy --dry-run src/main.rs
 
 # Tidy every .rs/.md file under a directory recursively
@@ -79,9 +79,9 @@ Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
 
 #### JSON output
 
-Emit every lint finding and dry-run change record as one JSON array on stdout.
-Prints `[]` when there are no findings or changes, and still prints the document
-when the run exits non-zero:
+Emit every lint finding and change record as one JSON array on stdout, in both
+in-place and `--dry-run` runs. Prints `[]` when there are no findings or
+changes, and still prints the document when the run exits non-zero:
 
 ```json
 [
@@ -99,16 +99,16 @@ when the run exits non-zero:
 
 Fields:
 
-- `severity` - `"error"` or `"warning"` for lint findings, `"success"` for dry-run change records
+- `severity` - `"error"` or `"warning"` for lint findings, `"success"` for change records (applied or would-be changes)
 - `line` - 1-based item start line
 - `item_name` - item name, `null` when unnamed
 - `path`, `code`, `message`, `item_kind` - as in plaintext
 
 In JSON mode the per-line plaintext diagnostics are not printed to stderr.
-`--output-mode json` combines freely with `--dry-run`: the would-be changes are
-folded into the same document instead of printing file contents to stdout.
-See [dry-run change reporting](./docs/lints.md#dry-run-change-reporting) for
-the shared record format.
+Change records and lint findings are folded into the same document.
+`--dry-run` previews the changes without writing them.
+See [change reporting](./docs/lints.md#change-reporting) for the shared record
+format.
 
 #### Feature documentation
 

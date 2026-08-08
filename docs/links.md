@@ -40,10 +40,10 @@ rust-llm-tidy --include links --dry-run README.md
 rust-llm-tidy --exclude links src
 ```
 
-## Dry-run output
+## Change output
 
-`--dry-run` reports each would-be hoist instead of modifying the file. In text
-mode the record prints to stderr:
+Every run reports each hoist it applies (or would apply under `--dry-run`) as
+one record. In text mode the record prints to stderr:
 
 ```text
 README.md:1: success[FIX]: hoist link starting at line 1 (link)
@@ -65,5 +65,4 @@ In JSON mode the same record appears on stdout with `severity: "success"`:
 ]
 ```
 
-See [Dry-run change reporting](./lints.md#dry-run-change-reporting) for the
-shared format.
+See [Change reporting](./lints.md#change-reporting) for the shared format.

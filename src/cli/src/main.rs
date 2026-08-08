@@ -21,7 +21,7 @@
 //! | `--validate`        | Validate config and exit (no files touched)         |
 //! | `--include <RULE>`  | Run only these rules (repeatable, overrides config) |
 //! | `--exclude <RULE>`  | Skip these rules (repeatable, additive)             |
-//! | `--dry-run`         | Print the changes that would be made                |
+//! | `--dry-run`         | Preview the changes without writing them            |
 //! | `--config <PATH>`   | Explicit config path                                |
 //! | `--no-config`       | Disable config discovery                            |
 //! | `--output-mode <M>` | Lint output format: `text` (default) or `json`      |

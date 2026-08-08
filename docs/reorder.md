@@ -82,10 +82,10 @@ rust-llm-tidy --include reorder --dry-run src/lib.rs
 rust-llm-tidy --exclude reorder src
 ```
 
-## Dry-run output
+## Change output
 
-`--dry-run` reports each would-be move instead of modifying the file. In text
-mode the record prints to stderr:
+Every run reports each move it applies (or would apply under `--dry-run`) as
+one record. In text mode the record prints to stderr:
 
 ```text
 src/lib.rs:20: success[REORDER]: rearrange fn a_main from pos 2 to pos 1 (before b_helper) (fn `a_main`)
@@ -111,5 +111,4 @@ the reorder extras `from`/`to`/`before_name`:
 ]
 ```
 
-See [Dry-run change reporting](./lints.md#dry-run-change-reporting) for the
-shared format.
+See [Change reporting](./lints.md#change-reporting) for the shared format.
