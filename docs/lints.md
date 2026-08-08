@@ -300,8 +300,9 @@ rust-llm-tidy --exclude lints src
 
 ## JSON output
 
-Print every lint finding as one JSON array on stdout. Prints `[]` when no
-findings, and still prints the document when the run exits non-zero:
+Print every lint finding and dry-run change record as one JSON array on stdout.
+Prints `[]` when there are no findings or changes, and still prints the document
+when the run exits non-zero:
 
 ```json
 [
@@ -319,15 +320,49 @@ findings, and still prints the document when the run exits non-zero:
 
 Fields:
 
-- `severity` - `"error"` or `"warning"`
+- `severity` - `"error"` or `"warning"` for lint findings, `"success"` for dry-run change records
 - `line` - 1-based item start line
 - `item_name` - item name, `null` when unnamed
 - `path`, `code`, `message`, `item_kind` - as in plaintext
 
 In JSON mode the plaintext `path:line: sev[CODE]: ...` diagnostics are not
-printed to stderr. `--output-mode json` cannot be combined with `--dry-run`:
-dry-run prints reordered file contents to stdout, which would corrupt the JSON
-document.
+printed to stderr. `--output-mode json` combines freely with `--dry-run`: the
+dry-run change records are folded into the same document.
+
+## Dry-run change reporting
+
+`--dry-run` reports the edits each enabled op would make instead of modifying
+the files. In text mode every would-be edit is one plaintext line on stderr:
+
+```text
+src/lib.rs:20: success[REORDER]: rearrange fn a_main from pos 2 to pos 1 (before b_helper) (fn `a_main`)
+```
+
+The line shape is `path:line: success[CODE]: message (item_kind `item_name`)`.
+Fix records are unnamed, so they print like `1: success[FIX]: realign table
+starting at line 1 (table)` without a trailing name. In JSON mode the same
+records appear on stdout as one JSON array with `severity: "success"`:
+
+```json
+[
+  {
+    "path": "src/lib.rs",
+    "line": 20,
+    "severity": "success",
+    "code": "REORDER",
+    "message": "rearrange fn a_main from pos 2 to pos 1 (before b_helper)",
+    "item_kind": "fn",
+    "item_name": "a_main",
+    "from": 2,
+    "to": 1,
+    "before_name": "b_helper"
+  }
+]
+```
+
+`from`, `to`, and `before_name` are reorder-specific extras and are omitted for
+other ops. Each operation's concrete output in both modes is shown in its own
+doc page.
 
 [`DOC001`]: #doc001---missing-documentation
 [`DOC002`]: #doc002---missing-errors-section

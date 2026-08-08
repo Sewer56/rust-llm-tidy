@@ -21,7 +21,7 @@
 //! | `--validate`        | Validate config and exit (no files touched)         |
 //! | `--include <RULE>`  | Run only these rules (repeatable, overrides config) |
 //! | `--exclude <RULE>`  | Skip these rules (repeatable, additive)             |
-//! | `--dry-run`         | Print results to stdout                             |
+//! | `--dry-run`         | Print the changes that would be made                |
 //! | `--config <PATH>`   | Explicit config path                                |
 //! | `--no-config`       | Disable config discovery                            |
 //! | `--output-mode <M>` | Lint output format: `text` (default) or `json`      |
@@ -69,7 +69,7 @@ pub(crate) struct Cli {
     /// directory is expanded recursively. When omitted, the changed files in
     /// the current git diff are used (filtered to `.rs` and `.md`).
     paths: Vec<PathBuf>,
-    /// Print results to stdout instead of modifying files.
+    /// Print the changes that would be made instead of modifying files.
     #[arg(long)]
     dry_run: bool,
     /// Validate the config and exit; do not process files.
