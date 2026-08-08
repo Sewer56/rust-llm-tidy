@@ -5,6 +5,25 @@
 use super::scan::parse_inline_link;
 use std::collections::{HashMap, HashSet};
 
+/// Append hoisted `[text]: url` definitions at the end of `buf`, each on its
+/// own line using the source's dominant line ending (`le`), so a CRLF
+/// document stays CRLF after hoisting. Ensures `buf` ends with a newline so
+/// the first definition starts on its own line; if the document already ends
+/// with a reference definition the new definitions continue that block
+/// contiguously.
+pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &str) {
+    if !buf.ends_with('\n') {
+        buf.push_str(le);
+    }
+    for &(text, url) in hoist {
+        buf.push('[');
+        buf.push_str(text);
+        buf.push_str("]: ");
+        buf.push_str(url);
+        buf.push_str(le);
+    }
+}
+
 /// Return the dominant line ending used in `source`: `"\r\n"` when CRLF is at
 /// least as common as LF, otherwise `"\n"`.
 ///
@@ -18,37 +37,6 @@ pub(super) fn dominant_line_ending(source: &str) -> &'static str {
     let crlf = source.matches("\r\n").count();
     let lf = source.matches('\n').count().saturating_sub(crlf);
     if crlf > 0 && crlf >= lf { "\r\n" } else { "\n" }
-}
-
-/// Scan `body` for inline links `[text](url)` and tally each `(text, url)`,
-/// recording first-seen order in `order`. Reference-style, autolink, and
-/// whitespace-URL forms never match the inline shape, so they are skipped.
-///
-/// Jumps between `[` bytes with [`str::find`] instead of walking every
-/// character: the cost is O(number of brackets), not O(text). `[` is ASCII, so
-/// byte offsets are valid char boundaries and behavior is identical to a
-/// char-by-char scan.
-pub(super) fn tally_links<'a>(
-    body: &'a str,
-    counts: &mut HashMap<(&'a str, &'a str), usize>,
-    order: &mut Vec<(&'a str, &'a str)>,
-) {
-    let mut i = 0usize;
-    while let Some(rel) = body[i..].find('[') {
-        let open = i + rel;
-        if let Some((text, url, end)) = parse_inline_link(body, open) {
-            let prev = counts.get(&(text, url)).copied().unwrap_or(0);
-            if prev == 0 {
-                order.push((text, url));
-            }
-            counts.insert((text, url), prev + 1);
-            i = end;
-            continue;
-        }
-        // Not an inline link: step past this `[` (ASCII, so +1 is a char
-        // boundary) and continue the search.
-        i = open + 1;
-    }
 }
 
 /// Rewrite eligible inline links in `body` to `[text]`, then re-attach `prefix`
@@ -99,21 +87,33 @@ pub(super) fn rewrite_links(
     Some(o)
 }
 
-/// Append hoisted `[text]: url` definitions at the end of `buf`, each on its
-/// own line using the source's dominant line ending (`le`), so a CRLF
-/// document stays CRLF after hoisting. Ensures `buf` ends with a newline so
-/// the first definition starts on its own line; if the document already ends
-/// with a reference definition the new definitions continue that block
-/// contiguously.
-pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &str) {
-    if !buf.ends_with('\n') {
-        buf.push_str(le);
-    }
-    for &(text, url) in hoist {
-        buf.push('[');
-        buf.push_str(text);
-        buf.push_str("]: ");
-        buf.push_str(url);
-        buf.push_str(le);
+/// Scan `body` for inline links `[text](url)` and tally each `(text, url)`,
+/// recording first-seen order in `order`. Reference-style, autolink, and
+/// whitespace-URL forms never match the inline shape, so they are skipped.
+///
+/// Jumps between `[` bytes with [`str::find`] instead of walking every
+/// character: the cost is O(number of brackets), not O(text). `[` is ASCII, so
+/// byte offsets are valid char boundaries and behavior is identical to a
+/// char-by-char scan.
+pub(super) fn tally_links<'a>(
+    body: &'a str,
+    counts: &mut HashMap<(&'a str, &'a str), usize>,
+    order: &mut Vec<(&'a str, &'a str)>,
+) {
+    let mut i = 0usize;
+    while let Some(rel) = body[i..].find('[') {
+        let open = i + rel;
+        if let Some((text, url, end)) = parse_inline_link(body, open) {
+            let prev = counts.get(&(text, url)).copied().unwrap_or(0);
+            if prev == 0 {
+                order.push((text, url));
+            }
+            counts.insert((text, url), prev + 1);
+            i = end;
+            continue;
+        }
+        // Not an inline link: step past this `[` (ASCII, so +1 is a char
+        // boundary) and continue the search.
+        i = open + 1;
     }
 }

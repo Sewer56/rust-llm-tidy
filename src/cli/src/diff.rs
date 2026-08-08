@@ -69,16 +69,14 @@ fn changed_lines(_root: &Path) -> anyhow::Result<Vec<String>> {
     Ok(paths)
 }
 
-fn nul_paths(output: &str) -> Vec<String> {
-    output
-        .split('\0')
-        .filter(|path| !path.is_empty())
-        .map(String::from)
-        .collect()
-}
-
 fn git_stdout(args: &[&str]) -> anyhow::Result<String> {
     git_stdout_opt(args)?.ok_or_else(|| anyhow!("`git {}` produced no output", args.join(" ")))
+}
+
+fn matches_ext(p: &Path, exts: &[&str]) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| exts.contains(&e))
 }
 
 fn git_stdout_opt(args: &[&str]) -> anyhow::Result<Option<String>> {
@@ -96,8 +94,10 @@ fn git_stdout_opt(args: &[&str]) -> anyhow::Result<Option<String>> {
     Ok(Some(String::from_utf8_lossy(&out.stdout).into_owned()))
 }
 
-fn matches_ext(p: &Path, exts: &[&str]) -> bool {
-    p.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| exts.contains(&e))
+fn nul_paths(output: &str) -> Vec<String> {
+    output
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .map(String::from)
+        .collect()
 }

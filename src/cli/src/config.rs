@@ -83,16 +83,11 @@ pub struct FilePolicy {
     pub disabled: HashSet<String>,
 }
 
-/// One entry under `include` or `exclude`: a list of path globs and the rule
-/// names to (include|exclude) for files they match. An omitted `paths` matches
-/// every file (implied `["**"]`).
-#[derive(Debug, Deserialize, Default, Clone)]
-#[serde(deny_unknown_fields)] // Reject hallucinated config keys at parse time.
-pub struct RuleGroup {
-    #[serde(default)]
-    pub paths: Vec<String>,
-    #[serde(default)]
-    pub rules: Vec<String>,
+/// A compiled `include`/`exclude` group: one glob set plus its rule names.
+#[derive(Debug)]
+struct CompiledRuleGroup {
+    set: GlobSet,
+    rules: Vec<String>,
 }
 
 /// One external post-processing step. The processed file path is appended as
@@ -108,11 +103,16 @@ pub struct PostProcessStep {
     pub extensions: Vec<String>,
 }
 
-/// A compiled `include`/`exclude` group: one glob set plus its rule names.
-#[derive(Debug)]
-struct CompiledRuleGroup {
-    set: GlobSet,
-    rules: Vec<String>,
+/// One entry under `include` or `exclude`: a list of path globs and the rule
+/// names to (include|exclude) for files they match. An omitted `paths` matches
+/// every file (implied `["**"]`).
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)] // Reject hallucinated config keys at parse time.
+pub struct RuleGroup {
+    #[serde(default)]
+    pub paths: Vec<String>,
+    #[serde(default)]
+    pub rules: Vec<String>,
 }
 
 impl CompiledConfig {

@@ -42,15 +42,6 @@ pub fn doc_placeholder(item: &SourceItem) -> Vec<Diagnostic> {
     }]
 }
 
-/// True when `text` contains a placeholder marker: a whole-word `TODO`,
-/// `FIXME`, or `TBD` (case-insensitive), or a literal `...`.
-fn contains_placeholder(text: &str) -> bool {
-    contains_word(text, "todo")
-        || contains_word(text, "fixme")
-        || contains_word(text, "tbd")
-        || text.contains("...")
-}
-
 /// Case-insensitive whole-word match for `needle` in `haystack`.
 ///
 /// A word boundary is any non-alphanumeric, non-underscore character (or the
@@ -79,6 +70,15 @@ pub(crate) fn contains_word(haystack: &str, needle: &str) -> bool {
         start = abs + n.len();
     }
     false
+}
+
+/// True when `text` contains a placeholder marker: a whole-word `TODO`,
+/// `FIXME`, or `TBD` (case-insensitive), or a literal `...`.
+fn contains_placeholder(text: &str) -> bool {
+    contains_word(text, "todo")
+        || contains_word(text, "fixme")
+        || contains_word(text, "tbd")
+        || text.contains("...")
 }
 
 #[cfg(test)]

@@ -122,6 +122,39 @@ pub fn fix_tables(input: &str) -> Cow<'_, str> {
     }
 }
 
+/// Split `line` into content and terminator (`\n` or `\r\n`).
+pub(crate) fn split_terminator(line: &str) -> (&str, &str) {
+    if let Some(rest) = line.strip_suffix('\n') {
+        if let Some(content) = rest.strip_suffix('\r') {
+            (content, "\r\n")
+        } else {
+            (rest, "\n")
+        }
+    } else {
+        (line, "")
+    }
+}
+
+/// Strip an optional Rust doc-comment prefix from `line`.
+///
+/// Returns `(prefix, rest)` where `prefix` is the leading indent plus the
+/// marker (`///` or `//!`) and one separating space. Lines without a doc
+/// marker get an empty prefix.
+pub(crate) fn strip_doc_prefix(line: &str) -> (&str, &str) {
+    let indent_end = line.len() - line.trim_start_matches([' ', '\t']).len();
+    let core = &line[indent_end..];
+    if let Some(rest) = core
+        .strip_prefix("///")
+        .or_else(|| core.strip_prefix("//!"))
+    {
+        let rest = rest.strip_prefix(' ').unwrap_or(rest);
+        let prefix_len = line.len() - rest.len();
+        (&line[..prefix_len], rest)
+    } else {
+        ("", line)
+    }
+}
+
 /// Gather the contiguous run of pipe-bearing lines starting at byte offset
 /// `line_start` in `input`, all sharing the first line's doc-comment prefix.
 ///
@@ -215,39 +248,6 @@ fn next_segment(s: &str) -> &str {
     match s.find('\n') {
         Some(idx) => &s[..=idx],
         None => s,
-    }
-}
-
-/// Split `line` into content and terminator (`\n` or `\r\n`).
-pub(crate) fn split_terminator(line: &str) -> (&str, &str) {
-    if let Some(rest) = line.strip_suffix('\n') {
-        if let Some(content) = rest.strip_suffix('\r') {
-            (content, "\r\n")
-        } else {
-            (rest, "\n")
-        }
-    } else {
-        (line, "")
-    }
-}
-
-/// Strip an optional Rust doc-comment prefix from `line`.
-///
-/// Returns `(prefix, rest)` where `prefix` is the leading indent plus the
-/// marker (`///` or `//!`) and one separating space. Lines without a doc
-/// marker get an empty prefix.
-pub(crate) fn strip_doc_prefix(line: &str) -> (&str, &str) {
-    let indent_end = line.len() - line.trim_start_matches([' ', '\t']).len();
-    let core = &line[indent_end..];
-    if let Some(rest) = core
-        .strip_prefix("///")
-        .or_else(|| core.strip_prefix("//!"))
-    {
-        let rest = rest.strip_prefix(' ').unwrap_or(rest);
-        let prefix_len = line.len() - rest.len();
-        (&line[..prefix_len], rest)
-    } else {
-        ("", line)
     }
 }
 

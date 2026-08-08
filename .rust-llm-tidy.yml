@@ -42,6 +42,23 @@ exclude:
       - "src/rust-llm-tidy-fix/README.MD"
     rules:
       - fences
+  # docs/tables.md shows a deliberately misaligned "Before" table inside a
+  # fenced example; `fix_tables` realigns it, destroying the illustration.
+  - paths:
+      - "docs/tables.md"
+    rules:
+      - tables
+  # rust-llm-tidy-fix's own docs/examples deliberately embed markdown-bracket
+  # and fence-heavy text; the links/fences ops rewrite those destructively and
+  # break parsing. Only those two ops are disabled; reorder/vis/tables/lints
+  # still apply.
+  - paths:
+      - "src/rust-llm-tidy-fix/src/lib.rs"
+      - "src/rust-llm-tidy-fix/src/links/mod.rs"
+      - "src/rust-llm-tidy-fix/src/links/scan.rs"
+    rules:
+      - links
+      - fences
 
 # Commented examples (uncomment and tailor paths to enable):
 #

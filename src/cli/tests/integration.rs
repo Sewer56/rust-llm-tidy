@@ -115,6 +115,43 @@ synthetic_fixture!(safety_line_preservation);
 
 static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 
+/// `reorder --dry-run` on a CRLF source prints CRLF output to stdout.
+#[test]
+fn reorder_dry_run_preserves_crlf() {
+    let source = "fn b() { a(); }\r\nfn a() {}\r\n";
+    let (stdout, _stderr, exit) = run(source, &["--dry-run"]);
+    assert_eq!(exit, 0, "dry-run should succeed");
+    assert_eq!(
+        stdout.matches('\n').count(),
+        stdout.matches("\r\n").count(),
+        "every newline in dry-run stdout must be CRLF: {stdout:?}"
+    );
+    let a_pos = stdout.find("fn a").expect("fn a missing");
+    let b_pos = stdout.find("fn b").expect("fn b missing");
+    assert!(b_pos < a_pos, "b (caller) before a (callee) in dry-run");
+}
+
+/// In-place reorder of a CRLF source preserves every `\r\n` and reorders
+/// callers before callees. CRLF input is built in-memory (not from a
+/// committed fixture, which git would normalize on checkout).
+#[test]
+fn reorder_in_place_preserves_crlf() {
+    let source = "fn b() { a(); }\r\nfn a() {}\r\n";
+    let result = run_and_read(source);
+
+    // Caller (b) before callee (a).
+    let a_pos = result.find("fn a").expect("fn a missing");
+    let b_pos = result.find("fn b").expect("fn b missing");
+    assert!(b_pos < a_pos, "b (caller) before a (callee)");
+
+    // Every `\n` must be part of `\r\n` (no CRLF -> LF flip).
+    assert_eq!(
+        result.matches('\n').count(),
+        result.matches("\r\n").count(),
+        "every newline must be CRLF after reorder: {result:?}"
+    );
+}
+
 /// Idempotency: every `_after.rs` fixture must be unchanged by a second run.
 #[test]
 fn test_all_after_fixtures_are_idempotent() {
@@ -431,43 +468,6 @@ fn test_safety_aborts() {
 
     assert_ne!(exit, 0, "rust-llm-tidy should exit non-zero on parse error");
     assert!(!stderr.is_empty(), "stderr should contain error message");
-}
-
-/// In-place reorder of a CRLF source preserves every `\r\n` and reorders
-/// callers before callees. CRLF input is built in-memory (not from a
-/// committed fixture, which git would normalize on checkout).
-#[test]
-fn reorder_in_place_preserves_crlf() {
-    let source = "fn b() { a(); }\r\nfn a() {}\r\n";
-    let result = run_and_read(source);
-
-    // Caller (b) before callee (a).
-    let a_pos = result.find("fn a").expect("fn a missing");
-    let b_pos = result.find("fn b").expect("fn b missing");
-    assert!(b_pos < a_pos, "b (caller) before a (callee)");
-
-    // Every `\n` must be part of `\r\n` (no CRLF -> LF flip).
-    assert_eq!(
-        result.matches('\n').count(),
-        result.matches("\r\n").count(),
-        "every newline must be CRLF after reorder: {result:?}"
-    );
-}
-
-/// `reorder --dry-run` on a CRLF source prints CRLF output to stdout.
-#[test]
-fn reorder_dry_run_preserves_crlf() {
-    let source = "fn b() { a(); }\r\nfn a() {}\r\n";
-    let (stdout, _stderr, exit) = run(source, &["--dry-run"]);
-    assert_eq!(exit, 0, "dry-run should succeed");
-    assert_eq!(
-        stdout.matches('\n').count(),
-        stdout.matches("\r\n").count(),
-        "every newline in dry-run stdout must be CRLF: {stdout:?}"
-    );
-    let a_pos = stdout.find("fn a").expect("fn a missing");
-    let b_pos = stdout.find("fn b").expect("fn b missing");
-    assert!(b_pos < a_pos, "b (caller) before a (callee) in dry-run");
 }
 
 // ── Helpers ───────────────────────────────────────────────────────

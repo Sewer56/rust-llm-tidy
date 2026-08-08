@@ -1,14 +1,13 @@
 //! Pipeline orchestration: the main per-file loop, op-enabled check, and
 //! post-process runner.
 
+use super::Cli;
 use crate::config::{CompiledConfig, PostProcessStep};
+use crate::paths;
 use anyhow::bail;
 use rust_llm_tidy_lint::check;
 use std::collections::HashSet;
 use std::path::PathBuf;
-
-use super::Cli;
-use crate::paths;
 
 // ---------------------------------------------------------------------------
 // Pipeline

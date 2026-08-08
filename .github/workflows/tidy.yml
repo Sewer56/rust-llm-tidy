@@ -1,0 +1,34 @@
+name: Tidy
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "**/*.md"
+      - ".rust-llm-tidy.yml"
+
+jobs:
+  tidy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Check out the PR branch head, not the auto-generated merge ref:
+          # apply-mode commits on top of HEAD and pushes back to this branch,
+          # which would be a non-fast-forward from the merge commit.
+          ref: ${{ github.head_ref }}
+          submodules: recursive
+
+      - name: Run rust-llm-tidy
+        uses: ./submodules/action
+        with:
+          # Build the binary from this repo's own source checkout.
+          binary-source: git
+          source-path: ${{ github.workspace }}
+          # Apply tidy fixes in place; on a PR commit and push them to the branch.
+          mode: apply
+          # Tidy the whole repository (no paths -> '.' under rust-project-path).
+          changed-files: false

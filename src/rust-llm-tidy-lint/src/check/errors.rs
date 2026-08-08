@@ -69,15 +69,15 @@ pub fn vague_errors(item: &SourceItem) -> Vec<Diagnostic> {
     }]
 }
 
-/// True when `item` is a `pub fn` whose return type ends in `Result`.
-fn is_pub_result_fn(item: &SourceItem) -> bool {
-    item.is_fn() && item.visibility() == Some(VisibilityTier::Pub) && item.returns_result()
-}
-
 /// Index into `doc_comments` of the `# Errors` section header, if present.
 fn find_errors_section(docs: &[String]) -> Option<usize> {
     docs.iter()
         .position(|d| d.trim().eq_ignore_ascii_case("# errors"))
+}
+
+/// True when `item` is a `pub fn` whose return type ends in `Result`.
+fn is_pub_result_fn(item: &SourceItem) -> bool {
+    item.is_fn() && item.visibility() == Some(VisibilityTier::Pub) && item.returns_result()
 }
 
 /// True when any non-blank line in the section body references a concrete
