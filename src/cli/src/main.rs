@@ -7,23 +7,23 @@
 //!
 //! # Pipeline
 //!
-//! | Op      | Does                                              | Mutates |
-//! | ------- | ------------------------------------------------- | ------- |
-//! | fix     | align tables, fix fences, hoist links             | yes     |
-//! | reorder | canonical 10-phase item ordering                  | yes     |
+//! | Op      | Does                                               | Mutates |
+//! | ------- | -------------------------------------------------- | ------- |
+//! | fix     | align tables, fix fences, hoist links              | yes     |
+//! | reorder | canonical 10-phase item ordering                   | yes     |
 //! | vis     | narrow bare `pub` in restricted-visibility modules | yes     |
-//! | lints   | DOC001-DOC006 + TEST001 checks                    | no      |
+//! | lints   | DOC001-DOC006 + TEST001 checks                     | no      |
 //!
 //! # Flags
 //!
-//! | Flag                 | Effect                                      |
-//! | -------------------- | ------------------------------------------- |
-//! | `--validate`         | Validate config and exit (no files touched) |
-//! | `--include <RULE>`   | Run only these rules (repeatable, overrides config) |
-//! | `--exclude <RULE>`   | Skip these rules (repeatable, additive)       |
-//! | `--dry-run`          | Print results to stdout                     |
-//! | `--config <PATH>`    | Explicit config path                        |
-//! | `--no-config`        | Disable config discovery                    |
+//! | Flag               | Effect                                              |
+//! | ------------------ | --------------------------------------------------- |
+//! | `--validate`       | Validate config and exit (no files touched)         |
+//! | `--include <RULE>` | Run only these rules (repeatable, overrides config) |
+//! | `--exclude <RULE>` | Skip these rules (repeatable, additive)             |
+//! | `--dry-run`        | Print results to stdout                             |
+//! | `--config <PATH>`  | Explicit config path                                |
+//! | `--no-config`      | Disable config discovery                            |
 //!
 //! See `docs/` for per-feature documentation with before/after examples.
 
@@ -92,46 +92,6 @@ pub(crate) struct Cli {
 pub(crate) struct VisContext {
     tree: ModuleTree,
     reexports: ReexportSet,
-}
-
-fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
-
-    let compiled: Option<CompiledConfig> =
-        config::discover_config_path(cli.config.as_deref(), cli.no_config)
-            .map(|p| config::load_and_compile(&p))
-            .transpose()?;
-    let config_ref = compiled.as_ref();
-
-    if cli.validate {
-        if cli.no_config {
-            bail!("--no-config was passed; no config to validate");
-        }
-        let path = config::discover_config_path(cli.config.as_deref(), false)
-            .context("no config file found; run from a directory with .rust-llm-tidy.yml")?;
-        config::load_and_compile(&path)?;
-        println!("config valid: {}", path.display());
-        return Ok(());
-    }
-
-    // Validate flag values against known_rules().
-    let valid = config::known_rules();
-    for op in cli.include.iter().chain(cli.exclude.iter()) {
-        if !valid.contains(&op.as_str()) {
-            bail!(
-                "unknown op/rule `{op}` in --include/--exclude; valid: {}",
-                valid.join(", ")
-            );
-        }
-    }
-    let cli_include: Option<HashSet<String>> = if cli.include.is_empty() {
-        None
-    } else {
-        Some(cli.include.iter().cloned().collect())
-    };
-    let cli_disabled: HashSet<String> = cli.exclude.iter().cloned().collect();
-
-    pipeline::run_pipeline(&cli, config_ref, cli_include.as_ref(), &cli_disabled)
 }
 
 // ---------------------------------------------------------------------------
@@ -390,4 +350,44 @@ pub(crate) fn vis_file(
     }
 
     Ok(())
+}
+
+fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+
+    let compiled: Option<CompiledConfig> =
+        config::discover_config_path(cli.config.as_deref(), cli.no_config)
+            .map(|p| config::load_and_compile(&p))
+            .transpose()?;
+    let config_ref = compiled.as_ref();
+
+    if cli.validate {
+        if cli.no_config {
+            bail!("--no-config was passed; no config to validate");
+        }
+        let path = config::discover_config_path(cli.config.as_deref(), false)
+            .context("no config file found; run from a directory with .rust-llm-tidy.yml")?;
+        config::load_and_compile(&path)?;
+        println!("config valid: {}", path.display());
+        return Ok(());
+    }
+
+    // Validate flag values against known_rules().
+    let valid = config::known_rules();
+    for op in cli.include.iter().chain(cli.exclude.iter()) {
+        if !valid.contains(&op.as_str()) {
+            bail!(
+                "unknown op/rule `{op}` in --include/--exclude; valid: {}",
+                valid.join(", ")
+            );
+        }
+    }
+    let cli_include: Option<HashSet<String>> = if cli.include.is_empty() {
+        None
+    } else {
+        Some(cli.include.iter().cloned().collect())
+    };
+    let cli_disabled: HashSet<String> = cli.exclude.iter().cloned().collect();
+
+    pipeline::run_pipeline(&cli, config_ref, cli_include.as_ref(), &cli_disabled)
 }

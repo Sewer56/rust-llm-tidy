@@ -274,6 +274,39 @@ fn resolve_mod_children(
     out
 }
 
+/// Extract the string value of a `#[path = "..."]` attribute from a run of
+/// preceding `attribute_item` nodes. Returns the verbatim content (no quotes).
+fn find_path_attr(attrs: &[Node], source: &str) -> Option<String> {
+    for a in attrs {
+        let Some(attr) = child_of_kind(*a, "attribute") else {
+            continue;
+        };
+        // The attribute name is the first named child (an `identifier` for a
+        // bare `path`; `crate::path` is a `scoped_identifier` and ignored here,
+        // matching syn's `path().is_ident("path")`).
+        let Some(first) = attr.named_child(0) else {
+            continue;
+        };
+        if first.kind() != "identifier" {
+            continue;
+        }
+        if first.utf8_text(source.as_bytes()).ok() != Some("path") {
+            continue;
+        }
+        let Some(val) = attr.child_by_field_name("value") else {
+            continue;
+        };
+        let Some(content) = child_of_kind(val, "string_content") else {
+            continue;
+        };
+        return content
+            .utf8_text(source.as_bytes())
+            .ok()
+            .map(str::to_string);
+    }
+    None
+}
+
 /// `mod foo;` -> `foo.rs` (preferred) else `foo/mod.rs`. Both editions prefer
 /// the file form. If both exist it is E0761 (compile error); we still pick
 /// `foo.rs` and warn.
@@ -308,39 +341,6 @@ fn vis_text_of(vis: Option<Node>, source: &str) -> Option<String> {
     } else {
         None
     }
-}
-
-/// Extract the string value of a `#[path = "..."]` attribute from a run of
-/// preceding `attribute_item` nodes. Returns the verbatim content (no quotes).
-fn find_path_attr(attrs: &[Node], source: &str) -> Option<String> {
-    for a in attrs {
-        let Some(attr) = child_of_kind(*a, "attribute") else {
-            continue;
-        };
-        // The attribute name is the first named child (an `identifier` for a
-        // bare `path`; `crate::path` is a `scoped_identifier` and ignored here,
-        // matching syn's `path().is_ident("path")`).
-        let Some(first) = attr.named_child(0) else {
-            continue;
-        };
-        if first.kind() != "identifier" {
-            continue;
-        }
-        if first.utf8_text(source.as_bytes()).ok() != Some("path") {
-            continue;
-        }
-        let Some(val) = attr.child_by_field_name("value") else {
-            continue;
-        };
-        let Some(content) = child_of_kind(val, "string_content") else {
-            continue;
-        };
-        return content
-            .utf8_text(source.as_bytes())
-            .ok()
-            .map(str::to_string);
-    }
-    None
 }
 
 #[cfg(test)]

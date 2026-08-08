@@ -11,56 +11,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// No args + uncommitted change -> file is tidied in place via the default
-/// command.
-#[test]
-fn no_args_processes_git_diff() {
-    let Some(repo) = init_repo() else {
-        return;
-    };
-    // Commit the canonical (caller-first) state.
-    let file = "a file 'quoted'.rs";
-    fs::write(repo.join(file), "fn b() { a(); }\nfn a() {}\n").unwrap();
-    git(&repo, &["add", file]);
-    git(&repo, &["commit", "--quiet", "-m", "init"]);
-    // Stage an unsorted change: callee-first is non-canonical.
-    fs::write(repo.join(file), "fn a() {}\nfn b() { a(); }\n").unwrap();
-    git(&repo, &["add", file]);
-    let out = run(&repo, &["--no-config", "--include", "reorder"]);
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let actual = fs::read_to_string(repo.join(file)).unwrap();
-    assert!(actual.find("fn b").unwrap() < actual.find("fn a").unwrap()); // caller first
-    cleanup(&repo);
-}
-
-/// No args from nested cwd + relative diff -> root-level tracked file is processed.
-#[test]
-fn no_args_nested_cwd_ignores_relative_diff_config() {
-    let Some(repo) = init_repo() else {
-        return;
-    };
-    fs::write(repo.join("a.rs"), "fn a() {}\n").unwrap();
-    git(&repo, &["add", "a.rs"]);
-    git(&repo, &["commit", "--quiet", "-m", "init"]);
-    fs::write(repo.join("a.rs"), "fn a() {}\nfn b() { a(); }\n").unwrap();
-    git(&repo, &["config", "diff.relative", "true"]);
-    let nested = repo.join("nested");
-    fs::create_dir_all(&nested).unwrap();
-    let out = run(&nested, &["--no-config", "--include", "reorder"]);
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let actual = fs::read_to_string(repo.join("a.rs")).unwrap();
-    assert!(actual.find("fn b").unwrap() < actual.find("fn a").unwrap());
-    cleanup(&repo);
-}
-
 /// No args + only a deleted file -> nothing to do, exit 0.
 #[test]
 fn no_args_empty_diff_succeeds() {
@@ -110,6 +60,30 @@ fn no_args_empty_diff_with_bad_config_errors() {
     cleanup(&repo);
 }
 
+/// No args from nested cwd + relative diff -> root-level tracked file is processed.
+#[test]
+fn no_args_nested_cwd_ignores_relative_diff_config() {
+    let Some(repo) = init_repo() else {
+        return;
+    };
+    fs::write(repo.join("a.rs"), "fn a() {}\n").unwrap();
+    git(&repo, &["add", "a.rs"]);
+    git(&repo, &["commit", "--quiet", "-m", "init"]);
+    fs::write(repo.join("a.rs"), "fn a() {}\nfn b() { a(); }\n").unwrap();
+    git(&repo, &["config", "diff.relative", "true"]);
+    let nested = repo.join("nested");
+    fs::create_dir_all(&nested).unwrap();
+    let out = run(&nested, &["--no-config", "--include", "reorder"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let actual = fs::read_to_string(repo.join("a.rs")).unwrap();
+    assert!(actual.find("fn b").unwrap() < actual.find("fn a").unwrap());
+    cleanup(&repo);
+}
+
 /// No args outside a git repo -> non-zero exit, helpful stderr.
 #[test]
 fn no_args_not_in_repo_errors() {
@@ -126,6 +100,37 @@ fn no_args_not_in_repo_errors() {
         "stderr should tell the user to pass paths: {stderr}"
     );
     cleanup(&dir);
+}
+
+/// No args + uncommitted change -> file is tidied in place via the default
+/// command.
+#[test]
+fn no_args_processes_git_diff() {
+    let Some(repo) = init_repo() else {
+        return;
+    };
+    // Commit the canonical (caller-first) state.
+    let file = "a file 'quoted'.rs";
+    fs::write(repo.join(file), "fn b() { a(); }\nfn a() {}\n").unwrap();
+    git(&repo, &["add", file]);
+    git(&repo, &["commit", "--quiet", "-m", "init"]);
+    // Stage an unsorted change: callee-first is non-canonical.
+    fs::write(repo.join(file), "fn a() {}\nfn b() { a(); }\n").unwrap();
+    git(&repo, &["add", file]);
+    let out = run(&repo, &["--no-config", "--include", "reorder"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let actual = fs::read_to_string(repo.join(file)).unwrap();
+    assert!(actual.find("fn b").unwrap() < actual.find("fn a").unwrap()); // caller first
+    cleanup(&repo);
+}
+
+/// Remove a throwaway temp dir created by `temp_dir`/`init_repo`.
+fn cleanup(dir: &std::path::Path) {
+    let _ = fs::remove_dir_all(dir);
 }
 
 // -- Helpers (mirrors integration.rs) --------------------------------
@@ -157,9 +162,14 @@ fn run(current_dir: &std::path::Path, args: &[&str]) -> std::process::Output {
         .expect("failed to spawn")
 }
 
-/// Remove a throwaway temp dir created by `temp_dir`/`init_repo`.
-fn cleanup(dir: &std::path::Path) {
-    let _ = fs::remove_dir_all(dir);
+fn binary() -> std::path::PathBuf {
+    if let Some(path) = std::env::var_os("CARGO_BIN_EXE_rust_llm_tidy") {
+        return std::path::PathBuf::from(path);
+    }
+    let mut path = std::env::current_exe().expect("current_exe must resolve");
+    path.pop();
+    path.pop();
+    path.join("rust-llm-tidy")
 }
 
 fn git(repo: &std::path::Path, args: &[&str]) -> String {
@@ -190,14 +200,4 @@ fn temp_dir() -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-git-{}-{}", pid, seq))
-}
-
-fn binary() -> std::path::PathBuf {
-    if let Some(path) = std::env::var_os("CARGO_BIN_EXE_rust_llm_tidy") {
-        return std::path::PathBuf::from(path);
-    }
-    let mut path = std::env::current_exe().expect("current_exe must resolve");
-    path.pop();
-    path.pop();
-    path.join("rust-llm-tidy")
 }

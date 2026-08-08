@@ -7,11 +7,10 @@
 #![doc = include_str!(concat!("../", env!("CARGO_PKG_README")))]
 
 use ahash::AHashSet;
+pub use modules::{ModuleTree, build_module_tree, discover_crate_root};
 use std::borrow::Cow;
 use std::path::PathBuf;
 use tree_sitter::{Node, Tree};
-
-pub use modules::{ModuleTree, build_module_tree, discover_crate_root};
 
 mod modules;
 
@@ -32,6 +31,17 @@ pub struct ParsedFile {
     pub(crate) tree: Tree,
 }
 
+/// Crate-wide set of simple names re-exported via `pub use` across every file
+/// in a crate, plus the glob sentinel `"*"`.
+///
+/// Built by [`collect_crate_reexports`]. A glob (`pub use p::*`) in ANY file
+/// records `"*"`, which (soundness) disables narrowing for every named child
+/// across the crate - matching the per-file glob behavior at a crate scope.
+/// This is the conservative default for cross-file glob scope; a
+/// finer-grained per-module-path glob is left as future work.
+#[derive(Default)]
+pub struct ReexportSet(AHashSet<String>);
+
 impl ParsedFile {
     /// Parse `source` (from the file at `path`) into a [`ParsedFile`].
     ///
@@ -46,17 +56,6 @@ impl ParsedFile {
         Ok(Self { path, source, tree })
     }
 }
-
-/// Crate-wide set of simple names re-exported via `pub use` across every file
-/// in a crate, plus the glob sentinel `"*"`.
-///
-/// Built by [`collect_crate_reexports`]. A glob (`pub use p::*`) in ANY file
-/// records `"*"`, which (soundness) disables narrowing for every named child
-/// across the crate - matching the per-file glob behavior at a crate scope.
-/// This is the conservative default for cross-file glob scope; a
-/// finer-grained per-module-path glob is left as future work.
-#[derive(Default)]
-pub struct ReexportSet(AHashSet<String>);
 
 impl ReexportSet {
     /// Empty set (no re-exports, no glob).
@@ -185,6 +184,16 @@ pub fn narrow_vis_in_tree<'a>(
     }
 }
 
+/// First named child of `node` whose kind equals `kind`.
+#[inline]
+pub(crate) fn child_of_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
+    let count = node.named_child_count() as u32;
+    (0..count).find_map(|i| {
+        let c = node.named_child(i)?;
+        (c.kind() == kind).then_some(c)
+    })
+}
+
 /// The `visibility_modifier` child of `node`, if present (bare `pub`,
 /// `pub(crate)`, etc.). `None` for private (inherited-visibility) items.
 #[inline]
@@ -197,31 +206,6 @@ pub(crate) fn visibility_node<'a>(node: Node<'a>) -> Option<Node<'a>> {
         }
     }
     None
-}
-
-/// First named child of `node` whose kind equals `kind`.
-#[inline]
-pub(crate) fn child_of_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
-    let count = node.named_child_count() as u32;
-    (0..count).find_map(|i| {
-        let c = node.named_child(i)?;
-        (c.kind() == kind).then_some(c)
-    })
-}
-
-/// Parse `source` with the `tree-sitter-rust` grammar. The returned [`Tree`]
-/// stores byte offsets (not references), so it stays valid for the caller's
-/// source bytes as long as those bytes are not mutated.
-fn parse(source: &str) -> anyhow::Result<Tree> {
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&rust_language()?)?;
-    parser
-        .parse(source, None)
-        .ok_or_else(|| anyhow::anyhow!("tree-sitter parse returned no tree"))
-}
-
-fn rust_language() -> anyhow::Result<tree_sitter::Language> {
-    Ok(tree_sitter_rust::LANGUAGE.into())
 }
 
 /// Apply byte edits back-to-front (descending start offset) so earlier offsets
@@ -268,6 +252,89 @@ fn collect_reexports(container: Node, source: &[u8], out: &mut Option<AHashSet<S
             }
             _ => {}
         }
+    }
+}
+
+/// Same as `narrow_if_eligible` but the floor text is owned (the tree path, not
+/// a slice of `source`), so the pushed edit wraps `Cow::Owned(floor.to_string())`.
+/// Kept as a thin twin to preserve `walk()`'s hot-path `&'a str` borrowing (no
+/// allocation).
+fn narrow_if_eligible_owned<'a, 'n>(
+    item: Node<'n>,
+    floor: &'a str,
+    source: &'a str,
+    reexported: Option<&AHashSet<String>>,
+    edits: &mut Vec<(usize, usize, Cow<'a, str>)>,
+) {
+    let Some(name) = eligible_name(item) else {
+        return;
+    };
+    let Some(vis) = visibility_node(item) else {
+        return; // private (no visibility) - not bare `pub`
+    };
+    if !is_bare_pub(vis) {
+        return; // already restricted - idempotent skip
+    }
+    if let Some(set) = reexported
+        && let Ok(n) = name.utf8_text(source.as_bytes())
+        && (set.contains(n) || set.contains("*"))
+    {
+        return;
+    }
+    edits.push((
+        vis.start_byte(),
+        vis.end_byte(),
+        Cow::Owned(floor.to_string()),
+    ));
+}
+
+/// Parse `source` with the `tree-sitter-rust` grammar. The returned [`Tree`]
+/// stores byte offsets (not references), so it stays valid for the caller's
+/// source bytes as long as those bytes are not mutated.
+fn parse(source: &str) -> anyhow::Result<Tree> {
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&rust_language()?)?;
+    parser
+        .parse(source, None)
+        .ok_or_else(|| anyhow::anyhow!("tree-sitter parse returned no tree"))
+}
+
+/// Recursively walk items, descending only into inline `mod_item` bodies.
+///
+/// `floor` is the verbatim visibility text of the innermost restricted ancestor
+/// module (e.g. `"pub(crate)"`), or `None` at the crate root / inside a
+/// non-restricted ancestor. Children of a restricted module are narrowed in
+/// place; the walk then recurses so the floor propagates transitively.
+fn walk<'a, 'n>(
+    container: Node<'n>,
+    floor: Option<&'a str>,
+    source: &'a str,
+    reexported: Option<&AHashSet<String>>,
+    edits: &mut Vec<(usize, usize, Cow<'a, str>)>,
+) {
+    let count = container.named_child_count() as u32;
+    for i in 0..count {
+        let item = container.named_child(i).unwrap();
+        if item.kind() != "mod_item" {
+            continue;
+        }
+        let Some(body) = item.child_by_field_name("body") else {
+            continue; // `mod foo;` (file form) - no inline body to narrow
+        };
+
+        // A restricted-visibility inline module becomes the new floor; a `pub`
+        // or private module inherits the enclosing floor (transitive).
+        let new_floor = match visibility_node(item) {
+            Some(v) if v.named_child_count() >= 1 => Some(&source[v.start_byte()..v.end_byte()]),
+            _ => floor,
+        };
+
+        let m = body.named_child_count() as u32;
+        for j in 0..m {
+            let child = body.named_child(j).unwrap();
+            narrow_if_eligible(child, new_floor, source, reexported, edits);
+        }
+        walk(body, new_floor, source, reexported, edits);
     }
 }
 
@@ -335,78 +402,6 @@ fn collect_use_clause(node: Node, source: &[u8], out: &mut AHashSet<String>) {
     }
 }
 
-/// Same as `narrow_if_eligible` but the floor text is owned (the tree path, not
-/// a slice of `source`), so the pushed edit wraps `Cow::Owned(floor.to_string())`.
-/// Kept as a thin twin to preserve `walk()`'s hot-path `&'a str` borrowing (no
-/// allocation).
-fn narrow_if_eligible_owned<'a, 'n>(
-    item: Node<'n>,
-    floor: &'a str,
-    source: &'a str,
-    reexported: Option<&AHashSet<String>>,
-    edits: &mut Vec<(usize, usize, Cow<'a, str>)>,
-) {
-    let Some(name) = eligible_name(item) else {
-        return;
-    };
-    let Some(vis) = visibility_node(item) else {
-        return; // private (no visibility) - not bare `pub`
-    };
-    if !is_bare_pub(vis) {
-        return; // already restricted - idempotent skip
-    }
-    if let Some(set) = reexported
-        && let Ok(n) = name.utf8_text(source.as_bytes())
-        && (set.contains(n) || set.contains("*"))
-    {
-        return;
-    }
-    edits.push((
-        vis.start_byte(),
-        vis.end_byte(),
-        Cow::Owned(floor.to_string()),
-    ));
-}
-
-/// Recursively walk items, descending only into inline `mod_item` bodies.
-///
-/// `floor` is the verbatim visibility text of the innermost restricted ancestor
-/// module (e.g. `"pub(crate)"`), or `None` at the crate root / inside a
-/// non-restricted ancestor. Children of a restricted module are narrowed in
-/// place; the walk then recurses so the floor propagates transitively.
-fn walk<'a, 'n>(
-    container: Node<'n>,
-    floor: Option<&'a str>,
-    source: &'a str,
-    reexported: Option<&AHashSet<String>>,
-    edits: &mut Vec<(usize, usize, Cow<'a, str>)>,
-) {
-    let count = container.named_child_count() as u32;
-    for i in 0..count {
-        let item = container.named_child(i).unwrap();
-        if item.kind() != "mod_item" {
-            continue;
-        }
-        let Some(body) = item.child_by_field_name("body") else {
-            continue; // `mod foo;` (file form) - no inline body to narrow
-        };
-
-        // A restricted-visibility inline module becomes the new floor; a `pub`
-        // or private module inherits the enclosing floor (transitive).
-        let new_floor = match visibility_node(item) {
-            Some(v) if v.named_child_count() >= 1 => Some(&source[v.start_byte()..v.end_byte()]),
-            _ => floor,
-        };
-
-        let m = body.named_child_count() as u32;
-        for j in 0..m {
-            let child = body.named_child(j).unwrap();
-            narrow_if_eligible(child, new_floor, source, reexported, edits);
-        }
-        walk(body, new_floor, source, reexported, edits);
-    }
-}
-
 /// If `item` is a bare-`pub` child under a restricted-visibility floor, push an
 /// edit replacing the `pub` token with the floor's visibility text.
 ///
@@ -445,6 +440,10 @@ fn narrow_if_eligible<'a, 'n>(
     }
 
     edits.push((vis.start_byte(), vis.end_byte(), Cow::Borrowed(floor)));
+}
+
+fn rust_language() -> anyhow::Result<tree_sitter::Language> {
+    Ok(tree_sitter_rust::LANGUAGE.into())
 }
 
 /// The `name` field node of an item kind eligible for narrowing (fn, struct,

@@ -2,12 +2,37 @@
 //! extension, and resolving the effective input list (explicit paths or git
 //! diff).
 
+use super::Cli;
+use crate::diff;
 use anyhow::{Context, bail};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::Cli;
-use crate::diff;
+/// Recursively collect all files under `dir` whose extension is in `exts`.
+pub(crate) fn collect_files(
+    dir: &Path,
+    exts: &[&str],
+    out: &mut Vec<PathBuf>,
+) -> anyhow::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let metadata = entry.metadata()?;
+
+        if metadata.is_dir() {
+            collect_files(&path, exts, out)?;
+        } else if metadata.is_file()
+            && path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| exts.contains(&e))
+        {
+            out.push(path);
+        }
+    }
+
+    Ok(())
+}
 
 // ---------------------------------------------------------------------------
 // Shared path resolution
@@ -65,30 +90,4 @@ fn resolve_paths(path: &Path, exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
     files.sort();
 
     Ok(files)
-}
-
-/// Recursively collect all files under `dir` whose extension is in `exts`.
-pub(crate) fn collect_files(
-    dir: &Path,
-    exts: &[&str],
-    out: &mut Vec<PathBuf>,
-) -> anyhow::Result<()> {
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        let metadata = entry.metadata()?;
-
-        if metadata.is_dir() {
-            collect_files(&path, exts, out)?;
-        } else if metadata.is_file()
-            && path
-                .extension()
-                .and_then(|e| e.to_str())
-                .is_some_and(|e| exts.contains(&e))
-        {
-            out.push(path);
-        }
-    }
-
-    Ok(())
 }
