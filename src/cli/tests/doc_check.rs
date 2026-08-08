@@ -447,14 +447,6 @@ fn json_dry_run_records_changes_for_both_flags() {
         assert_eq!(array.len(), 1, "expected 1 reorder record, got:\n{stdout}");
         assert_eq!(array[0]["severity"], "success");
         assert_eq!(array[0]["code"], "REORDER");
-        assert!(
-            array[0]["from"].is_number(),
-            "reorder record has a from position"
-        );
-        assert!(
-            array[0]["to"].is_number(),
-            "reorder record has a to position"
-        );
 
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
@@ -543,9 +535,6 @@ fn json_in_place_run_records_reorder_changes() {
     let rec = &array[0];
     assert_eq!(rec["severity"], "success");
     assert_eq!(rec["code"], "REORDER");
-    assert_eq!(rec["from"], 2);
-    assert_eq!(rec["to"], 1);
-    assert_eq!(rec["before_name"], "b_helper");
 }
 
 /// `--output-mode json` on a clean file prints `[]` and exits 0.
@@ -669,9 +658,6 @@ fn json_output_records_reorder_changes() {
     let rec = &array[0];
     assert_eq!(rec["severity"], "success");
     assert_eq!(rec["code"], "REORDER");
-    assert_eq!(rec["from"], 2);
-    assert_eq!(rec["to"], 1);
-    assert_eq!(rec["before_name"], "b_helper");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -706,8 +692,7 @@ fn json_output_reports_all_findings() {
         "expected 3 TEST001 findings, got:\n{stdout}"
     );
     for finding in array {
-        // Pin the lint-only field set: lint records must never carry the
-        // reorder-only `from`/`to`/`before_name` extras, even as nulls.
+        // Pin the exact field set: lint records carry only the base fields.
         let keys: std::collections::BTreeSet<&str> = finding
             .as_object()
             .expect("each record is an object")

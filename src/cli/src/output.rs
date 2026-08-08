@@ -16,9 +16,7 @@ use std::path::{Path, PathBuf};
 /// record, matching the documented JSON schema (`{ path, line, severity, code,
 /// message, item_kind, item_name }`). Lint findings use severity `error` or
 /// `warning`; change records use `success`. `item_name` is `null` when the
-/// item is unnamed. Reorder change records additionally carry optional 1-based
-/// `from`/`to` positions and the `before_name` of the item they land before;
-/// those extras are omitted when `None` so lint-only output is unchanged.
+/// item is unnamed.
 #[derive(Serialize)]
 pub(crate) struct JsonRecord {
     /// Path of the file the record was raised in.
@@ -35,15 +33,6 @@ pub(crate) struct JsonRecord {
     item_kind: String,
     /// Name of the item, or `null` when unnamed.
     item_name: Option<String>,
-    /// 1-based input position of a reorder move, when present.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    from: Option<usize>,
-    /// 1-based output position of a reorder move, when present.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    to: Option<usize>,
-    /// Name of the item a reorder move lands before, when it is not last.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    before_name: Option<String>,
 }
 
 /// Selects the CLI's lint-diagnostic output format.
@@ -86,9 +75,6 @@ fn project_change(path: &Path, c: &Change) -> JsonRecord {
         message: c.message.clone(),
         item_kind: c.kind.clone(),
         item_name: c.name.clone(),
-        from: c.from,
-        to: c.to,
-        before_name: c.before_name.clone(),
     }
 }
 
@@ -105,8 +91,5 @@ fn project_lint(path: &Path, d: &Diagnostic) -> JsonRecord {
         message: d.message.clone(),
         item_kind: d.item_kind.to_string(),
         item_name: d.item_name.clone(),
-        from: None,
-        to: None,
-        before_name: None,
     }
 }

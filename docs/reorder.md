@@ -91,8 +91,7 @@ one record. In text mode the record prints to stderr:
 src/lib.rs:20: success[REORDER]: rearrange fn a_main from pos 2 to pos 1 (before b_helper) (fn `a_main`)
 ```
 
-In JSON mode the same record appears on stdout with `severity: "success"` and
-the reorder extras `from`/`to`/`before_name`:
+In JSON mode the same record appears on stdout with `severity: "success"`:
 
 ```json
 [
@@ -103,10 +102,7 @@ the reorder extras `from`/`to`/`before_name`:
     "code": "REORDER",
     "message": "rearrange fn a_main from pos 2 to pos 1 (before b_helper)",
     "item_kind": "fn",
-    "item_name": "a_main",
-    "from": 2,
-    "to": 1,
-    "before_name": "b_helper"
+    "item_name": "a_main"
   }
 ]
 ```

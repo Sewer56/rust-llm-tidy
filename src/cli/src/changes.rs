@@ -27,13 +27,6 @@ pub(crate) struct Change {
     pub(crate) kind: String,
     /// Name of the affected item, when it has one.
     pub(crate) name: Option<String>,
-    /// 1-based input sequence position of a reorder move, when present.
-    pub(crate) from: Option<usize>,
-    /// 1-based output sequence position of a reorder move, when present.
-    pub(crate) to: Option<usize>,
-    /// Name of the item a reorder move lands before, when it is not last in the
-    /// reordered output.
-    pub(crate) before_name: Option<String>,
 }
 
 impl fmt::Display for Change {
@@ -72,9 +65,6 @@ pub(crate) fn fence_changes(anchors: &[rust_llm_tidy_fix::FixAnchor]) -> Vec<Cha
             message: format!("flip nested fence at line {}", a.line),
             kind: "fence".to_string(),
             name: None,
-            from: None,
-            to: None,
-            before_name: None,
         })
         .collect()
 }
@@ -92,9 +82,6 @@ pub(crate) fn link_changes(pairs: &[(String, String)]) -> Vec<Change> {
             message: format!("`{before}` -> `{after}`"),
             kind: "link".to_string(),
             name: None,
-            from: None,
-            to: None,
-            before_name: None,
         })
         .collect()
 }
@@ -111,9 +98,6 @@ pub(crate) fn table_changes() -> Change {
         message: "tables were aligned".to_string(),
         kind: "table".to_string(),
         name: None,
-        from: None,
-        to: None,
-        before_name: None,
     }
 }
 
@@ -148,9 +132,6 @@ pub(crate) fn vis_changes(source: &str, output: &str) -> Vec<Change> {
             message: format!("narrow visibility of `{name}` at line {}", i + 1),
             kind: kind.to_string(),
             name: Some(name),
-            from: None,
-            to: None,
-            before_name: None,
         });
     }
     changes
@@ -259,9 +240,6 @@ mod tests {
             message: "rearrange fn a_main from pos 2 to pos 1 (before b_helper)".to_string(),
             kind: "fn".to_string(),
             name: Some("a_main".to_string()),
-            from: Some(2),
-            to: Some(1),
-            before_name: Some("b_helper".to_string()),
         };
         assert_eq!(
             named.to_string(),
@@ -277,9 +255,6 @@ mod tests {
             message: "flip nested fence at line 3".to_string(),
             kind: "fence".to_string(),
             name: None,
-            from: None,
-            to: None,
-            before_name: None,
         };
         assert_eq!(
             unnamed.to_string(),

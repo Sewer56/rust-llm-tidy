@@ -353,17 +353,12 @@ records appear on stdout as one JSON array with `severity: "success"`:
     "code": "REORDER",
     "message": "rearrange fn a_main from pos 2 to pos 1 (before b_helper)",
     "item_kind": "fn",
-    "item_name": "a_main",
-    "from": 2,
-    "to": 1,
-    "before_name": "b_helper"
+    "item_name": "a_main"
   }
 ]
 ```
 
-`from`, `to`, and `before_name` are reorder-specific extras and are omitted for
-other ops. Each operation's concrete output in both modes is shown in its own
-doc page.
+Each operation's concrete output in both modes is shown in its own doc page.
 
 [`DOC001`]: #doc001---missing-documentation
 [`DOC002`]: #doc002---missing-errors-section

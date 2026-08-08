@@ -253,9 +253,6 @@ pub(crate) fn reorder_file(
             message: mv.message(),
             kind: mv.kind().to_string(),
             name: mv.name().map(str::to_string),
-            from: Some(mv.from()),
-            to: Some(mv.to()),
-            before_name: mv.before().map(str::to_string),
         });
     }
     if !dry_run {
