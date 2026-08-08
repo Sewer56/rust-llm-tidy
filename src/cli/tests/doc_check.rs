@@ -395,6 +395,126 @@ fn doc006_placeholders() {
     );
 }
 
+/// The `--json` alias is equivalent to `--output-mode json`.
+#[test]
+fn json_alias_is_equivalent_to_output_mode() {
+    let path = fixture_dir().join("clean.rs");
+    let alias = run_command(&["--include", "lints", "--json"], &path);
+    let mode = run_command(&["--include", "lints", "--output-mode", "json"], &path);
+
+    assert_eq!(alias.status.code(), mode.status.code());
+    assert_eq!(alias.stdout, mode.stdout);
+}
+
+/// `--output-mode json` on a clean file prints `[]` and exits 0.
+#[test]
+fn json_output_clean_file_prints_empty_array() {
+    let path = fixture_dir().join("clean.rs");
+    let output = run_command(&["--include", "lints", "--output-mode", "json"], &path);
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "[]\n");
+}
+
+/// `--output-mode json --dry-run` is rejected by clap with a non-zero exit.
+#[test]
+fn json_output_conflicts_with_dry_run() {
+    let path = fixture_dir().join("clean.rs");
+    let output = run_command(&["--output-mode", "json", "--dry-run"], &path);
+
+    assert!(
+        !output.status.success(),
+        "JSON output must not combine with --dry-run"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--dry-run"),
+        "clap should reject the conflict, got:\n{stderr}"
+    );
+}
+
+/// `--output-mode json` on an error-severity fixture exits non-zero and still
+/// prints the JSON document on stdout (before the error-count bail).
+#[test]
+fn json_output_prints_document_before_error_bail() {
+    let path = fixture_dir().join("doc001_missing_docs.rs");
+    let output = run_command(&["--include", "lints", "--output-mode", "json"], &path);
+
+    assert!(
+        !output.status.success(),
+        "error-severity findings must fail the run in JSON mode"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let findings: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("stdout must parse as JSON despite error bail: {e}\n{stdout}"));
+    let array = findings.as_array().expect("JSON output must be an array");
+    assert!(
+        !array.is_empty(),
+        "error fixture must produce findings on stdout"
+    );
+    assert!(array.iter().any(|f| f["severity"] == "error"));
+}
+
+// ── JSON output mode ──────────────────────────────────────────────
+
+/// `--output-mode json` prints one JSON array on stdout with every finding
+/// for all processed files, using the documented fields and lowercase severity.
+#[test]
+fn json_output_reports_all_findings() {
+    let path = fixture_dir().join("test001_test_naming.rs");
+    let output = run_command(&["--include", "lints", "--output-mode", "json"], &path);
+
+    assert!(
+        output.status.success(),
+        "warnings-only JSON run should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let findings: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("stdout must parse as JSON: {e}\n{stdout}"));
+    let array = findings.as_array().expect("JSON output must be an array");
+
+    assert_eq!(
+        array.len(),
+        3,
+        "expected 3 TEST001 findings, got:\n{stdout}"
+    );
+    for finding in array {
+        assert_eq!(finding["severity"], "warning");
+        assert_eq!(finding["code"], "TEST001");
+        assert_eq!(finding["item_kind"], "fn");
+        assert_eq!(
+            finding["path"],
+            path.to_str().unwrap(),
+            "finding must carry the processed file path"
+        );
+        assert!(finding["line"].as_u64().is_some_and(|l| l >= 1));
+        assert!(
+            finding["message"].as_str().is_some_and(|m| !m.is_empty()),
+            "message field must be present and non-empty, got: {finding}"
+        );
+        assert!(
+            finding["item_name"].is_string(),
+            "item_name must be a string for a named item, got: {finding}"
+        );
+    }
+
+    // Pin the null-when-absent contract: item_name is null only for
+    // unnamed items, and no finding in this fixture is unnamed.
+    assert!(
+        array.iter().all(|f| f["item_name"].is_string()),
+        "item_name must be non-null for named test functions, got:\n{stdout}"
+    );
+
+    // No plaintext diagnostic line should reach stderr in JSON mode.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("TEST001"),
+        "JSON mode must not duplicate diagnostics on stderr, got:\n{stderr}"
+    );
+}
+
 /// `should_pass_when_valid` is a behavioral name and is not flagged.
 #[test]
 fn test001_behavioral_not_flagged() {

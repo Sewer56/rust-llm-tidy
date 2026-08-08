@@ -725,6 +725,7 @@ dependencies = [
  "rust-llm-tidy-reorder",
  "rust-llm-tidy-vis",
  "serde",
+ "serde_json",
  "serde_yml",
 ]
 

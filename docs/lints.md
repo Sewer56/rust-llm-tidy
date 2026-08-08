@@ -298,6 +298,37 @@ rust-llm-tidy --include lints src
 rust-llm-tidy --exclude lints src
 ```
 
+## JSON output
+
+Print every lint finding as one JSON array on stdout. Prints `[]` when no
+findings, and still prints the document when the run exits non-zero:
+
+```json
+[
+  {
+    "path": "src/lib.rs",
+    "line": 1,
+    "severity": "error",
+    "code": "DOC001",
+    "message": "non-private item is missing a doc comment",
+    "item_kind": "fn",
+    "item_name": "load"
+  }
+]
+```
+
+Fields:
+
+- `severity` - `"error"` or `"warning"`
+- `line` - 1-based item start line
+- `item_name` - item name, `null` when unnamed
+- `path`, `code`, `message`, `item_kind` - as in plaintext
+
+In JSON mode the plaintext `path:line: sev[CODE]: ...` diagnostics are not
+printed to stderr. `--output-mode json` cannot be combined with `--dry-run`:
+dry-run prints reordered file contents to stdout, which would corrupt the JSON
+document.
+
 [`DOC001`]: #doc001---missing-documentation
 [`DOC002`]: #doc002---missing-errors-section
 [`DOC003`]: #doc003---vague-errors-section

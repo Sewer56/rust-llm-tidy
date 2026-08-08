@@ -16,14 +16,16 @@
 //!
 //! # Flags
 //!
-//! | Flag               | Effect                                              |
-//! | ------------------ | --------------------------------------------------- |
-//! | `--validate`       | Validate config and exit (no files touched)         |
-//! | `--include <RULE>` | Run only these rules (repeatable, overrides config) |
-//! | `--exclude <RULE>` | Skip these rules (repeatable, additive)             |
-//! | `--dry-run`        | Print results to stdout                             |
-//! | `--config <PATH>`  | Explicit config path                                |
-//! | `--no-config`      | Disable config discovery                            |
+//! | Flag                | Effect                                              |
+//! | ------------------- | --------------------------------------------------- |
+//! | `--validate`        | Validate config and exit (no files touched)         |
+//! | `--include <RULE>`  | Run only these rules (repeatable, overrides config) |
+//! | `--exclude <RULE>`  | Skip these rules (repeatable, additive)             |
+//! | `--dry-run`         | Print results to stdout                             |
+//! | `--config <PATH>`   | Explicit config path                                |
+//! | `--no-config`       | Disable config discovery                            |
+//! | `--output-mode <M>` | Lint output format: `text` (default) or `json`      |
+//! | `--json`            | Alias for `--output-mode json`                      |
 //!
 //! See `docs/` for per-feature documentation with before/after examples.
 
@@ -48,6 +50,7 @@ use std::path::{Path, PathBuf};
 
 mod config;
 mod diff;
+mod output;
 mod paths;
 mod pipeline;
 
@@ -83,6 +86,18 @@ pub(crate) struct Cli {
     /// Disable config discovery and loading entirely.
     #[arg(long, global = true, conflicts_with = "config")]
     no_config: bool,
+    /// Lint output format: `text` (default) prints plaintext diagnostics to
+    /// stderr; `json` prints a single JSON array of all findings to stdout.
+    #[arg(
+        long,
+        value_name = "MODE",
+        default_value = "text",
+        conflicts_with = "dry_run"
+    )]
+    output_mode: output::OutputMode,
+    /// Alias for `--output-mode json`.
+    #[arg(long, conflicts_with_all = ["dry_run", "output_mode"])]
+    json: bool,
 }
 
 /// Crate-aware context for the `vis` step: a prebuilt module tree (per-file
@@ -94,14 +109,26 @@ pub(crate) struct VisContext {
     reexports: ReexportSet,
 }
 
+impl Cli {
+    /// Whether the run should emit lint findings as JSON on stdout. Both
+    /// `--output-mode json` and the `--json` alias select JSON mode.
+    fn json_mode(&self) -> bool {
+        self.output_mode == output::OutputMode::Json || self.json
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Per-file operations
 // ---------------------------------------------------------------------------
 
-/// Check a single source file and print any diagnostics to stderr.
+/// Check a single source file and return its lint diagnostics.
 ///
-/// Returns the number of error-severity diagnostics found.
-pub(crate) fn check_file(path: &Path, disabled: &HashSet<String>) -> anyhow::Result<usize> {
+/// Returns `(path, diagnostics)` pairs so the caller can either print the
+/// plaintext lines to stderr (default output) or project them to JSON.
+pub(crate) fn check_file(
+    path: &Path,
+    disabled: &HashSet<String>,
+) -> anyhow::Result<Vec<(PathBuf, rust_llm_tidy_lint::Diagnostic)>> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
 
@@ -111,18 +138,10 @@ pub(crate) fn check_file(path: &Path, disabled: &HashSet<String>) -> anyhow::Res
     let mut diagnostics = check::run_all(&parsed);
     diagnostics.retain(|d| !disabled.contains(d.code));
 
-    let error_count = diagnostics
-        .iter()
-        .filter(|d| matches!(d.severity, rust_llm_tidy_lint::Severity::Error))
-        .count();
-
-    if !diagnostics.is_empty() {
-        for diag in &diagnostics {
-            eprintln!("{}:{}", path.display(), diag);
-        }
-    }
-
-    Ok(error_count)
+    Ok(diagnostics
+        .into_iter()
+        .map(|d| (path.to_path_buf(), d))
+        .collect())
 }
 
 /// Fix table alignment, nested fence delimiters, and repeated inline links in a

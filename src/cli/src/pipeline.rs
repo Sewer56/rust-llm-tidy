@@ -5,7 +5,7 @@ use super::Cli;
 use crate::config::{CompiledConfig, PostProcessStep};
 use crate::paths;
 use anyhow::bail;
-use rust_llm_tidy_lint::check;
+use rust_llm_tidy_lint::{Severity, check};
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -26,13 +26,20 @@ pub(crate) fn run_pipeline(
     // is a success: config was already validated up front, and 0 files were
     // processed. post_process runs over 0 files.
     if paths.is_empty() {
+        // JSON mode still owns stdout: emit `[]` so consumers always receive
+        // exactly one valid JSON document when processing completes.
+        if cli.json_mode() {
+            crate::output::emit_diagnostics(&[])?;
+        }
         return Ok(());
     }
 
     let multiple_files = paths.len() > 1;
+    let json_mode = cli.json_mode();
     let mut error_count = 0usize;
     let mut failed = Vec::new();
     let mut processed: Vec<PathBuf> = Vec::new();
+    let mut diagnostics: Vec<(PathBuf, rust_llm_tidy_lint::Diagnostic)> = Vec::new();
 
     // Build VisContext once for the crate-aware default in the vis step.
     // Only needed when vis could possibly run.
@@ -131,7 +138,19 @@ pub(crate) fn run_pipeline(
                 _ => disabled.clone(),
             };
             match super::check_file(path, &lint_disabled) {
-                Ok(errs) => error_count += errs,
+                Ok(found) => {
+                    for (p, d) in &found {
+                        if matches!(d.severity, Severity::Error) {
+                            error_count += 1;
+                        }
+                        // Diagnostics are surfaced after the loop: either
+                        // printed to stderr (plaintext) or projected to JSON.
+                        if !json_mode {
+                            eprintln!("{}:{}", p.display(), d);
+                        }
+                    }
+                    diagnostics.extend(found);
+                }
                 Err(e) => {
                     eprintln!("error processing {}: {e:?}", path.display());
                     failed.push(path);
@@ -143,6 +162,14 @@ pub(crate) fn run_pipeline(
         if should_post_process {
             processed.push(path.clone());
         }
+    }
+
+    // Emit the full JSON document on stdout before any bail (post-process,
+    // processing-failure, or error-count) so consumers receive every finding
+    // together with the non-zero exit code. Plaintext stays on stderr (already
+    // printed above).
+    if json_mode {
+        crate::output::emit_diagnostics(&diagnostics)?;
     }
 
     if let Some(c) = config

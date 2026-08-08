@@ -56,10 +56,15 @@ rust-llm-tidy --exclude lints src
 
 # Validate the config without processing files
 rust-llm-tidy --validate
+
+# Emit the lint findings as a single JSON array on stdout
+rust-llm-tidy --output-mode json src/main.rs
 ```
 
 Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
-`--include <OP>` (repeatable), `--exclude <OP>` (repeatable).
+`--include <OP>` (repeatable), `--exclude <OP>` (repeatable),
+`--output-mode <MODE>` (`text` default or `json`), `--json` (alias for
+`--output-mode json`).
 
 #### Operations
 
@@ -71,6 +76,36 @@ Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
 | `reorder` | canonical item ordering                 | yes     | yes         |
 | `vis`     | narrow bare `pub` in restricted modules | yes     | yes         |
 | `lints`   | run DOC001-DOC006 + TEST001 checks      | no      | yes         |
+
+#### JSON output
+
+Emit every lint finding as one JSON array on stdout. Prints `[]` when no
+findings, and still prints the document when the run exits non-zero:
+
+```json
+[
+  {
+    "path": "src/main.rs",
+    "line": 22,
+    "severity": "error",
+    "code": "DOC001",
+    "message": "non-private item is missing a doc comment",
+    "item_kind": "fn",
+    "item_name": "load"
+  }
+]
+```
+
+Fields:
+
+- `severity` - `"error"` or `"warning"`
+- `line` - 1-based item start line
+- `item_name` - item name, `null` when unnamed
+- `path`, `code`, `message`, `item_kind` - as in plaintext
+
+In JSON mode the per-line plaintext diagnostics are not printed to stderr.
+`--output-mode json` cannot be combined with `--dry-run`: dry-run prints file
+contents to stdout, which would corrupt the JSON document.
 
 #### Feature documentation
 
