@@ -25,11 +25,11 @@ fn all_clean_file() {
     );
 }
 
-/// `all --dry-run` applies table fixes to a `.md` file.
+/// `all --dry-run` applies table fixes to a `.md` file and reports the change
+/// record on stderr, leaving stdout empty.
 #[test]
 fn all_md_dry_run_fixes_tables() {
     let before = fix_fixture_dir().join("table_md_before.md");
-    let expected = fs::read_to_string(fix_fixture_dir().join("table_md_after.md")).unwrap();
     let output = run_command(&["--dry-run"], &before);
 
     assert!(
@@ -37,8 +37,15 @@ fn all_md_dry_run_fixes_tables() {
         "all --dry-run on markdown should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, expected, "markdown table should be fixed");
+    assert!(
+        output.stdout.is_empty(),
+        "dry-run must not print reconstructed source to stdout"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("success[FIX]"),
+        "all --dry-run must report the table fix on stderr: {stderr}"
+    );
 }
 
 /// `all` fixes markdown tables in place but skips reorder/check for `.md`.

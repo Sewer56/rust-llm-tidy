@@ -64,11 +64,11 @@ fn vis_crate_aware_narrows_cross_file() {
     let _ = fs::remove_dir_all(lib_path.parent().unwrap().parent().unwrap());
 }
 
-/// `vis --dry-run` on `narrow_pub_crate_before.rs` matches `_after.rs`.
+/// `vis --dry-run` on `narrow_pub_crate_before.rs` reports one change record
+/// per narrowed item on stderr and leaves stdout empty.
 #[test]
-fn vis_dry_run_matches_after() {
+fn vis_dry_run_reports_changes() {
     let before = fixture_dir().join("narrow_pub_crate_before.rs");
-    let expected = fs::read_to_string(fixture_dir().join("narrow_pub_crate_after.rs")).unwrap();
     let output = run_command(&["--include", "vis", "--dry-run"], &before);
 
     assert!(
@@ -76,28 +76,41 @@ fn vis_dry_run_matches_after() {
         "vis --dry-run should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(
-        stdout, expected,
-        "dry-run stdout must match narrow_pub_crate_after.rs"
+    assert!(
+        output.stdout.is_empty(),
+        "dry-run must not print reconstructed source to stdout"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("success[VIS]"),
+        "dry-run must report visibility narrowing on stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("narrow visibility of `f` at line 3")
+            && stderr.contains("narrow visibility of `S` at line 5")
+            && stderr.contains("narrow visibility of `C` at line 7"),
+        "each narrowed item must be reported at its own line: {stderr}"
     );
 }
 
-/// Idempotency: running `vis --dry-run` on an `_after` fixture is a no-op.
+/// Idempotency: running `vis --dry-run` on an `_after` fixture is a no-op with
+/// zero change records.
 #[test]
 fn vis_idempotent_on_after_fixtures() {
     for name in ["narrow_pub_crate_after.rs", "reexport_guard_after.rs"] {
         let path = fixture_dir().join(name);
-        let expected = fs::read_to_string(&path).unwrap();
         let output = run_command(&["--include", "vis", "--dry-run"], &path);
         assert!(
             output.status.success(),
             "vis --dry-run on {name} should succeed"
         );
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert_eq!(
-            &*stdout, &*expected,
-            "{name} must be idempotent (output unchanged)"
+        assert!(
+            output.stdout.is_empty(),
+            "{name} dry-run must not print source to stdout"
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "{name} is already tidy: dry-run must emit zero change records"
         );
     }
 }
@@ -140,11 +153,11 @@ fn vis_nonexistent_path_fails() {
     );
 }
 
-/// `vis --dry-run` on `reexport_guard_before.rs` leaves it unchanged.
+/// `vis --dry-run` on `reexport_guard_before.rs` narrows nothing (the item is
+/// re-exported), so it emits zero change records.
 #[test]
 fn vis_reexport_guard_unchanged() {
     let before = fixture_dir().join("reexport_guard_before.rs");
-    let expected = fs::read_to_string(fixture_dir().join("reexport_guard_after.rs")).unwrap();
     let output = run_command(&["--include", "vis", "--dry-run"], &before);
 
     assert!(
@@ -152,10 +165,13 @@ fn vis_reexport_guard_unchanged() {
         "vis --dry-run should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(
-        stdout, expected,
-        "re-export guard: dry-run stdout must match reexport_guard_after.rs (unchanged)"
+    assert!(
+        output.stdout.is_empty(),
+        "dry-run must not print reconstructed source to stdout"
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "re-export guard: re-exported item must not be narrowed (zero records)"
     );
 }
 

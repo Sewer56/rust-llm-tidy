@@ -7,7 +7,7 @@ use crate::paths;
 use anyhow::bail;
 use rust_llm_tidy_lint::{Severity, check};
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // ---------------------------------------------------------------------------
 // Pipeline
@@ -34,12 +34,12 @@ pub(crate) fn run_pipeline(
         return Ok(());
     }
 
-    let multiple_files = paths.len() > 1;
     let json_mode = cli.json_mode();
     let mut error_count = 0usize;
     let mut failed = Vec::new();
     let mut processed: Vec<PathBuf> = Vec::new();
     let mut diagnostics: Vec<(PathBuf, rust_llm_tidy_lint::Diagnostic)> = Vec::new();
+    let mut changes: Vec<(PathBuf, crate::changes::Change)> = Vec::new();
 
     // Build VisContext once for the crate-aware default in the vis step.
     // Only needed when vis could possibly run.
@@ -77,14 +77,18 @@ pub(crate) fn run_pipeline(
             .any(|op| op_enabled(op, enabled, disabled));
 
         // Fix table alignment first (auto-fixable formatting).
-        if (op_enabled("tables", enabled, disabled)
+        if op_enabled("tables", enabled, disabled)
             || op_enabled("fences", enabled, disabled)
-            || op_enabled("links", enabled, disabled))
-            && let Err(e) = super::fix_file(path, cli.dry_run, multiple_files, enabled, disabled)
+            || op_enabled("links", enabled, disabled)
         {
-            eprintln!("error processing {}: {e:?}", path.display());
-            failed.push(path);
-            continue;
+            match super::fix_file(path, cli.dry_run, enabled, disabled) {
+                Ok(found) => record_changes(&mut changes, path, found, json_mode),
+                Err(e) => {
+                    eprintln!("error processing {}: {e:?}", path.display());
+                    failed.push(path);
+                    continue;
+                }
+            }
         }
 
         // Reorder/check are Rust-only operations.
@@ -100,22 +104,27 @@ pub(crate) fn run_pipeline(
         }
 
         // Reorder next (fixes ordering).
-        if op_enabled("reorder", enabled, disabled)
-            && let Err(e) = super::reorder_file(path, cli.dry_run, multiple_files, disabled)
-        {
-            eprintln!("error processing {}: {e:?}", path.display());
-            failed.push(path);
-            continue;
+        if op_enabled("reorder", enabled, disabled) {
+            match super::reorder_file(path, cli.dry_run, disabled) {
+                Ok(found) => record_changes(&mut changes, path, found, json_mode),
+                Err(e) => {
+                    eprintln!("error processing {}: {e:?}", path.display());
+                    failed.push(path);
+                    continue;
+                }
+            }
         }
         // Narrow visibility next (fixes misleading bare `pub` inside
         // restricted-visibility inline modules).
-        if op_enabled("vis", enabled, disabled)
-            && let Err(e) =
-                super::vis_file(path, cli.dry_run, multiple_files, ctx.as_ref(), disabled)
-        {
-            eprintln!("error processing {}: {e:?}", path.display());
-            failed.push(path);
-            continue;
+        if op_enabled("vis", enabled, disabled) {
+            match super::vis_file(path, cli.dry_run, ctx.as_ref(), disabled) {
+                Ok(found) => record_changes(&mut changes, path, found, json_mode),
+                Err(e) => {
+                    eprintln!("error processing {}: {e:?}", path.display());
+                    failed.push(path);
+                    continue;
+                }
+            }
         }
         // Then lints (reports remaining doc gaps).
         let lints_on = !disabled.contains("lints")
@@ -257,4 +266,21 @@ pub(crate) fn run_post_process(steps: &[PostProcessStep], files: &[PathBuf]) -> 
         }
     }
     failed
+}
+
+/// Record a transformation's dry-run change records for one file: print them as
+/// plaintext lines on stderr (text mode) and retain them for the unified output
+/// document. Shared by the fix, reorder, and vis op arms.
+fn record_changes(
+    changes: &mut Vec<(PathBuf, crate::changes::Change)>,
+    path: &Path,
+    found: Vec<crate::changes::Change>,
+    json_mode: bool,
+) {
+    for change in &found {
+        if !json_mode {
+            eprintln!("{}:{}", path.display(), change);
+        }
+    }
+    changes.extend(found.into_iter().map(|c| (path.to_path_buf(), c)));
 }

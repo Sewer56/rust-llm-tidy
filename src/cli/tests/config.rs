@@ -296,15 +296,20 @@ fn fix_excludes_links_rule() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Dry-run reports change records on stderr, never reconstructed source.
     assert!(
-        !stdout.contains("[A]: http://x"),
-        "links must NOT be hoisted when `links` is disabled: {stdout:?}"
+        output.stdout.is_empty(),
+        "dry-run must not print reconstructed source to stdout"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("hoist link"),
+        "links must NOT be hoisted when `links` is disabled: {stderr:?}"
     );
     // Tables are still applied (the `links` disable is selective, not blanket).
     assert!(
-        stdout.contains("| -------- |"),
-        "tables must still be applied when only `links` is disabled: {stdout:?}"
+        stderr.contains("realign table"),
+        "tables must still be applied when only `links` is disabled: {stderr:?}"
     );
     let _ = fs::remove_dir_all(&dir);
 }

@@ -48,6 +48,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+mod changes;
 mod config;
 mod diff;
 mod output;
@@ -151,55 +152,65 @@ pub(crate) fn check_file(
 /// [`fix::fix_links`], and writes the result back via [`io::atomic_write`]
 /// unless `--dry-run` is given.
 ///
-/// On dry-run with multiple files, a neutral `<!-- {path} -->` HTML-comment
-/// header is emitted (valid in both markdown and harmless in stdout).
+/// On dry-run, the would-be edit set is returned as per-file
+/// [`changes::Change`] records instead of printing the reconstructed source;
+/// the caller reports them on stderr. In-place (non-dry-run) runs return no
+/// records.
 ///
 /// `fix` never fails on content; it exits non-zero only on I/O errors.
 pub(crate) fn fix_file(
     path: &Path,
     dry_run: bool,
-    multiple_files: bool,
     enabled: &Option<HashSet<String>>,
     disabled: &HashSet<String>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<changes::Change>> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let mut out: String = source.clone();
+    let mut change_records = Vec::new();
     if pipeline::op_enabled("tables", enabled, disabled) {
-        out = fix::fix_tables(&out).into_owned();
+        let prior = std::mem::take(&mut out);
+        out = fix::fix_tables(&prior).into_owned();
+        if let Some(c) = changes::fix_pass_change("tables", &prior, &out) {
+            change_records.push(c);
+        }
     }
     if pipeline::op_enabled("fences", enabled, disabled) {
-        out = fix::fix_fences(&out).into_owned();
+        let prior = std::mem::take(&mut out);
+        out = fix::fix_fences(&prior).into_owned();
+        if let Some(c) = changes::fix_pass_change("fences", &prior, &out) {
+            change_records.push(c);
+        }
     }
     if pipeline::op_enabled("links", enabled, disabled) {
-        out = fix::fix_links(&out).into_owned();
-    }
-    if dry_run {
-        if multiple_files {
-            print!("<!-- {} -->\n{}", path.display(), out);
-        } else {
-            print!("{out}");
+        let prior = std::mem::take(&mut out);
+        out = fix::fix_links(&prior).into_owned();
+        if let Some(c) = changes::fix_pass_change("links", &prior, &out) {
+            change_records.push(c);
         }
-    } else if out != source {
+    }
+    if !dry_run && out != source {
         io::atomic_write(path, &out)
             .with_context(|| format!("failed to write {}", path.display()))?;
     }
-    Ok(())
+    if !dry_run {
+        change_records.clear();
+    }
+    Ok(change_records)
 }
 
 /// Reorder a single source file.
 ///
-/// When processing multiple files in dry-run mode, a comment header with the
-/// file path is emitted before each file's output so the results can be
-/// distinguished.
+/// When processing in dry-run mode, the would-be moves are returned as
+/// per-file [`changes::Change`] records (derived from the reorder crate's
+/// `ReorderMove` producer) instead of printing the reordered source.
 pub(crate) fn reorder_file(
     path: &Path,
     dry_run: bool,
-    multiple_files: bool,
     disabled: &HashSet<String>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<changes::Change>> {
     if disabled.contains("reorder") {
-        return Ok(());
+        return Ok(Vec::new());
     }
     // 1. Read source
     let source =
@@ -226,19 +237,26 @@ pub(crate) fn reorder_file(
         )
     })?;
 
-    // 6. Write output
+    let mut change_records = Vec::new();
     if dry_run {
-        if multiple_files {
-            print!("// {}\n{}", path.display(), output);
-        } else {
-            print!("{output}");
+        for mv in rust_llm_tidy_reorder::compute_moves(&parsed.items, &permutation) {
+            // `from` is the 1-based input sequence position; the anchor line is
+            // the moved item's first source line.
+            let item = &parsed.items[mv.from() - 1];
+            change_records.push(changes::Change {
+                line: item.start_line(),
+                code: "REORDER",
+                message: mv.message(),
+                kind: mv.kind().to_string(),
+                name: mv.name().map(str::to_string),
+            });
         }
     } else {
         io::atomic_write(path, &output)
             .with_context(|| format!("failed to write {}", path.display()))?;
     }
 
-    Ok(())
+    Ok(change_records)
 }
 
 /// Build the crate-aware [`VisContext`] from the first input path. Returns
@@ -318,12 +336,11 @@ pub(crate) fn resolve_vis_context(paths: &[PathBuf]) -> Option<VisContext> {
 pub(crate) fn vis_file(
     path: &Path,
     dry_run: bool,
-    multiple_files: bool,
     ctx: Option<&VisContext>,
     disabled: &HashSet<String>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<changes::Change>> {
     if disabled.contains("vis") {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
@@ -357,18 +374,15 @@ pub(crate) fn vis_file(
     }
     .with_context(|| format!("failed to narrow {}", path.display()))?;
 
+    let mut change_records = Vec::new();
     if dry_run {
-        if multiple_files {
-            print!("// {}\n{}", path.display(), output);
-        } else {
-            print!("{output}");
-        }
+        change_records = changes::vis_changes(&source, &output);
     } else if output != source {
         io::atomic_write(path, &output)
             .with_context(|| format!("failed to write {}", path.display()))?;
     }
 
-    Ok(())
+    Ok(change_records)
 }
 
 fn main() -> anyhow::Result<()> {

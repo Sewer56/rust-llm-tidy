@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Run `rust-llm-tidy --include reorder --dry-run` against `<name>_before.rs` in `tests/fixtures/reorder/`.
 ///
-/// Returns `(actual_stdout, expected_after_content)`.
+/// Returns `(stdout, stderr, exit, before_path, expected_after_content)`.
 macro_rules! run_fixture {
     ($name:ident) => {{
         let fixture_dir = manifest_dir()
@@ -26,23 +26,51 @@ macro_rules! run_fixture {
         let expected_after =
             include_str!(concat!("fixtures/reorder/", stringify!($name), "_after.rs")).to_string();
 
-        let actual = run_dry_run(&before_path);
+        let (stdout, stderr, exit) = run_dry_run(&before_path);
 
-        (actual, expected_after)
+        (stdout, stderr, exit, before_path, expected_after)
     }};
 }
 
 /// Declare a fixture test.  The test name is the fixture rule name.
+///
+/// Dry-run reports change records on stderr (allowing zero records for an
+/// already-tidy fixture) and keeps stdout empty. Byte-for-byte "produces
+/// _after" coverage is preserved by re-ordering a temp copy in place and
+/// comparing its content.
 macro_rules! synthetic_fixture {
     ($name:ident) => {
         #[test]
         fn $name() {
-            let (actual, expected) = run_fixture!($name);
+            let (stdout, stderr, exit, before_path, expected_after) = run_fixture!($name);
             assert_eq!(
-                actual, expected,
+                exit, 0,
+                concat!(stringify!($name), " dry-run should succeed")
+            );
+            assert!(
+                stdout.is_empty(),
                 concat!(
                     stringify!($name),
-                    " fixture: reordered output must match _after.rs"
+                    " dry-run must not print reconstructed source to stdout"
+                )
+            );
+            // Any stderr output from a reorder dry-run must be change records,
+            // never reconstructed source (which would lack the op marker).
+            for line in stderr.lines() {
+                assert!(
+                    line.contains("success[REORDER]"),
+                    "{} dry-run stderr must only carry change records: {}",
+                    stringify!($name),
+                    line
+                );
+            }
+            // In-place reorder still produces the _after fixture byte-for-byte.
+            assert_eq!(
+                reorder_in_place(&before_path),
+                expected_after,
+                concat!(
+                    stringify!($name),
+                    " fixture: in-place reorder must match _after.rs"
                 )
             );
         }
@@ -115,20 +143,37 @@ synthetic_fixture!(safety_line_preservation);
 
 static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 
-/// `reorder --dry-run` on a CRLF source prints CRLF output to stdout.
+/// `reorder --dry-run` on a CRLF reordering source reports its move on stderr
+/// and leaves stdout empty (no reconstructed source).
 #[test]
-fn reorder_dry_run_preserves_crlf() {
-    let source = "fn b() { a(); }\r\nfn a() {}\r\n";
-    let (stdout, _stderr, exit) = run(source, &["--dry-run"]);
+fn reorder_dry_run_reports_change_with_empty_stdout() {
+    let source = "fn a() {}\r\nfn b() { a(); }\r\n";
+    let (stdout, stderr, exit) = run(source, &["--dry-run"]);
     assert_eq!(exit, 0, "dry-run should succeed");
-    assert_eq!(
-        stdout.matches('\n').count(),
-        stdout.matches("\r\n").count(),
-        "every newline in dry-run stdout must be CRLF: {stdout:?}"
+    assert!(stdout.is_empty(), "dry-run must not print source to stdout");
+    assert!(
+        stderr.contains("success[REORDER]"),
+        "dry-run must report a reorder change on stderr: {stderr:?}"
     );
-    let a_pos = stdout.find("fn a").expect("fn a missing");
-    let b_pos = stdout.find("fn b").expect("fn b missing");
-    assert!(b_pos < a_pos, "b (caller) before a (callee) in dry-run");
+}
+
+/// Reorder a temp copy of `path` in place and return the rewritten content.
+///
+/// Preserves the byte-for-byte "produces the _after fixture" coverage while
+/// dry-run keeps stdout empty.
+fn reorder_in_place(path: &std::path::Path) -> String {
+    let tmp = temp_file();
+    fs::copy(path, &tmp).unwrap();
+    let output = run_command(&["--include", "reorder"], &tmp);
+    assert!(
+        output.status.success(),
+        "in-place reorder failed on {}: {}",
+        path.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let result = fs::read_to_string(&tmp).unwrap();
+    let _ = fs::remove_file(&tmp);
+    result
 }
 
 /// In-place reorder of a CRLF source preserves every `\r\n` and reorders
@@ -177,13 +222,17 @@ fn test_all_after_fixtures_are_idempotent() {
     assert!(!after_files.is_empty(), "no _after.rs fixtures found");
 
     for after_path in &after_files {
-        let expected = fs::read_to_string(after_path).unwrap();
-        let actual = run_dry_run(after_path);
+        let (stdout, stderr, exit) = run_dry_run(after_path);
 
-        assert_eq!(
-            actual,
-            expected,
-            "{} must be idempotent",
+        assert_eq!(exit, 0, "{} dry-run should succeed", after_path.display());
+        assert!(
+            stdout.is_empty(),
+            "{} dry-run must not print source to stdout",
+            after_path.display()
+        );
+        assert!(
+            stderr.is_empty(),
+            "{} is already tidy: dry-run must emit zero change records",
             after_path.display()
         );
     }
@@ -191,20 +240,24 @@ fn test_all_after_fixtures_are_idempotent() {
 
 // ── CLI behavior tests ────────────────────────────────────────────
 
-/// `--dry-run` should print to stdout without modifying the file on disk.
+/// `--dry-run` reports the would-be reorder move on stderr without printing
+/// the reconstructed source to stdout or modifying the file on disk.
 #[test]
 fn test_dry_run() {
-    let source = "fn b() { a(); }\nfn a() {}\n";
+    let source = "fn a() {}\nfn b() { a(); }\n";
 
     let (stdout, stderr, exit) = run(source, &["--dry-run"]);
 
     assert_eq!(exit, 0, "dry-run should succeed");
-    assert!(stderr.is_empty(), "stderr should be empty on success");
-    assert!(stdout.contains("fn a"), "stdout should contain fn a");
-    assert!(stdout.contains("fn b"), "stdout should contain fn b");
-    let a_pos = stdout.find("fn a").unwrap();
-    let b_pos = stdout.find("fn b").unwrap();
-    assert!(b_pos < a_pos, "b (caller) before a (callee)");
+    assert!(stdout.is_empty(), "stdout must be empty on dry-run success");
+    assert!(
+        stderr.contains("success[REORDER]"),
+        "stderr should report the reorder move as a change line: {stderr}"
+    );
+    assert!(
+        !stderr.contains("fn a()"),
+        "stderr must not echo reconstructed source: {stderr}"
+    );
 }
 
 /// An empty directory is accepted and produces no output.
@@ -327,8 +380,8 @@ fn test_recursive_directory() {
     );
 }
 
-/// `--dry-run` on a directory prints each file's output, preceded by a header
-/// so the files can be distinguished.
+/// `--dry-run` on a directory reports each file's moves as path-labeled change
+/// lines on stderr, leaving stdout empty and the files unmodified.
 #[test]
 fn test_recursive_directory_dry_run() {
     let dir = temp_dir();
@@ -344,21 +397,15 @@ fn test_recursive_directory_dry_run() {
     let _ = fs::remove_dir_all(&dir);
 
     assert_eq!(exit, 0, "dry-run on directory should succeed");
-    assert!(stderr.is_empty(), "stderr should be empty on success");
-
+    assert!(stdout.is_empty(), "stdout should be empty on success");
     assert!(
-        stdout.contains("// "),
-        "stdout should contain path headers when processing multiple files"
+        stderr.contains("a.rs:") && stderr.contains("b.rs:"),
+        "multi-file dry-run must label each change line with its path: {stderr}"
     );
-
-    let a_pos = stdout.find("fn a").expect("fn a missing");
-    let b_pos = stdout.find("fn b").expect("fn b missing");
-    let c_pos = stdout.find("fn c").expect("fn c missing");
-    let d_pos = stdout.find("fn d").expect("fn d missing");
-
     assert!(
-        b_pos < a_pos && d_pos < c_pos,
-        "dry-run output should reorder callers before callees"
+        stderr.contains("rearrange fn b from pos 2 to pos 1")
+            && stderr.contains("rearrange fn d from pos 2 to pos 1"),
+        "directory dry-run should report each file's move on stderr: {stderr}"
     );
 }
 
@@ -530,10 +577,9 @@ fn run_dir(dir: &std::path::Path, args: &[&str]) -> (String, String, i32) {
     (stdout, stderr, exit)
 }
 
-/// Run `rust-llm-tidy --dry-run` on `path` and return stdout.
-///
-/// Panics if the command fails.
-fn run_dry_run(path: &std::path::Path) -> String {
+/// Run `rust-llm-tidy --include reorder --dry-run` on `path` and return
+/// `(stdout, stderr, exit)`.
+fn run_dry_run(path: &std::path::Path) -> (String, String, i32) {
     let output = run_command(&["--include", "reorder", "--dry-run"], path);
 
     assert!(
@@ -543,7 +589,11 @@ fn run_dry_run(path: &std::path::Path) -> String {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    String::from_utf8_lossy(&output.stdout).to_string()
+    (
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+        output.status.code().unwrap_or(-1),
+    )
 }
 
 /// Create a numbered temporary directory.
@@ -551,6 +601,14 @@ fn temp_dir() -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-dir-{}-{}", pid, seq))
+}
+
+/// Create a numbered temporary `.rs` file path (reorder only runs on Rust
+/// inputs, so the temp copy must keep the extension).
+fn temp_file() -> std::path::PathBuf {
+    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    std::env::temp_dir().join(format!("rust-llm-tidy-file-{}-{}.rs", pid, seq))
 }
 
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
