@@ -7,10 +7,11 @@
 //! its first line and never embed the reconstructed source bytes.
 //!
 //! Reorder records come from the reorder crate's `ReorderMove` (already
-//! derived from the computed permutation). Fix records come from per-entity
-//! [`FixAnchor`]s surfaced by the fix crate's `fix_*` passes; [`fix_changes`]
-//! maps each anchor to a [`Change`]. Vis records are derived here by diffing
-//! the narrowed output against the source ([`vis_changes`]).
+//! derived from the computed permutation). Fix records come from the per-entity
+//! [`rust_llm_tidy_fix::FixAnchor`]s surfaced by the fix crate's `fix_*`
+//! passes; [`fix_changes`] maps each anchor to a [`Change`]. Vis records are
+//! derived here by diffing the narrowed output against the source
+//! ([`vis_changes`]).
 
 use rust_llm_tidy_fix::FixKind;
 use std::fmt;

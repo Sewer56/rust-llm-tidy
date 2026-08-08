@@ -464,6 +464,45 @@ fn json_dry_run_records_changes_for_both_flags() {
     }
 }
 
+/// A non-dry-run fix in JSON mode reports each edited table as a `success`
+/// record on stdout and writes the file in place.
+#[test]
+fn json_in_place_run_records_fix_changes() {
+    let expected = fs::read_to_string(fix_fixture_dir().join("table_md_after.md")).unwrap();
+    let tmp = temp_file("md");
+    fs::write(
+        &tmp,
+        fs::read_to_string(fix_fixture_dir().join("table_md_before.md")).unwrap(),
+    )
+    .unwrap();
+
+    let output = run_command(&["--include", "tables", "--output-mode", "json"], &tmp);
+
+    assert!(
+        output.status.success(),
+        "fix in-place in JSON mode should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let actual = fs::read_to_string(&tmp).unwrap();
+    let _ = fs::remove_file(&tmp);
+    assert_eq!(
+        actual, expected,
+        "in-place fix must write the table_md_after fixture"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let records: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("stdout must parse as JSON: {e}\n{stdout}"));
+    let array = records.as_array().expect("JSON output must be an array");
+    assert_eq!(array.len(), 1, "expected 1 fix record, got:\n{stdout}");
+    let rec = &array[0];
+    assert_eq!(rec["severity"], "success");
+    assert_eq!(rec["code"], "FIX");
+    assert_eq!(rec["item_kind"], "table");
+    assert_eq!(rec["line"], 1);
+    assert_eq!(rec["message"], "realign table starting at line 1");
+}
+
 /// A non-dry-run reorder in JSON mode reports `success` records in the same
 /// document on stdout and writes the file in place.
 #[test]
