@@ -15,10 +15,8 @@
 //! - [`fix_tables`]: realign GFM pipe tables, including those nested inside
 //!   `///` and `//!` doc comments.
 //!
-//! Every pass returns a [`FixOutcome`]: the rewritten text plus one
-//! [`FixAnchor`] per edited entity (a 1-based line in the pass's own input
-//! plus the entity's kind and optional name). When a pass is a no-op, its
-//! `text` is [`Cow::Borrowed`] so nothing is copied.
+//! [`fix_tables`]/[`fix_fences`] return a [`FixOutcome`] (text + per-entity
+//! [`FixAnchor`]); [`fix_links`] returns the text plus its before/after pairs.
 
 pub use fences::fix_fences;
 pub use links::fix_links;
@@ -64,6 +62,4 @@ pub enum FixKind {
     Table,
     /// A nested code fence whose delimiter marker was flipped.
     Fence,
-    /// A repeated inline link hoisted to a reference definition.
-    Link,
 }

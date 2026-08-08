@@ -13,12 +13,12 @@
 //! are preserved on the rewritten occurrences.
 //!
 //! The function is idempotent: reference-style output is returned unchanged
-//! (the outcome's `text` is a borrowed [`Cow`]).
+//! (a borrowed [`Cow`]).
 //!
 //! # Performance
 //!
 //! The overwhelmingly common input is already canonical - no inline link is
-//! repeated - so [`fix_links`] must return a [`Cow::Borrowed`] `text` after a
+//! repeated - so [`fix_links`] must return a [`Cow::Borrowed`] after a
 //! single tally pass. That pass jumps between `[` bytes with [`str::find`]
 //! (std's optimized search) instead of walking every character, and skips link
 //! work entirely for lines without a `[`. The rewrite pass allocates its output
@@ -33,12 +33,13 @@
 //!
 //! let input = "see [A](http://x) and [A](http://x)\n";
 //! let expected = "see [A] and [A]\n[A]: http://x\n";
-//! assert_eq!(fix_links(input).text.into_owned(), expected);
-//! assert!(matches!(fix_links(expected).text, Cow::Borrowed(_)));
+//! let (out, pairs) = fix_links(input);
+//! assert_eq!(out.into_owned(), expected);
+//! assert_eq!(pairs, [("[A](http://x)".to_string(), "[A]".to_string())]);
+//! assert!(matches!(fix_links(expected).0, Cow::Borrowed(_)));
 //! ```
 
 use crate::tables::{split_terminator, strip_doc_prefix};
-use crate::{FixAnchor, FixKind, FixOutcome};
 use rewrite::{append_definitions, dominant_line_ending, rewrite_links, tally_links};
 use scan::{definition_text, step_fence};
 use std::borrow::Cow;
@@ -49,24 +50,18 @@ mod scan;
 
 /// Hoist repeated inline links `[text](url)` to reference definitions.
 ///
-/// See the module docs for the full rule and constraints. When no link is
-/// hoisted, the outcome's `text` borrows the original buffer back (idempotent)
-/// and `anchors` is empty.
-///
-/// Each hoisted pair contributes one [`FixAnchor`] at its first rewritten
-/// line, named by the link's `text`.
+/// Returns the rewritten text plus one `(before, after)` substitution per
+/// hoisted link (`[text](url)` -> `[text]`). See the module docs for the full
+/// rule. Borrows `input` back with no pairs when nothing is hoisted.
 ///
 /// # Arguments
 ///
 /// - `input`: the markdown (or Rust source) whose repeated inline links are
 ///   hoisted to trailing `[text]: url` reference definitions.
-pub fn fix_links(input: &str) -> FixOutcome<'_> {
+pub fn fix_links(input: &str) -> (Cow<'_, str>, Vec<(String, String)>) {
     // Fast path: no link-opening bracket means nothing can change.
     if !input.contains('[') {
-        return FixOutcome {
-            text: Cow::Borrowed(input),
-            anchors: Vec::new(),
-        };
+        return (Cow::Borrowed(input), Vec::new());
     }
 
     // Pass 1: tally eligible inline links (outside code fences) and record the
@@ -109,10 +104,7 @@ pub fn fix_links(input: &str) -> FixOutcome<'_> {
     }
 
     if hoist.is_empty() {
-        return FixOutcome {
-            text: Cow::Borrowed(input),
-            anchors: Vec::new(),
-        };
+        return (Cow::Borrowed(input), Vec::new());
     }
 
     // Pass 2: rewrite eligible inline links to `[text]`, allocating output
@@ -120,12 +112,8 @@ pub fn fix_links(input: &str) -> FixOutcome<'_> {
     // without a `[` are emitted verbatim without entering the rewriter.
     let mut out: Option<String> = None;
     let mut pos = 0usize;
-    // Records the first rewritten line of each hoisted pair. The zip counter
-    // is the 1-based line of each segment (`split_inclusive('\n')` yields one
-    // line per segment).
-    let mut first_line: HashMap<(&str, &str), usize> = HashMap::new();
     fence_stack.clear();
-    for (line_num, segment) in (1usize..).zip(input.split_inclusive('\n')) {
+    for segment in input.split_inclusive('\n') {
         let seg_start = pos;
         pos += segment.len();
         let (content, term) = split_terminator(segment);
@@ -149,14 +137,9 @@ pub fn fix_links(input: &str) -> FixOutcome<'_> {
             continue;
         }
         match rewrite_links(prefix, body, term, &hoist_set) {
-            Some((rewritten, touched)) => {
+            Some(rewritten) => {
                 let o = ensure_output(&mut out, input, seg_start);
                 o.push_str(&rewritten);
-                // Each hoisted pair is anchored at its first rewritten line
-                // (the earliest line, since segments are visited in order).
-                for pair in touched {
-                    first_line.entry(pair).or_insert(line_num);
-                }
             }
             None => {
                 if let Some(o) = out.as_mut() {
@@ -177,23 +160,12 @@ pub fn fix_links(input: &str) -> FixOutcome<'_> {
     });
     append_definitions(&mut buf, &hoist, le);
 
-    // One anchor per hoisted pair, in first-rewritten-line (edit) order.
-    let mut anchors: Vec<FixAnchor> = hoist
+    // One `[text](url)` -> `[text]` pair per hoisted link, in hoist order.
+    let pairs = hoist
         .iter()
-        .filter_map(|&(text, url)| {
-            first_line.get(&(text, url)).copied().map(|line| FixAnchor {
-                line,
-                kind: FixKind::Link,
-                name: Some(text.to_string()),
-            })
-        })
+        .map(|&(text, url)| (format!("[{text}]({url})"), format!("[{text}]")))
         .collect();
-    anchors.sort_by_key(|a| a.line);
-
-    FixOutcome {
-        text: Cow::Owned(buf),
-        anchors,
-    }
+    (Cow::Owned(buf), pairs)
 }
 
 /// Lazily allocate `out`, copying the verbatim prefix `input[..seg_start]`.
@@ -214,10 +186,10 @@ mod tests {
     #[test]
     fn no_bracket_returns_borrowed() {
         let input = "hello world\nno links here\n";
-        let out = fix_links(input);
-        assert!(matches!(out.text, Cow::Borrowed(_)));
-        assert!(out.anchors.is_empty(), "no link -> no anchor");
-        assert_eq!(&*out.text, input);
+        let (out, pairs) = fix_links(input);
+        assert!(matches!(out, Cow::Borrowed(_)), "no link -> borrowed");
+        assert!(pairs.is_empty());
+        assert_eq!(&*out, input);
     }
 
     #[test]
@@ -225,32 +197,19 @@ mod tests {
         // Acceptance case (a): two occurrences -> two `[A]` + one definition.
         let input = "see [A](http://x) and [A](http://x)\n";
         let expected = "see [A] and [A]\n[A]: http://x\n";
-        let out = fix_links(input);
-        assert_eq!(
-            &*out.text, expected,
-            "repeated inline link should be hoisted"
-        );
-        assert_eq!(
-            out.anchors,
-            [FixAnchor {
-                line: 1,
-                kind: FixKind::Link,
-                name: Some("A".to_string())
-            }],
-            "one anchor per hoisted pair at its first rewritten line"
-        );
+        let (out, pairs) = fix_links(input);
+        assert_eq!(&*out, expected, "repeated inline link should be hoisted");
+        assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);
     }
 
     #[test]
     fn single_occurrence_untouched_and_borrowed() {
         // Acceptance case (b): a link used once is left inline and borrowed.
         let input = "only [A](http://x) once\n";
-        let out = fix_links(input);
-        assert!(
-            matches!(out.text, Cow::Borrowed(_)),
-            "single link is borrowed"
-        );
-        assert_eq!(&*out.text, input);
+        let (out, pairs) = fix_links(input);
+        assert!(matches!(out, Cow::Borrowed(_)), "single link is borrowed");
+        assert!(pairs.is_empty());
+        assert_eq!(&*out, input);
     }
 
     #[test]
@@ -263,23 +222,18 @@ text
 ```
 after
 ";
-        let out = fix_links(input);
-        assert_eq!(
-            &*out.text, input,
-            "links inside code fences must not be hoisted"
-        );
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, input, "links inside code fences must not be hoisted");
     }
 
     #[test]
     fn autolink_and_whitespace_url_untouched() {
         // Acceptance case (d): `<...>` autolink and whitespace URLs are skipped.
         let input = "see [A](<http://x>) and [B](http://x y)\n";
-        let out = fix_links(input);
-        assert!(
-            matches!(out.text, Cow::Borrowed(_)),
-            "non-inline forms borrowed"
-        );
-        assert_eq!(&*out.text, input);
+        let (out, pairs) = fix_links(input);
+        assert!(matches!(out, Cow::Borrowed(_)), "non-inline forms borrowed");
+        assert!(pairs.is_empty());
+        assert_eq!(&*out, input);
     }
 
     #[test]
@@ -287,18 +241,18 @@ after
         // Acceptance case (f): a `///` prefix is preserved on rewritten links.
         let input = "/// see [A](http://x) and [A](http://x)\n";
         let expected = "/// see [A] and [A]\n[A]: http://x\n";
-        let out = fix_links(input);
-        assert_eq!(&*out.text, expected);
-        assert_eq!(out.anchors[0].line, 1, "doc-comment link anchors line 1");
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected);
     }
 
     #[test]
     fn already_reference_style_is_borrowed() {
         // Acceptance case (g): re-running on reference-style output is a no-op.
         let input = "see [A] and [A]\n[A]: http://x\n";
-        let out = fix_links(input);
-        assert!(matches!(out.text, Cow::Borrowed(_)));
-        assert_eq!(&*out.text, input);
+        let (out, pairs) = fix_links(input);
+        assert!(matches!(out, Cow::Borrowed(_)));
+        assert!(pairs.is_empty());
+        assert_eq!(&*out, input);
     }
 
     #[test]
@@ -306,8 +260,8 @@ after
         // A pre-existing `[A]:` definition (any URL) excludes the pair, so the
         // inline occurrences are left as-is rather than re-targeted.
         let input = "[A](http://x) [A](http://x)\n[A]: http://z\n";
-        let out = fix_links(input);
-        assert_eq!(&*out.text, input);
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, input);
     }
 
     #[test]
@@ -316,53 +270,44 @@ after
         // `[A]:` definitions, only the first-seen pair is hoisted; the second
         // pair stays inline.
         let input = "[A](http://x) [A](http://x) [A](http://y) [A](http://y)\n";
-        let out = fix_links(input);
-        let s = &*out.text;
+        let (out, pairs) = fix_links(input);
+        let s = &*out;
         assert!(s.contains("[A]: http://x"), "first pair hoisted:\n{s}");
         assert!(
             !s.contains("[A]: http://y"),
             "second pair not re-defined:\n{s}"
         );
-        assert_eq!(
-            out.anchors,
-            [FixAnchor {
-                line: 1,
-                kind: FixKind::Link,
-                name: Some("A".to_string())
-            }],
-            "only the hoisted pair is anchored"
+        assert!(
+            s.contains("[A](http://y)"),
+            "second pair stays inline:\n{s}"
         );
+        assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);
     }
 
     #[test]
-    fn multiple_hoisted_pairs_anchor_each_first_line() {
-        // Two distinct repeated pairs on different lines: each hoisted pair
-        // yields one anchor at the first line it is rewritten on.
+    fn multiple_hoisted_pairs_rewrite_each_line() {
+        // Two distinct repeated pairs on different lines are both hoisted.
         let input = "see [A](u) and [A](u)\nthen [B](v) again [B](v)\n";
-        let out = fix_links(input);
+        let (out, pairs) = fix_links(input);
+        let s = &*out;
+        assert!(s.contains("see [A] and [A]"), "A hoisted:\n{s}");
+        assert!(s.contains("then [B] again [B]"), "B hoisted:\n{s}");
+        assert!(s.contains("[A]: u"), "A definition:\n{s}");
+        assert!(s.contains("[B]: v"), "B definition:\n{s}");
         assert_eq!(
-            out.anchors,
+            pairs,
             [
-                FixAnchor {
-                    line: 1,
-                    kind: FixKind::Link,
-                    name: Some("A".to_string())
-                },
-                FixAnchor {
-                    line: 2,
-                    kind: FixKind::Link,
-                    name: Some("B".to_string())
-                },
-            ],
-            "anchors in edit order: A on line 1, B on line 2"
+                ("[A](u)".into(), "[A]".into()),
+                ("[B](v)".into(), "[B]".into())
+            ]
         );
     }
 
     #[test]
     fn idempotent_on_hoisted_output() {
         let input = "see [A](http://x) and [A](http://x)\n";
-        let once = fix_links(input).text.into_owned();
-        let twice = fix_links(&once).text.into_owned();
+        let once = fix_links(input).0.into_owned();
+        let twice = fix_links(&once).0.into_owned();
         assert_eq!(twice, once, "fix_links must be idempotent");
     }
 
@@ -408,8 +353,8 @@ after
             "    /// [A](u) [A](u)\n",
         ];
         for &input in cases {
-            let once = fix_links(input).text.into_owned();
-            let twice = fix_links(&once).text.into_owned();
+            let once = fix_links(input).0.into_owned();
+            let twice = fix_links(&once).0.into_owned();
             assert_eq!(twice, once, "not idempotent for input {input:?}");
         }
     }
@@ -419,8 +364,8 @@ after
         // CRLF input: the hoisted `[A]: http://x` definition must end with
         // `\r\n`, and every `\n` in the appended block is part of `\r\n`.
         let input = "see [A](http://x) and [A](http://x)\r\n";
-        let out = fix_links(input);
-        let s = out.text.into_owned();
+        let (out, _) = fix_links(input);
+        let s = out.into_owned();
         assert!(
             s.contains("[A]: http://x\r\n"),
             "hoisted definition must end with CRLF: {s:?}"
@@ -436,8 +381,8 @@ after
     fn lf_definitions_use_lf() {
         // LF input: no `\r` should appear in the appended definition.
         let input = "see [A](http://x) and [A](http://x)\n";
-        let out = fix_links(input);
-        let s = out.text.into_owned();
+        let (out, _) = fix_links(input);
+        let s = out.into_owned();
         assert!(
             s.contains("[A]: http://x\n"),
             "hoisted definition must end with LF: {s:?}"
@@ -451,8 +396,8 @@ after
         // in `append_definitions` must push `le` ("\r\n") before the first
         // definition, and every `\n` in the output must be part of `\r\n`.
         let input = "intro\r\nsee [A](http://x) and [A](http://x)";
-        let out = fix_links(input);
-        let s = out.text.into_owned();
+        let (out, _) = fix_links(input);
+        let s = out.into_owned();
         assert!(
             s.contains("[A]: http://x\r\n"),
             "hoisted definition must end with CRLF: {s:?}"
@@ -468,13 +413,14 @@ after
     fn idempotent_on_crlf_output() {
         // Re-running on CRLF reference-style output must stay CRLF (borrowed).
         let input = "see [A](http://x) and [A](http://x)\r\n";
-        let once = fix_links(input).text.into_owned();
-        let twice = fix_links(&once);
+        let once = fix_links(input).0.into_owned();
+        let (twice, pairs) = fix_links(&once);
         assert!(
-            matches!(twice.text, Cow::Borrowed(_)),
+            matches!(twice, Cow::Borrowed(_)),
             "idempotent re-run must be borrowed"
         );
-        assert_eq!(&*twice.text, &once, "idempotent on CRLF output");
+        assert!(pairs.is_empty(), "no hoist on idempotent re-run");
+        assert_eq!(&*twice, &once, "idempotent on CRLF output");
         assert_eq!(
             once.matches('\n').count(),
             once.matches("\r\n").count(),

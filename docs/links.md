@@ -42,23 +42,25 @@ rust-llm-tidy --exclude links src
 
 ## Change output
 
-Every run reports each hoist it applies (or would apply under `--dry-run`) as
-one record. In text mode the record prints to stderr:
+Every run reports each hoisted link it applies (or would apply under
+`--dry-run`) as one record showing the before -> after substitution. In text
+mode the records print to stderr:
 
 ```text
-README.md:1: success[FIX]: hoist link starting at line 1 (link)
+README.md: success[FIX]: `[A](http://x)` -> `[A]` (link)
 ```
 
-In JSON mode the same record appears on stdout with `severity: "success"`:
+In JSON mode the same records appear on stdout with `severity: "success"`
+(`line` is 0 for link records - no line applies):
 
 ```json
 [
   {
     "path": "README.md",
-    "line": 1,
+    "line": 0,
     "severity": "success",
     "code": "FIX",
-    "message": "hoist link starting at line 1",
+    "message": "`[A](http://x)` -> `[A]`",
     "item_kind": "link",
     "item_name": null
   }

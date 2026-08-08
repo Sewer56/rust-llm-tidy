@@ -149,11 +149,10 @@ pub(crate) fn check_file(
 /// [`fix::fix_links`], and writes the result back via [`io::atomic_write`]
 /// unless `--dry-run` is given.
 ///
-/// Each edited entity (a realigned table, a flipped fence delimiter, a hoisted
-/// link pair) is reported as a [`changes::Change`] anchored at its first line,
-/// in both dry-run and in-place modes. A pass that changes nothing returns a
-/// borrowed text, so its prior buffer is restored without copying and no record
-/// is produced.
+/// Every edited entity reports a [`changes::Change`] in both dry-run and
+/// in-place modes: tables/fences via the fix crate's anchors; link hoists as
+/// one record per before/after pair ([`changes::link_changes`]). A no-op pass
+/// borrows its text back and yields no record.
 ///
 /// `fix` never fails on content; it exits non-zero only on I/O errors.
 pub(crate) fn fix_file(
@@ -190,13 +189,12 @@ pub(crate) fn fix_file(
     }
     if pipeline::op_enabled("links", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        let outcome = fix::fix_links(&prior);
-        match outcome.text {
-            Cow::Owned(after) => {
-                change_records.extend(changes::fix_changes(&outcome.anchors));
+        match fix::fix_links(&prior) {
+            (Cow::Owned(after), pairs) => {
+                change_records.extend(changes::link_changes(&pairs));
                 out = after;
             }
-            Cow::Borrowed(_) => out = prior,
+            (Cow::Borrowed(_), _) => out = prior,
         }
     }
     if !dry_run && out != source {
