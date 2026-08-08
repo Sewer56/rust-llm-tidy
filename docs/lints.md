@@ -47,6 +47,18 @@ After:
 pub fn load() {}
 ```
 
+#### DOC001 CLI output
+
+Running `lints` against the Before code:
+
+```text
+$ rust-llm-tidy --no-config --include DOC001 src/lib.rs
+src/lib.rs:1: error[DOC001]: non-private item is missing a doc comment (fn `load`)
+Error: found 1 error(s)
+```
+
+`DOC001` is error-severity, so the run exits non-zero.
+
 ### DOC002 - missing `# Errors` section
 
 Public functions returning `Result` need an `# Errors` section.
@@ -72,6 +84,16 @@ pub fn load() -> Result<(), std::io::Error> {
     Ok(())
 }
 ```
+
+#### DOC002 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include DOC002 src/lib.rs
+src/lib.rs:3: error[DOC002]: pub fn returning Result is missing a `# Errors` doc section (fn `load`)
+Error: found 1 error(s)
+```
+
+`DOC002` is error-severity, so the run exits non-zero.
 
 ### DOC003 - vague `# Errors` section
 
@@ -109,6 +131,15 @@ enum Error {
 }
 ```
 
+#### DOC003 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include DOC003 src/lib.rs
+src/lib.rs:7: warning[DOC003]: `# Errors` section does not name any concrete error variant (fn `load`)
+```
+
+`DOC003` is warning-severity, so the run exits 0.
+
 ### DOC004 - missing `# Arguments` section
 
 Public functions with named parameters need a recognized argument section:
@@ -136,6 +167,15 @@ pub fn greet(name: &str) -> String {
     format!("Hello, {name}")
 }
 ```
+
+#### DOC004 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include DOC004 src/lib.rs
+src/lib.rs:1: warning[DOC004]: pub fn with parameters is missing a `# Arguments` doc section (fn `greet`)
+```
+
+`DOC004` is warning-severity, so the run exits 0.
 
 ### DOC005 - undocumented parameter
 
@@ -170,6 +210,15 @@ pub fn format(text: &str, width: usize) -> String {
 }
 ```
 
+#### DOC005 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include DOC005 src/lib.rs
+src/lib.rs:1: warning[DOC005]: parameter(s) not documented in the `# Arguments` section: `width` (fn `format`)
+```
+
+`DOC005` is warning-severity, so the run exits 0.
+
 ### DOC006 - placeholder text
 
 Doc comments on documentable items must not contain whole-word `TODO`,
@@ -188,6 +237,15 @@ After:
 /// Loads data from configured storage.
 pub fn load() {}
 ```
+
+#### DOC006 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include DOC006 src/lib.rs
+src/lib.rs:1: warning[DOC006]: doc comment contains placeholder text (TODO/FIXME/TBD/...) (fn `load`)
+```
+
+`DOC006` is warning-severity, so the run exits 0.
 
 ### TEST001 - non-behavioral test name
 
@@ -211,6 +269,15 @@ fn parse_returns_ok_for_valid_input() {
     assert_eq!(parse("ok"), Ok(()));
 }
 ```
+
+#### TEST001 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include TEST001 src/lib.rs
+src/lib.rs:1: warning[TEST001]: test function `test_foo` should use a behavioral name (subject_should_expectation_when_condition), not a `test_*` or `case_*` prefix (fn `test_foo`)
+```
+
+`TEST001` is warning-severity, so the run exits 0.
 
 ## Config
 
