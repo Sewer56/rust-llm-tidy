@@ -40,23 +40,26 @@ pub(super) fn dominant_line_ending(source: &str) -> &'static str {
 }
 
 /// Rewrite eligible inline links in `body` to `[text]`, then re-attach `prefix`
-/// and `term`. Returns `Some(new_segment)` if any link was rewritten, else
-/// `None` (caller emits the original segment verbatim).
+/// and `term`. Returns `Some((new_segment, touched))` if any link was
+/// rewritten, else `None` (caller emits the original segment verbatim).
+/// `touched` lists each hoisted `(text, url)` pair rewritten on this line, so
+/// the caller can anchor each pair at its first rewritten line.
 ///
 /// Output is allocated lazily: only once the first hoisted link is found. If
 /// no link in `body` is hoisted, returns `None` with zero allocation. `last`
 /// tracks how far the verbatim prefix of `body` has been emitted; non-hoisted
 /// inline links leave `last` alone so their bytes are emitted verbatim in a
 /// later gap (or the trailing copy), exactly like the eager version.
-pub(super) fn rewrite_links(
+pub(super) fn rewrite_links<'a>(
     prefix: &str,
-    body: &str,
+    body: &'a str,
     term: &str,
-    hoist: &HashSet<(&str, &str)>,
-) -> Option<String> {
+    hoist: &HashSet<(&'a str, &'a str)>,
+) -> Option<(String, Vec<(&'a str, &'a str)>)> {
     let mut out: Option<String> = None;
     let mut last = 0usize;
     let mut i = 0usize;
+    let mut touched: Vec<(&str, &str)> = Vec::new();
     while let Some(rel) = body[i..].find('[') {
         let open = i + rel;
         match parse_inline_link(body, open) {
@@ -70,6 +73,7 @@ pub(super) fn rewrite_links(
                 o.push('[');
                 o.push_str(text);
                 o.push(']');
+                touched.push((text, url));
                 last = end;
                 i = end;
             }
@@ -84,7 +88,7 @@ pub(super) fn rewrite_links(
     let mut o = out?;
     o.push_str(&body[last..]);
     o.push_str(term);
-    Some(o)
+    Some((o, touched))
 }
 
 /// Scan `body` for inline links `[text](url)` and tally each `(text, url)`,

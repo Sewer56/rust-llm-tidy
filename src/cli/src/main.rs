@@ -166,21 +166,21 @@ pub(crate) fn fix_file(
     let mut change_records = Vec::new();
     if pipeline::op_enabled("tables", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        out = fix::fix_tables(&prior).into_owned();
+        out = fix::fix_tables(&prior).text.into_owned();
         if let Some(c) = changes::fix_pass_change("tables", &prior, &out) {
             change_records.push(c);
         }
     }
     if pipeline::op_enabled("fences", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        out = fix::fix_fences(&prior).into_owned();
+        out = fix::fix_fences(&prior).text.into_owned();
         if let Some(c) = changes::fix_pass_change("fences", &prior, &out) {
             change_records.push(c);
         }
     }
     if pipeline::op_enabled("links", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        out = fix::fix_links(&prior).into_owned();
+        out = fix::fix_links(&prior).text.into_owned();
         if let Some(c) = changes::fix_pass_change("links", &prior, &out) {
             change_records.push(c);
         }
