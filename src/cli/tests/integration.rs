@@ -197,6 +197,43 @@ fn reorder_in_place_preserves_crlf() {
     );
 }
 
+/// In-place reorder both writes the reordered file and reports the move as a
+/// change line on stderr, mirroring the records a dry-run would have previewed.
+#[test]
+fn reorder_in_place_reports_change_and_writes() {
+    let fixture = manifest_dir()
+        .join("tests")
+        .join("fixtures")
+        .join("reorder");
+    let expected =
+        fs::read_to_string(fixture.join("fn_interstitial_comment_travels_with_next_after.rs"))
+            .unwrap();
+    let tmp = temp_file();
+    fs::copy(
+        fixture.join("fn_interstitial_comment_travels_with_next_before.rs"),
+        &tmp,
+    )
+    .unwrap();
+
+    let output = run_command(&["--include", "reorder"], &tmp);
+    assert!(
+        output.status.success(),
+        "in-place reorder on a moving fixture should succeed"
+    );
+
+    let actual = fs::read_to_string(&tmp).unwrap();
+    let _ = fs::remove_file(&tmp);
+    assert_eq!(
+        actual, expected,
+        "in-place reorder must write the after fixture"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("success[REORDER]"),
+        "in-place reorder must also report its change line on stderr: {stderr}"
+    );
+}
+
 /// Idempotency: every `_after.rs` fixture must be unchanged by a second run.
 #[test]
 fn test_all_after_fixtures_are_idempotent() {

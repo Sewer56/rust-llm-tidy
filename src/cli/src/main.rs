@@ -208,9 +208,9 @@ pub(crate) fn fix_file(
 
 /// Reorder a single source file.
 ///
-/// When processing in dry-run mode, the would-be moves are returned as
-/// per-file [`changes::Change`] records (derived from the reorder crate's
-/// `ReorderMove` producer) instead of printing the reordered source.
+/// Returns one per-file [`changes::Change`] record per moved item (derived from
+/// the reorder crate's `ReorderMove` producer) in both dry-run and in-place
+/// modes, and writes the reordered source only when not in dry-run.
 pub(crate) fn reorder_file(
     path: &Path,
     dry_run: bool,
@@ -245,23 +245,22 @@ pub(crate) fn reorder_file(
     })?;
 
     let mut change_records = Vec::new();
-    if dry_run {
-        for mv in rust_llm_tidy_reorder::compute_moves(&parsed.items, &permutation) {
-            // `from` is the 1-based input sequence position; the anchor line is
-            // the moved item's first source line.
-            let item = &parsed.items[mv.from() - 1];
-            change_records.push(changes::Change {
-                line: item.start_line(),
-                code: "REORDER",
-                message: mv.message(),
-                kind: mv.kind().to_string(),
-                name: mv.name().map(str::to_string),
-                from: Some(mv.from()),
-                to: Some(mv.to()),
-                before_name: mv.before().map(str::to_string),
-            });
-        }
-    } else {
+    for mv in rust_llm_tidy_reorder::compute_moves(&parsed.items, &permutation) {
+        // `from` is the 1-based input sequence position; the anchor line is
+        // the moved item's first source line.
+        let item = &parsed.items[mv.from() - 1];
+        change_records.push(changes::Change {
+            line: item.start_line(),
+            code: "REORDER",
+            message: mv.message(),
+            kind: mv.kind().to_string(),
+            name: mv.name().map(str::to_string),
+            from: Some(mv.from()),
+            to: Some(mv.to()),
+            before_name: mv.before().map(str::to_string),
+        });
+    }
+    if !dry_run {
         io::atomic_write(path, &output)
             .with_context(|| format!("failed to write {}", path.display()))?;
     }
@@ -384,10 +383,9 @@ pub(crate) fn vis_file(
     }
     .with_context(|| format!("failed to narrow {}", path.display()))?;
 
-    let mut change_records = Vec::new();
-    if dry_run {
-        change_records = changes::vis_changes(&source, &output);
-    } else if output != source {
+    // Records are reported in both modes; only the write is mode-gated.
+    let change_records = changes::vis_changes(&source, &output);
+    if !dry_run && output != source {
         io::atomic_write(path, &output)
             .with_context(|| format!("failed to write {}", path.display()))?;
     }

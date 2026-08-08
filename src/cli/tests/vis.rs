@@ -136,6 +136,11 @@ fn vis_in_place_write() {
     let actual = fs::read_to_string(&tmp).unwrap();
     let _ = fs::remove_file(&tmp);
     assert_eq!(actual, expected, "in-place file must match _after fixture");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("success[VIS]"),
+        "in-place vis must also report its change line on stderr: {stderr}"
+    );
 }
 
 /// A non-existent path is rejected.
