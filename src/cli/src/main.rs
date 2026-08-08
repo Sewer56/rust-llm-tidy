@@ -44,6 +44,7 @@ use rust_llm_tidy_vis::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
     discover_crate_root, narrow_vis_in_tree,
 };
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -148,10 +149,11 @@ pub(crate) fn check_file(
 /// [`fix::fix_links`], and writes the result back via [`io::atomic_write`]
 /// unless `--dry-run` is given.
 ///
-/// On dry-run, the would-be edit set is returned as per-file
-/// [`changes::Change`] records instead of printing the reconstructed source;
-/// the caller reports them on stderr. In-place (non-dry-run) runs return no
-/// records.
+/// Each edited entity (a realigned table, a flipped fence delimiter, a hoisted
+/// link pair) is reported as a [`changes::Change`] anchored at its first line,
+/// in both dry-run and in-place modes. A pass that changes nothing returns a
+/// borrowed text, so its prior buffer is restored without copying and no record
+/// is produced.
 ///
 /// `fix` never fails on content; it exits non-zero only on I/O errors.
 pub(crate) fn fix_file(
@@ -166,31 +168,40 @@ pub(crate) fn fix_file(
     let mut change_records = Vec::new();
     if pipeline::op_enabled("tables", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        out = fix::fix_tables(&prior).text.into_owned();
-        if let Some(c) = changes::fix_pass_change("tables", &prior, &out) {
-            change_records.push(c);
+        let outcome = fix::fix_tables(&prior);
+        match outcome.text {
+            Cow::Owned(after) => {
+                change_records.extend(changes::fix_changes(&outcome.anchors));
+                out = after;
+            }
+            Cow::Borrowed(_) => out = prior,
         }
     }
     if pipeline::op_enabled("fences", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        out = fix::fix_fences(&prior).text.into_owned();
-        if let Some(c) = changes::fix_pass_change("fences", &prior, &out) {
-            change_records.push(c);
+        let outcome = fix::fix_fences(&prior);
+        match outcome.text {
+            Cow::Owned(after) => {
+                change_records.extend(changes::fix_changes(&outcome.anchors));
+                out = after;
+            }
+            Cow::Borrowed(_) => out = prior,
         }
     }
     if pipeline::op_enabled("links", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        out = fix::fix_links(&prior).text.into_owned();
-        if let Some(c) = changes::fix_pass_change("links", &prior, &out) {
-            change_records.push(c);
+        let outcome = fix::fix_links(&prior);
+        match outcome.text {
+            Cow::Owned(after) => {
+                change_records.extend(changes::fix_changes(&outcome.anchors));
+                out = after;
+            }
+            Cow::Borrowed(_) => out = prior,
         }
     }
     if !dry_run && out != source {
         io::atomic_write(path, &out)
             .with_context(|| format!("failed to write {}", path.display()))?;
-    }
-    if !dry_run {
-        change_records.clear();
     }
     Ok(change_records)
 }

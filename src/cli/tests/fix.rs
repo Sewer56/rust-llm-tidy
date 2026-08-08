@@ -10,6 +10,37 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// Default all-pass `fix` on a file where only the table changes: the later
+/// fence/link passes are no-ops and restore `prior`, so the earlier table fix
+/// must survive and produce one record plus a byte-identical write.
+#[test]
+fn fix_default_passes_borrowed_restore_preserves_earlier_change() {
+    let before = fixture_dir().join("table_md_before.md");
+    let expected = fs::read_to_string(fixture_dir().join("table_md_after.md")).unwrap();
+    let tmp = temp_file("md");
+    fs::write(&tmp, fs::read_to_string(&before).unwrap()).unwrap();
+
+    let output = run_command(&[], &tmp); // default: tables, fences, links
+    assert!(
+        output.status.success(),
+        "default fix should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let actual = fs::read_to_string(&tmp).unwrap();
+    let _ = fs::remove_file(&tmp);
+    assert_eq!(
+        actual, expected,
+        "fences/links no-op restore must keep the table fix"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        stderr.matches("success[FIX]").count(),
+        1,
+        "only the realigned table reports a record: {stderr}"
+    );
+}
+
 /// `fix --dry-run` on `table_doc_comment_before.rs` reports a change record on
 /// stderr and leaves stdout empty.
 #[test]
@@ -118,6 +149,49 @@ fn fix_idempotent_on_after_fixtures() {
     }
 }
 
+/// An in-place fix run reports the same change records as its dry-run twin and
+/// writes the file, so identical stderr change lines accompany a modified file.
+#[test]
+fn fix_in_place_reports_same_records_and_writes() {
+    let before = fixture_dir().join("multi_md_before.md");
+    let dry_run = run_command(&["--include", "tables", "--dry-run"], &before);
+    let dry_stderr = String::from_utf8_lossy(&dry_run.stderr);
+
+    let tmp = temp_file("md");
+    fs::write(&tmp, fs::read_to_string(&before).unwrap()).unwrap();
+    let output = run_command(&["--include", "tables"], &tmp);
+    assert!(
+        output.status.success(),
+        "fix in-place should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(&tmp).unwrap();
+    let _ = fs::remove_file(&tmp);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        stderr.matches("success[FIX]").count(),
+        2,
+        "in-place run reports the same two records: {stderr}"
+    );
+    assert!(
+        stderr.contains("realign table starting at line 1")
+            && stderr.contains("realign table starting at line 8"),
+        "in-place change lines match dry-run anchors: {stderr}"
+    );
+    assert_eq!(
+        stderr.matches("realign table").count(),
+        dry_stderr.matches("realign table").count(),
+        "in-place reports the same change lines as its dry-run twin"
+    );
+    assert_ne!(
+        actual,
+        fs::read_to_string(&before).unwrap(),
+        "in-place run must write the fixed file"
+    );
+}
+
 /// In-place write: copy before.md to a temp file, run `fix`, assert content.
 #[test]
 fn fix_in_place_write() {
@@ -197,6 +271,39 @@ fn fix_md_dry_run_reports_change() {
     assert!(
         stderr.contains("success[FIX]"),
         "dry-run must report a fix change line on stderr: {stderr}"
+    );
+}
+
+/// `fix --include tables --dry-run` on a fixture with two misaligned tables
+/// reports one record per realigned table, each anchored at the table's first
+/// line.
+#[test]
+fn fix_multi_entity_dry_run_reports_one_record_per_table() {
+    let before = fixture_dir().join("multi_md_before.md");
+    let output = run_command(&["--include", "tables", "--dry-run"], &before);
+
+    assert!(
+        output.status.success(),
+        "fix --dry-run should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "dry-run must not print reconstructed source to stdout"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        stderr.matches("success[FIX]").count(),
+        2,
+        "one record per realigned table: {stderr}"
+    );
+    assert!(
+        stderr.contains("realign table starting at line 1"),
+        "first table anchored at line 1: {stderr}"
+    );
+    assert!(
+        stderr.contains("realign table starting at line 8"),
+        "second table anchored at line 8: {stderr}"
     );
 }
 

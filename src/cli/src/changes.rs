@@ -1,19 +1,21 @@
-//! Dry-run change records: the per-edit report a transformation would apply.
+//! Change records: the per-edit report a transformation applies (in-place) or
+//! would apply (`--dry-run`).
 //!
-//! A [`Change`] is one would-be edit under `--dry-run`: a 1-based anchor line,
-//! an operation code (`FIX`, `REORDER`, or `VIS`), a stable human-readable
-//! message, and an item kind/name. Records are label-level - they describe the
-//! affected region from its first line and never embed the reconstructed
-//! source bytes.
+//! A [`Change`] is one edit: a 1-based anchor line, an operation code (`FIX`,
+//! `REORDER`, or `VIS`), a stable human-readable message, and an item
+//! kind/name. Records are label-level - they describe the affected region from
+//! its first line and never embed the reconstructed source bytes.
 //!
 //! Reorder records come from the reorder crate's `ReorderMove` (already
-//! derived from the computed permutation). Fix and vis records are derived
-//! here by diffing each transformation's before/after output, the lower-risk
-//! default chosen over exposing a per-edit API from those crates.
+//! derived from the computed permutation). Fix records come from per-entity
+//! [`FixAnchor`]s surfaced by the fix crate's `fix_*` passes; [`fix_changes`]
+//! maps each anchor to a [`Change`]. Vis records are derived here by diffing
+//! the narrowed output against the source ([`vis_changes`]).
 
+use rust_llm_tidy_fix::FixKind;
 use std::fmt;
 
-/// A single would-be edit reported by a transformation in dry-run mode.
+/// A single edit applied by a transformation.
 pub(crate) struct Change {
     /// 1-based line where the affected entity begins.
     pub(crate) line: usize,
@@ -51,27 +53,42 @@ impl fmt::Display for Change {
     }
 }
 
-/// Derive a fix change record for a single pass, if that pass changed the text
-/// it received. `pass` is one of `"tables"`, `"fences"`, or `"links"` and
-/// selects the record's kind and message wording.
-pub(crate) fn fix_pass_change(pass: &str, before: &str, after: &str) -> Option<Change> {
-    let line = first_differing_line(before, after)?;
-    let (kind, message) = match pass {
-        "tables" => ("table", format!("realign table starting at line {line}")),
-        "fences" => ("fence", format!("flip nested fence at line {line}")),
-        "links" => ("link", format!("hoist link starting at line {line}")),
-        _ => unreachable!("unknown fix pass: {pass}"),
-    };
-    Some(Change {
-        line,
-        code: "FIX",
-        message,
-        kind: kind.to_string(),
-        name: None,
-        from: None,
-        to: None,
-        before_name: None,
-    })
+/// Map a fix pass's per-entity anchors to one [`Change`] per edited entity.
+///
+/// Each anchor stands for one edit - a realigned table, a flipped fence
+/// delimiter, or a hoisted link pair - anchored at the entity's first line in
+/// that pass's input. `anchors` is empty on a no-op pass, so the mapping yields
+/// zero records.
+pub(crate) fn fix_changes(anchors: &[rust_llm_tidy_fix::FixAnchor]) -> Vec<Change> {
+    anchors
+        .iter()
+        .map(|a| {
+            let (kind, message) = match a.kind {
+                FixKind::Table => (
+                    "table",
+                    format!("realign table starting at line {}", a.line),
+                ),
+                FixKind::Fence => ("fence", format!("flip nested fence at line {}", a.line)),
+                FixKind::Link => {
+                    let text = a.name.as_deref().unwrap_or("");
+                    (
+                        "link",
+                        format!("hoist link `[{text}]` starting at line {}", a.line),
+                    )
+                }
+            };
+            Change {
+                line: a.line,
+                code: "FIX",
+                message,
+                kind: kind.to_string(),
+                name: None,
+                from: None,
+                to: None,
+                before_name: None,
+            }
+        })
+        .collect()
 }
 
 /// Derive per-entity vis change records by diffing the narrowed `output`
@@ -111,25 +128,6 @@ pub(crate) fn vis_changes(source: &str, output: &str) -> Vec<Change> {
         });
     }
     changes
-}
-
-/// First 1-based line where `a` and `b` differ, or `None` when they are equal.
-///
-/// Used to anchor a fix record at the first line a pass actually rewrites.
-fn first_differing_line(a: &str, b: &str) -> Option<usize> {
-    if a == b {
-        return None;
-    }
-    let mut la = a.lines();
-    let mut lb = b.lines();
-    let mut n = 0usize;
-    loop {
-        n += 1;
-        match (la.next(), lb.next()) {
-            (Some(x), Some(y)) if x == y => continue,
-            _ => return Some(n),
-        }
-    }
 }
 
 /// Extract the item kind and simple name from a narrowed output line, which
@@ -264,21 +262,39 @@ mod tests {
     }
 
     #[test]
-    fn first_differing_line_is_one_based() {
-        assert_eq!(first_differing_line("a\nb", "a\nb"), None);
-        assert_eq!(first_differing_line("a\nb", "a\nc"), Some(2));
-        assert_eq!(first_differing_line("a\nb\nc", "a\nb"), Some(3));
-        assert_eq!(first_differing_line("", "x"), Some(1));
+    fn fix_changes_maps_one_record_per_anchor() {
+        let anchors = vec![
+            rust_llm_tidy_fix::FixAnchor {
+                line: 3,
+                kind: FixKind::Table,
+                name: None,
+            },
+            rust_llm_tidy_fix::FixAnchor {
+                line: 7,
+                kind: FixKind::Fence,
+                name: None,
+            },
+            rust_llm_tidy_fix::FixAnchor {
+                line: 9,
+                kind: FixKind::Link,
+                name: Some("A".to_string()),
+            },
+        ];
+        let changes = fix_changes(&anchors);
+        assert_eq!(changes.len(), 3);
+        assert_eq!(changes[0].line, 3);
+        assert_eq!(changes[0].code, "FIX");
+        assert_eq!(changes[0].kind, "table");
+        assert_eq!(changes[0].message, "realign table starting at line 3");
+        assert_eq!(changes[1].kind, "fence");
+        assert_eq!(changes[1].message, "flip nested fence at line 7");
+        assert_eq!(changes[2].kind, "link");
+        assert_eq!(changes[2].message, "hoist link `[A]` starting at line 9");
     }
 
     #[test]
-    fn fix_pass_change_reports_only_changed_passes() {
-        let c = fix_pass_change("tables", "| a | 1 |", "| ----- |").unwrap();
-        assert_eq!(c.line, 1);
-        assert_eq!(c.code, "FIX");
-        assert_eq!(c.kind, "table");
-        assert_eq!(c.message, "realign table starting at line 1");
-        assert!(fix_pass_change("tables", "same", "same").is_none());
+    fn fix_changes_is_empty_without_anchors() {
+        assert!(fix_changes(&[]).is_empty());
     }
 
     #[test]
