@@ -10,6 +10,7 @@
 use crate::changes::Change;
 use rust_llm_tidy_lint::{Diagnostic, Severity};
 use serde::Serialize;
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 /// A serializable record that is either a lint finding or a dry-run change
@@ -17,22 +18,25 @@ use std::path::{Path, PathBuf};
 /// message, item_kind, item_name }`). Lint findings use severity `error` or
 /// `warning`; change records use `success`. `item_name` is `null` when the
 /// item is unnamed.
+///
+/// Text fields borrow from the projected record as [`Cow`], so a JSON run
+/// allocates nothing per record besides the one `path` string.
 #[derive(Serialize)]
-pub(crate) struct JsonRecord {
+pub(crate) struct JsonRecord<'a> {
     /// Path of the file the record was raised in.
-    path: String,
+    path: Cow<'a, str>,
     /// 1-based line number where the item starts.
-    line: usize,
+    line: u32,
     /// Lowercase `error`, `warning`, or `success`.
     severity: &'static str,
     /// Stable rule or operation code, e.g. "DOC001", "FIX", "REORDER", "VIS".
-    code: String,
+    code: &'static str,
     /// Human-readable description of the finding or would-be edit.
-    message: String,
+    message: Cow<'a, str>,
     /// Kind of item that produced the record, e.g. "fn".
-    item_kind: String,
+    item_kind: Cow<'a, str>,
     /// Name of the item, or `null` when unnamed.
-    item_name: Option<String>,
+    item_name: Option<Cow<'a, str>>,
 }
 
 /// Selects the CLI's lint-diagnostic output format.
@@ -55,7 +59,7 @@ pub(crate) fn emit_json(
     diagnostics: &[(PathBuf, Diagnostic)],
     changes: &[(PathBuf, Change)],
 ) -> anyhow::Result<()> {
-    let mut records: Vec<JsonRecord> = Vec::with_capacity(diagnostics.len() + changes.len());
+    let mut records: Vec<JsonRecord<'_>> = Vec::with_capacity(diagnostics.len() + changes.len());
     records.extend(diagnostics.iter().map(|(path, d)| project_lint(path, d)));
     records.extend(changes.iter().map(|(path, c)| project_change(path, c)));
     // Serialization to a String is infallible for these types; propagate any
@@ -66,30 +70,30 @@ pub(crate) fn emit_json(
 }
 
 /// Project a single dry-run change record into its serializable form.
-fn project_change(path: &Path, c: &Change) -> JsonRecord {
+fn project_change<'a>(path: &Path, c: &'a Change) -> JsonRecord<'a> {
     JsonRecord {
-        path: path.display().to_string(),
+        path: Cow::Owned(path.display().to_string()),
         line: c.line,
         severity: "success",
-        code: c.code.to_string(),
-        message: c.message.clone(),
-        item_kind: c.kind.clone(),
-        item_name: c.name.clone(),
+        code: c.code,
+        message: Cow::Borrowed(c.message.as_ref()),
+        item_kind: Cow::Borrowed(c.kind.as_str()),
+        item_name: c.name.as_deref().map(Cow::Borrowed),
     }
 }
 
 /// Project a single lint finding into its serializable form.
-fn project_lint(path: &Path, d: &Diagnostic) -> JsonRecord {
+fn project_lint<'a>(path: &Path, d: &'a Diagnostic) -> JsonRecord<'a> {
     JsonRecord {
-        path: path.display().to_string(),
-        line: d.line,
+        path: Cow::Owned(path.display().to_string()),
+        line: d.line as u32,
         severity: match d.severity {
             Severity::Error => "error",
             Severity::Warning => "warning",
         },
-        code: d.code.to_string(),
-        message: d.message.clone(),
-        item_kind: d.item_kind.to_string(),
-        item_name: d.item_name.clone(),
+        code: d.code,
+        message: Cow::Borrowed(d.message.as_ref()),
+        item_kind: Cow::Borrowed(d.item_kind.as_ref()),
+        item_name: d.item_name.as_deref().map(Cow::Borrowed),
     }
 }

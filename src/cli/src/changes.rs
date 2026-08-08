@@ -13,20 +13,62 @@
 //! [`link_changes`]. Vis records come from diffing the narrowed output against
 //! the source ([`vis_changes`]).
 
+use rust_llm_tidy_model::parse::ItemKind;
 use std::fmt;
 
 /// A single edit applied by a transformation.
+///
+/// Sizes are kept small (a `Box<str>` is 16 bytes on 64-bit, a `&'static str`
+/// 16, a `u32` 4): records are never mutated after construction, so owned
+/// text rides in `Box<str>`, operation codes ride as `&'static str` without a
+/// heap allocation, and the kind is a byte-sized enum. Fields are declared so
+/// the `u32` line sits directly against the enum kind, giving 56 bytes total
+/// on 64-bit, down from 96 with `usize` + `String`.
 pub(crate) struct Change {
-    /// 1-based line where the affected entity begins.
-    pub(crate) line: usize,
+    /// 1-based line where the affected entity begins (`0` = no line).
+    pub(crate) line: u32,
+    /// Kind of the affected entity, as a typed value (see [`ChangeKind::as_str`]
+    /// for the string form).
+    pub(crate) kind: ChangeKind,
     /// Operation code: `FIX`, `REORDER`, or `VIS`.
     pub(crate) code: &'static str,
     /// Stable, human-readable description (never the reconstructed source).
-    pub(crate) message: String,
-    /// Kind of the affected entity (e.g. `table`, `fn`).
-    pub(crate) kind: String,
+    pub(crate) message: Box<str>,
     /// Name of the affected item, when it has one.
-    pub(crate) name: Option<String>,
+    pub(crate) name: Option<Box<str>>,
+}
+
+/// Typed kind of an affected entity.
+///
+/// Item kinds reuse the model's [`ItemKind`] rather than redeclaring their
+/// variants; the remaining variants are the fix-pass tags (`fence`, `link`,
+/// `table`) and the `extern crate` phrase the vis pass synthesizes, which is
+/// not an `ItemKind` (`extern` there means an `extern` block).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChangeKind {
+    /// A parsed source item kind (e.g. `fn`, `struct`).
+    Item(ItemKind),
+    /// A nested code fence whose delimiter was flipped.
+    Fence,
+    /// A hoisted inline link.
+    Link,
+    /// A realigned table.
+    Table,
+    /// An `extern crate` item whose visibility was narrowed.
+    ExternCrate,
+}
+
+impl ChangeKind {
+    /// The stable string form used by plaintext and JSON output.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            ChangeKind::Item(kind) => kind.as_str(),
+            ChangeKind::Fence => "fence",
+            ChangeKind::Link => "link",
+            ChangeKind::Table => "table",
+            ChangeKind::ExternCrate => "extern crate",
+        }
+    }
 }
 
 impl fmt::Display for Change {
@@ -39,12 +81,17 @@ impl fmt::Display for Change {
             Some(name) => write!(
                 f,
                 "success[{}]: {} ({} `{}`)",
-                self.code, self.message, self.kind, name
+                self.code,
+                self.message,
+                self.kind.as_str(),
+                name
             ),
             None => write!(
                 f,
                 "success[{}]: {} ({})",
-                self.code, self.message, self.kind
+                self.code,
+                self.message,
+                self.kind.as_str()
             ),
         }
     }
@@ -62,8 +109,8 @@ pub(crate) fn fence_changes(anchors: &[rust_llm_tidy_fix::FixAnchor]) -> Vec<Cha
         .map(|a| Change {
             line: a.line,
             code: "FIX",
-            message: format!("flip nested fence at line {}", a.line),
-            kind: "fence".to_string(),
+            message: format!("flip nested fence at line {}", a.line).into_boxed_str(),
+            kind: ChangeKind::Fence,
             name: None,
         })
         .collect()
@@ -79,8 +126,8 @@ pub(crate) fn link_changes(pairs: &[(String, String)]) -> Vec<Change> {
         .map(|(before, after)| Change {
             line: 0,
             code: "FIX",
-            message: format!("`{before}` -> `{after}`"),
-            kind: "link".to_string(),
+            message: format!("`{before}` -> `{after}`").into_boxed_str(),
+            kind: ChangeKind::Link,
             name: None,
         })
         .collect()
@@ -95,8 +142,8 @@ pub(crate) fn table_changes() -> Change {
     Change {
         line: 0,
         code: "FIX",
-        message: "tables were aligned".to_string(),
-        kind: "table".to_string(),
+        message: "tables were aligned".into(),
+        kind: ChangeKind::Table,
         name: None,
     }
 }
@@ -126,12 +173,13 @@ pub(crate) fn vis_changes(source: &str, output: &str) -> Vec<Change> {
         let Some((kind, name)) = line_kind_name(out_lines.get(i).copied().unwrap_or("")) else {
             continue;
         };
+        let line = (i + 1) as u32;
         changes.push(Change {
-            line: i + 1,
+            line,
             code: "VIS",
-            message: format!("narrow visibility of `{name}` at line {}", i + 1),
-            kind: kind.to_string(),
-            name: Some(name),
+            message: format!("narrow visibility of `{name}` at line {line}").into_boxed_str(),
+            kind,
+            name: Some(name.into_boxed_str()),
         });
     }
     changes
@@ -142,7 +190,7 @@ pub(crate) fn vis_changes(source: &str, output: &str) -> Vec<Change> {
 /// name. Leading modifiers (`async`, `unsafe`, `default`, `extern`, and `const`
 /// before a kind keyword) are skipped so modifier-carrying items still produce
 /// the right record. Returns `None` for lines that are not a narrowed item.
-fn line_kind_name(line: &str) -> Option<(&'static str, String)> {
+fn line_kind_name(line: &str) -> Option<(ChangeKind, String)> {
     let trimmed = line.trim();
     // The line starts with the floor visibility (`pub(crate)`, `pub(super)`,
     // ...), then (possibly modifiers) the kind keyword, then the item name.
@@ -152,7 +200,7 @@ fn line_kind_name(line: &str) -> Option<(&'static str, String)> {
     // `extern crate foo;` - kind is the two-word phrase, name follows `crate`.
     if toks.first() == Some(&"extern") && toks.get(1) == Some(&"crate") {
         let name = clean_name(toks.get(2).copied().unwrap_or(""));
-        return Some(("extern crate", name));
+        return Some((ChangeKind::ExternCrate, name));
     }
 
     // Skip leading modifiers until the first kind keyword. `const` is a
@@ -186,13 +234,13 @@ fn line_kind_name(line: &str) -> Option<(&'static str, String)> {
     i += 1;
 
     // `static mut X` - skip the `mut` storage modifier before the name.
-    let name_token = if kind == "static" && toks.get(i) == Some(&"mut") {
+    let name_token = if kind == ItemKind::Static && toks.get(i) == Some(&"mut") {
         toks.get(i + 1).copied().unwrap_or("")
     } else {
         toks.get(i).copied().unwrap_or("")
     };
     let name = clean_name(name_token);
-    Some((kind, name))
+    Some((ChangeKind::Item(kind), name))
 }
 
 /// Reduce a name token like `S;`, `C:`, `f()`, or `T<T>` to the item's simple
@@ -213,17 +261,17 @@ fn is_modifier(w: &str) -> bool {
     matches!(w, "async" | "unsafe" | "default" | "extern")
 }
 
-fn kind_for(w: &str) -> Option<&'static str> {
+fn kind_for(w: &str) -> Option<ItemKind> {
     match w {
-        "fn" => Some("fn"),
-        "struct" => Some("struct"),
-        "enum" => Some("enum"),
-        "union" => Some("union"),
-        "type" => Some("type"),
-        "const" => Some("const"),
-        "static" => Some("static"),
-        "mod" => Some("mod"),
-        "trait" => Some("trait"),
+        "fn" => Some(ItemKind::Fn),
+        "struct" => Some(ItemKind::Struct),
+        "enum" => Some(ItemKind::Enum),
+        "union" => Some(ItemKind::Union),
+        "type" => Some(ItemKind::Type),
+        "const" => Some(ItemKind::Const),
+        "static" => Some(ItemKind::Static),
+        "mod" => Some(ItemKind::Mod),
+        "trait" => Some(ItemKind::Trait),
         _ => None,
     }
 }
@@ -237,9 +285,9 @@ mod tests {
         let named = Change {
             line: 20,
             code: "REORDER",
-            message: "rearrange fn a_main from pos 2 to pos 1 (before b_helper)".to_string(),
-            kind: "fn".to_string(),
-            name: Some("a_main".to_string()),
+            message: "rearrange fn a_main from pos 2 to pos 1 (before b_helper)".into(),
+            kind: ChangeKind::Item(ItemKind::Fn),
+            name: Some("a_main".into()),
         };
         assert_eq!(
             named.to_string(),
@@ -252,8 +300,8 @@ mod tests {
         let unnamed = Change {
             line: 3,
             code: "FIX",
-            message: "flip nested fence at line 3".to_string(),
-            kind: "fence".to_string(),
+            message: "flip nested fence at line 3".into(),
+            kind: ChangeKind::Fence,
             name: None,
         };
         assert_eq!(
@@ -270,8 +318,8 @@ mod tests {
             "success[FIX]: tables were aligned (table)"
         );
         assert_eq!(table.line, 0);
-        assert_eq!(table.kind, "table");
-        assert_eq!(table.message, "tables were aligned");
+        assert_eq!(table.kind, ChangeKind::Table);
+        assert_eq!(table.message.as_ref(), "tables were aligned");
     }
 
     #[test]
@@ -279,14 +327,13 @@ mod tests {
         let anchors = vec![rust_llm_tidy_fix::FixAnchor {
             line: 7,
             kind: rust_llm_tidy_fix::FixKind::Fence,
-            name: None,
         }];
         let changes = fence_changes(&anchors);
         assert_eq!(changes.len(), 1);
         assert_eq!(changes[0].line, 7);
         assert_eq!(changes[0].code, "FIX");
-        assert_eq!(changes[0].kind, "fence");
-        assert_eq!(changes[0].message, "flip nested fence at line 7");
+        assert_eq!(changes[0].kind, ChangeKind::Fence);
+        assert_eq!(changes[0].message.as_ref(), "flip nested fence at line 7");
     }
 
     #[test]
@@ -304,9 +351,9 @@ mod tests {
         assert_eq!(changes.len(), 2, "one record per pair");
         assert_eq!(changes[0].line, 0, "link records carry no line");
         assert_eq!(changes[0].code, "FIX");
-        assert_eq!(changes[0].kind, "link");
-        assert_eq!(changes[0].message, "`[A](u)` -> `[A]`");
-        assert_eq!(changes[1].message, "`[B](v)` -> `[B]`");
+        assert_eq!(changes[0].kind, ChangeKind::Link);
+        assert_eq!(changes[0].message.as_ref(), "`[A](u)` -> `[A]`");
+        assert_eq!(changes[1].message.as_ref(), "`[B](v)` -> `[B]`");
         assert_eq!(
             changes[1].to_string(),
             "success[FIX]: `[B](v)` -> `[B]` (link)"
@@ -325,11 +372,17 @@ mod tests {
         let changes = vis_changes(source, output);
         assert_eq!(changes.len(), 2);
         assert_eq!(changes[0].line, 2);
-        assert_eq!(changes[0].message, "narrow visibility of `f` at line 2");
-        assert_eq!(changes[0].kind, "fn");
+        assert_eq!(
+            changes[0].message.as_ref(),
+            "narrow visibility of `f` at line 2"
+        );
+        assert_eq!(changes[0].kind, ChangeKind::Item(ItemKind::Fn));
         assert_eq!(changes[1].line, 3);
-        assert_eq!(changes[1].message, "narrow visibility of `S` at line 3");
-        assert_eq!(changes[1].kind, "struct");
+        assert_eq!(
+            changes[1].message.as_ref(),
+            "narrow visibility of `S` at line 3"
+        );
+        assert_eq!(changes[1].kind, ChangeKind::Item(ItemKind::Struct));
 
         // A tidy pair reports zero records for modifier-carrying items too.
         let tidy = "pub(crate) mod m {\n    pub(crate) async fn f() {}\n}\n";
@@ -344,10 +397,10 @@ mod tests {
     #[test]
     fn line_kind_name_handles_const_and_generics() {
         let (kind, name) = line_kind_name("    pub(crate) const C: u32 = 0;").unwrap();
-        assert_eq!(kind, "const");
+        assert_eq!(kind, ChangeKind::Item(ItemKind::Const));
         assert_eq!(name, "C");
         let (kind, name) = line_kind_name("    pub(crate) fn f<T>() {}").unwrap();
-        assert_eq!(kind, "fn");
+        assert_eq!(kind, ChangeKind::Item(ItemKind::Fn));
         assert_eq!(name, "f");
         assert!(line_kind_name("    let x = 1;").is_none());
         assert!(line_kind_name("    use crate::m;").is_none());
@@ -370,7 +423,11 @@ mod tests {
             ("    pub(crate) static mut X: i32 = 0;", "static", "X"),
         ] {
             let (got_kind, got_name) = line_kind_name(line).unwrap();
-            assert_eq!((got_kind, got_name.as_str()), (kind, name), "for `{line}`");
+            assert_eq!(
+                (got_kind.as_str(), got_name.as_str()),
+                (kind, name),
+                "for `{line}`"
+            );
         }
     }
 
@@ -390,7 +447,7 @@ mod tests {
         assert_eq!(changes.len(), expected.len());
         for (c, (line, kind, name)) in changes.iter().zip(expected) {
             assert_eq!(c.line, line, "line for `{name}`");
-            assert_eq!(c.kind, kind, "kind for `{name}`");
+            assert_eq!(c.kind.as_str(), kind, "kind for `{name}`");
             assert_eq!(c.name.as_deref(), Some(name), "name for `{name}`");
         }
     }

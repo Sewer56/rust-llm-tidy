@@ -42,18 +42,17 @@ pub struct FixOutcome<'a> {
 }
 
 /// A per-entity edit anchor from a fix pass: a 1-based line in the pass's own
-/// input, the edited entity's kind, and an optional name.
+/// input and the edited entity's kind.
 ///
 /// Anchors give a consumer one record per actual edit without re-diffing the
-/// before/after text.
+/// before/after text. `line` is `u32` so anchors pack tightly in the change
+/// records they feed; no fix pass edits a file with more than 4 billion lines.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FixAnchor {
     /// 1-based line (in the pass's own input) where the edited entity begins.
-    pub line: usize,
+    pub line: u32,
     /// Kind of the edited entity.
     pub kind: FixKind,
-    /// Name of the edited entity, when it has one.
-    pub name: Option<String>,
 }
 
 /// Kind of edit a fix pass applied, used to select the record wording.

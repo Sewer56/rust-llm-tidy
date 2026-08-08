@@ -248,11 +248,11 @@ pub(crate) fn reorder_file(
         // the moved item's first source line.
         let item = &parsed.items[mv.from() - 1];
         change_records.push(changes::Change {
-            line: item.start_line(),
+            line: item.start_line() as u32,
             code: "REORDER",
-            message: mv.message(),
-            kind: mv.kind().to_string(),
-            name: mv.name().map(str::to_string),
+            message: mv.message().into_boxed_str(),
+            kind: changes::ChangeKind::Item(*mv.kind()),
+            name: mv.name().map(Box::from),
         });
     }
     if !dry_run {

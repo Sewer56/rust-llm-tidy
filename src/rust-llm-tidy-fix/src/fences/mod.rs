@@ -73,7 +73,7 @@ pub fn fix_fences(input: &str) -> FixOutcome<'_> {
 
     // `split_inclusive('\n')` yields one line per segment; the zip counter is
     // the 1-based line of each segment, used to anchor flipped delimiters.
-    for (line_num, segment) in (1usize..).zip(input.split_inclusive('\n')) {
+    for (line_num, segment) in (1u32..).zip(input.split_inclusive('\n')) {
         let seg_start = pos;
         pos += segment.len();
 
@@ -113,7 +113,6 @@ pub fn fix_fences(input: &str) -> FixOutcome<'_> {
                     anchors.push(FixAnchor {
                         line: line_num,
                         kind: FixKind::Fence,
-                        name: None,
                     });
                 } else if let Some(o) = out.as_mut() {
                     o.push_str(segment);
@@ -140,7 +139,6 @@ pub fn fix_fences(input: &str) -> FixOutcome<'_> {
                     anchors.push(FixAnchor {
                         line: line_num,
                         kind: FixKind::Fence,
-                        name: None,
                     });
                 } else if let Some(o) = out.as_mut() {
                     o.push_str(segment);
@@ -291,12 +289,10 @@ inner
                 FixAnchor {
                     line: 3,
                     kind: FixKind::Fence,
-                    name: None
                 },
                 FixAnchor {
                     line: 5,
                     kind: FixKind::Fence,
-                    name: None
                 },
             ],
             "opener and closer each anchor their own delimiter line"
@@ -716,12 +712,10 @@ deep
                 FixAnchor {
                     line: 2,
                     kind: FixKind::Fence,
-                    name: None
                 },
                 FixAnchor {
                     line: 4,
                     kind: FixKind::Fence,
-                    name: None
                 },
             ],
             "flipped opener/closer anchor their doc-comment lines"

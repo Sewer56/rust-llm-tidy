@@ -29,11 +29,11 @@ pub struct ReorderMove {
     from: usize,
     /// Description of the item that directly follows this one in the reordered
     /// output (the item it lands before), if any.
-    before: Option<String>,
+    before: Option<Box<str>>,
     /// Kind of the moved item (e.g. `fn`, `impl`).
     kind: ItemKind,
     /// Name of the moved item, when it has one.
-    name: Option<String>,
+    name: Option<Box<str>>,
     /// 1-based source line where the moved item starts, used to describe
     /// unnamed items (e.g. impl blocks).
     line: usize,
@@ -157,15 +157,15 @@ pub fn compute_moves(
         let before = perm.order.get(to_idx + 1).map(|&next_idx| {
             let next = &items[next_idx];
             next.name()
-                .map(str::to_string)
-                .unwrap_or_else(|| describe(next))
+                .map(Box::from)
+                .unwrap_or_else(|| describe(next).into_boxed_str())
         });
         moves.push(ReorderMove {
             to,
             from,
             before,
-            kind: item.kind().clone(),
-            name: item.name().map(str::to_string),
+            kind: *item.kind(),
+            name: item.name().map(Box::from),
             line: item.start_line(),
         });
     }
