@@ -321,7 +321,7 @@ changes, and still prints the document when the run exits non-zero:
 Fields:
 
 - `severity` - `"error"` or `"warning"` for lint findings, `"success"` for change records (applied or would-be changes)
-- `line` - 1-based item start line
+- `line` - 1-based item start line; `null` when the record has no specific line (e.g. link/table fixes)
 - `item_name` - item name, `null` when unnamed
 - `path`, `code`, `message`, `item_kind` - as in plaintext
 

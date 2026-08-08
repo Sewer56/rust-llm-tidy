@@ -491,7 +491,7 @@ fn json_in_place_run_records_fix_changes() {
     assert_eq!(rec["severity"], "success");
     assert_eq!(rec["code"], "FIX");
     assert_eq!(rec["item_kind"], "table");
-    assert_eq!(rec["line"], 0);
+    assert!(rec["line"].is_null(), "table records carry no line");
     assert_eq!(rec["message"], "tables were aligned");
 }
 

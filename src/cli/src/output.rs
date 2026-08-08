@@ -11,6 +11,7 @@ use crate::changes::Change;
 use rust_llm_tidy_lint::{Diagnostic, Severity};
 use serde::Serialize;
 use std::borrow::Cow;
+use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
 /// A serializable record that is either a lint finding or a dry-run change
@@ -25,8 +26,9 @@ use std::path::{Path, PathBuf};
 pub(crate) struct JsonRecord<'a> {
     /// Path of the file the record was raised in.
     path: Cow<'a, str>,
-    /// 1-based line number where the item starts.
-    line: u32,
+    /// Optional 1-based line number where the item starts; `null` when the
+    /// record has no specific line (e.g. link/table fixes).
+    line: Option<NonZeroU32>,
     /// Lowercase `error`, `warning`, or `success`.
     severity: &'static str,
     /// Stable rule or operation code, e.g. "DOC001", "FIX", "REORDER", "VIS".
@@ -86,7 +88,7 @@ fn project_change<'a>(path: &Path, c: &'a Change) -> JsonRecord<'a> {
 fn project_lint<'a>(path: &Path, d: &'a Diagnostic) -> JsonRecord<'a> {
     JsonRecord {
         path: Cow::Owned(path.display().to_string()),
-        line: d.line as u32,
+        line: NonZeroU32::new(d.line as u32),
         severity: match d.severity {
             Severity::Error => "error",
             Severity::Warning => "warning",

@@ -46,13 +46,13 @@ README.md: success[FIX]: tables were aligned (table)
 ```
 
 In JSON mode the same record appears on stdout with `severity: "success"`
-(`line` is 0 for table records - one record covers the whole file):
+(`line` is `null` for table records - one record covers the whole file):
 
 ```json
 [
   {
     "path": "README.md",
-    "line": 0,
+    "line": null,
     "severity": "success",
     "code": "FIX",
     "message": "tables were aligned",

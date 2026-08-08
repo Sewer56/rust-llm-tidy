@@ -248,7 +248,7 @@ pub(crate) fn reorder_file(
         // the moved item's first source line.
         let item = &parsed.items[mv.from() - 1];
         change_records.push(changes::Change {
-            line: item.start_line() as u32,
+            line: std::num::NonZeroU32::new(item.start_line() as u32),
             code: "REORDER",
             message: mv.message().into_boxed_str(),
             kind: changes::ChangeKind::Item(*mv.kind()),

@@ -15,18 +15,26 @@
 
 use rust_llm_tidy_model::parse::ItemKind;
 use std::fmt;
+use std::num::NonZeroU32;
 
 /// A single edit applied by a transformation.
 ///
-/// Sizes are kept small (a `Box<str>` is 16 bytes on 64-bit, a `&'static str`
-/// 16, a `u32` 4): records are never mutated after construction, so owned
+/// Records are never mutated after construction, so owned
 /// text rides in `Box<str>`, operation codes ride as `&'static str` without a
 /// heap allocation, and the kind is a byte-sized enum. Fields are declared so
-/// the `u32` line sits directly against the enum kind, giving 56 bytes total
-/// on 64-bit, down from 96 with `usize` + `String`.
+/// the 4-byte line field sits directly against the enum kind, giving 56 bytes
+/// total on 64-bit, down from 96 with `usize` + `String`.
+///
+/// # Remarks
+///
+/// Lines are 1-based and non-zero, so `line` uses `Option<NonZeroU32>`
+/// (`None` = the record has no specific line). The niche makes this 4 bytes -
+/// the same size as a plain `u32`, so the packed layout is unchanged - while
+/// the type guarantees a record can never report line 0 and serializes to
+/// `null` when there is no line.
 pub(crate) struct Change {
-    /// 1-based line where the affected entity begins (`0` = no line).
-    pub(crate) line: u32,
+    /// Optional 1-based line where the affected entity begins (`None` = no line).
+    pub(crate) line: Option<NonZeroU32>,
     /// Kind of the affected entity, as a typed value (see [`ChangeKind::as_str`]
     /// for the string form).
     pub(crate) kind: ChangeKind,
@@ -73,9 +81,9 @@ impl ChangeKind {
 
 impl fmt::Display for Change {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Link records carry no line (0), so only prefix numbered records.
-        if self.line > 0 {
-            write!(f, "{}: ", self.line)?;
+        // Link records carry no line, so only prefix numbered records.
+        if let Some(line) = self.line {
+            write!(f, "{line}: ")?;
         }
         match &self.name {
             Some(name) => write!(
@@ -107,7 +115,7 @@ pub(crate) fn fence_changes(anchors: &[rust_llm_tidy_fix::FixAnchor]) -> Vec<Cha
     anchors
         .iter()
         .map(|a| Change {
-            line: a.line,
+            line: NonZeroU32::new(a.line),
             code: "FIX",
             message: format!("flip nested fence at line {}", a.line).into_boxed_str(),
             kind: ChangeKind::Fence,
@@ -119,12 +127,12 @@ pub(crate) fn fence_changes(anchors: &[rust_llm_tidy_fix::FixAnchor]) -> Vec<Cha
 /// One [`Change`] per `(before, after)` substitution pair a link hoist reports.
 ///
 /// The pairs come straight from [`fix_links`](rust_llm_tidy_fix::fix_links), so
-/// no diff or line tracking is needed here; records carry no line (0).
+/// no diff or line tracking is needed here; records carry no line (`None`).
 pub(crate) fn link_changes(pairs: &[(String, String)]) -> Vec<Change> {
     pairs
         .iter()
         .map(|(before, after)| Change {
-            line: 0,
+            line: None,
             code: "FIX",
             message: format!("`{before}` -> `{after}`").into_boxed_str(),
             kind: ChangeKind::Link,
@@ -137,10 +145,10 @@ pub(crate) fn link_changes(pairs: &[(String, String)]) -> Vec<Change> {
 ///
 /// [`fix_tables`](rust_llm_tidy_fix::fix_tables) rewrites whole tables, so a
 /// single per-file record suffices; no diff or line tracking is needed and the
-/// record carries no line (0).
+/// record carries no line (`None`).
 pub(crate) fn table_changes() -> Change {
     Change {
-        line: 0,
+        line: None,
         code: "FIX",
         message: "tables were aligned".into(),
         kind: ChangeKind::Table,
@@ -175,7 +183,7 @@ pub(crate) fn vis_changes(source: &str, output: &str) -> Vec<Change> {
         };
         let line = (i + 1) as u32;
         changes.push(Change {
-            line,
+            line: NonZeroU32::new(line),
             code: "VIS",
             message: format!("narrow visibility of `{name}` at line {line}").into_boxed_str(),
             kind,
@@ -283,7 +291,7 @@ mod tests {
     #[test]
     fn change_plaintext_matches_lint_shape() {
         let named = Change {
-            line: 20,
+            line: NonZeroU32::new(20),
             code: "REORDER",
             message: "rearrange fn a_main from pos 2 to pos 1 (before b_helper)".into(),
             kind: ChangeKind::Item(ItemKind::Fn),
@@ -298,7 +306,7 @@ mod tests {
     #[test]
     fn change_plaintext_omits_name_when_unnamed() {
         let unnamed = Change {
-            line: 3,
+            line: NonZeroU32::new(3),
             code: "FIX",
             message: "flip nested fence at line 3".into(),
             kind: ChangeKind::Fence,
@@ -317,7 +325,7 @@ mod tests {
             table.to_string(),
             "success[FIX]: tables were aligned (table)"
         );
-        assert_eq!(table.line, 0);
+        assert_eq!(table.line, None);
         assert_eq!(table.kind, ChangeKind::Table);
         assert_eq!(table.message.as_ref(), "tables were aligned");
     }
@@ -330,7 +338,7 @@ mod tests {
         }];
         let changes = fence_changes(&anchors);
         assert_eq!(changes.len(), 1);
-        assert_eq!(changes[0].line, 7);
+        assert_eq!(changes[0].line.unwrap().get(), 7);
         assert_eq!(changes[0].code, "FIX");
         assert_eq!(changes[0].kind, ChangeKind::Fence);
         assert_eq!(changes[0].message.as_ref(), "flip nested fence at line 7");
@@ -349,7 +357,7 @@ mod tests {
         ];
         let changes = link_changes(&pairs);
         assert_eq!(changes.len(), 2, "one record per pair");
-        assert_eq!(changes[0].line, 0, "link records carry no line");
+        assert_eq!(changes[0].line, None, "link records carry no line");
         assert_eq!(changes[0].code, "FIX");
         assert_eq!(changes[0].kind, ChangeKind::Link);
         assert_eq!(changes[0].message.as_ref(), "`[A](u)` -> `[A]`");
@@ -371,13 +379,13 @@ mod tests {
         let output = "pub(crate) mod m {\n    pub(crate) fn f() {}\n    pub(crate) struct S;\n}\n";
         let changes = vis_changes(source, output);
         assert_eq!(changes.len(), 2);
-        assert_eq!(changes[0].line, 2);
+        assert_eq!(changes[0].line.unwrap().get(), 2);
         assert_eq!(
             changes[0].message.as_ref(),
             "narrow visibility of `f` at line 2"
         );
         assert_eq!(changes[0].kind, ChangeKind::Item(ItemKind::Fn));
-        assert_eq!(changes[1].line, 3);
+        assert_eq!(changes[1].line.unwrap().get(), 3);
         assert_eq!(
             changes[1].message.as_ref(),
             "narrow visibility of `S` at line 3"
@@ -446,7 +454,7 @@ mod tests {
         ];
         assert_eq!(changes.len(), expected.len());
         for (c, (line, kind, name)) in changes.iter().zip(expected) {
-            assert_eq!(c.line, line, "line for `{name}`");
+            assert_eq!(c.line.unwrap().get(), line, "line for `{name}`");
             assert_eq!(c.kind.as_str(), kind, "kind for `{name}`");
             assert_eq!(c.name.as_deref(), Some(name), "name for `{name}`");
         }
