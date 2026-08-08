@@ -88,16 +88,12 @@ pub(crate) struct Cli {
     #[arg(long, global = true, conflicts_with = "config")]
     no_config: bool,
     /// Lint output format: `text` (default) prints plaintext diagnostics to
-    /// stderr; `json` prints a single JSON array of all findings to stdout.
-    #[arg(
-        long,
-        value_name = "MODE",
-        default_value = "text",
-        conflicts_with = "dry_run"
-    )]
+    /// stderr; `json` prints a single JSON array of lint findings and dry-run
+    /// change records to stdout.
+    #[arg(long, value_name = "MODE", default_value = "text")]
     output_mode: output::OutputMode,
     /// Alias for `--output-mode json`.
-    #[arg(long, conflicts_with_all = ["dry_run", "output_mode"])]
+    #[arg(long, conflicts_with = "output_mode")]
     json: bool,
 }
 
@@ -249,6 +245,9 @@ pub(crate) fn reorder_file(
                 message: mv.message(),
                 kind: mv.kind().to_string(),
                 name: mv.name().map(str::to_string),
+                from: Some(mv.from()),
+                to: Some(mv.to()),
+                before_name: mv.before().map(str::to_string),
             });
         }
     } else {

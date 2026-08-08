@@ -29,7 +29,7 @@ pub(crate) fn run_pipeline(
         // JSON mode still owns stdout: emit `[]` so consumers always receive
         // exactly one valid JSON document when processing completes.
         if cli.json_mode() {
-            crate::output::emit_diagnostics(&[])?;
+            crate::output::emit_json(&[], &[])?;
         }
         return Ok(());
     }
@@ -175,10 +175,10 @@ pub(crate) fn run_pipeline(
 
     // Emit the full JSON document on stdout before any bail (post-process,
     // processing-failure, or error-count) so consumers receive every finding
-    // together with the non-zero exit code. Plaintext stays on stderr (already
-    // printed above).
+    // and change record together with the non-zero exit code. Plaintext stays
+    // on stderr (already printed above).
     if json_mode {
-        crate::output::emit_diagnostics(&diagnostics)?;
+        crate::output::emit_json(&diagnostics, &changes)?;
     }
 
     if let Some(c) = config
