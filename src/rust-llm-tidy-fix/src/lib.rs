@@ -11,9 +11,7 @@
 //!   markers so an inner fence cannot close the outer block early; works on
 //!   `.md` and `///`/`//!` doc comments.
 //! - [`fix_links`]: collapse inline links `[text](url)` to reference form
-//!   `[text]` plus `[text]: url` definitions - duplicated inside every Rust
-//!   doc comment that uses the label, one trailing block in Markdown;
-//!   idempotent.
+//!   `[text]` plus `[text]: url` definitions; idempotent.
 //! - [`fix_tables`]: realign GFM pipe tables, including those nested inside
 //!   `///` and `//!` doc comments.
 //!

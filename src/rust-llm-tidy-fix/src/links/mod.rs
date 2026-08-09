@@ -24,6 +24,14 @@
 //! The function is idempotent and returns a borrowed [`Cow`] with empty pairs
 //! when nothing is eligible.
 //!
+//! # Performance
+//!
+//! The common input is already reference-style or link-free and must return a
+//! [`Cow::Borrowed`] after a single tally pass. That pass skips lines without a
+//! `[` and jumps between `[` bytes with [`str::find`] instead of walking every
+//! character; both rewrite paths allocate their output lazily, so a no-op run
+//! pays zero allocation beyond the tally scan.
+//!
 //! # Example
 //!
 //! ```rust
@@ -53,45 +61,22 @@ mod scan;
 
 /// Collapse eligible inline links `[text](url)` to reference form.
 ///
-/// Returns the rewritten text plus one `(before, after)` substitution per
-/// hoisted link (`[text](url)` -> `[text]`). See the module docs for the full
-/// rule. Borrows `input` back with no pairs when nothing is eligible.
-///
-/// # Arguments
-///
-/// - `input`: the Markdown (or Rust source) whose inline links are hoisted to
-///   `[text]: url` reference definitions.
+/// Always-hoist contract (threshold 1): every eligible link, single-use and
+/// intra-doc included, becomes `[text]` plus a `[text]: url` definition.
+/// Returns the rewritten text and one `(before, after)` substitution per
+/// hoisted link; borrows `input` back with no pairs when nothing is eligible.
 pub fn fix_links(input: &str) -> (Cow<'_, str>, Vec<(String, String)>) {
-    fix_links_internal(input, 1)
+    fix_links_with_min(input, 1)
 }
 
 /// Collapse each inline link `[text](url)` to reference form when its
 /// `(text, url)` pair appears at least `min_occurrences` times in the
 /// non-fenced input.
 ///
-/// Applies the same rules as [`fix_links`] (see the module docs) except for the
-/// eligibility threshold, which is caller-supplied: a pair appearing fewer than
-/// `min_occurrences` times stays inline. `min_occurrences = 1` reproduces
-/// [`fix_links`] exactly. Returns the rewritten text plus one `(before, after)`
-/// substitution per hoisted link, borrowing `input` back with no pairs when
-/// nothing is eligible.
-///
-/// # Arguments
-///
-/// - `input`: the Markdown (or Rust source) whose inline links may be hoisted.
-/// - `min_occurrences`: the minimum number of times a `(text, url)` pair must
-///   appear in the non-fenced input before it is hoisted; must be `>= 1`.
+/// `min_occurrences = 1` reproduces [`fix_links`] exactly. Returns the rewritten
+/// text plus one `(before, after)` substitution per hoisted link, borrowing
+/// `input` back with no pairs when nothing is eligible.
 pub fn fix_links_with_min(
-    input: &str,
-    min_occurrences: usize,
-) -> (Cow<'_, str>, Vec<(String, String)>) {
-    fix_links_internal(input, min_occurrences)
-}
-
-/// Shared core, parameterized by the occurrence threshold (default 1) so later
-/// work can expose a public threshold-taking entry point without changing this
-/// one's signature.
-fn fix_links_internal(
     input: &str,
     min_occurrences: usize,
 ) -> (Cow<'_, str>, Vec<(String, String)>) {
@@ -224,10 +209,10 @@ fn rewrite_markdown<'a>(
 
 /// Rewrite eligible inline links in Rust doc-comment context.
 ///
-/// Each eligible link inside a `///` / `//!` block becomes `[text]`, and a
-/// `[text]: url` definition is appended to the end of every block that uses
-/// the label. Links on non-doc-comment lines are never rewritten and no
-/// definition is emitted outside a block.
+/// Hoisted links inside a `///` / `//!` block become `[text]`; a `[text]: url`
+/// definition is appended to every block that uses the label. Links on
+/// non-doc-comment lines are never rewritten or defined. Output is allocated
+/// lazily, so an untouched input costs only the per-line `[` check.
 fn rewrite_rust_context<'a>(
     input: &'a str,
     hoist_set: &HashSet<(&'a str, &'a str)>,

@@ -108,13 +108,10 @@ pub const FENCE_FIXTURES: &[(&str, &str)] = &[
 ];
 /// Link-hoist benchmark fixtures: `(name, source)` pairs, named by link state.
 ///
-/// Under always-hoist, every eligible inline link (repeated or single-use,
-/// intra-doc targets included) is rewritten to `[text]`. In Rust doc comments
-/// (`doc/*`) the `[text]: url` definition is duplicated inside every comment
-/// that uses the label; in Markdown one trailing definition block is appended.
-/// `doc/noop` is the genuine borrowed no-op: it uses only reference-style
-/// links, so [`fix_links`] returns the input unchanged and still exercises the
-/// tally pass.
+/// Under always-hoist, every eligible inline link (single-use and intra-doc
+/// included) becomes `[text]` plus a `[text]: url` definition - one trailing
+/// block in Markdown, duplicated per using doc comment in `doc/*`. `doc/noop`
+/// (reference-style only) is the borrowed no-op, still exercising the tally.
 ///
 /// [`fix_links`]: rust_llm_tidy_fix::fix_links
 #[allow(dead_code)] // each bench compiles `common` separately, using one set

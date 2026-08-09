@@ -55,26 +55,19 @@ inner
 ## Repeated inline-link hoisting
 
 [`fix_links`] rewrites every eligible inline link `[text](url)` to reference
-style `[text]` plus a `[text]: url` definition, in both Rust doc comments and
-plain markdown, by default even when the link appears only once. Intra-doc
-targets (`Self::field`, `crate::path`) hoist like any other link. The hoist
-threshold defaults to 1 and is configurable via `links.min_occurrences`.
+style `[text]` plus a `[text]: url` definition. The hoist threshold defaults to
+1, tunable via `links.min_occurrences`.
 
-Where the definition goes depends on context:
+Definitions land inside each doc comment that uses the label (`.rs`), or in one
+trailing block at the end of the document (`.md`).
 
-- In Rust doc comments, each `[text]: url` definition is duplicated inside
-  every doc comment that uses the label, so each comment stays self-sufficient
-  and `cargo doc` builds cleanly.
-- In markdown, all definitions collect in one trailing block at the end of the
-  document.
-
-Markdown example - before (a single-use inline link):
+Markdown - before:
 
 ```text
 See [the docs](https://example.com) for setup.
 ```
 
-After (hoisted to reference style with a trailing definition):
+After:
 
 ```text
 See [the docs] for setup.
@@ -88,24 +81,19 @@ Rust doc comment - before:
 /// See [the docs](https://example.com) for setup.
 ```
 
-After (definition duplicated inside the comment):
+After:
 
 ```text
 /// See [the docs] for setup.
 /// [the docs]: https://example.com
 ```
 
-The pass keeps the structural skip-list - links that cannot be hoisted safely:
+Never hoisted: autolinks and whitespace-URL forms, already-reference-style
+links, texts with an existing definition, and links inside fenced code blocks
+(same fence discipline as `fix_fences`).
 
-- **Autolink** (`<url>`) or whitespace/newline-URL forms.
-- Already **reference-style** links (`[text][ref]`, `[text][]`, `[text]`).
-- Links whose **text** already has a `[text]:` definition.
-- Links inside **fenced code blocks** (reuses the same fence-tracking
-  discipline as `fix_fences`).
-
-The function is idempotent: an already-hoisted document is returned unchanged.
-The hoisted `[text]: url` definitions use the source's dominant line ending
-(`\r\n` or `\n`), so a CRLF document stays CRLF after hoisting.
+Idempotent: already-hoisted output returns unchanged. Definitions use the
+source's dominant line ending (`\r\n` or `\n`), so CRLF stays CRLF.
 
 ## Usage
 

@@ -10,12 +10,6 @@
 //! `**` recurses across directories. Files outside the config directory never
 //! match (the prefix strip fails).
 //!
-//! The optional `links` map tunes the link-hoist threshold per file extension:
-//! `min_occurrences` (default 1) is the global minimum number of times a
-//! `(text, url)` pair must appear before it is hoisted, and `by_extension`
-//! overrides that per extension (effective = `by_extension[ext]` else
-//! `min_occurrences` else 1). Every value must be `>= 1`.
-//!
 //! # Hard-fail policy
 //!
 //! Any config error - bad YAML, bad glob syntax, unknown rule name, a

@@ -9,23 +9,6 @@
 # future rust-llm-tidy release stay disabled until added here. Otherwise, pin
 # the rust-llm-tidy version used by CI and upgrade it deliberately when you
 # want to review new or changed rules.
-#
-# The `links` op hoists inline links `[text](url)` to reference style by
-# default (threshold 1 = hoist even a single use) in both `.rs` doc comments
-# and `.md` files. Its threshold is tunable with a `links:` section:
-#
-#   links:
-#     min_occurrences: 2          # hoist a link only when it appears this many
-#                                 # times; default 1, must be >= 1.
-#     by_extension: { rs: 2 }     # per-extension thresholds (values >= 1).
-#
-# A file's effective threshold is by_extension[ext], else min_occurrences,
-# else 1. `by_extension` keys are free-form for future languages, so new
-# extensions need no schema change; unknown keys are inert. The block below is
-# behavior-neutral (threshold 1, the unchanged default).
-
-links:
-  min_occurrences: 1
 
 include:
   - paths: ["**"]
