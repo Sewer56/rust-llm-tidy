@@ -123,6 +123,8 @@ synthetic_fixture!(fn_mutual_recursion_contiguous);
 
 synthetic_fixture!(cfg_test_mod_last_stable);
 
+synthetic_fixture!(mod_file_decl_stays_in_phase);
+
 synthetic_fixture!(preamble_preserved);
 
 synthetic_fixture!(trailer_preserved);
