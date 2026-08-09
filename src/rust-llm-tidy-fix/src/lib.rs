@@ -23,6 +23,7 @@
 
 pub use fences::fix_fences;
 pub use links::fix_links;
+pub use links::fix_links_with_min;
 use std::borrow::Cow;
 pub use tables::fix_tables;
 

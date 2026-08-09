@@ -65,6 +65,29 @@ pub fn fix_links(input: &str) -> (Cow<'_, str>, Vec<(String, String)>) {
     fix_links_internal(input, 1)
 }
 
+/// Collapse each inline link `[text](url)` to reference form when its
+/// `(text, url)` pair appears at least `min_occurrences` times in the
+/// non-fenced input.
+///
+/// Applies the same rules as [`fix_links`] (see the module docs) except for the
+/// eligibility threshold, which is caller-supplied: a pair appearing fewer than
+/// `min_occurrences` times stays inline. `min_occurrences = 1` reproduces
+/// [`fix_links`] exactly. Returns the rewritten text plus one `(before, after)`
+/// substitution per hoisted link, borrowing `input` back with no pairs when
+/// nothing is eligible.
+///
+/// # Arguments
+///
+/// - `input`: the Markdown (or Rust source) whose inline links may be hoisted.
+/// - `min_occurrences`: the minimum number of times a `(text, url)` pair must
+///   appear in the non-fenced input before it is hoisted; must be `>= 1`.
+pub fn fix_links_with_min(
+    input: &str,
+    min_occurrences: usize,
+) -> (Cow<'_, str>, Vec<(String, String)>) {
+    fix_links_internal(input, min_occurrences)
+}
+
 /// Shared core, parameterized by the occurrence threshold (default 1) so later
 /// work can expose a public threshold-taking entry point without changing this
 /// one's signature.
@@ -711,5 +734,63 @@ pub fn f() {
             once.matches("\r\n").count(),
             "every newline must be CRLF: {once:?}"
         );
+    }
+
+    #[test]
+    fn fix_links_with_min_one_matches_fix_links() {
+        // A threshold of 1 must reproduce the default always-hoist contract
+        // byte-for-byte on both Markdown and Rust doc-comment inputs.
+        let cases: &[&str] = &[
+            "see [A](http://x) and [A](http://x)\n",
+            "only [A](http://x) once\n",
+            "/// [field](Self::field) and [path](crate::path)\n",
+            "/// see [A](http://x) once\n",
+        ];
+        for &input in cases {
+            let (out, pairs) = fix_links(input);
+            let (min_out, min_pairs) = fix_links_with_min(input, 1);
+            assert_eq!(
+                min_out.into_owned(),
+                out.into_owned(),
+                "threshold 1 must match default for {input:?}"
+            );
+            assert_eq!(
+                min_pairs, pairs,
+                "threshold 1 must report the same pairs for {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn fix_links_with_min_two_keeps_single_use_inline() {
+        // With a threshold of 2, a single-occurrence pair stays inline (no
+        // record, input borrowed) in both Markdown and Rust doc-comment context.
+        let markdown = "only [A](http://x) once\n";
+        let (out, pairs) = fix_links_with_min(markdown, 2);
+        assert!(
+            matches!(out, Cow::Borrowed(_)),
+            "single markdown use below threshold stays borrowed"
+        );
+        assert!(pairs.is_empty());
+        assert_eq!(&*out, markdown);
+
+        let rust = "/// see [A](http://x) once\n";
+        let (out, pairs) = fix_links_with_min(rust, 2);
+        assert!(
+            matches!(out, Cow::Borrowed(_)),
+            "single doc-comment use below threshold stays borrowed"
+        );
+        assert!(pairs.is_empty());
+        assert_eq!(&*out, rust);
+    }
+
+    #[test]
+    fn fix_links_with_min_two_still_hoists_repeated_pair() {
+        // A threshold of 2 must still hoist a pair that appears twice.
+        let input = "see [A](http://x) and [A](http://x)\n";
+        let expected = "see [A] and [A]\n[A]: http://x\n";
+        let (out, pairs) = fix_links_with_min(input, 2);
+        assert_eq!(out.into_owned(), expected);
+        assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);
     }
 }

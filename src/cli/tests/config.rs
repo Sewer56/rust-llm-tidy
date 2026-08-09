@@ -7,12 +7,12 @@
 //! `--config <path>`. Existing tests use `--no-config` (see `fix.rs`), so the
 //! repo-root sample config never interferes here.
 
+use common::binary;
 use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod common;
-use common::binary;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -753,6 +753,27 @@ fn regular_command_hard_fails_on_non_matching_path() {
     assert!(
         !output.status.success(),
         "non-matching-path config must hard-fail, not warn"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// `--validate` exits non-zero when `links.min_occurrences` is below 1.
+#[test]
+fn validate_fails_on_links_min_occurrences_zero() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(&cfg, "links:\n  min_occurrences: 0\n").unwrap();
+
+    let output = Command::new(binary())
+        .arg("--config")
+        .arg(&cfg)
+        .arg("--validate")
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        !output.status.success(),
+        "--validate should fail on min_occurrences: 0"
     );
     let _ = fs::remove_dir_all(&dir);
 }

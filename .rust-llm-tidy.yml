@@ -22,7 +22,7 @@
 #
 # The `links` op hoists inline links `[text](url)` to reference style by
 # default (threshold 1 = hoist even a single use) in both `.rs` doc comments
-# and `.md` files. Its behavior is tunable with an optional `links:` section:
+# and `.md` files. Its behavior is tunable with a `links:` section:
 #   links:
 #     min_occurrences: 2          # hoist a link only when it appears this many
 #                                 # times; default 1, must be >= 1.
@@ -30,10 +30,11 @@
 #                                 # applied before the global setting.
 # A file's effective threshold is by_extension[ext], else min_occurrences,
 # else 1. `by_extension` keys are free-form so future languages need no schema
-# change; keys the pipeline does not yet process are inert.
-# The `links:` threshold ships in a later release; this release hoists at the
-# default threshold of 1, and a real `links:` key is rejected at config load
-# until then.
+# change; keys the pipeline does not yet process are inert. The live block
+# below pins the default threshold 1, matching the behavior of an absent key.
+
+links:
+  min_occurrences: 1
 
 # Skip ALL processing for files matching any pattern.
 exclude_files:

@@ -492,6 +492,110 @@ fn fix_recursive_directory_collects_md_and_rs() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// With `links.by_extension: { rs: 2 }`, a single-use doc-comment link in a
+/// `.rs` file is below the threshold: it stays byte-unchanged with no link
+/// record (dry-run), while a `.md` file at the default threshold 1 hoists.
+#[test]
+fn links_by_extension_rs_two_leaves_single_use_rs_unchanged() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let rs = dir.join("lib.rs");
+    let rs_source = "/// see [A](http://x) once\npub fn f() {}\n";
+    fs::write(&rs, rs_source).unwrap();
+    let md = dir.join("doc.md");
+    fs::write(&md, "only [A](http://x) once\n").unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(&cfg, "links:\n  by_extension:\n    rs: 2\n").unwrap();
+
+    // The .rs single use is below the rs threshold of 2: no record, unchanged.
+    let output = Command::new(binary())
+        .args([
+            "--config",
+            cfg.to_str().unwrap(),
+            "--include",
+            "links",
+            "--dry-run",
+        ])
+        .arg(&rs)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "dry-run should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("`[A](http://x)` -> `[A]`"),
+        "single-use .rs link below threshold must not hoist: {stderr:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&rs).unwrap(),
+        rs_source,
+        "single-use .rs file must stay byte-unchanged"
+    );
+
+    // The .md file has no rs override, so the default threshold 1 applies and
+    // hoists the single use with a trailing definition.
+    let output = Command::new(binary())
+        .args(["--config", cfg.to_str().unwrap(), "--include", "links"])
+        .arg(&md)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "md in-place should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(&md).unwrap(),
+        "only [A] once\n[A]: http://x\n",
+        ".md at threshold 1 must hoist the single use"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A global `links.min_occurrences: 2` suppresses a single-use `.rs` link.
+#[test]
+fn links_global_min_two_suppresses_single_use_rs() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let rs = dir.join("lib.rs");
+    let rs_source = "/// see [A](http://x) once\npub fn f() {}\n";
+    fs::write(&rs, rs_source).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(&cfg, "links:\n  min_occurrences: 2\n").unwrap();
+
+    let output = Command::new(binary())
+        .args([
+            "--config",
+            cfg.to_str().unwrap(),
+            "--include",
+            "links",
+            "--dry-run",
+        ])
+        .arg(&rs)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "dry-run should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("`[A](http://x)` -> `[A]`"),
+        "single-use .rs link below threshold 2 must not hoist: {stderr:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&rs).unwrap(),
+        rs_source,
+        "single-use .rs file must stay byte-unchanged under min_occurrences: 2"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// The directory holding `fix` fixtures.
 fn fixture_dir() -> std::path::PathBuf {
     manifest_dir().join("tests").join("fixtures").join("fix")
