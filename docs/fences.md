@@ -9,25 +9,25 @@ outer block does not close early. Runs in `.md` files and `.rs` doc comments.
 ## Before
 
 ````markdown
-```
+~~~
 text
 
 ```rust
 fn main() {}
 ```
-```
+~~~
 ````
 
 ## After
 
 ````markdown
-```
+~~~
 text
 
-~~~rust
+```rust
 fn main() {}
-~~~
 ```
+~~~
 ````
 
 ## Config
