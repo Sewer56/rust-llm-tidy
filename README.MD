@@ -1,7 +1,6 @@
 # rust-llm-tidy
 
 [![Crates.io](https://img.shields.io/crates/v/rust-llm-tidy-cli.svg)][Crates.io CLI]
-[![Docs.rs](https://docs.rs/rust-llm-tidy-cli/badge.svg)][Docs.rs CLI]
 [![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
 
 Rust project for automatically reordering Rust source file items into an
