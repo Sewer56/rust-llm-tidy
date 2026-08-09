@@ -812,7 +812,7 @@ fn reorder_fixture_dir() -> std::path::PathBuf {
         .join("reorder")
 }
 
-/// Run `rust-llm-tidy check <fixture>` and return (stderr, exit_code).
+/// Run `rust-llm-tidy --include lints <fixture>` and return (stderr, exit_code).
 fn run_check_fixture(name: &str) -> (String, i32) {
     let path = fixture_dir().join(name);
     let output = run_command(&["--include", "lints"], &path);
