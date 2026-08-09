@@ -208,7 +208,8 @@ pub(crate) fn fix_file(
 ///
 /// Returns one per-file [`changes::Change`] record per moved item (derived from
 /// the reorder crate's `ReorderMove` producer) in both dry-run and in-place
-/// modes, and writes the reordered source only when not in dry-run.
+/// modes, and writes the reordered source only when not in dry-run and the
+/// output differs from the original.
 pub(crate) fn reorder_file(
     path: &Path,
     dry_run: bool,
@@ -255,7 +256,7 @@ pub(crate) fn reorder_file(
             name: mv.name().map(Box::from),
         });
     }
-    if !dry_run {
+    if !dry_run && output != source {
         io::atomic_write(path, &output)
             .with_context(|| format!("failed to write {}", path.display()))?;
     }
