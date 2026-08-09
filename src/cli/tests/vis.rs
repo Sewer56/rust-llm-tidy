@@ -1,13 +1,16 @@
 //! Integration tests for the `vis` subcommand of `rust-llm-tidy`.
 //!
-//! Mirrors the helper pattern from `fix.rs` (`run_command`, `binary`,
-//! `manifest_dir`, `fixture_dir`). Each test runs the built CLI binary against
-//! fixture files in `tests/fixtures/vis/`.
+//! Mirrors the helper pattern from `fix.rs` (`run_command`, `manifest_dir`,
+//! `fixture_dir`; `binary` lives in the shared `common` module). Each test
+//! runs the built CLI binary against fixture files in `tests/fixtures/vis/`.
 
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+mod common;
+use common::binary;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -270,23 +273,6 @@ fn temp_file(ext: &str) -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-vis-{}-{}.{}", pid, seq, ext))
-}
-
-/// Return the path to the `rust-llm-tidy` debug binary.
-///
-/// Prefers `CARGO_BIN_EXE_rust_llm_tidy` (set by `cargo test` at runtime);
-/// falls back to the sibling of the test binary under `target/<triple>/debug/`,
-/// since the test binary lives in `target/<triple>/debug/deps/`.
-fn binary() -> std::path::PathBuf {
-    if let Some(path) = std::env::var_os("CARGO_BIN_EXE_rust_llm_tidy") {
-        return std::path::PathBuf::from(path);
-    }
-
-    let mut path = std::env::current_exe().expect("current_exe must resolve");
-    // Drop `<test-name>-<hash>` and `deps/` to reach `target/<triple>/debug/`.
-    path.pop();
-    path.pop();
-    path.join("rust-llm-tidy")
 }
 
 /// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.

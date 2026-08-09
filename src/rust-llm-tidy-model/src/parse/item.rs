@@ -64,6 +64,9 @@ pub struct SourceItem {
     impl_target: Option<String>,
     /// True if this is a `mod` item gated by `#[cfg(test)]`.
     is_test_module: bool,
+    /// True only for inline `mod x { ... }` definitions (body present); false
+    /// for file-based `mod x;` declarations and every non-mod item.
+    is_inline: bool,
     /// True for `impl Trait for Type` (trait impl), false for `impl Type` (inherent).
     is_trait_impl: bool,
     /// Visibility tier used for ordering and doc-coverage checks. `Some` for
@@ -236,6 +239,13 @@ impl SourceItem {
         self.is_test_module
     }
 
+    /// True only for inline `mod x { ... }` definitions (body present); false
+    /// for file-based `mod x;` declarations and every non-mod item.
+    #[inline]
+    pub fn is_inline(&self) -> bool {
+        self.is_inline
+    }
+
     /// True for `impl Trait for Type` (trait impl), false for `impl Type` (inherent).
     #[inline]
     pub fn is_trait_impl(&self) -> bool {
@@ -296,8 +306,8 @@ impl SourceItem {
     ///
     /// See the [`SourceItem`] struct field docs for parameter descriptions:
     /// `start`, `end`, `start_line`, `kind`, `name`, `impl_target`,
-    /// `is_test_module`, `is_trait_impl`, `visibility`, `doc_comments`,
-    /// `returns_result`, `params`, and `is_test_fn`.
+    /// `is_test_module`, `is_inline`, `is_trait_impl`, `visibility`,
+    /// `doc_comments`, `returns_result`, `params`, and `is_test_fn`.
     pub fn new(
         start: usize,
         end: usize,
@@ -306,6 +316,7 @@ impl SourceItem {
         name: Option<String>,
         impl_target: Option<String>,
         is_test_module: bool,
+        is_inline: bool,
         is_trait_impl: bool,
         visibility: Option<VisibilityTier>,
         doc_comments: Vec<String>,
@@ -321,6 +332,7 @@ impl SourceItem {
             name,
             impl_target,
             is_test_module,
+            is_inline,
             is_trait_impl,
             visibility,
             doc_comments,

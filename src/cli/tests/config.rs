@@ -2,14 +2,17 @@
 //! exclusions of `rust-llm-tidy`.
 //!
 //! Mirrors the helper pattern from `fix.rs`/`doc_check.rs` (`run_command`,
-//! `binary`, `manifest_dir`). Each test writes a temp config and/or fixture
-//! and runs the built CLI binary with `--config <path>`. Existing tests use
-//! `--no-config` (see `fix.rs`), so the repo-root sample config never
-//! interferes here.
+//! `manifest_dir`; `binary` lives in the shared `common` module). Each test
+//! writes a temp config and/or fixture and runs the built CLI binary with
+//! `--config <path>`. Existing tests use `--no-config` (see `fix.rs`), so the
+//! repo-root sample config never interferes here.
 
 use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+mod common;
+use common::binary;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -881,19 +884,6 @@ fn validate_ok_on_valid_config() {
         String::from_utf8_lossy(&output.stderr)
     );
     let _ = fs::remove_dir_all(&dir);
-}
-
-/// Return the path to the `rust-llm-tidy` debug binary.
-fn binary() -> std::path::PathBuf {
-    if let Some(path) = std::env::var_os("CARGO_BIN_EXE_rust_llm_tidy") {
-        return std::path::PathBuf::from(path);
-    }
-
-    let mut path = std::env::current_exe().expect("current_exe must resolve");
-    // Drop `<test-name>-<hash>` and `deps/` to reach `target/<triple>/debug/`.
-    path.pop();
-    path.pop();
-    path.join("rust-llm-tidy")
 }
 
 // -- Helpers (mirrors fix.rs) -----------------------------------

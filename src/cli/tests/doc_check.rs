@@ -10,6 +10,9 @@ use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod common;
+use common::binary;
+
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// `all` on a clean file passes with no diagnostics.
@@ -847,23 +850,6 @@ fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
     cmd.args(["--no-config"]).args(args).arg(path);
     cmd.output()
         .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
-}
-
-/// Return the path to the `rust-llm-tidy` debug binary.
-///
-/// Prefers `CARGO_BIN_EXE_rust_llm_tidy` (set by `cargo test` at runtime);
-/// falls back to the sibling of the test binary under `target/<triple>/debug/`,
-/// since the test binary lives in `target/<triple>/debug/deps/`.
-fn binary() -> std::path::PathBuf {
-    if let Some(path) = std::env::var_os("CARGO_BIN_EXE_rust_llm_tidy") {
-        return std::path::PathBuf::from(path);
-    }
-
-    let mut path = std::env::current_exe().expect("current_exe must resolve");
-    // Drop `<test-name>-<hash>` and `deps/` to reach `target/<triple>/debug/`.
-    path.pop();
-    path.pop();
-    path.join("rust-llm-tidy")
 }
 
 /// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.

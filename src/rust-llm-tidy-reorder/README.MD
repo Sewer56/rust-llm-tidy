@@ -103,7 +103,8 @@ extern crate serde;
 use std::collections::HashMap;
 use std::fs;
 
-// Phase 3: mod declarations sort alphabetically by name.
+// Phase 3: mod x; declarations sort alphabetically via rustfmt. Only
+// inline #[cfg(test)] mod { ... } definitions move to phase 10.
 mod alpha;
 mod beta;
 
@@ -139,7 +140,8 @@ pub(crate) fn crate_fn() {}
 fn main() {}
 fn private_helper() {}
 
-// Phase 10: #[cfg(test)] mod tests always comes last.
+// Phase 10: Inline #[cfg(test)] mod { ... } last (stable). Other mods
+// stay in phase 3.
 #[cfg(test)]
 mod tests {}
 ```
@@ -181,8 +183,8 @@ for sorting, grouping, and merging.
 
 - `fn main()` always comes first in its visibility tier.
 
-- `#[cfg(test)] mod tests` always comes last, preserving original source order
-  (stable).
+- Inline `#[cfg(test)] mod { ... }` definitions last, preserving source
+  order (stable). File-based `mod x;` stays in phase 3.
 
 - Macro definitions come before their first use.
 

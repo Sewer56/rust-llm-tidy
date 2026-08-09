@@ -10,8 +10,10 @@
 //! - mod alpha;   (unchanged - stable)
 //!
 //! Notes:
-//! - Phase 3 covers `mod` items that are not gated by `#[cfg(test)]`.
-//! - Order is preserved as-is; alphabetical sorting is delegated to rustfmt.
+//! - Phase 3 covers file-based `mod` declarations, whether `#[cfg(test)]` is
+//!   present or not, plus inline non-test mods.
+//! - File-based declarations stay in their original position; alphabetical
+//!   sorting is delegated to rustfmt.
 //!
 mod beta;
 mod alpha;

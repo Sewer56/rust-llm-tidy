@@ -123,6 +123,8 @@ synthetic_fixture!(fn_mutual_recursion_contiguous);
 
 synthetic_fixture!(cfg_test_mod_last_stable);
 
+synthetic_fixture!(mod_file_decl_stays_in_phase);
+
 synthetic_fixture!(preamble_preserved);
 
 synthetic_fixture!(trailer_preserved);
@@ -786,19 +788,40 @@ fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
         .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
 }
 
-/// Return the path to the `rust-llm-tidy` debug binary.
+/// Returns the path to the `rust-llm-tidy` binary for spawning in tests.
 ///
-/// Prefers `CARGO_BIN_EXE_rust_llm_tidy` (set by `cargo test` at runtime);
-/// falls back to the sibling of the test binary under `target/<triple>/debug/`,
-/// since the test binary lives in `target/<triple>/debug/deps/`.
+/// Resolution order:
+/// 1. `CARGO_BIN_EXE_rust-llm-tidy`; modern Cargo keeps the hyphen.
+/// 2. `CARGO_BIN_EXE_rust_llm_tidy`; older Cargo normalized it.
+/// 3. Walk up from the test executable to the `target/<profile>` dir that
+///    holds the peer binary.
+///
+/// Panics when none resolve.
 fn binary() -> std::path::PathBuf {
-    if let Some(path) = std::env::var_os("CARGO_BIN_EXE_rust_llm_tidy") {
-        return std::path::PathBuf::from(path);
+    for var in ["CARGO_BIN_EXE_rust-llm-tidy", "CARGO_BIN_EXE_rust_llm_tidy"] {
+        if let Some(path) = std::env::var_os(var) {
+            return std::path::PathBuf::from(path);
+        }
     }
 
-    let mut path = std::env::current_exe().expect("current_exe must resolve");
-    // Drop `<test-name>-<hash>` and `deps/` to reach `target/<triple>/debug/`.
-    path.pop();
-    path.pop();
-    path.join("rust-llm-tidy")
+    // Fallback for direct runs: the test binary lives in `<profile>/deps/`
+    // (stable) or the build-out dir (newer Cargo); both sit under the
+    // `<profile>` dir that holds the peer binary.
+    let mut dir = std::env::current_exe()
+        .expect("current_exe must resolve")
+        .parent()
+        .expect("current_exe must have a parent")
+        .to_path_buf();
+    loop {
+        for bin in ["rust-llm-tidy", "rust-llm-tidy.exe"] {
+            let candidate = dir.join(bin);
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    panic!("could not locate the rust-llm-tidy binary next to the test executable");
 }

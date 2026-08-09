@@ -5,7 +5,7 @@
 Reorders top-level items of a Rust source file into a canonical 10-phase
 order. Within most phases an item precedes anything it references;
 alphabetical order breaks ties. `fn main()` comes first in its tier;
-`#[cfg(test)] mod tests` comes last.
+inline `#[cfg(test)] mod tests { ... }` definitions come last.
 
 ## Phases
 
@@ -16,7 +16,8 @@ extern crate serde;
 // 2. use declarations (not sorted by this tool - use rustfmt).
 use std::fs;
 
-// 3. mod declarations sort alphabetically.
+// 3. mod x; declarations sort alphabetically via rustfmt. Only inline
+//    #[cfg(test)] mod { ... } definitions move to phase 10.
 mod alpha;
 
 // 4. Macros come before their first use; top-level invocations of local
@@ -39,7 +40,8 @@ pub fn public_fn() { private_helper(); }
 fn main() {}
 fn private_helper() {}
 
-// 10. #[cfg(test)] mod tests always last.
+// 10. Inline #[cfg(test)] mod { ... } last (stable); all else stays
+//     in phase 3.
 #[cfg(test)]
 mod tests {}
 ```
