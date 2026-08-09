@@ -300,6 +300,13 @@ rust-llm-tidy --exclude lints src
 
 ## JSON output
 
+```bash
+# Print findings and change records as a single JSON array on stdout
+rust-llm-tidy --output-mode json src
+# `--json` is an alias for `--output-mode json`
+rust-llm-tidy --json src
+```
+
 Print every lint finding and change record as one JSON array on stdout, in both
 in-place and `--dry-run` runs. Prints `[]` when there are no findings or
 changes, and still prints the document when the run exits non-zero:
