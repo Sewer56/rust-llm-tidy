@@ -48,11 +48,11 @@ pub(super) fn dominant_line_ending(source: &str) -> &'static str {
 /// tracks how far the verbatim prefix of `body` has been emitted; non-hoisted
 /// inline links leave `last` alone so their bytes are emitted verbatim in a
 /// later gap (or the trailing copy), exactly like the eager version.
-pub(super) fn rewrite_links(
+pub(super) fn rewrite_links<'a>(
     prefix: &str,
-    body: &str,
+    body: &'a str,
     term: &str,
-    hoist: &HashSet<(&str, &str)>,
+    hoist: &HashSet<(&'a str, &'a str)>,
 ) -> Option<String> {
     let mut out: Option<String> = None;
     let mut last = 0usize;

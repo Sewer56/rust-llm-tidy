@@ -36,3 +36,30 @@ exclude:
 rust-llm-tidy --include vis --dry-run src/lib.rs
 rust-llm-tidy --exclude vis src
 ```
+
+## Change output
+
+Every run reports each item it narrows (or would narrow under `--dry-run`) as
+one record. In text mode every record prints to stderr:
+
+```text
+src/lib.rs:3: success[VIS]: narrow visibility of `f` at line 3 (fn `f`)
+```
+
+In JSON mode the records appear on stdout with `severity: "success"`:
+
+```json
+[
+  {
+    "path": "src/lib.rs",
+    "line": 3,
+    "severity": "success",
+    "code": "VIS",
+    "message": "narrow visibility of `f` at line 3",
+    "item_kind": "fn",
+    "item_name": "f"
+  }
+]
+```
+
+See [Change reporting](./lints.md#change-reporting) for the shared format.

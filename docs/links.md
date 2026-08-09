@@ -39,3 +39,32 @@ exclude:
 rust-llm-tidy --include links --dry-run README.md
 rust-llm-tidy --exclude links src
 ```
+
+## Change output
+
+Every run reports each hoisted link it applies (or would apply under
+`--dry-run`) as one record showing the before -> after substitution. In text
+mode the records print to stderr:
+
+```text
+README.md: success[FIX]: `[A](http://x)` -> `[A]` (link)
+```
+
+In JSON mode the same records appear on stdout with `severity: "success"`
+(`line` is `null` for link records - no line applies):
+
+```json
+[
+  {
+    "path": "README.md",
+    "line": null,
+    "severity": "success",
+    "code": "FIX",
+    "message": "`[A](http://x)` -> `[A]`",
+    "item_kind": "link",
+    "item_name": null
+  }
+]
+```
+
+See [Change reporting](./lints.md#change-reporting) for the shared format.

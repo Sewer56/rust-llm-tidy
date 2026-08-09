@@ -21,7 +21,7 @@
 //! | `--validate`        | Validate config and exit (no files touched)         |
 //! | `--include <RULE>`  | Run only these rules (repeatable, overrides config) |
 //! | `--exclude <RULE>`  | Skip these rules (repeatable, additive)             |
-//! | `--dry-run`         | Print results to stdout                             |
+//! | `--dry-run`         | Preview the changes without writing them            |
 //! | `--config <PATH>`   | Explicit config path                                |
 //! | `--no-config`       | Disable config discovery                            |
 //! | `--output-mode <M>` | Lint output format: `text` (default) or `json`      |
@@ -44,10 +44,12 @@ use rust_llm_tidy_vis::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
     discover_crate_root, narrow_vis_in_tree,
 };
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+mod changes;
 mod config;
 mod diff;
 mod output;
@@ -68,7 +70,7 @@ pub(crate) struct Cli {
     /// directory is expanded recursively. When omitted, the changed files in
     /// the current git diff are used (filtered to `.rs` and `.md`).
     paths: Vec<PathBuf>,
-    /// Print results to stdout instead of modifying files.
+    /// Print the changes that would be made instead of modifying files.
     #[arg(long)]
     dry_run: bool,
     /// Validate the config and exit; do not process files.
@@ -87,16 +89,12 @@ pub(crate) struct Cli {
     #[arg(long, global = true, conflicts_with = "config")]
     no_config: bool,
     /// Lint output format: `text` (default) prints plaintext diagnostics to
-    /// stderr; `json` prints a single JSON array of all findings to stdout.
-    #[arg(
-        long,
-        value_name = "MODE",
-        default_value = "text",
-        conflicts_with = "dry_run"
-    )]
+    /// stderr; `json` prints a single JSON array of lint findings and dry-run
+    /// change records to stdout.
+    #[arg(long, value_name = "MODE", default_value = "text")]
     output_mode: output::OutputMode,
     /// Alias for `--output-mode json`.
-    #[arg(long, conflicts_with_all = ["dry_run", "output_mode"])]
+    #[arg(long, conflicts_with = "output_mode")]
     json: bool,
 }
 
@@ -151,55 +149,74 @@ pub(crate) fn check_file(
 /// [`fix::fix_links`], and writes the result back via [`io::atomic_write`]
 /// unless `--dry-run` is given.
 ///
-/// On dry-run with multiple files, a neutral `<!-- {path} -->` HTML-comment
-/// header is emitted (valid in both markdown and harmless in stdout).
+/// Every edit reports a [`changes::Change`] in both dry-run and in-place modes:
+/// fences via the fix crate's anchors; tables as one per-file record
+/// ([`changes::table_changes`]); link hoists as one record per before/after
+/// pair ([`changes::link_changes`]). A no-op pass borrows its text back and
+/// yields no record.
 ///
 /// `fix` never fails on content; it exits non-zero only on I/O errors.
 pub(crate) fn fix_file(
     path: &Path,
     dry_run: bool,
-    multiple_files: bool,
     enabled: &Option<HashSet<String>>,
     disabled: &HashSet<String>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<changes::Change>> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let mut out: String = source.clone();
+    let mut change_records = Vec::new();
     if pipeline::op_enabled("tables", enabled, disabled) {
-        out = fix::fix_tables(&out).into_owned();
+        let prior = std::mem::take(&mut out);
+        match fix::fix_tables(&prior) {
+            Cow::Owned(after) => {
+                change_records.push(changes::table_changes());
+                out = after;
+            }
+            Cow::Borrowed(_) => out = prior,
+        }
     }
     if pipeline::op_enabled("fences", enabled, disabled) {
-        out = fix::fix_fences(&out).into_owned();
+        let prior = std::mem::take(&mut out);
+        let outcome = fix::fix_fences(&prior);
+        match outcome.text {
+            Cow::Owned(after) => {
+                change_records.extend(changes::fence_changes(&outcome.anchors));
+                out = after;
+            }
+            Cow::Borrowed(_) => out = prior,
+        }
     }
     if pipeline::op_enabled("links", enabled, disabled) {
-        out = fix::fix_links(&out).into_owned();
-    }
-    if dry_run {
-        if multiple_files {
-            print!("<!-- {} -->\n{}", path.display(), out);
-        } else {
-            print!("{out}");
+        let prior = std::mem::take(&mut out);
+        match fix::fix_links(&prior) {
+            (Cow::Owned(after), pairs) => {
+                change_records.extend(changes::link_changes(&pairs));
+                out = after;
+            }
+            (Cow::Borrowed(_), _) => out = prior,
         }
-    } else if out != source {
+    }
+    if !dry_run && out != source {
         io::atomic_write(path, &out)
             .with_context(|| format!("failed to write {}", path.display()))?;
     }
-    Ok(())
+    Ok(change_records)
 }
 
 /// Reorder a single source file.
 ///
-/// When processing multiple files in dry-run mode, a comment header with the
-/// file path is emitted before each file's output so the results can be
-/// distinguished.
+/// Returns one per-file [`changes::Change`] record per moved item (derived from
+/// the reorder crate's `ReorderMove` producer) in both dry-run and in-place
+/// modes, and writes the reordered source only when not in dry-run and the
+/// output differs from the original.
 pub(crate) fn reorder_file(
     path: &Path,
     dry_run: bool,
-    multiple_files: bool,
     disabled: &HashSet<String>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<changes::Change>> {
     if disabled.contains("reorder") {
-        return Ok(());
+        return Ok(Vec::new());
     }
     // 1. Read source
     let source =
@@ -226,27 +243,39 @@ pub(crate) fn reorder_file(
         )
     })?;
 
-    // 6. Write output
-    if dry_run {
-        if multiple_files {
-            print!("// {}\n{}", path.display(), output);
-        } else {
-            print!("{output}");
-        }
-    } else {
+    let mut change_records = Vec::new();
+    for mv in rust_llm_tidy_reorder::compute_moves(&parsed.items, &permutation) {
+        // `from` is the 1-based input sequence position; the anchor line is
+        // the moved item's first source line.
+        let item = &parsed.items[mv.from() - 1];
+        change_records.push(changes::Change {
+            line: std::num::NonZeroU32::new(item.start_line() as u32),
+            code: "REORDER",
+            message: mv.message().into_boxed_str(),
+            kind: changes::ChangeKind::Item(*mv.kind()),
+            name: mv.name().map(Box::from),
+        });
+    }
+    if !dry_run && output != source {
         io::atomic_write(path, &output)
             .with_context(|| format!("failed to write {}", path.display()))?;
     }
 
-    Ok(())
+    Ok(change_records)
 }
 
-/// Build the crate-aware [`VisContext`] from the first input path. Returns
-/// `None` (with a printed warning) when crate-root discovery fails, so
-/// standalone files keep working via `narrow_vis_in_tree` with `floor = None`
-/// and a per-file re-export guard.
+/// Build the crate-aware [`VisContext`] from the first `.rs` input path.
+/// Returns `None` (without warning) when there is no `.rs` input or
+/// crate-root discovery fails, so standalone files keep working via
+/// `narrow_vis_in_tree` with `floor = None` and a per-file re-export guard.
+///
+/// Vis only ever narrows `.rs` items, so non-Rust inputs (e.g. `.md` docs in
+/// `.github/`) must neither select the crate-resolve candidate nor emit a
+/// "narrowing standalone" warning.
 pub(crate) fn resolve_vis_context(paths: &[PathBuf]) -> Option<VisContext> {
-    let first = paths.first()?;
+    let first = paths
+        .iter()
+        .find(|p| crate::paths::ext_in(p.extension().and_then(|e| e.to_str()), &["rs"]))?;
     match discover_crate_root(first) {
         Ok(root) => {
             // Canonicalize the crate root so it matches the canonicalized source
@@ -318,12 +347,11 @@ pub(crate) fn resolve_vis_context(paths: &[PathBuf]) -> Option<VisContext> {
 pub(crate) fn vis_file(
     path: &Path,
     dry_run: bool,
-    multiple_files: bool,
     ctx: Option<&VisContext>,
     disabled: &HashSet<String>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<changes::Change>> {
     if disabled.contains("vis") {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
@@ -357,18 +385,14 @@ pub(crate) fn vis_file(
     }
     .with_context(|| format!("failed to narrow {}", path.display()))?;
 
-    if dry_run {
-        if multiple_files {
-            print!("// {}\n{}", path.display(), output);
-        } else {
-            print!("{output}");
-        }
-    } else if output != source {
+    // Records are reported in both modes; only the write is mode-gated.
+    let change_records = changes::vis_changes(&source, &output);
+    if !dry_run && output != source {
         io::atomic_write(path, &output)
             .with_context(|| format!("failed to write {}", path.display()))?;
     }
 
-    Ok(())
+    Ok(change_records)
 }
 
 fn main() -> anyhow::Result<()> {

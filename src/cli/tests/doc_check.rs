@@ -25,11 +25,11 @@ fn all_clean_file() {
     );
 }
 
-/// `all --dry-run` applies table fixes to a `.md` file.
+/// `all --dry-run` applies table fixes to a `.md` file and reports the change
+/// record on stderr, leaving stdout empty.
 #[test]
 fn all_md_dry_run_fixes_tables() {
     let before = fix_fixture_dir().join("table_md_before.md");
-    let expected = fs::read_to_string(fix_fixture_dir().join("table_md_after.md")).unwrap();
     let output = run_command(&["--dry-run"], &before);
 
     assert!(
@@ -37,8 +37,15 @@ fn all_md_dry_run_fixes_tables() {
         "all --dry-run on markdown should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, expected, "markdown table should be fixed");
+    assert!(
+        output.stdout.is_empty(),
+        "dry-run must not print reconstructed source to stdout"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("success[FIX]"),
+        "all --dry-run must report the table fix on stderr: {stderr}"
+    );
 }
 
 /// `all` fixes markdown tables in place but skips reorder/check for `.md`.
@@ -376,7 +383,7 @@ fn doc006_clean_not_flagged() {
 
 // ── TEST001: test-function naming ─────────────────────────────────
 
-/// `doc006_placeholders.rs` warns on TODO/FIXME/... in doc comments.
+/// `doc006_placeholders.rs` warns on TODO/FIXME/TBD doc-comment markers.
 #[test]
 fn doc006_placeholders() {
     let (stderr, exit) = run_check_fixture("doc006_placeholders.rs");
@@ -386,7 +393,12 @@ fn doc006_placeholders() {
 
     assert_has_diagnostic(&stderr, "DOC006", Some("todo_task"));
     assert_has_diagnostic(&stderr, "DOC006", Some("fixme_task"));
-    assert_has_diagnostic(&stderr, "DOC006", Some("Placeholder"));
+    assert_has_diagnostic(&stderr, "DOC006", Some("tbd_task"));
+    // A literal `...` is idiomatic prose, not a placeholder marker.
+    assert!(
+        !stderr.contains("Placeholder"),
+        "ellipsis-only docs should not be flagged:\n{stderr}"
+    );
 
     let doc006_count = stderr.matches("DOC006").count();
     assert_eq!(
@@ -406,6 +418,130 @@ fn json_alias_is_equivalent_to_output_mode() {
     assert_eq!(alias.stdout, mode.stdout);
 }
 
+/// `--json --dry-run` and `--output-mode json --dry-run` are equivalent and
+/// both record the would-be reorder with `severity: "success"`.
+#[test]
+fn json_dry_run_records_changes_for_both_flags() {
+    let path = reorder_fixture_dir().join("fn_interstitial_comment_travels_with_next_before.rs");
+    let alias = run_command(&["--include", "reorder", "--json", "--dry-run"], &path);
+    let mode = run_command(
+        &["--include", "reorder", "--output-mode", "json", "--dry-run"],
+        &path,
+    );
+
+    assert!(
+        alias.status.success(),
+        "--json dry-run should succeed: {}",
+        String::from_utf8_lossy(&alias.stderr)
+    );
+    assert!(
+        mode.status.success(),
+        "--output-mode json dry-run should succeed: {}",
+        String::from_utf8_lossy(&mode.stderr)
+    );
+    assert_eq!(
+        alias.stdout, mode.stdout,
+        "--json and --output-mode json must be equivalent in dry-run"
+    );
+
+    for output in [&alias, &mode] {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let records: serde_json::Value = serde_json::from_str(&stdout)
+            .unwrap_or_else(|e| panic!("stdout must parse as JSON: {e}\n{stdout}"));
+        let array = records.as_array().expect("JSON output must be an array");
+        assert_eq!(array.len(), 1, "expected 1 reorder record, got:\n{stdout}");
+        assert_eq!(array[0]["severity"], "success");
+        assert_eq!(array[0]["code"], "REORDER");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !stderr.trim().starts_with('['),
+            "stderr must not carry JSON, got:\n{stderr}"
+        );
+    }
+}
+
+/// A non-dry-run fix in JSON mode reports each edited table as a `success`
+/// record on stdout and writes the file in place.
+#[test]
+fn json_in_place_run_records_fix_changes() {
+    let expected = fs::read_to_string(fix_fixture_dir().join("table_md_after.md")).unwrap();
+    let tmp = temp_file("md");
+    fs::write(
+        &tmp,
+        fs::read_to_string(fix_fixture_dir().join("table_md_before.md")).unwrap(),
+    )
+    .unwrap();
+
+    let output = run_command(&["--include", "tables", "--output-mode", "json"], &tmp);
+
+    assert!(
+        output.status.success(),
+        "fix in-place in JSON mode should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let actual = fs::read_to_string(&tmp).unwrap();
+    let _ = fs::remove_file(&tmp);
+    assert_eq!(
+        actual, expected,
+        "in-place fix must write the table_md_after fixture"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let records: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("stdout must parse as JSON: {e}\n{stdout}"));
+    let array = records.as_array().expect("JSON output must be an array");
+    assert_eq!(array.len(), 1, "expected 1 fix record, got:\n{stdout}");
+    let rec = &array[0];
+    assert_eq!(rec["severity"], "success");
+    assert_eq!(rec["code"], "FIX");
+    assert_eq!(rec["item_kind"], "table");
+    assert!(rec["line"].is_null(), "table records carry no line");
+    assert_eq!(rec["message"], "tables were aligned");
+}
+
+/// A non-dry-run reorder in JSON mode reports `success` records in the same
+/// document on stdout and writes the file in place.
+#[test]
+fn json_in_place_run_records_reorder_changes() {
+    let expected = fs::read_to_string(
+        reorder_fixture_dir().join("fn_interstitial_comment_travels_with_next_after.rs"),
+    )
+    .unwrap();
+    let tmp = temp_file("rs");
+    fs::write(
+        &tmp,
+        fs::read_to_string(
+            reorder_fixture_dir().join("fn_interstitial_comment_travels_with_next_before.rs"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+
+    let output = run_command(&["--include", "reorder", "--output-mode", "json"], &tmp);
+
+    assert!(
+        output.status.success(),
+        "reorder in-place in JSON mode should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let actual = fs::read_to_string(&tmp).unwrap();
+    let _ = fs::remove_file(&tmp);
+    assert_eq!(
+        actual, expected,
+        "in-place reorder must write the after fixture"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let records: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("stdout must parse as JSON: {e}\n{stdout}"));
+    let array = records.as_array().expect("JSON output must be an array");
+    assert_eq!(array.len(), 1, "expected 1 reorder record, got:\n{stdout}");
+    let rec = &array[0];
+    assert_eq!(rec["severity"], "success");
+    assert_eq!(rec["code"], "REORDER");
+}
+
 /// `--output-mode json` on a clean file prints `[]` and exits 0.
 #[test]
 fn json_output_clean_file_prints_empty_array() {
@@ -416,20 +552,68 @@ fn json_output_clean_file_prints_empty_array() {
     assert_eq!(String::from_utf8_lossy(&output.stdout), "[]\n");
 }
 
-/// `--output-mode json --dry-run` is rejected by clap with a non-zero exit.
+/// `--output-mode json --dry-run` succeeds (no clap conflict) on a clean file
+/// and emits parseable JSON.
 #[test]
-fn json_output_conflicts_with_dry_run() {
+fn json_output_combines_with_dry_run() {
     let path = fixture_dir().join("clean.rs");
     let output = run_command(&["--output-mode", "json", "--dry-run"], &path);
 
     assert!(
-        !output.status.success(),
-        "JSON output must not combine with --dry-run"
+        output.status.success(),
+        "JSON output must combine with --dry-run: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    serde_json::from_str::<serde_json::Value>(&stdout)
+        .unwrap_or_else(|e| panic!("stdout must parse as JSON: {e}\n{stdout}"));
+}
+
+/// One `--output-mode json --dry-run` document carries every lint finding and
+/// every recorded change together, even when error-severity lints bail the run
+/// non-zero after the document is written.
+#[test]
+fn json_output_merges_lints_and_changes_in_one_document() {
+    let path = fixture_dir().join("doc001_missing_docs.rs");
+    let output = run_command(
+        &[
+            "--include",
+            "lints",
+            "--include",
+            "reorder",
+            "--output-mode",
+            "json",
+            "--dry-run",
+        ],
+        &path,
+    );
+
+    assert!(
+        !output.status.success(),
+        "DOC001 error findings must still fail a dry-run JSON run"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let records: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_else(|e| {
+        panic!("one JSON doc must parse despite the error bail: {e}\n{stdout}")
+    });
+    let array = records.as_array().expect("JSON output must be an array");
+    assert!(
+        array
+            .iter()
+            .any(|r| r["severity"] == "error" && r["code"] == "DOC001"),
+        "array must contain lint findings, got:\n{stdout}"
+    );
+    assert!(
+        array
+            .iter()
+            .any(|r| r["severity"] == "success" && r["code"] == "REORDER"),
+        "array must contain reorder change records, got:\n{stdout}"
+    );
+
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("--dry-run"),
-        "clap should reject the conflict, got:\n{stderr}"
+        !stderr.trim().starts_with('['),
+        "stderr must not carry JSON, got:\n{stderr}"
     );
 }
 
@@ -453,6 +637,38 @@ fn json_output_prints_document_before_error_bail() {
         "error fixture must produce findings on stdout"
     );
     assert!(array.iter().any(|f| f["severity"] == "error"));
+}
+
+/// `--output-mode json --dry-run` records the would-be reorder as a
+/// `severity: "success"` record carrying its move positions on stdout, with no
+/// JSON duplicated on stderr.
+#[test]
+fn json_output_records_reorder_changes() {
+    let path = reorder_fixture_dir().join("fn_interstitial_comment_travels_with_next_before.rs");
+    let output = run_command(
+        &["--include", "reorder", "--output-mode", "json", "--dry-run"],
+        &path,
+    );
+
+    assert!(
+        output.status.success(),
+        "reorder dry-run in JSON mode should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let records: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("stdout must parse as JSON: {e}\n{stdout}"));
+    let array = records.as_array().expect("JSON output must be an array");
+    assert_eq!(array.len(), 1, "expected 1 reorder record, got:\n{stdout}");
+    let rec = &array[0];
+    assert_eq!(rec["severity"], "success");
+    assert_eq!(rec["code"], "REORDER");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.trim().starts_with('['),
+        "stderr must not carry JSON, got:\n{stderr}"
+    );
 }
 
 // ── JSON output mode ──────────────────────────────────────────────
@@ -481,6 +697,28 @@ fn json_output_reports_all_findings() {
         "expected 3 TEST001 findings, got:\n{stdout}"
     );
     for finding in array {
+        // Pin the exact field set: lint records carry only the base fields.
+        let keys: std::collections::BTreeSet<&str> = finding
+            .as_object()
+            .expect("each record is an object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "path",
+                "line",
+                "severity",
+                "code",
+                "message",
+                "item_kind",
+                "item_name"
+            ]
+            .into_iter()
+            .collect(),
+            "lint record must not carry change-only extras, got: {finding}"
+        );
         assert_eq!(finding["severity"], "warning");
         assert_eq!(finding["code"], "TEST001");
         assert_eq!(finding["item_kind"], "fn");
@@ -566,7 +804,15 @@ fn fix_fixture_dir() -> std::path::PathBuf {
     manifest_dir().join("tests").join("fixtures").join("fix")
 }
 
-/// Run `rust-llm-tidy check <fixture>` and return (stderr, exit_code).
+/// The directory holding reorder fixtures.
+fn reorder_fixture_dir() -> std::path::PathBuf {
+    manifest_dir()
+        .join("tests")
+        .join("fixtures")
+        .join("reorder")
+}
+
+/// Run `rust-llm-tidy --include lints <fixture>` and return (stderr, exit_code).
 fn run_check_fixture(name: &str) -> (String, i32) {
     let path = fixture_dir().join(name);
     let output = run_command(&["--include", "lints"], &path);

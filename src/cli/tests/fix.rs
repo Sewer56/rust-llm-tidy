@@ -10,11 +10,42 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// `fix --dry-run` on `table_doc_comment_before.rs` matches `_after.rs`.
+/// Default all-pass `fix` on a file where only the table changes: the later
+/// fence/link passes are no-ops and restore `prior`, so the earlier table fix
+/// must survive and produce one record plus a byte-identical write.
 #[test]
-fn fix_doc_comment_dry_run_matches_after() {
+fn fix_default_passes_borrowed_restore_preserves_earlier_change() {
+    let before = fixture_dir().join("table_md_before.md");
+    let expected = fs::read_to_string(fixture_dir().join("table_md_after.md")).unwrap();
+    let tmp = temp_file("md");
+    fs::write(&tmp, fs::read_to_string(&before).unwrap()).unwrap();
+
+    let output = run_command(&[], &tmp); // default: tables, fences, links
+    assert!(
+        output.status.success(),
+        "default fix should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let actual = fs::read_to_string(&tmp).unwrap();
+    let _ = fs::remove_file(&tmp);
+    assert_eq!(
+        actual, expected,
+        "fences/links no-op restore must keep the table fix"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        stderr.matches("success[FIX]").count(),
+        1,
+        "only the realigned table reports a record: {stderr}"
+    );
+}
+
+/// `fix --dry-run` on `table_doc_comment_before.rs` reports a change record on
+/// stderr and leaves stdout empty.
+#[test]
+fn fix_doc_comment_dry_run_reports_change() {
     let before = fixture_dir().join("table_doc_comment_before.rs");
-    let expected = fs::read_to_string(fixture_dir().join("table_doc_comment_after.rs")).unwrap();
     let output = run_command(&["--include", "tables", "--dry-run"], &before);
 
     assert!(
@@ -22,18 +53,45 @@ fn fix_doc_comment_dry_run_matches_after() {
         "fix --dry-run should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(
-        stdout, expected,
-        "dry-run stdout must match table_doc_comment_after.rs"
+    assert!(
+        output.stdout.is_empty(),
+        "dry-run must not print reconstructed source to stdout"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("success[FIX]"),
+        "dry-run must report a fix change line on stderr: {stderr}"
     );
 }
 
-/// `fix --dry-run` on `fence_md_before.md` matches `fence_md_after.md`.
+/// In-place `fix --include fences` on `fence_md_before.md` produces
+/// `fence_md_after.md` byte-for-byte (the fences transform's content output).
 #[test]
-fn fix_fence_md_dry_run_matches_after() {
-    let before = fixture_dir().join("fence_md_before.md");
+fn fix_fence_in_place_matches_after() {
     let expected = fs::read_to_string(fixture_dir().join("fence_md_after.md")).unwrap();
+    let tmp = temp_file("md");
+    fs::write(
+        &tmp,
+        fs::read_to_string(fixture_dir().join("fence_md_before.md")).unwrap(),
+    )
+    .unwrap();
+
+    let output = run_command(&["--include", "fences"], &tmp);
+    assert!(
+        output.status.success(),
+        "fence fix in-place should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(&tmp).unwrap();
+    let _ = fs::remove_file(&tmp);
+    assert_eq!(actual, expected, "fence fix must match fence_md_after.md");
+}
+
+/// `fix --dry-run` on `fence_md_before.md` reports a change record on stderr.
+#[test]
+fn fix_fence_md_dry_run_reports_change() {
+    let before = fixture_dir().join("fence_md_before.md");
     let output = run_command(&["--include", "fences", "--dry-run"], &before);
 
     assert!(
@@ -41,45 +99,96 @@ fn fix_fence_md_dry_run_matches_after() {
         "fix --dry-run should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(
-        stdout, expected,
-        "dry-run stdout must match fence_md_after.md"
+    assert!(
+        output.stdout.is_empty(),
+        "dry-run must not print reconstructed source to stdout"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("success[FIX]"),
+        "dry-run must report a fix change line on stderr: {stderr}"
     );
 }
 
-/// Idempotency: running `fix --dry-run` on an `_after` fixture is a no-op.
+/// Idempotency: running `fix --dry-run` on an `_after` fixture is a no-op with
+/// zero change records.
 #[test]
 fn fix_idempotent_on_after_fixtures() {
     for name in ["table_md_after.md", "table_doc_comment_after.rs"] {
         let path = fixture_dir().join(name);
-        let expected = fs::read_to_string(&path).unwrap();
         let output = run_command(&["--include", "tables", "--dry-run"], &path);
         assert!(
             output.status.success(),
             "fix --dry-run on {name} should succeed"
         );
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert_eq!(
-            &*stdout, &*expected,
-            "{name} must be idempotent (output unchanged)"
+        assert!(
+            output.stdout.is_empty(),
+            "{name} dry-run must not print source to stdout"
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "{name} is already tidy: dry-run must emit zero change records"
         );
     }
     // Fence fixture uses --include fences.
     {
         let path = fixture_dir().join("fence_md_after.md");
-        let expected = fs::read_to_string(&path).unwrap();
         let output = run_command(&["--include", "fences", "--dry-run"], &path);
         assert!(
             output.status.success(),
             "fix --dry-run on fence_md_after.md should succeed"
         );
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert_eq!(
-            &*stdout, &*expected,
-            "fence_md_after.md must be idempotent (output unchanged)"
+        assert!(
+            output.stdout.is_empty(),
+            "fence_md_after.md dry-run must not print source to stdout"
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "fence_md_after.md is already tidy: dry-run must emit zero change records"
         );
     }
+}
+
+/// An in-place fix run reports the same change records as its dry-run twin and
+/// writes the file, so identical stderr change lines accompany a modified file.
+#[test]
+fn fix_in_place_reports_same_records_and_writes() {
+    let before = fixture_dir().join("multi_md_before.md");
+    let dry_run = run_command(&["--include", "tables", "--dry-run"], &before);
+    let dry_stderr = String::from_utf8_lossy(&dry_run.stderr);
+
+    let tmp = temp_file("md");
+    fs::write(&tmp, fs::read_to_string(&before).unwrap()).unwrap();
+    let output = run_command(&["--include", "tables"], &tmp);
+    assert!(
+        output.status.success(),
+        "fix in-place should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(&tmp).unwrap();
+    let _ = fs::remove_file(&tmp);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        stderr.matches("success[FIX]").count(),
+        1,
+        "in-place run reports the same record: {stderr}"
+    );
+    assert!(
+        stderr.contains("tables were aligned"),
+        "in-place change line matches dry-run: {stderr}"
+    );
+    assert_eq!(
+        stderr.matches("success[FIX]").count(),
+        dry_stderr.matches("success[FIX]").count(),
+        "in-place reports the same change lines as its dry-run twin"
+    );
+    assert_ne!(
+        actual,
+        fs::read_to_string(&before).unwrap(),
+        "in-place run must write the fixed file"
+    );
 }
 
 /// In-place write: copy before.md to a temp file, run `fix`, assert content.
@@ -141,11 +250,11 @@ fn fix_links_in_place_preserves_crlf() {
     );
 }
 
-/// `fix --dry-run` on `table_md_before.md` matches `table_md_after.md`.
+/// `fix --dry-run` on `table_md_before.md` reports a change record on stderr
+/// and leaves stdout empty.
 #[test]
-fn fix_md_dry_run_matches_after() {
+fn fix_md_dry_run_reports_change() {
     let before = fixture_dir().join("table_md_before.md");
-    let expected = fs::read_to_string(fixture_dir().join("table_md_after.md")).unwrap();
     let output = run_command(&["--include", "tables", "--dry-run"], &before);
 
     assert!(
@@ -153,10 +262,42 @@ fn fix_md_dry_run_matches_after() {
         "fix --dry-run should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.stdout.is_empty(),
+        "dry-run must not print reconstructed source to stdout"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("success[FIX]"),
+        "dry-run must report a fix change line on stderr: {stderr}"
+    );
+}
+
+/// `fix --include tables --dry-run` on a fixture with two misaligned tables
+/// reports one per-file record, not one per table.
+#[test]
+fn fix_multi_entity_dry_run_reports_one_record_per_file() {
+    let before = fixture_dir().join("multi_md_before.md");
+    let output = run_command(&["--include", "tables", "--dry-run"], &before);
+
+    assert!(
+        output.status.success(),
+        "fix --dry-run should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "dry-run must not print reconstructed source to stdout"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(
-        stdout, expected,
-        "dry-run stdout must match table_md_after.md"
+        stderr.matches("success[FIX]").count(),
+        1,
+        "one record for the whole file: {stderr}"
+    );
+    assert!(
+        stderr.contains("tables were aligned"),
+        "record covers both tables with no line: {stderr}"
     );
 }
 

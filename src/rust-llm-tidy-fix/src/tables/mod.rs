@@ -10,12 +10,11 @@
 //!   the prefix is re-applied. Surrounding code is left untouched.
 //!
 //! The function is idempotent: an already-aligned table is returned unchanged
-//! (as a borrowed [`Cow`]).
+//! (the returned [`Cow`] is borrowed).
 //!
 //! # Example
 //!
 //! ```rust
-//! # use std::borrow::Cow;
 //! use rust_llm_tidy_fix::fix_tables;
 //!
 //! // Each column is padded to its widest cell so the pipes line up.
@@ -29,10 +28,10 @@
 //! | ccc | d  |
 //! ";
 //!
-//! assert_eq!(fix_tables(input).into_owned(), expected);
+//! assert_eq!(fix_tables(input), expected);
 //!
-//! // Idempotent: an already-aligned table is borrowed back unchanged.
-//! assert!(matches!(fix_tables(expected), Cow::Borrowed(_)));
+//! // Idempotent: an already-aligned table is borrowed back.
+//! assert!(matches!(fix_tables(expected), std::borrow::Cow::Borrowed(_)));
 //! ```
 
 use realign::realign_table;
@@ -44,7 +43,7 @@ mod realign;
 /// prefix (`///`, `//!`, with optional leading indent).
 ///
 /// Non-table lines and lines without a pipe are returned verbatim. When no
-/// table changes, the original buffer is borrowed back (idempotent).
+/// table changes, the input is borrowed back unchanged (idempotent).
 ///
 /// # Arguments
 ///
@@ -56,7 +55,7 @@ mod realign;
 /// The output buffer is allocated lazily: a single read-only scan runs first,
 /// and only when a table actually changes is a `String` allocated and the
 /// unchanged text before it copied in. A fully-aligned document therefore
-/// returns [`Cow::Borrowed`] with **zero** heap allocation.
+/// returns a [`Cow::Borrowed`] with **zero** heap allocation.
 ///
 /// The scan also fast-forwards over pipe-less regions with [`str::find`]
 /// (which the standard library lowers to a vectorized byte search), so files
@@ -261,9 +260,9 @@ mod tests {
 hello world
 no tables here
 ";
-        let out = fix_tables(input);
-        assert!(matches!(out, std::borrow::Cow::Borrowed(_)));
-        assert_eq!(&*out, input);
+        let text = fix_tables(input);
+        assert!(matches!(text, std::borrow::Cow::Borrowed(_)));
+        assert_eq!(&*text, input);
     }
 
     #[test]
@@ -273,15 +272,17 @@ no tables here
         // realign any multi-line pipe input back to canonical form, silently
         // re-breaking this test. One physical line is not seen as a table.
         let input = "| a | bb |\n| --- | --- |\n| ccc | d |\n";
-        let out = fix_tables(input);
-        assert!(out != input, "misaligned table should change");
+        let text = fix_tables(input);
+        assert!(text != input, "misaligned table should change");
         assert!(
-            out.contains("| a   | bb |"),
-            "header should be realigned:\n{out}"
+            text.contains("| a   | bb |"),
+            "header should be realigned:\n{}",
+            text
         );
         assert!(
-            out.contains("| --- | -- |"),
-            "delimiter should be realigned:\n{out}"
+            text.contains("| --- | -- |"),
+            "delimiter should be realigned:\n{}",
+            text
         );
     }
 
@@ -293,9 +294,17 @@ no tables here
 /// | ccc | d  |
 pub fn f() {}
 ";
-        let out = fix_tables(input);
-        assert!(out.contains("/// | a   | bb |"), "prefix preserved:\n{out}");
-        assert!(out.contains("pub fn f() {}"), "code line untouched:\n{out}");
+        let text = fix_tables(input);
+        assert!(
+            text.contains("/// | a   | bb |"),
+            "prefix preserved:\n{}",
+            text
+        );
+        assert!(
+            text.contains("pub fn f() {}"),
+            "code line untouched:\n{}",
+            text
+        );
     }
 
     #[test]
@@ -305,23 +314,41 @@ pub fn f() {}
 //! | --- | - |
 //! | ccc | d |
 ";
-        let out = fix_tables(input);
+        let text = fix_tables(input);
         assert!(
-            out.contains("//! | a   | b |"),
-            "//! prefix preserved:\n{out}"
+            text.contains("//! | a   | b |"),
+            "//! prefix preserved:\n{}",
+            text
         );
         assert!(
-            out.contains("//! | ccc | d |"),
-            "body row preserved:\n{out}"
+            text.contains("//! | ccc | d |"),
+            "body row preserved:\n{}",
+            text
         );
+    }
+
+    #[test]
+    fn doc_comment_table_realigns() {
+        // A misaligned table inside `///` doc comments realigns and keeps its
+        // prefix. Written with single-line `\n` escapes so the repo's own
+        // `fix_tables` pre-commit hook cannot re-align the literal back to
+        // canonical first.
+        let input = "/// | name | value |\n/// | ---- | ----- |\n/// | a | 1 |\npub fn f() {}\n";
+        let text = fix_tables(input);
+        assert!(
+            text.contains("/// | a    | 1     |"),
+            "doc table should realign its narrow cell:\n{}",
+            text
+        );
+        assert!(text.contains("pub fn f() {}"), "code untouched");
     }
 
     #[test]
     fn non_table_pipe_lines_unchanged() {
         let input = "let x = a | b;
 ";
-        let out = fix_tables(input);
-        assert_eq!(&*out, input, "non-table pipe line should be unchanged");
+        let text = fix_tables(input);
+        assert_eq!(&*text, input, "non-table pipe line should be unchanged");
     }
 
     #[test]
@@ -355,12 +382,12 @@ pub fn f() {}
 | --- | -- |
 | ccc | d  |
 ";
-        let out = fix_tables(input);
+        let text = fix_tables(input);
         assert!(
-            matches!(out, std::borrow::Cow::Borrowed(_)),
+            matches!(text, std::borrow::Cow::Borrowed(_)),
             "already-aligned table should be borrowed"
         );
-        assert_eq!(&*out, input);
+        assert_eq!(&*text, input);
     }
 
     #[test]
@@ -380,30 +407,42 @@ intro line
 | zz | w |
 trailer
 ";
-        let out = fix_tables(input).into_owned();
-        // first table realigned to width [2, 1].
-        assert!(out.contains("| a  | b |"), "{out}");
-        assert!(out.contains("| -- | - |"), "{out}");
-        assert!(out.contains("| cc | d |"), "{out}");
+        let text = fix_tables(input);
+        assert!(text.contains("| a  | b |"), "{text}");
+        assert!(text.contains("| -- | - |"), "{text}");
+        assert!(text.contains("| cc | d |"), "{text}");
         // second table was already canonical and is carried through unchanged.
-        assert!(out.contains("| x  | y |"), "{out}");
-        assert!(out.contains("| zz | w |"), "{out}");
+        assert!(text.contains("| x  | y |"), "{text}");
+        assert!(text.contains("| zz | w |"), "{text}");
         assert!(
-            out.contains("intro line") && out.contains("trailer"),
-            "{out}"
+            text.contains("intro line") && text.contains("trailer"),
+            "{text}"
         );
         // idempotent
-        let twice = fix_tables(&out).into_owned();
-        assert_eq!(twice, out, "must be idempotent across mixed runs");
+        let twice = fix_tables(&text).into_owned();
+        assert_eq!(twice, text, "must be idempotent across mixed runs");
+    }
+
+    #[test]
+    fn two_misaligned_tables_both_realign() {
+        // Two adjacent misaligned tables are two separate runs, so both are
+        // realigned. Blank line between them so they are distinct runs.
+        // Written with single-line `\n` escapes (see
+        // `realigns_plain_markdown_table`) so the repo's own `fix_tables`
+        // pre-commit/lint hook cannot re-align the literals back to canonical.
+        let input = "| a | bb |\n| -- | -- |\n| c | d |\n\n| x | yy |\n| -- | -- |\n| z | w |\n";
+        let text = fix_tables(input).into_owned();
+        assert_ne!(text, input, "both misaligned tables should realign");
+        assert_eq!(fix_tables(&text), text, "idempotent after both realign");
     }
 
     #[test]
     fn crlf_line_endings_preserved() {
         let input = "| a | b |\r\n| --- | --- |\r\n| cc | d |\r\n";
-        let out = fix_tables(input);
-        assert!(out.contains("\r\n"), "CRLF must be preserved");
-        assert!(out.contains("| a  | b |"), "{out}");
-        let owned = out.into_owned();
+        let text = fix_tables(input);
+        assert!(text.contains("\r\n"), "CRLF must be preserved");
+        assert!(text.contains("| a  | b |"), "{}", text);
+        let owned = text.into_owned();
         let twice = fix_tables(&owned).into_owned();
         assert_eq!(twice, owned, "idempotent under CRLF");
     }
@@ -411,8 +450,8 @@ trailer
     #[test]
     fn no_trailing_newline() {
         let input = "| a | b |\n| --- | --- |\n| cc | d |";
-        let out = fix_tables(input);
-        assert!(!out.ends_with('\n'), "no terminator introduced");
-        assert!(out.contains("| a  | b |"), "{out}");
+        let text = fix_tables(input);
+        assert!(!text.ends_with('\n'), "no terminator introduced");
+        assert!(text.contains("| a  | b |"), "{}", text);
     }
 }

@@ -195,7 +195,8 @@ pub const REORDER_FIXTURES: &[(&str, &str)] = &[
 /// # Returns
 ///
 /// `(tree, reexports, owned)` where `owned` is the owned
-/// `(path, source)` pairs consumed (narrowed) per file in the hot loop.
+/// `(path, source)` pairs the hot loop borrows; `narrow_vis_in_tree` returns
+/// narrowed output separately.
 #[allow(dead_code)]
 pub fn build_crate_context(
     sources: &[(&str, &str)],

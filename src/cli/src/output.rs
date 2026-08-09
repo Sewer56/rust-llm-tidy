@@ -1,36 +1,45 @@
-//! Structured (JSON) output for lint diagnostics.
+//! Structured (JSON) output for lint diagnostics and dry-run change records.
 //!
-//! The CLI can report its lint findings either as the human-readable plaintext
+//! The CLI can report its findings either as the human-readable plaintext
 //! lines printed to stderr (the default, byte-identical to prior releases) or
 //! as a single JSON array on stdout. This module owns the serializable
-//! projection of a lint finding and the emit routine, so the projection stays
-//! separate from the per-file pipeline and never touches the serde-free
-//! `rust-llm-tidy-lint` crate.
+//! projection of lint findings and dry-run change records and the emit
+//! routine, keeping the projection separate from the per-file pipeline and
+//! never touching the serde-free `rust-llm-tidy-lint` crate.
 
+use crate::changes::Change;
 use rust_llm_tidy_lint::{Diagnostic, Severity};
 use serde::Serialize;
+use std::borrow::Cow;
+use std::io::Write;
+use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
-/// A serializable projection of a `(path, Diagnostic)` pair matching the
-/// documented JSON schema (`{ path, line, severity, code, message, item_kind,
-/// item_name }`). `severity` is the lowercase string "error" or "warning" and
-/// `item_name` is `null` when the item is unnamed.
+/// A serializable record that is either a lint finding or a dry-run change
+/// record, matching the documented JSON schema (`{ path, line, severity, code,
+/// message, item_kind, item_name }`). Lint findings use severity `error` or
+/// `warning`; change records use `success`. `item_name` is `null` when the
+/// item is unnamed.
+///
+/// Text fields borrow from the projected record as [`Cow`], so a JSON run
+/// allocates nothing per record besides the one `path` string.
 #[derive(Serialize)]
-pub(crate) struct JsonDiagnostic<'a> {
-    /// Path of the file the finding was raised in.
-    path: String,
-    /// 1-based line number where the item starts.
-    line: usize,
-    /// Lowercase "error" or "warning".
-    severity: &'a str,
-    /// Stable rule code, e.g. "DOC001".
-    code: &'a str,
-    /// Human-readable description of the problem.
-    message: &'a str,
-    /// Kind of item that produced the finding, e.g. "fn".
-    item_kind: &'a str,
+pub(crate) struct JsonRecord<'a> {
+    /// Path of the file the record was raised in.
+    path: Cow<'a, str>,
+    /// Optional 1-based line number where the item starts; `null` when the
+    /// record has no specific line (e.g. link/table fixes).
+    line: Option<NonZeroU32>,
+    /// Lowercase `error`, `warning`, or `success`.
+    severity: &'static str,
+    /// Stable rule or operation code, e.g. "DOC001", "FIX", "REORDER", "VIS".
+    code: &'static str,
+    /// Human-readable description of the finding or would-be edit.
+    message: Cow<'a, str>,
+    /// Kind of item that produced the record, e.g. "fn".
+    item_kind: Cow<'a, str>,
     /// Name of the item, or `null` when unnamed.
-    item_name: Option<&'a str>,
+    item_name: Option<Cow<'a, str>>,
 }
 
 /// Selects the CLI's lint-diagnostic output format.
@@ -38,39 +47,60 @@ pub(crate) struct JsonDiagnostic<'a> {
 pub(crate) enum OutputMode {
     /// Human-readable `path:line: sev[CODE]: ...` diagnostics on stderr.
     Text,
-    /// A single JSON array of all findings on stdout.
+    /// A single JSON array of all lint findings and dry-run change records on
+    /// stdout.
     Json,
 }
 
-/// Emit every collected `(path, Diagnostic)` pair as one JSON array on stdout.
+/// Emit every collected lint finding and dry-run change record as one JSON
+/// array on stdout.
 ///
-/// A run with no findings emits `[]`. The document is printed before any
-/// error-count or processing-failure bail so downstream consumers receive all
-/// findings together with the process exit code.
-pub(crate) fn emit_diagnostics(diagnostics: &[(PathBuf, Diagnostic)]) -> anyhow::Result<()> {
-    let projected: Vec<JsonDiagnostic<'_>> = diagnostics
-        .iter()
-        .map(|(path, d)| project(path, d))
-        .collect();
+/// A run with neither findings nor changes emits `[]`. The document is printed
+/// before any error-count or processing-failure bail so downstream consumers
+/// receive all records together with the process exit code.
+pub(crate) fn emit_json(
+    diagnostics: &[(PathBuf, Diagnostic)],
+    changes: &[(PathBuf, Change)],
+) -> anyhow::Result<()> {
+    let mut records: Vec<JsonRecord<'_>> = Vec::with_capacity(diagnostics.len() + changes.len());
+    records.extend(diagnostics.iter().map(|(path, d)| project_lint(path, d)));
+    records.extend(changes.iter().map(|(path, c)| project_change(path, c)));
     // Serialization to a String is infallible for these types; propagate any
     // error defensively rather than silently truncating stdout ownership.
-    let doc = serde_json::to_string(&projected)?;
-    println!("{doc}");
+    let doc = serde_json::to_string(&records)?;
+    // Lock once and write the document plus a trailing newline through the
+    // handle so an I/O error is reported instead of silently swallowed.
+    let mut out = std::io::stdout().lock();
+    out.write_all(doc.as_bytes())?;
+    out.write_all(b"\n")?;
     Ok(())
 }
 
-/// Project a single finding into its serializable form.
-fn project<'a>(path: &Path, d: &'a Diagnostic) -> JsonDiagnostic<'a> {
-    JsonDiagnostic {
-        path: path.display().to_string(),
-        line: d.line,
+/// Project a single dry-run change record into its serializable form.
+fn project_change<'a>(path: &Path, c: &'a Change) -> JsonRecord<'a> {
+    JsonRecord {
+        path: Cow::Owned(path.display().to_string()),
+        line: c.line,
+        severity: "success",
+        code: c.code,
+        message: Cow::Borrowed(c.message.as_ref()),
+        item_kind: Cow::Borrowed(c.kind.as_str()),
+        item_name: c.name.as_deref().map(Cow::Borrowed),
+    }
+}
+
+/// Project a single lint finding into its serializable form.
+fn project_lint<'a>(path: &Path, d: &'a Diagnostic) -> JsonRecord<'a> {
+    JsonRecord {
+        path: Cow::Owned(path.display().to_string()),
+        line: NonZeroU32::new(d.line as u32),
         severity: match d.severity {
             Severity::Error => "error",
             Severity::Warning => "warning",
         },
         code: d.code,
-        message: &d.message,
-        item_kind: &d.item_kind,
-        item_name: d.item_name.as_deref(),
+        message: Cow::Borrowed(d.message.as_ref()),
+        item_kind: Cow::Borrowed(d.item_kind.as_ref()),
+        item_name: d.item_name.as_deref().map(Cow::Borrowed),
     }
 }

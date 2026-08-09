@@ -87,7 +87,7 @@ pub struct SourceItem {
 /// Kind of a parsed source item.
 ///
 /// Each variant is shown with the minimal Rust syntax that produces it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ItemKind {
     /// A free function.
     ///
@@ -331,6 +331,31 @@ impl SourceItem {
     }
 }
 
+impl ItemKind {
+    /// The stable `&'static str` form of this kind (e.g. `"fn"`), shared by
+    /// [`Display`](fmt::Display) and structured change/diagnostic reporting so
+    /// records can hold the kind without an owned allocation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ItemKind::Fn => "fn",
+            ItemKind::Struct => "struct",
+            ItemKind::Enum => "enum",
+            ItemKind::Type => "type",
+            ItemKind::Union => "union",
+            ItemKind::Impl => "impl",
+            ItemKind::Use => "use",
+            ItemKind::Const => "const",
+            ItemKind::Static => "static",
+            ItemKind::Mod => "mod",
+            ItemKind::Extern => "extern",
+            ItemKind::Trait => "trait",
+            ItemKind::Macro => "macro",
+            ItemKind::MacroInvocation => "macro-invocation",
+            ItemKind::Other => "other",
+        }
+    }
+}
+
 impl fmt::Debug for ParseResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ParseResult")
@@ -346,22 +371,6 @@ impl fmt::Debug for ParseResult {
 
 impl fmt::Display for ItemKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ItemKind::Fn => write!(f, "fn"),
-            ItemKind::Struct => write!(f, "struct"),
-            ItemKind::Enum => write!(f, "enum"),
-            ItemKind::Type => write!(f, "type"),
-            ItemKind::Union => write!(f, "union"),
-            ItemKind::Impl => write!(f, "impl"),
-            ItemKind::Use => write!(f, "use"),
-            ItemKind::Const => write!(f, "const"),
-            ItemKind::Static => write!(f, "static"),
-            ItemKind::Mod => write!(f, "mod"),
-            ItemKind::Extern => write!(f, "extern"),
-            ItemKind::Trait => write!(f, "trait"),
-            ItemKind::Macro => write!(f, "macro"),
-            ItemKind::MacroInvocation => write!(f, "macro-invocation"),
-            ItemKind::Other => write!(f, "other"),
-        }
+        f.write_str(self.as_str())
     }
 }

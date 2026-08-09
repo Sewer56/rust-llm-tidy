@@ -8,27 +8,27 @@ outer block does not close early. Runs in `.md` files and `.rs` doc comments.
 
 ## Before
 
-```markdown
-```
+````markdown
+~~~
 text
 
 ```rust
 fn main() {}
 ```
-```
-```
+~~~
+````
 
 ## After
 
-```markdown
-```
+````markdown
+~~~
 text
 
-~~~rust
+```rust
 fn main() {}
+```
 ~~~
-```
-```
+````
 
 ## Config
 
@@ -47,3 +47,30 @@ exclude:
 rust-llm-tidy --include fences --dry-run docs
 rust-llm-tidy --exclude fences README.md
 ```
+
+## Change output
+
+Every run reports each fence flip it applies (or would apply under `--dry-run`)
+as one record. In text mode the record prints to stderr:
+
+```text
+README.md:3: success[FIX]: flip nested fence at line 3 (fence)
+```
+
+In JSON mode the same record appears on stdout with `severity: "success"`:
+
+```json
+[
+  {
+    "path": "README.md",
+    "line": 3,
+    "severity": "success",
+    "code": "FIX",
+    "message": "flip nested fence at line 3",
+    "item_kind": "fence",
+    "item_name": null
+  }
+]
+```
+
+See [Change reporting](./lints.md#change-reporting) for the shared format.

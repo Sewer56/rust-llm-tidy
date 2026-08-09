@@ -218,7 +218,10 @@ fn excluded_file_not_post_processed() {
     // files are skipped, so post_process never sees the file -> exit 0.
     fs::write(
         &cfg,
-        "exclude_files:\n  - \"lib.rs\"\npost_process:\n  - command: \"false\"\n    extensions: [\"rs\"]\n",
+        format!(
+            "exclude_files:\n  - \"lib.rs\"\npost_process:\n  - {}\n    extensions: [\"rs\"]\n",
+            post_process_command(1)
+        ),
     )
     .unwrap();
 
@@ -296,15 +299,20 @@ fn fix_excludes_links_rule() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Dry-run reports change records on stderr, never reconstructed source.
     assert!(
-        !stdout.contains("[A]: http://x"),
-        "links must NOT be hoisted when `links` is disabled: {stdout:?}"
+        output.stdout.is_empty(),
+        "dry-run must not print reconstructed source to stdout"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("hoist link"),
+        "links must NOT be hoisted when `links` is disabled: {stderr:?}"
     );
     // Tables are still applied (the `links` disable is selective, not blanket).
     assert!(
-        stdout.contains("| -------- |"),
-        "tables must still be applied when only `links` is disabled: {stdout:?}"
+        stderr.contains("tables were aligned"),
+        "tables must still be applied when only `links` is disabled: {stderr:?}"
     );
     let _ = fs::remove_dir_all(&dir);
 }
@@ -599,7 +607,10 @@ fn post_process_not_run_on_check() {
     let cfg = dir.join(".rust-llm-tidy.yml");
     fs::write(
         &cfg,
-        "post_process:\n  - command: \"false\"\n    extensions: [\"rs\"]\n",
+        format!(
+            "post_process:\n  - {}\n    extensions: [\"rs\"]\n",
+            post_process_command(1)
+        ),
     )
     .unwrap();
 
@@ -662,7 +673,10 @@ fn post_process_skipped_under_dry_run() {
     let cfg = dir.join(".rust-llm-tidy.yml");
     fs::write(
         &cfg,
-        "post_process:\n  - command: \"false\"\n    extensions: [\"rs\"]\n",
+        format!(
+            "post_process:\n  - {}\n    extensions: [\"rs\"]\n",
+            post_process_command(1)
+        ),
     )
     .unwrap();
 

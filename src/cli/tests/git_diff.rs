@@ -128,6 +128,53 @@ fn no_args_processes_git_diff() {
     cleanup(&repo);
 }
 
+/// A staged `.MD`/`.RS` change is selected by the no-args git-diff path,
+/// so extension admission is case-insensitive there too.
+#[test]
+fn no_args_selects_uppercase_extension_variants() {
+    let Some(repo) = init_repo() else {
+        return;
+    };
+    fs::write(repo.join("lib.RS"), "fn b() { a(); }\nfn a() {}\n").unwrap();
+    fs::write(
+        repo.join("README.MD"),
+        "| Name | Value |\n| --- | --- |\n| a | 1 |\n| long | 2 |\n",
+    )
+    .unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "--quiet", "-m", "init"]);
+    // Stage an unsorted change on `.RS` (caller-before-callee is canonical).
+    fs::write(repo.join("lib.RS"), "fn a() {}\nfn b() { a(); }\n").unwrap();
+    git(&repo, &["add", "lib.RS"]);
+    // Stage an unaligned table change on `.MD`.
+    fs::write(
+        repo.join("README.MD"),
+        "| Name | Value |\n| --- | --- |\n| a        | 1   |\n",
+    )
+    .unwrap();
+    git(&repo, &["add", "README.MD"]);
+
+    let out = run(
+        &repo,
+        &["--no-config", "--include", "reorder", "--include", "tables"],
+    );
+    assert!(
+        out.status.success(),
+        "git-diff must admit .RS/.MD variants: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("success[REORDER]"),
+        "staged .RS must be selected and reordered: {stderr}"
+    );
+    assert!(
+        stderr.contains("success[FIX]"),
+        "staged .MD must be selected and table-fixed: {stderr}"
+    );
+    cleanup(&repo);
+}
+
 /// Remove a throwaway temp dir created by `temp_dir`/`init_repo`.
 fn cleanup(dir: &std::path::Path) {
     let _ = fs::remove_dir_all(dir);

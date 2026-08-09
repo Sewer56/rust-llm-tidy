@@ -13,7 +13,7 @@
 //! | `DOC003`  | Warning  | A `# Errors` section names no concrete error variant.                  |
 //! | `DOC004`  | Warning  | A `pub fn` with parameters has no `# Arguments` section.               |
 //! | `DOC005`  | Warning  | A `# Arguments` section does not mention every parameter name.         |
-//! | `DOC006`  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`/...).    |
+//! | `DOC006`  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).        |
 //! | `TEST001` | Warning  | A `#[test]` fn uses a `test_*` or `case_*` name, not a behavioral one. |
 
 use crate::diagnostic::Diagnostic;
@@ -68,8 +68,8 @@ pub const CODE_VAGUE_ERRORS: &str = "DOC003";
 ///
 /// - `parsed` - the parsed source result whose items are checked.
 pub fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
-    // Each item produces at most a handful of diagnostics; preallocate to the
-    // item count to avoid regrowth on the common dirty-file path.
+    // Each item produces at most a handful of diagnostics; preallocating to the
+    // item count can reduce regrowth on the common dirty-file path.
     let mut diags = Vec::with_capacity(parsed.items.len());
     for item in &parsed.items {
         diags.extend(missing_docs(item));

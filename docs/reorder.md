@@ -81,3 +81,30 @@ rust-llm-tidy --include reorder --dry-run src/lib.rs
 # CLI: skip reorder for this invocation
 rust-llm-tidy --exclude reorder src
 ```
+
+## Change output
+
+Every run reports each move it applies (or would apply under `--dry-run`) as
+one record. In text mode the record prints to stderr:
+
+```text
+src/lib.rs:20: success[REORDER]: rearrange fn a_main from pos 2 to pos 1 (before b_helper) (fn `a_main`)
+```
+
+In JSON mode the same record appears on stdout with `severity: "success"`:
+
+```json
+[
+  {
+    "path": "src/lib.rs",
+    "line": 20,
+    "severity": "success",
+    "code": "REORDER",
+    "message": "rearrange fn a_main from pos 2 to pos 1 (before b_helper)",
+    "item_kind": "fn",
+    "item_name": "a_main"
+  }
+]
+```
+
+See [Change reporting](./lints.md#change-reporting) for the shared format.

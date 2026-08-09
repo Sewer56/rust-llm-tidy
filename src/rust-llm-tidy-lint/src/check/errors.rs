@@ -41,7 +41,7 @@ pub fn missing_errors_section(item: &SourceItem) -> Vec<Diagnostic> {
 ///
 /// Fires on `pub fn` returning `Result` when a `# Errors` section exists but
 /// none of its bullets reference a concrete variant (detected by the presence
-/// of a rustdoc link `[...]` or a `::` path).
+/// of a `::` path).
 ///
 /// # Arguments
 ///
@@ -81,11 +81,11 @@ fn is_pub_result_fn(item: &SourceItem) -> bool {
 }
 
 /// True when any non-blank line in the section body references a concrete
-/// variant via a rustdoc link (`[`) or path separator (`::`).
+/// variant via a path separator (`::`).
 fn section_names_variant(lines: &[&str]) -> bool {
     lines.iter().any(|line| {
         let t = line.trim();
-        !t.is_empty() && (t.contains('[') || t.contains("::"))
+        !t.is_empty() && t.contains("::")
     })
 }
 
@@ -176,5 +176,16 @@ mod tests {
     fn test_vague_errors_no_section_skipped() {
         let item = parse_one("pub fn load() -> Result<(), String> { Ok(()) }");
         assert!(vague_errors(&item).is_empty());
+    }
+
+    // Generic markdown link with no `::` path is not a concrete variant -> warning.
+    #[test]
+    fn test_vague_errors_generic_link() {
+        let item = parse_one(
+            "/// Loads.\n///\n/// # Errors\n///\n/// See [the configuration guide].\npub fn load() -> Result<(), String> { Ok(()) }",
+        );
+        let diags = vague_errors(&item);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, CODE_VAGUE_ERRORS);
     }
 }

@@ -13,6 +13,7 @@
 //! inner-tilde alternation is returned unchanged (as a borrowed [`Cow`]).
 
 use crate::tables::{split_terminator, strip_doc_prefix};
+use crate::{FixAnchor, FixKind, FixOutcome};
 use scan::is_fence_candidate;
 use std::borrow::Cow;
 // Re-exported for `crate::fences::parse_fence` callers (e.g. `links`).
@@ -35,16 +36,23 @@ struct OpenFence {
 /// Only fences nested inside another fence are rewritten; the outer
 /// (depth-0) fence keeps its original marker. Run lengths, info strings,
 /// and any `///` / `//!` doc-comment prefix are preserved. When no fence
-/// changes, the original buffer is borrowed back (idempotent).
+/// changes, the outcome's `text` borrows the original buffer back
+/// (idempotent).
+///
+/// Each flipped opener/closer delimiter line contributes one [`FixAnchor`]
+/// at that line.
 ///
 /// # Arguments
 ///
 /// - `input`: the markdown (or Rust source with `///` / `//!` doc comments)
 ///   to scan for nested fenced code blocks.
-pub fn fix_fences(input: &str) -> Cow<'_, str> {
+pub fn fix_fences(input: &str) -> FixOutcome<'_> {
     // Fast path: no fence markers anywhere means nothing can change.
     if !input.contains('`') && !input.contains('~') {
-        return Cow::Borrowed(input);
+        return FixOutcome {
+            text: Cow::Borrowed(input),
+            anchors: Vec::new(),
+        };
     }
 
     // Output is allocated lazily: only once the first segment that needs to
@@ -58,11 +66,14 @@ pub fn fix_fences(input: &str) -> Cow<'_, str> {
     // never reallocates once allocated.
     let mut out: Option<String> = None;
     let mut stack: Vec<OpenFence> = Vec::new();
+    let mut anchors: Vec<FixAnchor> = Vec::new();
     // Byte offset of the start of the current segment within `input`; used to
     // back-fill the verbatim prefix when the first change is emitted.
     let mut pos = 0usize;
 
-    for segment in input.split_inclusive('\n') {
+    // `split_inclusive('\n')` yields one line per segment; the zip counter is
+    // the 1-based line of each segment, used to anchor flipped delimiters.
+    for (line_num, segment) in (1u32..).zip(input.split_inclusive('\n')) {
         let seg_start = pos;
         pos += segment.len();
 
@@ -99,6 +110,10 @@ pub fn fix_fences(input: &str) -> Cow<'_, str> {
                 if source_marker != open.expected_marker {
                     let o = ensure_output(&mut out, input, seg_start);
                     emit_fence(o, prefix, lead, open.expected_marker, run_len, info, term);
+                    anchors.push(FixAnchor {
+                        line: line_num,
+                        kind: FixKind::Fence,
+                    });
                 } else if let Some(o) = out.as_mut() {
                     o.push_str(segment);
                 }
@@ -121,6 +136,10 @@ pub fn fix_fences(input: &str) -> Cow<'_, str> {
                 if source_marker != expected_marker {
                     let o = ensure_output(&mut out, input, seg_start);
                     emit_fence(o, prefix, lead, expected_marker, run_len, info, term);
+                    anchors.push(FixAnchor {
+                        line: line_num,
+                        kind: FixKind::Fence,
+                    });
                 } else if let Some(o) = out.as_mut() {
                     o.push_str(segment);
                 }
@@ -139,9 +158,15 @@ pub fn fix_fences(input: &str) -> Cow<'_, str> {
 
     match out {
         // Something changed: return the rewritten buffer.
-        Some(o) => Cow::Owned(o),
+        Some(o) => FixOutcome {
+            text: Cow::Owned(o),
+            anchors,
+        },
         // No fence changed: borrow the input back unchanged (zero allocation).
-        None => Cow::Borrowed(input),
+        None => FixOutcome {
+            text: Cow::Borrowed(input),
+            anchors: Vec::new(),
+        },
     }
 }
 
@@ -193,8 +218,9 @@ mod tests {
     fn no_fence_returns_borrowed() {
         let input = "hello world\nno fences here\n";
         let out = fix_fences(input);
-        assert!(matches!(out, Cow::Borrowed(_)));
-        assert_eq!(&*out, input);
+        assert!(matches!(out.text, Cow::Borrowed(_)));
+        assert!(out.anchors.is_empty(), "no fence -> no anchor");
+        assert_eq!(&*out.text, input);
     }
 
     #[test]
@@ -217,7 +243,10 @@ inner
 ```
 ";
         let out = fix_fences(input);
-        assert_eq!(&*out, expected, "inner backticks should flip to tildes");
+        assert_eq!(
+            &*out.text, expected,
+            "inner backticks should flip to tildes"
+        );
     }
 
     #[test]
@@ -238,7 +267,36 @@ inner
 /// ```
 ";
         let out = fix_fences(input);
-        assert_eq!(&*out, expected, "doc-comment prefix must be preserved");
+        assert_eq!(&*out.text, expected, "doc-comment prefix must be preserved");
+    }
+
+    #[test]
+    fn flips_record_one_anchor_per_delimiter_line() {
+        // A nested backtick-inside-backtick fence: both the inner opener and
+        // the inner closer flip to tildes, each on its own line. Written with
+        // single-line `\n` escapes so the repo's own `fix_fences` lint hook
+        // cannot canonicalize the dirty literals before the test runs.
+        let input = "```text\ntext\n```rust\ninner\n```\n```\n";
+        let expected = "```text\ntext\n~~~rust\ninner\n~~~\n```\n";
+        let out = fix_fences(input);
+        assert_eq!(
+            &*out.text, expected,
+            "inner backticks should flip to tildes"
+        );
+        assert_eq!(
+            out.anchors,
+            [
+                FixAnchor {
+                    line: 3,
+                    kind: FixKind::Fence,
+                },
+                FixAnchor {
+                    line: 5,
+                    kind: FixKind::Fence,
+                },
+            ],
+            "opener and closer each anchor their own delimiter line"
+        );
     }
 
     #[test]
@@ -254,10 +312,11 @@ inner
 ";
         let out = fix_fences(input);
         assert!(
-            matches!(out, Cow::Borrowed(_)),
+            matches!(out.text, Cow::Borrowed(_)),
             "already-alternating input should be borrowed"
         );
-        assert_eq!(&*out, input);
+        assert!(out.anchors.is_empty(), "no flip -> no anchor");
+        assert_eq!(&*out.text, input);
     }
 
     #[test]
@@ -280,7 +339,7 @@ inner
 ";
         let out = fix_fences(input);
         assert_eq!(
-            &*out, expected,
+            &*out.text, expected,
             "inner backtick under tilde root stays backtick (already canonical)"
         );
     }
@@ -305,7 +364,7 @@ inner
 ```
 ";
         let out = fix_fences(input);
-        assert_eq!(&*out, expected, "run length must be preserved");
+        assert_eq!(&*out.text, expected, "run length must be preserved");
     }
 
     #[test]
@@ -320,8 +379,9 @@ inner
 ";
         let out = fix_fences(input);
         assert!(
-            out.contains("~~~rust,no_run"),
-            "info string must be preserved:\n{out}"
+            out.text.contains("~~~rust,no_run"),
+            "info string must be preserved:\n{}",
+            out.text
         );
     }
 
@@ -335,8 +395,8 @@ inner
 ~~~
 ```
 ";
-        let once = fix_fences(input).into_owned();
-        let twice = fix_fences(&once).into_owned();
+        let once = fix_fences(input).text.into_owned();
+        let twice = fix_fences(&once).text.into_owned();
         assert_eq!(twice, once, "fix_fences must be idempotent");
     }
 
@@ -353,10 +413,10 @@ inner
 ";
         let out = fix_fences(input);
         assert!(
-            matches!(out, Cow::Borrowed(_)),
+            matches!(out.text, Cow::Borrowed(_)),
             "canonical outer-backtick/inner-tilde input should be borrowed"
         );
-        assert_eq!(&*out, input);
+        assert_eq!(&*out.text, input);
     }
 
     #[test]
@@ -382,7 +442,7 @@ deep
 ";
         let out = fix_fences(input);
         assert_eq!(
-            &*out, expected,
+            &*out.text, expected,
             "depth-2 fences should reuse the root marker (backtick), not a third alternation"
         );
     }
@@ -397,12 +457,17 @@ deep
         let expected = "\u{c}```text\n\u{c}~~~rust\n\u{c}~~~\n```\n";
         let out = fix_fences(input);
         assert_eq!(
-            &*out, expected,
+            &*out.text, expected,
             "form-feed-prefixed fences must be processed like space-prefixed ones"
         );
         assert!(
-            matches!(out, Cow::Owned(_)),
+            matches!(out.text, Cow::Owned(_)),
             "the inner backtick fence should flip to tildes"
+        );
+        assert_eq!(
+            out.anchors.len(),
+            2,
+            "flipped opener and closer each produce an anchor"
         );
     }
 
@@ -543,17 +608,17 @@ deep
             let got = fix_fences(input);
             let want = fix_fences_ref(input);
             assert_eq!(
-                &*got, &*want,
+                &*got.text, &*want,
                 "byte-identical divergence from bc51750 for input {input:?}"
             );
             assert_eq!(
-                matches!(got, Cow::Borrowed(_)),
+                matches!(got.text, Cow::Borrowed(_)),
                 matches!(want, Cow::Borrowed(_)),
                 "Cow variant divergence from bc51750 for input {input:?}"
             );
             // The optimized version must remain idempotent on each input.
-            let once = fix_fences(input).into_owned();
-            let twice = fix_fences(&once).into_owned();
+            let once = fix_fences(input).text.into_owned();
+            let twice = fix_fences(&once).text.into_owned();
             assert_eq!(twice, once, "not idempotent for input {input:?}");
         }
     }
@@ -611,11 +676,11 @@ deep
             let got = fix_fences(&input);
             let want = fix_fences_ref(&input);
             assert_eq!(
-                &*got, &*want,
+                &*got.text, &*want,
                 "byte-identical divergence from bc51750 for generated input {input:?}"
             );
             assert_eq!(
-                matches!(got, Cow::Borrowed(_)),
+                matches!(got.text, Cow::Borrowed(_)),
                 matches!(want, Cow::Borrowed(_)),
                 "Cow variant divergence for generated input {input:?}"
             );
@@ -632,11 +697,28 @@ deep
         let input = "/// ```text\r\n/// ```rust\r\n/// inner\r\n/// ```\r\n/// ```\r\n";
         let expected = "/// ```text\r\n/// ~~~rust\r\n/// inner\r\n/// ~~~\r\n/// ```\r\n";
         let out = fix_fences(input);
-        assert_eq!(&*out, expected, "inner flips to tildes, CRLF preserved");
         assert_eq!(
-            out.matches('\n').count(),
-            out.matches("\r\n").count(),
+            &*out.text, expected,
+            "inner flips to tildes, CRLF preserved"
+        );
+        assert_eq!(
+            out.text.matches('\n').count(),
+            out.text.matches("\r\n").count(),
             "every newline must be CRLF: {out:?}"
+        );
+        assert_eq!(
+            out.anchors,
+            [
+                FixAnchor {
+                    line: 2,
+                    kind: FixKind::Fence,
+                },
+                FixAnchor {
+                    line: 4,
+                    kind: FixKind::Fence,
+                },
+            ],
+            "flipped opener/closer anchor their doc-comment lines"
         );
     }
 }

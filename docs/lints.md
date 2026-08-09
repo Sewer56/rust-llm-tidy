@@ -20,7 +20,7 @@ toggleable through the same rule namespace as the ops, so
 | [`DOC003`]  | Warning  | A `# Errors` section names no concrete error variant.                             |
 | [`DOC004`]  | Warning  | A `pub fn` with parameters has no `# Arguments` section.                          |
 | [`DOC005`]  | Warning  | A `# Arguments` section does not mention every parameter name.                    |
-| [`DOC006`]  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`/`...`).             |
+| [`DOC006`]  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).                   |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
 
 ## Examples
@@ -222,7 +222,7 @@ src/lib.rs:1: warning[DOC005]: parameter(s) not documented in the `# Arguments` 
 ### DOC006 - placeholder text
 
 Doc comments on documentable items must not contain whole-word `TODO`,
-`FIXME`, or `TBD` markers, or the literal `...`.
+`FIXME`, or `TBD` markers.
 
 Before:
 
@@ -242,7 +242,7 @@ pub fn load() {}
 
 ```text
 $ rust-llm-tidy --no-config --include DOC006 src/lib.rs
-src/lib.rs:1: warning[DOC006]: doc comment contains placeholder text (TODO/FIXME/TBD/...) (fn `load`)
+src/lib.rs:1: warning[DOC006]: doc comment contains placeholder text (TODO/FIXME/TBD) (fn `load`)
 ```
 
 `DOC006` is warning-severity, so the run exits 0.
@@ -300,8 +300,16 @@ rust-llm-tidy --exclude lints src
 
 ## JSON output
 
-Print every lint finding as one JSON array on stdout. Prints `[]` when no
-findings, and still prints the document when the run exits non-zero:
+```bash
+# Print findings and change records as a single JSON array on stdout
+rust-llm-tidy --output-mode json src
+# `--json` is an alias for `--output-mode json`
+rust-llm-tidy --json src
+```
+
+Print every lint finding and change record as one JSON array on stdout, in both
+in-place and `--dry-run` runs. Prints `[]` when there are no findings or
+changes, and still prints the document when the run exits non-zero:
 
 ```json
 [
@@ -319,15 +327,50 @@ findings, and still prints the document when the run exits non-zero:
 
 Fields:
 
-- `severity` - `"error"` or `"warning"`
-- `line` - 1-based item start line
+- `severity` - `"error"` or `"warning"` for lint findings, `"success"` for change records (applied or would-be changes)
+- `line` - 1-based item start line; `null` when the record has no specific line (e.g. link/table fixes)
 - `item_name` - item name, `null` when unnamed
 - `path`, `code`, `message`, `item_kind` - as in plaintext
 
 In JSON mode the plaintext `path:line: sev[CODE]: ...` diagnostics are not
-printed to stderr. `--output-mode json` cannot be combined with `--dry-run`:
-dry-run prints reordered file contents to stdout, which would corrupt the JSON
-document.
+printed to stderr. Change records and lint findings are folded into the same
+document, in both in-place and `--dry-run` runs.
+
+## Change reporting
+
+Every run reports the edits each enabled op makes (in-place) or would make
+(`--dry-run`). `--dry-run` previews the changes without writing them. In text
+mode every edit is one plaintext line on stderr:
+
+```text
+src/lib.rs:20: success[REORDER]: rearrange fn a_main from pos 2 to pos 1 (before b_helper) (fn `a_main`)
+```
+
+The line shape is:
+
+```text
+path:line: success[CODE]: message (item_kind `item_name`)
+```
+
+Fix records are unnamed, so they print like `1: success[FIX]: realign table
+starting at line 1 (table)` without a trailing name. In JSON mode the same
+records appear on stdout as one JSON array with `severity: "success"`:
+
+```json
+[
+  {
+    "path": "src/lib.rs",
+    "line": 20,
+    "severity": "success",
+    "code": "REORDER",
+    "message": "rearrange fn a_main from pos 2 to pos 1 (before b_helper)",
+    "item_kind": "fn",
+    "item_name": "a_main"
+  }
+]
+```
+
+Each operation's concrete output in both modes is shown in its own doc page.
 
 [`DOC001`]: #doc001---missing-documentation
 [`DOC002`]: #doc002---missing-errors-section

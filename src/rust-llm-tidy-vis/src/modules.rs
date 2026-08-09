@@ -79,7 +79,8 @@ pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<Mo
     let known_files: std::collections::HashSet<PathBuf> =
         files.iter().map(|f| f.path.clone()).collect();
 
-    // 2. BFS from root, propagating floors. The root's floor is None.
+    // 2. Vec-based stack, so queue.pop() gives depth-first order. Root's floor
+    //    is None. Multiple mod edges to one file: first recorded floor wins.
     let mut floors: AHashMap<PathBuf, Option<String>> = AHashMap::new();
     let mut warnings = Vec::new();
     let mut queue: Vec<(PathBuf, Option<String>)> = vec![(root.to_path_buf(), None)];
@@ -235,8 +236,14 @@ fn resolve_mod_children(
                     .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                     .map(str::to_string);
                 let name_str = name.as_deref().unwrap_or("");
+                // A `#[path]` override was used: a missing target already emits
+                // the dedicated "target not found" warning below, so the generic
+                // "resolves to no ..." warning must be suppressed in that case
+                // (it is redundant and references nonexistent `foo.rs` paths).
+                let mut path_attr_used = false;
                 let resolved = match path_attr {
                     Some(p) => {
+                        path_attr_used = true;
                         let candidate = parent_dir.join(&p);
                         // Canonicalize the candidate for lookup against the known set.
                         let cand_canon =
@@ -259,12 +266,14 @@ fn resolve_mod_children(
                 };
                 match resolved {
                     Some(p) => out.push(ModChild::File { path: p, vis_text }),
-                    None => warnings.push(format!(
-                        "{}: `mod {};` resolves to no `{}.rs` or `{0}/mod.rs`",
+                    None if !path_attr_used => warnings.push(format!(
+                        "{}: `mod {};` resolves to no `{}.rs` or `{}/mod.rs`",
                         parent.display(),
+                        name_str,
                         name_str,
                         name_str
                     )),
+                    None => {} // `#[path]` target warning already emitted
                 }
                 pending_attrs.clear();
             }
@@ -514,6 +523,18 @@ mod tests {
             w.iter()
                 .any(|s| s.contains("#[path") && s.contains("not found")),
             "missing #[path] warning: {w:?}"
+        );
+        // The generic "resolves to no" warning must only fire for the plain
+        // `mod missing;` declaration, not the `#[path]`-gated `mod gone;`.
+        assert_eq!(
+            w.iter().filter(|s| s.contains("resolves to no")).count(),
+            1,
+            "generic unresolved warning only for ordinary mod decls: {w:?}"
+        );
+        assert!(
+            w.iter()
+                .any(|s| s.contains("`mod missing;`") && s.contains("missing.rs")),
+            "generic warning names the missing module: {w:?}"
         );
     }
 

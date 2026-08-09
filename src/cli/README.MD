@@ -32,7 +32,7 @@ reorder, vis, lints) by default on `.rs` and `.md` files:
 # Tidy a file in place
 rust-llm-tidy src/main.rs
 
-# Preview changes without modifying the file
+# Report the changes that would be made instead of modifying the file
 rust-llm-tidy --dry-run src/main.rs
 
 # Tidy every .rs/.md file under a directory recursively
@@ -57,22 +57,23 @@ rust-llm-tidy --output-mode json src/main.rs
 
 ### Flags
 
-| Flag                   | Effect                                             |
-| ---------------------- | -------------------------------------------------- |
-| `--dry-run`            | Print results to stdout instead of modifying files |
-| `--config <PATH>`      | Explicit config path (overrides auto-discovery)    |
-| `--no-config`          | Disable config discovery and loading               |
-| `--validate`           | Validate config and exit (no files processed)      |
-| `--include <OP>`       | Run only these ops/lint-codes (repeatable)         |
-| `--exclude <OP>`       | Skip these ops/lint-codes (repeatable)             |
-| `--output-mode <MODE>` | Lint output format: `text` (default) or `json`     |
-| `--json`               | Alias for `--output-mode json`                     |
+| Flag                   | Effect                                                          |
+| ---------------------- | --------------------------------------------------------------- |
+| `--dry-run`            | Print the changes that would be made instead of modifying files |
+| `--config <PATH>`      | Explicit config path (overrides auto-discovery)                 |
+| `--no-config`          | Disable config discovery and loading                            |
+| `--validate`           | Validate config and exit (no files processed)                   |
+| `--include <OP>`       | Run only these ops/lint-codes (repeatable)                      |
+| `--exclude <OP>`       | Skip these ops/lint-codes (repeatable)                          |
+| `--output-mode <MODE>` | Lint output format: `text` (default) or `json`                  |
+| `--json`               | Alias for `--output-mode json`                                  |
 
 ### JSON output
 
-Print every lint finding as one JSON array on stdout instead of the default
-`path:line: sev[CODE]: ...` stderr diagnostics. Prints `[]` when no findings,
-even when the run exits non-zero:
+Print every lint finding and change record as one JSON array on stdout instead
+of the default `path:line: sev[CODE]: ...` stderr diagnostics. Change records
+are emitted for both in-place and `--dry-run` runs. Prints `[]` when there are
+no findings or changes, even when the run exits non-zero:
 
 ```json
 [
@@ -90,14 +91,16 @@ even when the run exits non-zero:
 
 Fields:
 
-- `severity` - `"error"` or `"warning"`
+- `severity` - `"error"` or `"warning"` for lint findings, `"success"` for change records (applied or would-be changes)
 - `line` - 1-based item start line
 - `item_name` - item name, `null` when unnamed
 - `path`, `code`, `message`, `item_kind` - as in plaintext
 
 In JSON mode the plaintext per-line diagnostics are not printed to stderr.
-`--output-mode json` cannot be combined with `--dry-run`: dry-run prints
-reordered file contents to stdout, which would corrupt the JSON document.
+`--output-mode json` combines freely with `--dry-run`; the would-be changes are
+folded into the same document. See
+[dry-run change reporting](../../docs/lints.md#change-reporting) for
+the shared record format.
 
 ### Operations
 
