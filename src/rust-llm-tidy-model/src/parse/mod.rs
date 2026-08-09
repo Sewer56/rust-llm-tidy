@@ -135,6 +135,7 @@ fn build_items(raw: &[RawEntry<'_>], source: &str, line_starts: &[usize]) -> Vec
             class.name,
             class.impl_target,
             class.is_test_module,
+            class.is_inline,
             class.is_trait_impl,
             class.visibility,
             class.doc_comments,
@@ -377,6 +378,27 @@ fn a() {}\n";
         assert_eq!(parsed.items.len(), 1);
         assert_eq!(parsed.items[0].doc_comments(), &[" Does the thing."]);
         assert_eq!(parsed.items[0].start_line(), 1);
+    }
+
+    /// `is_inline()` is true for an inline `mod foo { ... }` definition (body
+    /// present) and false for a file-based `mod foo;` declaration (no body).
+    #[test]
+    fn is_inline_distinguishes_mod_definition_from_declaration() {
+        let source = "mod file_decl;\nmod inline_def {}\n";
+        let parsed = parse_source(source).unwrap();
+        assert_eq!(parsed.items.len(), 2);
+        assert_eq!(parsed.items[0].kind(), &ItemKind::Mod);
+        assert!(
+            parsed.items[0].name() == Some("file_decl"),
+            "first mod is file_decl"
+        );
+        assert!(!parsed.items[0].is_inline(), "mod x; is not inline");
+        assert_eq!(parsed.items[1].kind(), &ItemKind::Mod);
+        assert!(
+            parsed.items[1].name() == Some("inline_def"),
+            "second mod is inline_def"
+        );
+        assert!(parsed.items[1].is_inline(), "mod x with a body is inline");
     }
 
     /// A top-level macro invocation (`foo!();`) is classified as
