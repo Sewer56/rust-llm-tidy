@@ -11,6 +11,7 @@ use crate::changes::Change;
 use rust_llm_tidy_lint::{Diagnostic, Severity};
 use serde::Serialize;
 use std::borrow::Cow;
+use std::io::Write;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
@@ -67,7 +68,11 @@ pub(crate) fn emit_json(
     // Serialization to a String is infallible for these types; propagate any
     // error defensively rather than silently truncating stdout ownership.
     let doc = serde_json::to_string(&records)?;
-    println!("{doc}");
+    // Lock once and write the document plus a trailing newline through the
+    // handle so an I/O error is reported instead of silently swallowed.
+    let mut out = std::io::stdout().lock();
+    out.write_all(doc.as_bytes())?;
+    out.write_all(b"\n")?;
     Ok(())
 }
 
