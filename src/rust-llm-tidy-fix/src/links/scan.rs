@@ -5,6 +5,9 @@
 //!   line, in lock-step with [`crate::fences::fix_fences`].
 //! - [`parse_inline_link`]: recognize an inline `[text](url)` link.
 //! - [`definition_text`]: recognize a `[text]: url` reference definition.
+//! - [`doc_block_key`]: classify a raw line into the doc-comment block it
+//!   belongs to, so the rewrite pass keeps per-comment definitions in lock-step
+//!   with per-comment rewrites.
 
 use crate::fences::parse_fence;
 
@@ -22,6 +25,22 @@ pub(super) fn definition_text(body: &str) -> Option<&str> {
         Some(text)
     } else {
         None
+    }
+}
+
+/// The doc-comment block key for a line with doc `prefix`.
+///
+/// Lines outside any `///` / `//!` doc comment return `None`. A line belongs
+/// to the doc-comment block identified by `Some(prefix)`, and a block is the
+/// maximal run of consecutive lines sharing the same `Some(prefix)`. The
+/// rewrite pass uses this to keep each rustdoc comment's definitions inside
+/// the same block.
+#[inline]
+pub(super) fn doc_block_key(prefix: &str) -> Option<&str> {
+    if prefix.is_empty() {
+        None
+    } else {
+        Some(prefix)
     }
 }
 

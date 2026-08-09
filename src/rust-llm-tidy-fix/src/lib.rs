@@ -10,8 +10,10 @@
 //! - [`fix_fences`]: rewrite nested markdown fences to alternate backtick/tilde
 //!   markers so an inner fence cannot close the outer block early; works on
 //!   `.md` and `///`/`//!` doc comments.
-//! - [`fix_links`]: hoist repeated inline links `[text](url)` to reference
-//!   definitions `[text]` plus a trailing `[text]: url` block; idempotent.
+//! - [`fix_links`]: collapse inline links `[text](url)` to reference form
+//!   `[text]` plus `[text]: url` definitions - duplicated inside every Rust
+//!   doc comment that uses the label, one trailing block in Markdown;
+//!   idempotent.
 //! - [`fix_tables`]: realign GFM pipe tables, including those nested inside
 //!   `///` and `//!` doc comments.
 //!

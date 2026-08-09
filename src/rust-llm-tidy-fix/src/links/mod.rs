@@ -1,29 +1,28 @@
-//! Hoist repeated inline links to reference definitions.
+//! Collapse inline links to reference form in Markdown and Rust doc comments.
 //!
-//! [`fix_links`] scans `input` for inline links `[text](url)` where the same
-//! `(text, url)` pair appears 2+ times, rewrites each occurrence to the
-//! reference form `[text]`, and appends exactly one `[text]: url` definition
-//! per hoisted link at the end of the document, co-located with any
-//! pre-existing trailing reference-definition block.
+//! [`fix_links`] scans `input` for inline links `[text](url)`, rewrites every
+//! eligible occurrence to the reference form `[text]`, and records a
+//! `[text]: url` definition. The default threshold is 1: every eligible inline
+//! link hoists, including a single use and intra-doc `Self::…` / `crate::…`
+//! targets.
 //!
-//! Links used once, autolink (`<...>`) or whitespace/newline-URL forms,
-//! already-reference-style links (`[text][ref]`, `[text][]`, `[text]`), links
-//! whose text already has a `[text]:` definition, and links inside fenced
-//! code blocks are left untouched. Per-line `///` / `//!` doc-comment prefixes
-//! are preserved on the rewritten occurrences.
+//! A `(text, url)` pair is eligible when it appears at least `min_occurrences`
+//! times (default 1) in the non-fenced input and its text has no existing
+//! `[text]:` definition. Skipped forms are unchanged:
+//! autolinks (`<...>`), whitespace/newline-URL forms, already-reference-style
+//! links (`[text][ref]`, `[text][]`, `[text]`), links whose text already has a
+//! definition, and links inside fenced code blocks.
 //!
-//! The function is idempotent: reference-style output is returned unchanged
-//! (a borrowed [`Cow`]).
+//! Definitions are placed by content, not by file type. When the input carries
+//! `///` or `//!` doc-comment lines outside code fences (Rust context), each
+//! `[text]: url` definition is written at the end of every doc-comment block
+//! that uses the label, on new lines with that block's doc prefix; links on
+//! non-doc-comment lines are left alone. Otherwise (Markdown), one
+//! document-scoped trailing definition block is appended at the end of the
+//! input. Definitions use the source's dominant line ending.
 //!
-//! # Performance
-//!
-//! The overwhelmingly common input is already canonical - no inline link is
-//! repeated - so [`fix_links`] must return a [`Cow::Borrowed`] after a
-//! single tally pass. That pass jumps between `[` bytes with [`str::find`]
-//! (std's optimized search) instead of walking every character, and skips link
-//! work entirely for lines without a `[`. The rewrite pass allocates its output
-//! lazily (per-segment and overall), so an idempotent re-run or a document
-//! with no repeats pays zero allocation and zero copying beyond the tally scan.
+//! The function is idempotent and returns a borrowed [`Cow`] with empty pairs
+//! when nothing is eligible.
 //!
 //! # Example
 //!
@@ -31,8 +30,9 @@
 //! # use std::borrow::Cow;
 //! use rust_llm_tidy_fix::fix_links;
 //!
-//! let input = "see [A](http://x) and [A](http://x)\n";
-//! let expected = "see [A] and [A]\n[A]: http://x\n";
+//! // Markdown: a single use still hoists, with a trailing definition.
+//! let input = "see [A](http://x)\n";
+//! let expected = "see [A]\n[A]: http://x\n";
 //! let (out, pairs) = fix_links(input);
 //! assert_eq!(out.into_owned(), expected);
 //! assert_eq!(pairs, [("[A](http://x)".to_string(), "[A]".to_string())]);
@@ -40,47 +40,65 @@
 //! ```
 
 use crate::tables::{split_terminator, strip_doc_prefix};
-use rewrite::{append_definitions, dominant_line_ending, rewrite_links, tally_links};
-use scan::{definition_text, step_fence};
+use rewrite::{
+    append_block_definitions, append_definitions, dominant_line_ending, rewrite_links,
+    rewrite_links_track, tally_links,
+};
+use scan::{definition_text, doc_block_key, step_fence};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 mod rewrite;
 mod scan;
 
-/// Hoist repeated inline links `[text](url)` to reference definitions.
+/// Collapse eligible inline links `[text](url)` to reference form.
 ///
 /// Returns the rewritten text plus one `(before, after)` substitution per
 /// hoisted link (`[text](url)` -> `[text]`). See the module docs for the full
-/// rule. Borrows `input` back with no pairs when nothing is hoisted.
+/// rule. Borrows `input` back with no pairs when nothing is eligible.
 ///
 /// # Arguments
 ///
-/// - `input`: the markdown (or Rust source) whose repeated inline links are
-///   hoisted to trailing `[text]: url` reference definitions.
+/// - `input`: the Markdown (or Rust source) whose inline links are hoisted to
+///   `[text]: url` reference definitions.
 pub fn fix_links(input: &str) -> (Cow<'_, str>, Vec<(String, String)>) {
+    fix_links_internal(input, 1)
+}
+
+/// Shared core, parameterized by the occurrence threshold (default 1) so later
+/// work can expose a public threshold-taking entry point without changing this
+/// one's signature.
+fn fix_links_internal(
+    input: &str,
+    min_occurrences: usize,
+) -> (Cow<'_, str>, Vec<(String, String)>) {
     // Fast path: no link-opening bracket means nothing can change.
     if !input.contains('[') {
         return (Cow::Borrowed(input), Vec::new());
     }
 
-    // Pass 1: tally eligible inline links (outside code fences) and record the
-    // texts of every existing `[text]:` definition so we never re-define one.
-    // Splitting each line once (into content/body) feeds both the fence step
-    // and the link tally, and the `contains('[')` guard skips link work for the
-    // common bracket-less line.
+    // Pass 1: tally eligible inline links (outside code fences), record the
+    // texts of every existing `[text]:` definition so we never re-define one,
+    // and detect whether the input is Rust doc-comment content. Splitting each
+    // line once (into content/body) feeds the fence step, the link tally, and
+    // the Rust-context detection, and the `contains('[')` guard skips link
+    // work for the common bracket-less line.
     let mut fence_stack: Vec<(char, usize)> = Vec::new();
     let mut counts: HashMap<(&str, &str), usize> = HashMap::new();
     let mut order: Vec<(&str, &str)> = Vec::new();
     let mut existing: HashSet<&str> = HashSet::new();
+    let mut rust_context = false;
     for segment in input.split_inclusive('\n') {
         let (content, _) = split_terminator(segment);
-        let (_, body) = strip_doc_prefix(content);
-        if step_fence(&mut fence_stack, body) {
-            continue;
+        let (prefix, body) = strip_doc_prefix(content);
+        let fence_delim = step_fence(&mut fence_stack, body);
+        // Content-based Rust-context detection: a doc-comment line outside a
+        // code fence (including a fence delimiter that itself carries `///`).
+        if !prefix.is_empty() && (fence_delim || fence_stack.is_empty()) {
+            rust_context = true;
         }
-        if !fence_stack.is_empty() {
-            continue; // inside a code block: no links here
+        if fence_delim || !fence_stack.is_empty() {
+            continue;
         }
         if !body.contains('[') {
             continue;
@@ -91,13 +109,14 @@ pub fn fix_links(input: &str) -> (Cow<'_, str>, Vec<(String, String)>) {
         tally_links(body, &mut counts, &mut order);
     }
 
-    // Hoist set: pairs seen 2+ times whose text is not already defined.
-    // `existing.insert(text)` returns false for pre-existing definitions and
-    // also dedups by text, so we never emit two `[text]:` lines for one text.
+    // Hoist set: pairs seen at least `min_occurrences` times whose text is not
+    // already defined. `existing.insert(text)` returns false for pre-existing
+    // definitions and also dedups by text, so we never emit two `[text]:` lines
+    // for one text and the first-seen `(text, url)` for a repeated text wins.
     let mut hoist: Vec<(&str, &str)> = Vec::new();
     let mut hoist_set: HashSet<(&str, &str)> = HashSet::new();
     for &(text, url) in &order {
-        if counts[&(text, url)] >= 2 && existing.insert(text) {
+        if counts[&(text, url)] >= min_occurrences && existing.insert(text) {
             hoist_set.insert((text, url));
             hoist.push((text, url));
         }
@@ -107,17 +126,30 @@ pub fn fix_links(input: &str) -> (Cow<'_, str>, Vec<(String, String)>) {
         return (Cow::Borrowed(input), Vec::new());
     }
 
-    // Pass 2: rewrite eligible inline links to `[text]`, allocating output
-    // lazily on the first changed segment (mirrors `fix_fences`). Lines
-    // without a `[` are emitted verbatim without entering the rewriter.
+    let le = dominant_line_ending(input);
+    if rust_context {
+        rewrite_rust_context(input, &hoist_set, le)
+    } else {
+        rewrite_markdown(input, &hoist_set, &hoist, le)
+    }
+}
+
+/// Rewrite eligible inline links in Markdown context (no doc-comment lines),
+/// appending one document-scoped trailing definition block at the end.
+fn rewrite_markdown<'a>(
+    input: &'a str,
+    hoist_set: &HashSet<(&'a str, &'a str)>,
+    hoist: &[(&str, &str)],
+    le: &'a str,
+) -> (Cow<'a, str>, Vec<(String, String)>) {
     let mut out: Option<String> = None;
     let mut pos = 0usize;
-    fence_stack.clear();
+    let mut fence_stack: Vec<(char, usize)> = Vec::new();
     for segment in input.split_inclusive('\n') {
         let seg_start = pos;
         pos += segment.len();
         let (content, term) = split_terminator(segment);
-        let (prefix, body) = strip_doc_prefix(content);
+        let (_, body) = strip_doc_prefix(content);
         if step_fence(&mut fence_stack, body) {
             if let Some(o) = out.as_mut() {
                 o.push_str(segment);
@@ -136,7 +168,7 @@ pub fn fix_links(input: &str) -> (Cow<'_, str>, Vec<(String, String)>) {
             }
             continue;
         }
-        match rewrite_links(prefix, body, term, &hoist_set) {
+        match rewrite_links("", body, term, hoist_set) {
             Some(rewritten) => {
                 let o = ensure_output(&mut out, input, seg_start);
                 o.push_str(&rewritten);
@@ -152,13 +184,12 @@ pub fn fix_links(input: &str) -> (Cow<'_, str>, Vec<(String, String)>) {
     // Append hoisted `[text]: url` definitions at the end of the document.
     // Definitions use the source's dominant line ending so a CRLF document
     // stays CRLF after hoisting.
-    let le = dominant_line_ending(input);
     let mut buf = out.unwrap_or_else(|| {
         let mut s = String::with_capacity(input.len());
         s.push_str(input);
         s
     });
-    append_definitions(&mut buf, &hoist, le);
+    append_definitions(&mut buf, hoist, le);
 
     // One `[text](url)` -> `[text]` pair per hoisted link, in hoist order.
     let pairs = hoist
@@ -166,6 +197,90 @@ pub fn fix_links(input: &str) -> (Cow<'_, str>, Vec<(String, String)>) {
         .map(|&(text, url)| (format!("[{text}]({url})"), format!("[{text}]")))
         .collect();
     (Cow::Owned(buf), pairs)
+}
+
+/// Rewrite eligible inline links in Rust doc-comment context.
+///
+/// Each eligible link inside a `///` / `//!` block becomes `[text]`, and a
+/// `[text]: url` definition is appended to the end of every block that uses
+/// the label. Links on non-doc-comment lines are never rewritten and no
+/// definition is emitted outside a block.
+fn rewrite_rust_context<'a>(
+    input: &'a str,
+    hoist_set: &HashSet<(&'a str, &'a str)>,
+    le: &'a str,
+) -> (Cow<'a, str>, Vec<(String, String)>) {
+    // Lazily-allocated output; stays `None` when nothing actually changes.
+    let mut out: Option<String> = None;
+    let mut pos = 0usize;
+    let mut fence_stack: Vec<(char, usize)> = Vec::new();
+    // The doc-comment block currently being emitted, its prefix, and its
+    // hoisted pairs (defined-when-flushed), tracked for O(1) dedup.
+    let mut cur_block: Option<&str> = None;
+    let mut cur_defs: Vec<(&str, &str)> = Vec::new();
+    let mut cur_defs_seen: HashSet<(&str, &str)> = HashSet::new();
+    let mut hoisted: Vec<(&str, &str)> = Vec::new();
+    let mut hoisted_seen: HashSet<(&str, &str)> = HashSet::new();
+
+    for segment in input.split_inclusive('\n') {
+        let seg_start = pos;
+        pos += segment.len();
+        let (content, term) = split_terminator(segment);
+        let (prefix, body) = strip_doc_prefix(content);
+        let block_key = doc_block_key(prefix);
+
+        // Close the previous block the moment the line leaves it (a new
+        // block, a non-doc line, or a fence carries a different key), so each
+        // using comment gets exactly one in-comment definition copy.
+        if block_key != cur_block {
+            flush_block_defs(&mut out, cur_block, &mut cur_defs, &mut cur_defs_seen, le);
+            cur_block = block_key;
+        }
+
+        let fence_delim = step_fence(&mut fence_stack, body);
+        if fence_delim || !fence_stack.is_empty() || prefix.is_empty() || !body.contains('[') {
+            // Fence line, fenced line, or non-doc-comment line: never rewritten.
+            if let Some(o) = out.as_mut() {
+                o.push_str(segment);
+            }
+            continue;
+        }
+
+        // A non-fenced doc-comment line with a link: hoist eligible pairs,
+        // collecting the ones used in this block for its definition lines.
+        match rewrite_links_track(prefix, body, term, hoist_set, |t, u| {
+            if cur_defs_seen.insert((t, u)) {
+                cur_defs.push((t, u));
+            }
+            if hoisted_seen.insert((t, u)) {
+                hoisted.push((t, u));
+            }
+        }) {
+            Some(rewritten) => {
+                let o = ensure_output(&mut out, input, seg_start);
+                o.push_str(&rewritten);
+            }
+            None => {
+                if let Some(o) = out.as_mut() {
+                    o.push_str(segment);
+                }
+            }
+        }
+    }
+    flush_block_defs(&mut out, cur_block, &mut cur_defs, &mut cur_defs_seen, le);
+
+    if hoisted.is_empty() {
+        return (Cow::Borrowed(input), Vec::new());
+    }
+
+    let pairs = hoisted
+        .iter()
+        .map(|&(text, url)| (format!("[{text}]({url})"), format!("[{text}]")))
+        .collect();
+    (
+        Cow::Owned(out.expect("hoisted pairs imply changed output")),
+        pairs,
+    )
 }
 
 /// Lazily allocate `out`, copying the verbatim prefix `input[..seg_start]`.
@@ -176,6 +291,26 @@ fn ensure_output<'a>(out: &'a mut Option<String>, input: &str, seg_start: usize)
         s.push_str(&input[..seg_start]);
         s
     })
+}
+
+/// Append a doc-comment block's collected definition lines to `out` and reset
+/// its accumulator (with the dedup set), so the next block starts fresh.
+/// No-op when the block rewrote nothing.
+fn flush_block_defs(
+    out: &mut Option<String>,
+    prefix: Option<&str>,
+    defs: &mut Vec<(&str, &str)>,
+    seen: &mut HashSet<(&str, &str)>,
+    le: &str,
+) {
+    if defs.is_empty() {
+        return;
+    }
+    let prefix = prefix.expect("definitions imply an open doc-comment block");
+    let o = out.get_or_insert_with(String::new);
+    append_block_definitions(o, prefix, defs, le);
+    defs.clear();
+    seen.clear();
 }
 
 #[cfg(test)]
@@ -203,13 +338,14 @@ mod tests {
     }
 
     #[test]
-    fn single_occurrence_untouched_and_borrowed() {
-        // Acceptance case (b): a link used once is left inline and borrowed.
+    fn single_occurrence_markdown_hoists() {
+        // Acceptance case (b): a link used once in Markdown is still hoisted
+        // by default, gaining a trailing definition.
         let input = "only [A](http://x) once\n";
+        let expected = "only [A] once\n[A]: http://x\n";
         let (out, pairs) = fix_links(input);
-        assert!(matches!(out, Cow::Borrowed(_)), "single link is borrowed");
-        assert!(pairs.is_empty());
-        assert_eq!(&*out, input);
+        assert_eq!(&*out, expected, "single Markdown link should hoist");
+        assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);
     }
 
     #[test]
@@ -238,9 +374,10 @@ after
 
     #[test]
     fn doc_comment_prefix_preserved() {
-        // Acceptance case (f): a `///` prefix is preserved on rewritten links.
+        // Acceptance case (f): the `///` prefix is preserved on rewritten links
+        // and the definition lands inside the comment, on the same prefix.
         let input = "/// see [A](http://x) and [A](http://x)\n";
-        let expected = "/// see [A] and [A]\n[A]: http://x\n";
+        let expected = "/// see [A] and [A]\n/// [A]: http://x\n";
         let (out, _) = fix_links(input);
         assert_eq!(&*out, expected);
     }
@@ -285,6 +422,17 @@ after
     }
 
     #[test]
+    fn same_text_different_url_in_doc_block_hoists_first_only() {
+        // In Rust context, the first-seen URL in a comment wins: the `http://x`
+        // pair collapses, the conflicting `http://y` uses stay inline.
+        let input = "/// [A](http://x) [A](http://x) [A](http://y) [A](http://y)\n";
+        let expected = "/// [A] [A] [A](http://y) [A](http://y)\n/// [A]: http://x\n";
+        let (out, pairs) = fix_links(input);
+        assert_eq!(&*out, expected);
+        assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);
+    }
+
+    #[test]
     fn multiple_hoisted_pairs_rewrite_each_line() {
         // Two distinct repeated pairs on different lines are both hoisted.
         let input = "see [A](u) and [A](u)\nthen [B](v) again [B](v)\n";
@@ -304,6 +452,133 @@ after
     }
 
     #[test]
+    fn multi_comment_repro_duplicates_defs_per_comment() {
+        // The reported repro: the same intra-doc pairs in two separate `///`
+        // comments. Each comment keeps its own `[text]` uses plus its own
+        // duplicated definition lines; no definition appears at EOF or between
+        // comments, so every comment stays rustdoc-clean.
+        let input = "\
+/// See [field](Self::field) and [path](crate::path).
+pub struct S;
+
+/// [field](Self::field) again and [path](crate::path).
+impl S {}
+";
+        let expected = "\
+/// See [field] and [path].
+/// [field]: Self::field
+/// [path]: crate::path
+pub struct S;
+
+/// [field] again and [path].
+/// [field]: Self::field
+/// [path]: crate::path
+impl S {}
+";
+        let (out, pairs) = fix_links(input);
+        assert_eq!(&*out, expected);
+        assert_eq!(
+            pairs,
+            [
+                ("[field](Self::field)".into(), "[field]".into()),
+                ("[path](crate::path)".into(), "[path]".into())
+            ]
+        );
+    }
+
+    #[test]
+    fn intra_doc_target_forms_hoist() {
+        // Self::, super::, self::, crate::, bare identifiers and qualified
+        // paths all hoist on the same terms as plain URLs, each with an
+        // in-comment definition.
+        let input = "/// [a](self::a) [b](super::b) [c](crate::c) [d](d) [e](foo::Bar::method)\n";
+        let expected = "\
+/// [a] [b] [c] [d] [e]
+/// [a]: self::a
+/// [b]: super::b
+/// [c]: crate::c
+/// [d]: d
+/// [e]: foo::Bar::method
+";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected);
+    }
+
+    #[test]
+    fn single_use_in_one_comment_hoists() {
+        // A link used once in a single `///` comment still hoists by default,
+        // gaining its in-comment definition.
+        let input = "/// see [A](http://x) once\n";
+        let expected = "/// see [A] once\n/// [A]: http://x\n";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected);
+    }
+
+    #[test]
+    fn doc_comment_no_trailing_newline_hoists_on_own_line() {
+        // A rewritten doc-comment line at EOF without a trailing newline still
+        // receives its definition on a separate comment line, never glued onto
+        // the rewritten line.
+        let input = "/// see [A](http://x) and [A](http://x)";
+        let expected = "/// see [A] and [A]\n/// [A]: http://x\n";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected);
+    }
+
+    #[test]
+    fn single_use_in_two_comments_duplicates_def() {
+        // A link used once in each of two separate comments: both comments are
+        // rewritten and each gets its own in-comment definition copy.
+        let input = "\
+/// first [A](http://x)
+pub fn a() {}
+
+/// again [A](http://x)
+pub fn b() {}
+";
+        let expected = "\
+/// first [A]
+/// [A]: http://x
+pub fn a() {}
+
+/// again [A]
+/// [A]: http://x
+pub fn b() {}
+";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected);
+    }
+
+    #[test]
+    fn inner_doc_comment_parity() {
+        // `//!` inner doc comments are handled exactly like `///` blocks.
+        let input = "//! see [A](http://x) once\n";
+        let expected = "//! see [A] once\n//! [A]: http://x\n";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected);
+    }
+
+    #[test]
+    fn non_doc_commented_link_not_rewritten_and_borrowed() {
+        // Rust context (one `///` line exists), but the only inline link sits
+        // on a non-doc-comment line (a string literal): it is never rewritten
+        // and gets no definition, so the pass returns the input borrowed.
+        let input = "\
+/// some doc
+pub fn f() {
+    let s = \"see [A](http://x)\";
+}
+";
+        let (out, pairs) = fix_links(input);
+        assert!(
+            matches!(out, Cow::Borrowed(_)),
+            "link on a non-doc line must not change the input"
+        );
+        assert!(pairs.is_empty());
+        assert_eq!(&*out, input);
+    }
+
+    #[test]
     fn idempotent_on_hoisted_output() {
         let input = "see [A](http://x) and [A](http://x)\n";
         let once = fix_links(input).0.into_owned();
@@ -315,8 +590,9 @@ after
     fn optimized_is_idempotent_on_diverse_cases() {
         // Broad corpus: repeated vs single-use links, reference definitions,
         // autolinks, whitespace URLs, links inside code fences, doc-comment
-        // prefixes, nested brackets, non-ASCII text, unbalanced edge cases.
-        // `fix_links` must stay idempotent on every input.
+        // prefixes, intra-doc forms, nested brackets, non-ASCII text,
+        // unbalanced edge cases, and multi-comment Rust inputs. `fix_links`
+        // must stay idempotent on every input.
         let cases: &[&str] = &[
             "",
             "no brackets at all\n",
@@ -351,6 +627,15 @@ after
             "see [A](u) and [A](u)",
             "see [A](u) and [A](u)\r\n",
             "    /// [A](u) [A](u)\n",
+            // Rust-context single-use and intra-doc cases.
+            "/// [A](u) single use\n",
+            "/// [A](u) and [A](u)",
+            "/// [field](Self::field) and [path](crate::path)\n",
+            "/// [a](self::a) [b](super::b)\n",
+            "/// [A](http://x) [A](http://x) [A](http://y) [A](http://y)\n",
+            "/// [A](u)\npub fn a() {}\n\n/// [A](u)\npub fn b() {}\n",
+            "//! [A](u) single use\n",
+            "/// some doc\nlet s = \"[A](u)\";\n",
         ];
         for &input in cases {
             let once = fix_links(input).0.into_owned();
