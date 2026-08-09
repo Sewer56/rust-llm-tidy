@@ -1,5 +1,5 @@
 //! Benchmark fixture: laminar sequencing module.
-//! doc tier; dirty for fix_links (two /// inline links repeat (super-module, SequencingStream) and are hoisted).
+//! doc tier; dirty for fix_links (every eligible /// or //! inline link hoists to [text], with a [text]: url definition inside each using comment and none at EOF).
 //! Source (pinned): https://github.com/TimonPost/laminar/blob/e8ffb26a915bb6ac3c8d959031d63f8a776e763c/src/infrastructure/arranging/sequencing.rs
 //! Embedded verbatim via include_str! in benches/common.rs.
 //! Module with logic for arranging items in-sequence on multiple streams.
