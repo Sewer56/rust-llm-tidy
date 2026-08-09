@@ -10,6 +10,9 @@ use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod common;
+use common::binary;
+
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// `all` on a clean file passes with no diagnostics.
@@ -847,40 +850,6 @@ fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
     cmd.args(["--no-config"]).args(args).arg(path);
     cmd.output()
         .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
-}
-
-/// Return the path to the `rust-llm-tidy` debug binary.
-///
-/// Prefers `CARGO_BIN_EXE_rust_llm_tidy` (set by `cargo test` at runtime);
-/// falls back to the sibling of the test binary under `target/<triple>/debug/`,
-/// since the test binary lives in `target/<triple>/debug/deps/`.
-fn binary() -> std::path::PathBuf {
-    for var in ["CARGO_BIN_EXE_rust-llm-tidy", "CARGO_BIN_EXE_rust_llm_tidy"] {
-        if let Some(path) = std::env::var_os(var) {
-            return std::path::PathBuf::from(path);
-        }
-    }
-
-    // Fallback for direct runs: the test binary lives in `<profile>/deps/`
-    // (stable) or the build-out dir (newer Cargo); both sit under the
-    // `<profile>` dir that holds the peer binary.
-    let mut dir = std::env::current_exe()
-        .expect("current_exe must resolve")
-        .parent()
-        .expect("current_exe must have a parent")
-        .to_path_buf();
-    loop {
-        for bin in ["rust-llm-tidy", "rust-llm-tidy.exe"] {
-            let candidate = dir.join(bin);
-            if candidate.is_file() {
-                return candidate;
-            }
-        }
-        if !dir.pop() {
-            break;
-        }
-    }
-    panic!("could not locate the rust-llm-tidy binary next to the test executable");
 }
 
 /// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.

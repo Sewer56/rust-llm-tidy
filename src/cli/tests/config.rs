@@ -2,14 +2,17 @@
 //! exclusions of `rust-llm-tidy`.
 //!
 //! Mirrors the helper pattern from `fix.rs`/`doc_check.rs` (`run_command`,
-//! `binary`, `manifest_dir`). Each test writes a temp config and/or fixture
-//! and runs the built CLI binary with `--config <path>`. Existing tests use
-//! `--no-config` (see `fix.rs`), so the repo-root sample config never
-//! interferes here.
+//! `manifest_dir`; `binary` lives in the shared `common` module). Each test
+//! writes a temp config and/or fixture and runs the built CLI binary with
+//! `--config <path>`. Existing tests use `--no-config` (see `fix.rs`), so the
+//! repo-root sample config never interferes here.
 
 use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+mod common;
+use common::binary;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -881,44 +884,6 @@ fn validate_ok_on_valid_config() {
         String::from_utf8_lossy(&output.stderr)
     );
     let _ = fs::remove_dir_all(&dir);
-}
-
-/// Returns the path to the `rust-llm-tidy` binary for spawning in tests.
-///
-/// Resolution order:
-/// 1. `CARGO_BIN_EXE_rust-llm-tidy`; modern Cargo keeps the hyphen.
-/// 2. `CARGO_BIN_EXE_rust_llm_tidy`; older Cargo normalized it.
-/// 3. Walk up from the test executable to the `target/<profile>` dir that
-///    holds the peer binary.
-///
-/// Panics when none resolve.
-fn binary() -> std::path::PathBuf {
-    for var in ["CARGO_BIN_EXE_rust-llm-tidy", "CARGO_BIN_EXE_rust_llm_tidy"] {
-        if let Some(path) = std::env::var_os(var) {
-            return std::path::PathBuf::from(path);
-        }
-    }
-
-    // Fallback for direct runs: the test binary lives in `<profile>/deps/`
-    // (stable) or the build-out dir (newer Cargo); both sit under the
-    // `<profile>` dir that holds the peer binary.
-    let mut dir = std::env::current_exe()
-        .expect("current_exe must resolve")
-        .parent()
-        .expect("current_exe must have a parent")
-        .to_path_buf();
-    loop {
-        for bin in ["rust-llm-tidy", "rust-llm-tidy.exe"] {
-            let candidate = dir.join(bin);
-            if candidate.is_file() {
-                return candidate;
-            }
-        }
-        if !dir.pop() {
-            break;
-        }
-    }
-    panic!("could not locate the rust-llm-tidy binary next to the test executable");
 }
 
 // -- Helpers (mirrors fix.rs) -----------------------------------

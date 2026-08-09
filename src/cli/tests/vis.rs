@@ -1,13 +1,16 @@
 //! Integration tests for the `vis` subcommand of `rust-llm-tidy`.
 //!
-//! Mirrors the helper pattern from `fix.rs` (`run_command`, `binary`,
-//! `manifest_dir`, `fixture_dir`). Each test runs the built CLI binary against
-//! fixture files in `tests/fixtures/vis/`.
+//! Mirrors the helper pattern from `fix.rs` (`run_command`, `manifest_dir`,
+//! `fixture_dir`; `binary` lives in the shared `common` module). Each test
+//! runs the built CLI binary against fixture files in `tests/fixtures/vis/`.
 
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+mod common;
+use common::binary;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -270,40 +273,6 @@ fn temp_file(ext: &str) -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-vis-{}-{}.{}", pid, seq, ext))
-}
-
-/// Return the path to the `rust-llm-tidy` debug binary.
-///
-/// Prefers `CARGO_BIN_EXE_rust_llm_tidy` (set by `cargo test` at runtime);
-/// falls back to the sibling of the test binary under `target/<triple>/debug/`,
-/// since the test binary lives in `target/<triple>/debug/deps/`.
-fn binary() -> std::path::PathBuf {
-    for var in ["CARGO_BIN_EXE_rust-llm-tidy", "CARGO_BIN_EXE_rust_llm_tidy"] {
-        if let Some(path) = std::env::var_os(var) {
-            return std::path::PathBuf::from(path);
-        }
-    }
-
-    // Fallback for direct runs: the test binary lives in `<profile>/deps/`
-    // (stable) or the build-out dir (newer Cargo); both sit under the
-    // `<profile>` dir that holds the peer binary.
-    let mut dir = std::env::current_exe()
-        .expect("current_exe must resolve")
-        .parent()
-        .expect("current_exe must have a parent")
-        .to_path_buf();
-    loop {
-        for bin in ["rust-llm-tidy", "rust-llm-tidy.exe"] {
-            let candidate = dir.join(bin);
-            if candidate.is_file() {
-                return candidate;
-            }
-        }
-        if !dir.pop() {
-            break;
-        }
-    }
-    panic!("could not locate the rust-llm-tidy binary next to the test executable");
 }
 
 /// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.

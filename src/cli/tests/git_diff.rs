@@ -9,6 +9,9 @@ use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod common;
+use common::binary;
+
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// No args + only a deleted file -> nothing to do, exit 0.
@@ -181,10 +184,10 @@ fn cleanup(dir: &std::path::Path) {
 }
 
 // -- Helpers (mirrors integration.rs) --------------------------------
-// Note: `binary`, `temp_dir`, and `TEST_COUNTER` are duplicated from
-// integration.rs. In a future cleanup, extract these into a
-// `tests/common/mod.rs` shared module so git_diff.rs only owns
-// `git`/`git_available`.
+// Note: `temp_dir` and `TEST_COUNTER` are still duplicated from
+// integration.rs; `binary` now lives in the shared `tests/common/mod.rs`
+// module. In a future cleanup, extract the rest likewise so git_diff.rs
+// only owns `git`/`git_available`.
 
 /// Spawn a fresh git repo in a temp dir, or return `None` when git is
 /// unavailable so the test skips (dev machines without git).
@@ -207,34 +210,6 @@ fn run(current_dir: &std::path::Path, args: &[&str]) -> std::process::Output {
         .args(args)
         .output()
         .expect("failed to spawn")
-}
-
-fn binary() -> std::path::PathBuf {
-    for var in ["CARGO_BIN_EXE_rust-llm-tidy", "CARGO_BIN_EXE_rust_llm_tidy"] {
-        if let Some(path) = std::env::var_os(var) {
-            return std::path::PathBuf::from(path);
-        }
-    }
-    // Fallback for direct runs: the test binary lives in `<profile>/deps/`
-    // (stable) or the build-out dir (newer Cargo); both sit under the
-    // `<profile>` dir that holds the peer binary.
-    let mut dir = std::env::current_exe()
-        .expect("current_exe must resolve")
-        .parent()
-        .expect("current_exe must have a parent")
-        .to_path_buf();
-    loop {
-        for bin in ["rust-llm-tidy", "rust-llm-tidy.exe"] {
-            let candidate = dir.join(bin);
-            if candidate.is_file() {
-                return candidate;
-            }
-        }
-        if !dir.pop() {
-            break;
-        }
-    }
-    panic!("could not locate the rust-llm-tidy binary next to the test executable");
 }
 
 fn git(repo: &std::path::Path, args: &[&str]) -> String {
