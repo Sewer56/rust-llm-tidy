@@ -68,9 +68,10 @@ impl ModuleTree {
 ///
 /// # Errors
 ///
-/// Each file is already parsed into a [`ParsedFile`] (tree-sitter recovers from
-/// invalid Rust with `ERROR` nodes), so this does not fail on a bad source. The
-/// `Result` is retained for API continuity; it is `Ok` in practice.
+/// Returns `anyhow::Result<ModuleTree>`; always `Ok(ModuleTree)` here. Each
+/// file is already parsed into a [`ParsedFile`] (tree-sitter recovers from
+/// invalid Rust with `ERROR` nodes), so this does not fail on a bad source.
+/// The `Result` is retained for API continuity.
 pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<ModuleTree> {
     // 1. Index files by canonical path. Keep trees + sources for byte-exact
     //    visibility span slicing (mirrors walk()).
@@ -135,7 +136,7 @@ pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<Mo
 ///
 /// # Errors
 ///
-/// Returns an error when:
+/// Returns `anyhow::Error` when:
 ///
 /// - No `Cargo.toml` is found walking up from `start`.
 /// - `cargo metadata --no-deps` fails (e.g. the manifest is invalid or

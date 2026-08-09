@@ -33,7 +33,8 @@ use anyhow::{Result, bail, ensure};
 ///
 /// # Errors
 ///
-/// Returns an error if any of the following holds:
+/// Returns `anyhow::Error` (via `ensure!`/`bail!`) if any of the following
+/// holds:
 /// - [`dominant_line_ending`] of `original` and `output` differ (CRLF vs LF).
 /// - A non-blank line appears in `output` but not in `original`.
 /// - A non-blank line appears more times in `output` than in `original`.

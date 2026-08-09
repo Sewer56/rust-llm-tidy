@@ -229,7 +229,7 @@ pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathB
 ///
 /// # Errors
 ///
-/// Returns an error if:
+/// Returns `anyhow::Error` if:
 /// - The file cannot be read or parsed as YAML.
 /// - The config path has no parent directory.
 /// - The config directory cannot be canonicalized.

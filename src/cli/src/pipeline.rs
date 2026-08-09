@@ -1,13 +1,83 @@
 //! Pipeline orchestration: the main per-file loop, op-enabled check, and
 //! post-process runner.
+//!
+//! Files are processed independently of each other, so the per-file work is
+//! run in parallel with rayon. Each task buffers its plaintext lines and
+//! results; a sequential pass immediately after re-emits them in input order,
+//! keeping stderr and JSON output byte-identical to a single-threaded run.
+//!
+//! That buffering is the price of deterministic ordering: nothing is printed
+//! until every file finishes, so a huge run holds all output (plus per-file
+//! results) in memory before the replay pass. Streaming would interleave
+//! lines across threads and break byte-identical output, which JSON consumers
+//! and diffing depend on.
 
-use super::Cli;
+use super::{Cli, VisContext};
 use crate::config::{CompiledConfig, PostProcessStep};
 use crate::paths;
 use anyhow::bail;
+use rayon::prelude::*;
 use rust_llm_tidy_lint::{Severity, check};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+
+// ---------------------------------------------------------------------------
+// Per-file processing (parallel)
+// ---------------------------------------------------------------------------
+
+/// Per-file accumulation returned by one parallel task.
+///
+/// Plaintext stderr lines are buffered (`printed`) instead of emitted inside
+/// the task so the replay pass can print them in input order; the structure
+/// mirrors the old inline loop's aggregation targets exactly.
+struct PerFileOut {
+    changes: Vec<(PathBuf, crate::changes::Change)>,
+    diagnostics: Vec<(PathBuf, rust_llm_tidy_lint::Diagnostic)>,
+    /// Plaintext stderr lines in the original loop's emission order.
+    printed: Vec<String>,
+    error_count: usize,
+    /// True when any op failed; the file then skips the rest of its ops and is
+    /// never recorded as processed.
+    failed: bool,
+    /// True when the file completed with at least one mutate-capable op
+    /// enabled and is eligible for `post_process`.
+    processed: bool,
+}
+
+impl PerFileOut {
+    /// Record one op's dry-run change records: buffer plaintext lines and
+    /// retain them for the unified output document.
+    fn record_changes(&mut self, path: &Path, found: Vec<crate::changes::Change>, json_mode: bool) {
+        for change in &found {
+            if !json_mode {
+                self.printed.push(format!("{}:{}", path.display(), change));
+            }
+        }
+        self.changes
+            .extend(found.into_iter().map(|c| (path.to_path_buf(), c)));
+    }
+
+    /// Mark an op failure: buffer the error line and stop processing this file
+    /// (mirrors the old loop's `eprintln!` + `failed.push` + `continue`).
+    fn fail(&mut self, path: &Path, err: &anyhow::Error) {
+        self.printed
+            .push(format!("error processing {}: {err:?}", path.display()));
+        self.failed = true;
+    }
+}
+
+/// Whether a single op is enabled for the current file, given the active
+/// whitelist (`enabled`) and blacklist (`disabled`).
+pub(crate) fn op_enabled(
+    name: &str,
+    enabled: &Option<HashSet<String>>,
+    disabled: &HashSet<String>,
+) -> bool {
+    match enabled {
+        Some(set) => set.contains(name),
+        None => !disabled.contains(name),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Pipeline
@@ -21,7 +91,7 @@ pub(crate) fn run_pipeline(
     cli_include: Option<&HashSet<String>>,
     cli_disabled: &HashSet<String>,
 ) -> anyhow::Result<()> {
-    let paths = paths::resolve_inputs(cli, &["rs", "md"])?;
+    let paths = dedup_inputs(paths::resolve_inputs(cli, &["rs", "md"])?);
     // Empty input (empty git diff, or explicit dir with no matching files)
     // is a success: config was already validated up front, and 0 files were
     // processed. post_process runs over 0 files.
@@ -50,122 +120,39 @@ pub(crate) fn run_pipeline(
         None
     };
 
-    for path in &paths {
-        let mut policy = config.map(|c| c.policy_for(path)).unwrap_or_default();
-        if policy.skip {
-            // Excluded files are never mutated or post-processed.
-            continue;
-        }
-        // CLI --include overrides the config mode for this run.
-        if let Some(include) = cli_include {
-            policy.enabled = Some(include.clone());
-            policy.disabled.clear();
-        }
-        // CLI --exclude is additive and must remain in the disabled set so
-        // lint-code exclusions survive whitelist mode.
-        if !cli_disabled.is_empty() {
-            policy.disabled.extend(cli_disabled.iter().cloned());
-            if let Some(set) = &mut policy.enabled {
-                set.retain(|r| !cli_disabled.contains(r));
-            }
-        }
+    // Parallel only pays once work exceeds rayon's ~0.7ms pool overhead.
+    let parallelize = should_parallelize(&paths);
 
-        let enabled = &policy.enabled;
-        let disabled = &policy.disabled;
-        let should_post_process = ["tables", "fences", "links", "reorder", "vis"]
-            .iter()
-            .any(|op| op_enabled(op, enabled, disabled));
+    let map_file = |path: &PathBuf| {
+        process_one(
+            path,
+            config,
+            cli_include,
+            cli_disabled,
+            ctx.as_ref(),
+            cli.dry_run,
+            json_mode,
+        )
+    };
+    let results: Vec<PerFileOut> = if parallelize {
+        paths.par_iter().map(map_file).collect()
+    } else {
+        paths.iter().map(map_file).collect()
+    };
 
-        // Fix table alignment first (auto-fixable formatting).
-        if op_enabled("tables", enabled, disabled)
-            || op_enabled("fences", enabled, disabled)
-            || op_enabled("links", enabled, disabled)
-        {
-            match super::fix_file(path, cli.dry_run, enabled, disabled) {
-                Ok(found) => record_changes(&mut changes, path, found, json_mode),
-                Err(e) => {
-                    eprintln!("error processing {}: {e:?}", path.display());
-                    failed.push(path);
-                    continue;
-                }
-            }
+    // Sequential replay: emit plaintext lines in input order, then fold each
+    // file's results into the aggregate collections and counts.
+    for (path, out) in paths.iter().zip(results) {
+        for line in &out.printed {
+            eprintln!("{line}");
         }
-
-        // Reorder/check are Rust-only operations.
-        let is_rust = crate::paths::ext_in(path.extension().and_then(|e| e.to_str()), &["rs"]);
-        if !is_rust {
-            if should_post_process {
-                processed.push(path.clone());
-            }
-            continue;
+        error_count += out.error_count;
+        changes.extend(out.changes);
+        diagnostics.extend(out.diagnostics);
+        if out.failed {
+            failed.push(path.clone());
         }
-
-        // Reorder next (fixes ordering).
-        if op_enabled("reorder", enabled, disabled) {
-            match super::reorder_file(path, cli.dry_run, disabled) {
-                Ok(found) => record_changes(&mut changes, path, found, json_mode),
-                Err(e) => {
-                    eprintln!("error processing {}: {e:?}", path.display());
-                    failed.push(path);
-                    continue;
-                }
-            }
-        }
-        // Narrow visibility next (fixes misleading bare `pub` inside
-        // restricted-visibility inline modules).
-        if op_enabled("vis", enabled, disabled) {
-            match super::vis_file(path, cli.dry_run, ctx.as_ref(), disabled) {
-                Ok(found) => record_changes(&mut changes, path, found, json_mode),
-                Err(e) => {
-                    eprintln!("error processing {}: {e:?}", path.display());
-                    failed.push(path);
-                    continue;
-                }
-            }
-        }
-        // Then lints (reports remaining doc gaps).
-        let lints_on = !disabled.contains("lints")
-            && match enabled {
-                Some(set) => {
-                    set.contains("lints") || check::LINT_CODES.iter().any(|c| set.contains(*c))
-                }
-                None => true,
-            };
-        if lints_on {
-            // In whitelist mode without `lints` in the set, only whitelisted
-            // lint codes should run; disable the rest.
-            let lint_disabled: HashSet<String> = match enabled {
-                Some(set) if !set.contains("lints") => check::LINT_CODES
-                    .iter()
-                    .filter(|c| !set.contains(**c))
-                    .map(|c| c.to_string())
-                    .chain(disabled.iter().cloned())
-                    .collect(),
-                _ => disabled.clone(),
-            };
-            match super::check_file(path, &lint_disabled) {
-                Ok(found) => {
-                    for (p, d) in &found {
-                        if matches!(d.severity, Severity::Error) {
-                            error_count += 1;
-                        }
-                        // Diagnostics are surfaced after the loop: either
-                        // printed to stderr (plaintext) or projected to JSON.
-                        if !json_mode {
-                            eprintln!("{}:{}", p.display(), d);
-                        }
-                    }
-                    diagnostics.extend(found);
-                }
-                Err(e) => {
-                    eprintln!("error processing {}: {e:?}", path.display());
-                    failed.push(path);
-                    continue;
-                }
-            }
-        }
-
-        if should_post_process {
+        if out.processed {
             processed.push(path.clone());
         }
     }
@@ -196,19 +183,6 @@ pub(crate) fn run_pipeline(
     }
 
     Ok(())
-}
-
-/// Whether a single op is enabled for the current file, given the active
-/// whitelist (`enabled`) and blacklist (`disabled`).
-pub(crate) fn op_enabled(
-    name: &str,
-    enabled: &Option<HashSet<String>>,
-    disabled: &HashSet<String>,
-) -> bool {
-    match enabled {
-        Some(set) => set.contains(name),
-        None => !disabled.contains(name),
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -263,19 +237,321 @@ pub(crate) fn run_post_process(steps: &[PostProcessStep], files: &[PathBuf]) -> 
     failed
 }
 
-/// Record a transformation's dry-run change records for one file: print them as
-/// plaintext lines on stderr (text mode) and retain them for the unified output
-/// document. Shared by the fix, reorder, and vis op arms.
-fn record_changes(
-    changes: &mut Vec<(PathBuf, crate::changes::Change)>,
-    path: &Path,
-    found: Vec<crate::changes::Change>,
-    json_mode: bool,
-) {
-    for change in &found {
-        if !json_mode {
-            eprintln!("{}:{}", path.display(), change);
+/// Whether per-file processing should run on rayon's work-stealing pool.
+///
+/// Run parallel once there is input work enough to clear the pool-overhead
+/// floor. A single input never parallelizes - nothing to split.
+///
+/// # Scoring
+///
+/// Each file scores `byte length × per-type weight`, all weights relative to
+/// markdown = 1000:
+///
+/// - `.rs`: 120_000 - reorder/vis/lints run ~0.26 ms/KB, plus a fixed
+///   ~2-3ms per-file parse cost; the weight folds both in.
+/// - `.md`: 1_000 - the `fix_*` ops are ~0.007 ms/KB scans.
+/// - anything cheaper than markdown: pick a weight below 1_000 (e.g. plain
+///   text ~100) — it still lands in the one formula.
+///
+/// Scores sum; past 600K markdown-equivalent bytes with more than one input
+/// -> parallelize.
+///
+/// # Calibration
+///
+/// Weights = 120x markdown and the 600KB score minimize regret over 26
+/// measured workloads (single-threaded vs 32-thread runs). Either can float
+/// ±50% before regret exceeds 0.5ms, so they are not sensitive.
+///
+/// Early-exits on the threshold, so huge repos don't `stat` every file.
+pub(crate) fn should_parallelize(paths: &[PathBuf]) -> bool {
+    // Fixed-point scale so sub-markdown types (weight < 1000) stay integer.
+    // Score = Σ (byte size × weight).
+    const WEIGHT_SCALE: u64 = 1000;
+    // Markdown is the baseline: 1000 == 1 markdown byte.
+    const MARKDOWN_WEIGHT: u64 = WEIGHT_SCALE;
+    // Rust bytes count 120x markdown (calibrated, see above).
+    const RUST_WEIGHT: u64 = 120 * WEIGHT_SCALE;
+    // Parallelize once the weighted score clears 600K markdown-equivalent
+    // bytes (≈5KB of Rust).
+    const PARALLEL_SCORE: u64 = 600 * 1024 * WEIGHT_SCALE;
+
+    /// Byte weight of one file by extension, in [`WEIGHT_SCALE`] units.
+    /// `1000` is markdown (the baseline); anything cheaper than markdown can
+    /// be added below it. Inputs today are only `.rs`/`.md`, so non-Rust
+    /// falls back to markdown.
+    fn byte_weight(ext: Option<&str>) -> u64 {
+        if crate::paths::ext_in(ext, &["rs"]) {
+            RUST_WEIGHT
+        } else {
+            MARKDOWN_WEIGHT
         }
     }
-    changes.extend(found.into_iter().map(|c| (path.to_path_buf(), c)));
+
+    if paths.len() < 2 {
+        return false;
+    }
+    let mut score = 0u64;
+    for p in paths {
+        let w = byte_weight(p.extension().and_then(|e| e.to_str()));
+        score = score.saturating_add(
+            std::fs::metadata(p)
+                .map(|m| m.len().saturating_mul(w))
+                .unwrap_or(0),
+        );
+        if score >= PARALLEL_SCORE {
+            return true;
+        }
+    }
+    false
+}
+
+/// Collapse path aliases before dispatch.
+///
+/// The input resolver dedups literal paths only, so one inode reachable under
+/// two spellings (`.` vs `./src`, a symlink, or a dir-walk plus an explicit
+/// file) would otherwise be processed twice: in parallel both copies run on
+/// the original source and emit duplicate change records. Each inode keeps
+/// its first spelling, so displayed paths and output order are unchanged.
+///
+/// Canonicalization covers relative/absolute differences and symlinks. On
+/// Unix a `(dev, ino)` key additionally catches hardlinks, which
+/// canonicalization cannot (distinct paths, one inode).
+fn dedup_inputs(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut by_path: HashSet<PathBuf> = HashSet::new();
+    #[cfg(unix)]
+    let mut by_inode: HashSet<(u64, u64)> = HashSet::new();
+
+    paths
+        .into_iter()
+        .filter(|p| {
+            let canon = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+            if !by_path.insert(canon) {
+                return false;
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+                match std::fs::metadata(p) {
+                    Ok(m) => by_inode.insert((m.dev(), m.ino())),
+                    Err(_) => true, // unstat-able; path key already accepted it
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                true
+            }
+        })
+        .collect()
+}
+
+/// Process a single file: run every enabled op in the canonical order
+/// (fix, reorder, vis, lints), buffering results and plaintext lines.
+/// Shared state is read-only; each file mutates only its own path (atomic
+/// write), so safe to run on one rayon thread per file. Inputs were deduped
+/// before dispatch, so no two tasks touch the same inode even under aliases.
+fn process_one(
+    path: &Path,
+    config: Option<&CompiledConfig>,
+    cli_include: Option<&HashSet<String>>,
+    cli_disabled: &HashSet<String>,
+    ctx: Option<&VisContext>,
+    dry_run: bool,
+    json_mode: bool,
+) -> PerFileOut {
+    let mut out = PerFileOut {
+        changes: Vec::new(),
+        diagnostics: Vec::new(),
+        printed: Vec::new(),
+        error_count: 0,
+        failed: false,
+        processed: false,
+    };
+    let mut policy = config.map(|c| c.policy_for(path)).unwrap_or_default();
+    if policy.skip {
+        // Excluded files are never mutated or post-processed.
+        return out;
+    }
+    // CLI --include overrides the config mode for this run.
+    if let Some(include) = cli_include {
+        policy.enabled = Some(include.clone());
+        policy.disabled.clear();
+    }
+    // CLI --exclude is additive and must remain in the disabled set so
+    // lint-code exclusions survive whitelist mode.
+    if !cli_disabled.is_empty() {
+        policy.disabled.extend(cli_disabled.iter().cloned());
+        if let Some(set) = &mut policy.enabled {
+            set.retain(|r| !cli_disabled.contains(r));
+        }
+    }
+
+    let enabled = &policy.enabled;
+    let disabled = &policy.disabled;
+    let should_post_process = ["tables", "fences", "links", "reorder", "vis"]
+        .iter()
+        .any(|op| op_enabled(op, enabled, disabled));
+
+    // Fix auto-fixable formatting (tables, fences, links) via fix_file.
+    if op_enabled("tables", enabled, disabled)
+        || op_enabled("fences", enabled, disabled)
+        || op_enabled("links", enabled, disabled)
+    {
+        match super::fix_file(path, dry_run, enabled, disabled) {
+            Ok(found) => out.record_changes(path, found, json_mode),
+            Err(e) => {
+                out.fail(path, &e);
+                return out;
+            }
+        }
+    }
+
+    // Reorder/check are Rust-only operations.
+    let is_rust = crate::paths::ext_in(path.extension().and_then(|e| e.to_str()), &["rs"]);
+    if !is_rust {
+        if should_post_process {
+            out.processed = true;
+        }
+        return out;
+    }
+
+    // Reorder next (fixes ordering).
+    if op_enabled("reorder", enabled, disabled) {
+        match super::reorder_file(path, dry_run, disabled) {
+            Ok(found) => out.record_changes(path, found, json_mode),
+            Err(e) => {
+                out.fail(path, &e);
+                return out;
+            }
+        }
+    }
+    // Narrow visibility next (fixes misleading bare `pub` inside
+    // restricted-visibility inline modules).
+    if op_enabled("vis", enabled, disabled) {
+        match super::vis_file(path, dry_run, ctx, disabled) {
+            Ok(found) => out.record_changes(path, found, json_mode),
+            Err(e) => {
+                out.fail(path, &e);
+                return out;
+            }
+        }
+    }
+    // Then lints (reports remaining doc gaps).
+    let lints_on = !disabled.contains("lints")
+        && match enabled {
+            Some(set) => {
+                set.contains("lints") || check::LINT_CODES.iter().any(|c| set.contains(*c))
+            }
+            None => true,
+        };
+    if lints_on {
+        // In whitelist mode without `lints` in the set, only whitelisted
+        // lint codes should run; disable the rest.
+        let lint_disabled: HashSet<String> = match enabled {
+            Some(set) if !set.contains("lints") => check::LINT_CODES
+                .iter()
+                .filter(|c| !set.contains(**c))
+                .map(|c| c.to_string())
+                .chain(disabled.iter().cloned())
+                .collect(),
+            _ => disabled.clone(),
+        };
+        match super::check_file(path, &lint_disabled) {
+            Ok(found) => {
+                for (p, d) in &found {
+                    if matches!(d.severity, Severity::Error) {
+                        out.error_count += 1;
+                    }
+                    // Diagnostics are surfaced in the replay pass: either
+                    // printed to stderr (plaintext) or projected to JSON.
+                    if !json_mode {
+                        out.printed.push(format!("{}:{}", p.display(), d));
+                    }
+                }
+                out.diagnostics.extend(found);
+            }
+            Err(e) => {
+                out.fail(path, &e);
+                return out;
+            }
+        }
+    }
+
+    if should_post_process {
+        out.processed = true;
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dedup_inputs;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_dir() -> PathBuf {
+        let n = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+        let d =
+            std::env::temp_dir().join(format!("rust-llm-tidy-dedup-{}-{n}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn cleanup(d: &PathBuf) {
+        let _ = fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn dedups_aliases_preserving_first_spelling() {
+        let dir = temp_dir();
+        fs::write(dir.join("a.rs"), "fn a() {}\n").unwrap();
+        fs::write(dir.join("b.rs"), "fn b() {}\n").unwrap();
+        // Same inode spelled three ways: plain, `./` component, literal
+        // duplicate. Only the first spelling must survive, in order.
+        let input = vec![
+            dir.join("a.rs"),
+            dir.join(".").join("a.rs"),
+            dir.join("b.rs"),
+            dir.join("a.rs"),
+        ];
+        assert_eq!(
+            dedup_inputs(input),
+            vec![dir.join("a.rs"), dir.join("b.rs")]
+        );
+        cleanup(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dedups_symlink_and_hardlink_aliases() {
+        let dir = temp_dir();
+        fs::write(dir.join("a.rs"), "fn a() {}\n").unwrap();
+        std::os::unix::fs::symlink(dir.join("a.rs"), dir.join("link.rs")).unwrap();
+        // Hardlink: distinct canonical path, same (dev, ino) - a symlink-only
+        // dedup would miss it.
+        fs::hard_link(dir.join("a.rs"), dir.join("hard.rs")).unwrap();
+
+        let out = dedup_inputs(vec![
+            dir.join("a.rs"),
+            dir.join("link.rs"),
+            dir.join("hard.rs"),
+        ]);
+        assert_eq!(out, vec![dir.join("a.rs")]);
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn keeps_distinct_files() {
+        let dir = temp_dir();
+        fs::write(dir.join("x.rs"), "fn x() {}\n").unwrap();
+        fs::write(dir.join("y.rs"), "fn y() {}\n").unwrap();
+        assert_eq!(
+            dedup_inputs(vec![dir.join("x.rs"), dir.join("y.rs")]),
+            vec![dir.join("x.rs"), dir.join("y.rs")]
+        );
+        cleanup(&dir);
+    }
 }
