@@ -70,9 +70,10 @@ rust-llm-tidy --output-mode json src/main.rs
 
 ### JSON output
 
-Print every lint finding and dry-run change record as one JSON array on stdout
-instead of the default `path:line: sev[CODE]: ...` stderr diagnostics. Prints
-`[]` when there are no findings or changes, even when the run exits non-zero:
+Print every lint finding and change record as one JSON array on stdout instead
+of the default `path:line: sev[CODE]: ...` stderr diagnostics. Change records
+are emitted for both in-place and `--dry-run` runs. Prints `[]` when there are
+no findings or changes, even when the run exits non-zero:
 
 ```json
 [
@@ -90,7 +91,7 @@ instead of the default `path:line: sev[CODE]: ...` stderr diagnostics. Prints
 
 Fields:
 
-- `severity` - `"error"` or `"warning"` for lint findings, `"success"` for dry-run change records
+- `severity` - `"error"` or `"warning"` for lint findings, `"success"` for change records (applied or would-be changes)
 - `line` - 1-based item start line
 - `item_name` - item name, `null` when unnamed
 - `path`, `code`, `message`, `item_kind` - as in plaintext
@@ -98,7 +99,7 @@ Fields:
 In JSON mode the plaintext per-line diagnostics are not printed to stderr.
 `--output-mode json` combines freely with `--dry-run`; the would-be changes are
 folded into the same document. See
-[dry-run change reporting](../../docs/lints.md#dry-run-change-reporting) for
+[dry-run change reporting](../../docs/lints.md#change-reporting) for
 the shared record format.
 
 ### Operations
