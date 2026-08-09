@@ -207,6 +207,21 @@ Bundled hooks, in run order:
   reorder, vis, lints), then `rustfmt` via the config `post_process` step. Uses
   an installed `rust-llm-tidy` binary if present, else `cargo run`.
 
+## GitHub Action
+
+[`rust-llm-tidy-action`] runs `rust-llm-tidy` in CI on Rust and Markdown
+files to gate pull requests. Full input reference in the [action README].
+
+Minimal usage (default `mode: apply`; on a PR commits and pushes fixes):
+
+```yaml
+- name: Tidy
+  uses: Sewer56/rust-llm-tidy-action@v1
+  with:
+    rust-project-path: '.'
+    changed-files: true   # only files this PR changed
+```
+
 ## Developer Manual
 
 For step-by-step development guidance, see the [Developer Manual].
@@ -230,6 +245,8 @@ Licensed under [Apache 2.0].
 [rust-llm-tidy-lint]: ./src/rust-llm-tidy-lint/README.MD
 [rust-llm-tidy-fix]: ./src/rust-llm-tidy-fix/README.MD
 [cli]: ./src/cli/README.MD
+[action README]: ./submodules/action/README.MD
+[`rust-llm-tidy-action`]: https://github.com/Sewer56/rust-llm-tidy-action
 [Developer Manual]: https://reloaded-project.github.io/reloaded-templates-rust/manual/
 [Contributing Guide]: https://reloaded-project.github.io/reloaded-templates-rust/manual/#contributing
 [Apache 2.0]: ./LICENSE
