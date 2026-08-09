@@ -295,7 +295,9 @@ pub(super) fn is_transparent_comment(node: Node) -> bool {
 /// Note: tree-sitter-rust exposes `visibility_modifier` as a *child* of the
 /// item node (not a named field), so it is located by kind, not field name.
 fn classify_visibility(body: Node<'_>) -> Option<VisibilityTier> {
-    let vis = child_of_kind(body, "visibility_modifier")?;
+    let Some(vis) = child_of_kind(body, "visibility_modifier") else {
+        return Some(VisibilityTier::Private);
+    };
     // The modifier has a `pub` named child; any *other* named child
     // (`crate`/`super`/`self`/identifier/scoped_identifier) is a restriction.
     let restricted = named_child_exists(vis, |k| k != "pub");
