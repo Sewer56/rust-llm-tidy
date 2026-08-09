@@ -79,7 +79,8 @@ pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<Mo
     let known_files: std::collections::HashSet<PathBuf> =
         files.iter().map(|f| f.path.clone()).collect();
 
-    // 2. BFS from root, propagating floors. The root's floor is None.
+    // 2. Vec-based stack, so queue.pop() gives depth-first order. Root's floor
+    //    is None. Multiple mod edges to one file: first recorded floor wins.
     let mut floors: AHashMap<PathBuf, Option<String>> = AHashMap::new();
     let mut warnings = Vec::new();
     let mut queue: Vec<(PathBuf, Option<String>)> = vec![(root.to_path_buf(), None)];
