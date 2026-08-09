@@ -278,9 +278,9 @@ pub(super) fn is_transparent_comment(node: Node) -> bool {
     if matches!(node.kind(), "line_comment" | "block_comment") {
         !is_outer_doc(node)
     } else {
-        // `empty_statement`, `shebang`, and stray top-level statements that are
-        // neither attachable trivia nor recognized items are treated as
-        // transparent (ignored) so they neither attach nor break attachment.
+        // `empty_statement` and `shebang` nodes are treated as transparent
+        // (ignored) so they neither attach nor break attachment. Stray
+        // top-level statements are handled by `collect_item_entries` instead.
         matches!(node.kind(), "empty_statement" | "shebang")
     }
 }
