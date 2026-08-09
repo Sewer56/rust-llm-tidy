@@ -8,7 +8,7 @@ outer block does not close early. Runs in `.md` files and `.rs` doc comments.
 
 ## Before
 
-```markdown
+````markdown
 ```
 text
 
@@ -16,11 +16,11 @@ text
 fn main() {}
 ```
 ```
-```
+````
 
 ## After
 
-```markdown
+````markdown
 ```
 text
 
@@ -28,7 +28,7 @@ text
 fn main() {}
 ~~~
 ```
-```
+````
 
 ## Config
 
