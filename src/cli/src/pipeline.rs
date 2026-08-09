@@ -276,7 +276,9 @@ pub(crate) fn should_parallelize(paths: &[PathBuf]) -> bool {
     const PARALLEL_SCORE: u64 = 600 * 1024 * WEIGHT_SCALE;
 
     /// Byte weight of one file by extension, in [`WEIGHT_SCALE`] units.
-    /// `1000` is markdown, below it is cheaper.
+    /// `1000` is markdown (the baseline); anything cheaper than markdown can
+    /// be added below it. Inputs today are only `.rs`/`.md`, so non-Rust
+    /// falls back to markdown.
     fn byte_weight(ext: Option<&str>) -> u64 {
         if crate::paths::ext_in(ext, &["rs"]) {
             RUST_WEIGHT
@@ -291,9 +293,11 @@ pub(crate) fn should_parallelize(paths: &[PathBuf]) -> bool {
     let mut score = 0u64;
     for p in paths {
         let w = byte_weight(p.extension().and_then(|e| e.to_str()));
-        score += std::fs::metadata(p)
-            .map(|m| m.len().saturating_mul(w))
-            .unwrap_or(0);
+        score = score.saturating_add(
+            std::fs::metadata(p)
+                .map(|m| m.len().saturating_mul(w))
+                .unwrap_or(0),
+        );
         if score >= PARALLEL_SCORE {
             return true;
         }
