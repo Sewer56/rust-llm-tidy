@@ -5,6 +5,12 @@
 //! run in parallel with rayon. Each task buffers its plaintext lines and
 //! results; a sequential pass immediately after re-emits them in input order,
 //! keeping stderr and JSON output byte-identical to a single-threaded run.
+//!
+//! That buffering is the price of deterministic ordering: nothing is printed
+//! until every file finishes, so a huge run holds all output (plus per-file
+//! results) in memory before the replay pass. Streaming would interleave
+//! lines across threads and break byte-identical output, which JSON consumers
+//! and diffing depend on.
 
 use super::{Cli, VisContext};
 use crate::config::{CompiledConfig, PostProcessStep};
@@ -85,7 +91,7 @@ pub(crate) fn run_pipeline(
     cli_include: Option<&HashSet<String>>,
     cli_disabled: &HashSet<String>,
 ) -> anyhow::Result<()> {
-    let paths = paths::resolve_inputs(cli, &["rs", "md"])?;
+    let paths = dedup_inputs(paths::resolve_inputs(cli, &["rs", "md"])?);
     // Empty input (empty git diff, or explicit dir with no matching files)
     // is a success: config was already validated up front, and 0 files were
     // processed. post_process runs over 0 files.
@@ -270,11 +276,12 @@ pub(crate) fn should_parallelize(paths: &[PathBuf]) -> bool {
     const PARALLEL_SCORE: u64 = 600 * 1024 * WEIGHT_SCALE;
 
     /// Byte weight of one file by extension, in [`WEIGHT_SCALE`] units.
-    /// Add a new type here; `1000` is markdown, below it is cheaper.
+    /// `1000` is markdown, below it is cheaper.
     fn byte_weight(ext: Option<&str>) -> u64 {
-        match ext {
-            Some("rs") => RUST_WEIGHT,
-            _ => MARKDOWN_WEIGHT,
+        if crate::paths::ext_in(ext, &["rs"]) {
+            RUST_WEIGHT
+        } else {
+            MARKDOWN_WEIGHT
         }
     }
 
@@ -284,7 +291,9 @@ pub(crate) fn should_parallelize(paths: &[PathBuf]) -> bool {
     let mut score = 0u64;
     for p in paths {
         let w = byte_weight(p.extension().and_then(|e| e.to_str()));
-        score += std::fs::metadata(p).map(|m| m.len() * w).unwrap_or(0);
+        score += std::fs::metadata(p)
+            .map(|m| m.len().saturating_mul(w))
+            .unwrap_or(0);
         if score >= PARALLEL_SCORE {
             return true;
         }
@@ -292,10 +301,50 @@ pub(crate) fn should_parallelize(paths: &[PathBuf]) -> bool {
     false
 }
 
+/// Collapse path aliases before dispatch.
+///
+/// The input resolver dedups literal paths only, so one inode reachable under
+/// two spellings (`.` vs `./src`, a symlink, or a dir-walk plus an explicit
+/// file) would otherwise be processed twice: in parallel both copies run on
+/// the original source and emit duplicate change records. Each inode keeps
+/// its first spelling, so displayed paths and output order are unchanged.
+///
+/// Canonicalization covers relative/absolute differences and symlinks. On
+/// Unix a `(dev, ino)` key additionally catches hardlinks, which
+/// canonicalization cannot (distinct paths, one inode).
+fn dedup_inputs(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut by_path: HashSet<PathBuf> = HashSet::new();
+    #[cfg(unix)]
+    let mut by_inode: HashSet<(u64, u64)> = HashSet::new();
+
+    paths
+        .into_iter()
+        .filter(|p| {
+            let canon = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+            if !by_path.insert(canon) {
+                return false;
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+                match std::fs::metadata(p) {
+                    Ok(m) => by_inode.insert((m.dev(), m.ino())),
+                    Err(_) => true, // unstat-able; path key already accepted it
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                true
+            }
+        })
+        .collect()
+}
+
 /// Process a single file: run every enabled op in the canonical order
 /// (fix, reorder, vis, lints), buffering results and plaintext lines.
-/// File-independent and read-only on shared state, so safe to run on one
-/// rayon thread per file.
+/// Shared state is read-only; each file mutates only its own path (atomic
+/// write), so safe to run on one rayon thread per file. Inputs were deduped
+/// before dispatch, so no two tasks touch the same inode even under aliases.
 fn process_one(
     path: &Path,
     config: Option<&CompiledConfig>,
@@ -427,4 +476,78 @@ fn process_one(
         out.processed = true;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dedup_inputs;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_dir() -> PathBuf {
+        let n = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+        let d =
+            std::env::temp_dir().join(format!("rust-llm-tidy-dedup-{}-{n}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn cleanup(d: &PathBuf) {
+        let _ = fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn dedups_aliases_preserving_first_spelling() {
+        let dir = temp_dir();
+        fs::write(dir.join("a.rs"), "fn a() {}\n").unwrap();
+        fs::write(dir.join("b.rs"), "fn b() {}\n").unwrap();
+        // Same inode spelled three ways: plain, `./` component, literal
+        // duplicate. Only the first spelling must survive, in order.
+        let input = vec![
+            dir.join("a.rs"),
+            dir.join(".").join("a.rs"),
+            dir.join("b.rs"),
+            dir.join("a.rs"),
+        ];
+        assert_eq!(
+            dedup_inputs(input),
+            vec![dir.join("a.rs"), dir.join("b.rs")]
+        );
+        cleanup(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dedups_symlink_and_hardlink_aliases() {
+        let dir = temp_dir();
+        fs::write(dir.join("a.rs"), "fn a() {}\n").unwrap();
+        std::os::unix::fs::symlink(dir.join("a.rs"), dir.join("link.rs")).unwrap();
+        // Hardlink: distinct canonical path, same (dev, ino) - a symlink-only
+        // dedup would miss it.
+        fs::hard_link(dir.join("a.rs"), dir.join("hard.rs")).unwrap();
+
+        let out = dedup_inputs(vec![
+            dir.join("a.rs"),
+            dir.join("link.rs"),
+            dir.join("hard.rs"),
+        ]);
+        assert_eq!(out, vec![dir.join("a.rs")]);
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn keeps_distinct_files() {
+        let dir = temp_dir();
+        fs::write(dir.join("x.rs"), "fn x() {}\n").unwrap();
+        fs::write(dir.join("y.rs"), "fn y() {}\n").unwrap();
+        assert_eq!(
+            dedup_inputs(vec![dir.join("x.rs"), dir.join("y.rs")]),
+            vec![dir.join("x.rs"), dir.join("y.rs")]
+        );
+        cleanup(&dir);
+    }
 }
