@@ -71,7 +71,7 @@ Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
 | --------- | --------------------------------------- | ------- | ----------- |
 | `tables`  | align GFM tables                        | yes     | yes         |
 | `fences`  | alternate nested fence delimiters       | yes     | yes         |
-| `links`   | hoist repeated inline links             | yes     | yes         |
+| `links`   | hoist inline links to reference style   | yes     | yes         |
 | `reorder` | canonical item ordering                 | yes     | yes         |
 | `vis`     | narrow bare `pub` in restricted modules | yes     | yes         |
 | `lints`   | run DOC001-DOC006 + TEST001 checks      | no      | yes         |
@@ -185,7 +185,7 @@ unexpected lint failures after a tool update.
 - [rust-llm-tidy-reorder]: Reordering library - reference-graph ordering of items into canonical 10-phase order
 - [rust-llm-tidy-vis]: Visibility narrowing - narrows bare `pub` items inside restricted-visibility inline modules to the module's visibility
 - [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/`# Arguments`, placeholder, and test-naming checks
-- [rust-llm-tidy-fix]: Markdown/doc-comment tidying - realigns GFM tables, fixes nested fence delimiters, and hoists repeated inline links in `.rs` doc comments and `.md` files
+- [rust-llm-tidy-fix]: Markdown/doc-comment tidying - realigns GFM tables, fixes nested fence delimiters, and hoists inline links to reference style in `.rs` doc comments and `.md` files
 - [cli]: Unified command-line interface (fix, reorder, vis, lints)
 
 ## Git Hook (optional)

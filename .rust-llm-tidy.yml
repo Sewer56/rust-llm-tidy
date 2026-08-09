@@ -19,6 +19,21 @@
 # Rule names (used in include.rules, exclude.rules, --include, --exclude):
 # ops tables, fences, links, reorder, vis, lints - plus lint codes
 # DOC001-DOC006 and TEST001. The `lints` op groups all seven lint codes.
+#
+# The `links` op hoists inline links `[text](url)` to reference style by
+# default (threshold 1 = hoist even a single use) in both `.rs` doc comments
+# and `.md` files. Its behavior is tunable with an optional `links:` section:
+#   links:
+#     min_occurrences: 2          # hoist a link only when it appears this many
+#                                 # times; default 1, must be >= 1.
+#     by_extension: { rs: 2 }     # per-extension thresholds (values >= 1);
+#                                 # applied before the global setting.
+# A file's effective threshold is by_extension[ext], else min_occurrences,
+# else 1. `by_extension` keys are free-form so future languages need no schema
+# change; keys the pipeline does not yet process are inert.
+# The `links:` threshold ships in a later release; this release hoists at the
+# default threshold of 1, and a real `links:` key is rejected at config load
+# until then.
 
 # Skip ALL processing for files matching any pattern.
 exclude_files:
@@ -32,10 +47,12 @@ exclude_files:
 
 # Disable specific rules for files matching a group's patterns.
 exclude:
-  # Integration tests embed markdown (`[text](url)`) in Rust string literals;
-  # `fix_links` would emit a `[text]: url` definition outside the literal and
-  # break compilation. changes.rs's unit tests do the same, so disable `links`
-  # for both.
+  # Integration tests embed markdown (`[text](url)`) in Rust string literals.
+  # Those files have no doc-comment lines, so `fix_links` treats them as
+  # markdown context and emits a `[text]: url` trailing line inside the `.rs`
+  # file, outside any literal - breaking compilation. changes.rs's unit tests
+  # do the same, so disable `links` for both. Kept: the guard still applies
+  # under always-hoist.
   - paths:
       - "src/cli/tests/**"
       - "src/cli/src/changes.rs"
@@ -54,8 +71,9 @@ exclude:
     rules:
       - tables
   # rust-llm-tidy-fix's own docs/examples deliberately embed markdown-bracket
-  # and fence-heavy text; the links/fences ops rewrite those destructively and
-  # break parsing. Only those two ops are disabled; reorder/vis/tables/lints
+  # and fence-heavy text; `fix_links` hoists those inline links (with a
+  # definition) and `fix_fences` rewrites the nested fences, breaking the
+  # examples. Kept: only those two ops are disabled; reorder/vis/tables/lints
   # still apply.
   - paths:
       - "src/rust-llm-tidy-fix/src/lib.rs"

@@ -5,8 +5,8 @@
 [![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
 
 Realigns misaligned GitHub-Flavored Markdown (GFM) tables, rewrites nested
-fence markers to alternate backticks and tildes, and hoists repeated inline
-links to reference definitions. Pure text processing, zero dependencies.
+fence markers to alternate backticks and tildes, and hoists inline links to
+reference definitions. Pure text processing, zero dependencies.
 
 ## What it does
 
@@ -54,29 +54,49 @@ inner
 
 ## Repeated inline-link hoisting
 
-[`fix_links`] rewrites inline links `[text](url)` that appear 2+ times in the
-same document to reference-style `[text]` in prose plus a single trailing
-`[text]: url` definition, reducing token count and visual clutter.
+[`fix_links`] rewrites every eligible inline link `[text](url)` to reference
+style `[text]` plus a `[text]: url` definition, in both Rust doc comments and
+plain markdown, by default even when the link appears only once. Intra-doc
+targets (`Self::field`, `crate::path`) hoist like any other link. The hoist
+threshold defaults to 1 and is configurable via `links.min_occurrences`.
 
-Before (the same pair is repeated verbatim):
+Where the definition goes depends on context:
+
+- In Rust doc comments, each `[text]: url` definition is duplicated inside
+  every doc comment that uses the label, so each comment stays self-sufficient
+  and `cargo doc` builds cleanly.
+- In markdown, all definitions collect in one trailing block at the end of the
+  document.
+
+Markdown example - before (a single-use inline link):
 
 ```text
-See [the docs](https://example.com) for setup and
-[the docs](https://example.com) for troubleshooting.
+See [the docs](https://example.com) for setup.
 ```
 
-After (hoisted to reference style):
+After (hoisted to reference style with a trailing definition):
 
 ```text
-See [the docs] for setup and
-[the docs] for troubleshooting.
+See [the docs] for setup.
 
 [the docs]: https://example.com
 ```
 
-The pass skips links that would not benefit or would break:
+Rust doc comment - before:
 
-- **Single-occurrence** inline links (no repetition to hoist).
+```text
+/// See [the docs](https://example.com) for setup.
+```
+
+After (definition duplicated inside the comment):
+
+```text
+/// See [the docs] for setup.
+/// [the docs]: https://example.com
+```
+
+The pass keeps the structural skip-list - links that cannot be hoisted safely:
+
 - **Autolink** (`<url>`) or whitespace/newline-URL forms.
 - Already **reference-style** links (`[text][ref]`, `[text][]`, `[text]`).
 - Links whose **text** already has a `[text]:` definition.

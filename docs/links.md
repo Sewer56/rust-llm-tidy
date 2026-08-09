@@ -1,11 +1,21 @@
-# `links` - hoist repeated inline links
+# `links` - hoist inline links to reference style
 
 ## What it does
 
-When the same inline link `[text](url)` appears more than once in a file,
-all occurrences are replaced with the reference form `[text]`, with a single
-reference definition
-`[text]: url` appended. Runs in `.md` files and `.rs` doc comments.
+Every eligible inline link `[text](url)` is replaced with the reference form
+`[text]` plus a `[text]: url` definition, by default even when the link appears
+only once. Runs in `.rs` doc comments and `.md` files.
+
+- In `.rs` doc comments, each `[text]: url` definition is duplicated inside
+  every doc comment that uses the label, so each comment is self-sufficient
+  and `cargo doc` stays clean.
+- In `.md` files, all definitions collect in one trailing block at the end of
+  the document.
+
+The hoist threshold defaults to 1 and is configurable via `links.min_occurrences`
+(see the `.rust-llm-tidy.yml` header); raising it leaves a link inline
+until it appears that many times. The configurable `links:` threshold ships in
+a later release; this release hoists at the default threshold of 1.
 
 ## Before
 
@@ -23,9 +33,10 @@ see [A] and [A]
 
 ## Config
 
-The repo's own `src/cli/tests/**` embed markdown in Rust string literals, so
-`links` would emit a `[text]: url` line outside the literal and break
-compilation - it is excluded for those paths:
+The repo's own `src/cli/tests/**` embed markdown in Rust string literals. Such
+files have no doc-comment lines, so `links` treats them as markdown context and
+emits a `[text]: url` trailing line inside the `.rs` file, outside any literal.
+That breaks compilation, so `links` is excluded for those paths:
 
 ```yaml
 exclude:
@@ -47,16 +58,18 @@ Every run reports each hoisted link it applies (or would apply under
 mode the records print to stderr:
 
 ```text
-README.md: success[FIX]: `[A](http://x)` -> `[A]` (link)
+src/lib.rs: success[FIX]: `[A](http://x)` -> `[A]` (link)
 ```
 
 In JSON mode the same records appear on stdout with `severity: "success"`
-(`line` is `null` for link records - no line applies):
+(`line` is `null` for link records - no line applies). Both contexts share one
+record format; hoisting `[A](http://x)` to `[A]` reports the same record whether
+the link lives in a Rust doc comment or a markdown file:
 
 ```json
 [
   {
-    "path": "README.md",
+    "path": "src/lib.rs",
     "line": null,
     "severity": "success",
     "code": "FIX",

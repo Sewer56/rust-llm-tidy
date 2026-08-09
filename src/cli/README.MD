@@ -108,7 +108,7 @@ the shared record format.
 | --------- | --------------------------------------- | ------- | ----------- |
 | `tables`  | align GFM tables                        | yes     | yes         |
 | `fences`  | alternate nested fence delimiters       | yes     | yes         |
-| `links`   | hoist repeated inline links             | yes     | yes         |
+| `links`   | hoist inline links to reference style   | yes     | yes         |
 | `reorder` | canonical item ordering                 | yes     | yes         |
 | `vis`     | narrow bare `pub` in restricted modules | yes     | yes         |
 | `lints`   | run DOC001-DOC006 + TEST001 checks      | no      | yes         |
