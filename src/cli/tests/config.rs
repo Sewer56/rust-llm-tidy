@@ -218,7 +218,10 @@ fn excluded_file_not_post_processed() {
     // files are skipped, so post_process never sees the file -> exit 0.
     fs::write(
         &cfg,
-        "exclude_files:\n  - \"lib.rs\"\npost_process:\n  - command: \"false\"\n    extensions: [\"rs\"]\n",
+        format!(
+            "exclude_files:\n  - \"lib.rs\"\npost_process:\n  - {}\n    extensions: [\"rs\"]\n",
+            post_process_command(1)
+        ),
     )
     .unwrap();
 
@@ -604,7 +607,10 @@ fn post_process_not_run_on_check() {
     let cfg = dir.join(".rust-llm-tidy.yml");
     fs::write(
         &cfg,
-        "post_process:\n  - command: \"false\"\n    extensions: [\"rs\"]\n",
+        format!(
+            "post_process:\n  - {}\n    extensions: [\"rs\"]\n",
+            post_process_command(1)
+        ),
     )
     .unwrap();
 
@@ -667,7 +673,10 @@ fn post_process_skipped_under_dry_run() {
     let cfg = dir.join(".rust-llm-tidy.yml");
     fs::write(
         &cfg,
-        "post_process:\n  - command: \"false\"\n    extensions: [\"rs\"]\n",
+        format!(
+            "post_process:\n  - {}\n    extensions: [\"rs\"]\n",
+            post_process_command(1)
+        ),
     )
     .unwrap();
 
