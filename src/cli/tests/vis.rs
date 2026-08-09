@@ -278,15 +278,32 @@ fn temp_file(ext: &str) -> std::path::PathBuf {
 /// falls back to the sibling of the test binary under `target/<triple>/debug/`,
 /// since the test binary lives in `target/<triple>/debug/deps/`.
 fn binary() -> std::path::PathBuf {
-    if let Some(path) = std::env::var_os("CARGO_BIN_EXE_rust_llm_tidy") {
-        return std::path::PathBuf::from(path);
+    for var in ["CARGO_BIN_EXE_rust-llm-tidy", "CARGO_BIN_EXE_rust_llm_tidy"] {
+        if let Some(path) = std::env::var_os(var) {
+            return std::path::PathBuf::from(path);
+        }
     }
 
-    let mut path = std::env::current_exe().expect("current_exe must resolve");
-    // Drop `<test-name>-<hash>` and `deps/` to reach `target/<triple>/debug/`.
-    path.pop();
-    path.pop();
-    path.join("rust-llm-tidy")
+    // Fallback for direct runs: the test binary lives in `<profile>/deps/`
+    // (stable) or the build-out dir (newer Cargo); both sit under the
+    // `<profile>` dir that holds the peer binary.
+    let mut dir = std::env::current_exe()
+        .expect("current_exe must resolve")
+        .parent()
+        .expect("current_exe must have a parent")
+        .to_path_buf();
+    loop {
+        for bin in ["rust-llm-tidy", "rust-llm-tidy.exe"] {
+            let candidate = dir.join(bin);
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    panic!("could not locate the rust-llm-tidy binary next to the test executable");
 }
 
 /// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.
