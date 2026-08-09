@@ -92,10 +92,7 @@ pub(crate) fn run_pipeline(
         }
 
         // Reorder/check are Rust-only operations.
-        let is_rust = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|e| e == "rs");
+        let is_rust = crate::paths::ext_in(path.extension().and_then(|e| e.to_str()), &["rs"]);
         if !is_rust {
             if should_post_process {
                 processed.push(path.clone());

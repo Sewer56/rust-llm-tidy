@@ -8,7 +8,8 @@ use anyhow::{Context, bail};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Recursively collect all files under `dir` whose extension is in `exts`.
+/// Recursively collect all files under `dir` whose extension matches `exts`
+/// (ASCII case-insensitively).
 pub(crate) fn collect_files(
     dir: &Path,
     exts: &[&str],
@@ -21,12 +22,7 @@ pub(crate) fn collect_files(
 
         if metadata.is_dir() {
             collect_files(&path, exts, out)?;
-        } else if metadata.is_file()
-            && path
-                .extension()
-                .and_then(|e| e.to_str())
-                .is_some_and(|e| exts.contains(&e))
-        {
+        } else if metadata.is_file() && ext_in(path.extension().and_then(|e| e.to_str()), exts) {
             out.push(path);
         }
     }
@@ -48,6 +44,17 @@ pub(crate) fn resolve_inputs(cli: &Cli, exts: &[&str]) -> anyhow::Result<Vec<Pat
     }
 }
 
+/// ASCII case-insensitive extension membership check.
+///
+/// Returns `true` when `ext` (a path extension without the leading dot) matches
+/// any entry in `exts` ignoring ASCII case, so `.RS`/`.MD` variants are
+/// admitted exactly like their lowercase forms. Non-allocating: compares each
+/// candidate byte-wise instead of materializing a lowercase copy.
+#[inline]
+pub(crate) fn ext_in(ext: Option<&str>, exts: &[&str]) -> bool {
+    ext.is_some_and(|e| exts.iter().any(|x| e.eq_ignore_ascii_case(x)))
+}
+
 /// Resolve a list of input paths into a flat, ordered list of files with matching extensions.
 pub(crate) fn resolve_all(inputs: &[PathBuf], exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
     let mut paths: Vec<PathBuf> = Vec::new();
@@ -66,11 +73,7 @@ pub(crate) fn resolve_all(inputs: &[PathBuf], exts: &[&str]) -> anyhow::Result<V
 /// for deterministic ordering.
 fn resolve_paths(path: &Path, exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
     if path.is_file() {
-        if path
-            .extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|e| exts.contains(&e))
-        {
+        if ext_in(path.extension().and_then(|e| e.to_str()), exts) {
             return Ok(vec![path.to_path_buf()]);
         }
         return Ok(Vec::new());

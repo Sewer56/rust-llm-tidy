@@ -143,6 +143,43 @@ synthetic_fixture!(safety_line_preservation);
 
 static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 
+/// Directory recursion collects `README.MD`/`lib.RS` case variants and
+/// excludes unrelated extensions like `notes.txt`.
+#[test]
+fn recursive_dir_collects_uppercase_variants_excludes_others() {
+    let dir = temp_dir();
+    let nested = dir.join("src");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(nested.join("lib.RS"), "fn a() {}\nfn b() { a(); }\n").unwrap();
+    fs::write(
+        dir.join("README.MD"),
+        "| Name | Value | Description |\n| --- | --- | --- |\n| a | 1 | first |\n| longname | 200 | second item |\n",
+    )
+    .unwrap();
+    fs::write(dir.join("notes.txt"), "not rust or markdown\n").unwrap();
+
+    // Rust-only reorder runs on the nested `.RS` and reports it by path.
+    let (_stdout, stderr, exit) = run_dir(&dir, &["--dry-run"]);
+    assert_eq!(exit, 0, "dir with .RS/.MD/.txt should succeed");
+    assert!(
+        stderr.contains("lib.RS"),
+        "recursion must collect and process lib.RS: {stderr}"
+    );
+
+    // Markdown table fix runs on the `.MD` and reports it by path.
+    let (_stdout, md_stderr, md_exit) = run_dir(&dir, &["--include", "tables", "--dry-run"]);
+    assert_eq!(md_exit, 0, "tables dry-run on dir should succeed");
+    assert!(
+        md_stderr.contains("README.MD") && md_stderr.contains("success[FIX]"),
+        "recursion must collect and process README.MD: {md_stderr}"
+    );
+    assert!(
+        !md_stderr.contains("notes.txt") && !stderr.contains("notes.txt"),
+        "notes.txt must be excluded silently"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// `reorder --dry-run` on a CRLF reordering source reports its move on stderr
 /// and leaves stdout empty (no reconstructed source).
 #[test]
@@ -554,6 +591,90 @@ fn test_safety_aborts() {
     assert!(!stderr.is_empty(), "stderr should contain error message");
 }
 
+/// An explicit `Note.MD` file is admitted, runs markdown fix ops, and
+/// never runs the Rust-only reorder op.
+#[test]
+fn uppercase_md_explicit_file_runs_fix_not_rust_ops() {
+    let file = temp_file_ext("MD");
+    fs::write(
+        &file,
+        "| Name | Value | Description |\n| --- | --- | --- |\n| a | 1 | first |\n| longname | 200 | second item |\n",
+    )
+    .unwrap();
+
+    // Tables (a markdown fix op) run on the `.MD` file.
+    let output = run_command(&["--include", "tables"], &file);
+    assert!(
+        output.status.success(),
+        ".MD file should be admitted: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("success[FIX]"),
+        ".MD must run markdown fix ops: {stderr}"
+    );
+
+    // Reorder (a Rust-only op) never runs on a `.MD` file, even when the bytes
+    // would reorder as Rust.
+    let output = run_command(&["--include", "reorder", "--dry-run"], &file);
+    assert!(
+        output.status.success(),
+        ".MD reorder dry-run should succeed without Rust ops: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !String::from_utf8_lossy(&output.stderr).contains("success[REORDER]"),
+        ".MD must never run the Rust reorder op"
+    );
+    let _ = fs::remove_file(&file);
+}
+
+// ── Case-insensitive extension admission ───────
+
+/// An explicit `Foo.RS` file is admitted and runs the Rust reorder op,
+/// matching the lowercase `.rs` behavior.
+#[test]
+fn uppercase_rs_explicit_file_runs_reorder() {
+    let file = temp_file_ext("RS");
+    fs::write(&file, "fn a() {}\nfn b() { a(); }\n").unwrap();
+
+    let output = run_command(&["--include", "reorder"], &file);
+    let _ = fs::remove_file(&file);
+
+    assert!(
+        output.status.success(),
+        ".RS file should be admitted: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("success[REORDER]"),
+        ".RS must run the Rust reorder op: {stderr}"
+    );
+}
+
+/// An explicit `.TXT` file is a silent skip: exit 0 and `[]` in JSON mode.
+#[test]
+fn uppercase_txt_explicit_file_is_silently_skipped() {
+    let file = temp_file_ext("TXT");
+    fs::write(&file, "not rust or markdown\n").unwrap();
+
+    let output = run_command(&["--json"], &file);
+    let _ = fs::remove_file(&file);
+
+    assert!(
+        output.status.success(),
+        "unadmitted .TXT file must succeed silently: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "[]",
+        ".TXT explicit file is a silent skip in JSON mode"
+    );
+}
+
 // ── Helpers ───────────────────────────────────────────────────────
 
 /// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.
@@ -646,6 +767,15 @@ fn temp_file() -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-file-{}-{}.rs", pid, seq))
+}
+
+/// Create a numbered temporary file path with the given extension, for
+/// case-sensitivity tests that need `.RS`/`.MD`/`.TXT` (the local `temp_file`
+/// is fixed to `.rs`).
+fn temp_file_ext(ext: &str) -> std::path::PathBuf {
+    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    std::env::temp_dir().join(format!("rust-llm-tidy-ext-{}-{}.{}", pid, seq, ext))
 }
 
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
