@@ -18,7 +18,9 @@ mod toposort;
 /// Phases (in output order):
 /// 1. extern crate + Other (stable)
 /// 2. use                  (stable, original order; rustfmt controls sorting)
-/// 3. mod (non-test)       (stable, original order; rustfmt controls sorting)
+/// 3. mod                    (file-based mods, test or not, plus inline
+///    non-test mods; stable, original order; rustfmt controls sorting of
+///    file-based decls)
 /// 4. macro                (macro_rules! + macro 2.0; dependency → alphabetical;
 ///    a macro referencing another local macro follows it;
 ///    local top-level invocations follow their definition)
@@ -27,7 +29,7 @@ mod toposort;
 /// 7. trait                (dependency → alphabetical)
 /// 8. impl                 (inherent before trait; after matching type)
 /// 9. fn                   (pub → pub(crate)/pub(super) → private; dependency within; main first)
-/// 10. #[cfg(test)] mod    (stable, last)
+/// 10. inline #[cfg(test)] mod (stable, last; file-based mods, test or not, stay in phase 3)
 ///
 /// Returns a `Vec<usize>` suitable for constructing a `Permutation` in the
 /// reorder stage.  Each element is an index into `parsed.items`.
@@ -76,7 +78,7 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
     //        clone into these vectors. ──
     let mut phase1: Vec<usize> = Vec::new(); // extern + Other
     let mut phase2: Vec<usize> = Vec::new(); // use
-    let mut phase3: Vec<usize> = Vec::new(); // mod (non-test)
+    let mut phase3: Vec<usize> = Vec::new(); // mod (file-based, test or not; inline non-test)
     let mut phase3_macro: Vec<usize> = Vec::new(); // macro defs
     let mut macro_invocations: Vec<usize> = Vec::new(); // local macro invocations
     let mut phase4: Vec<usize> = Vec::new(); // const + static
@@ -85,7 +87,7 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
     let mut phase7_inherent: Vec<usize> = Vec::new(); // inherent impls
     let mut phase7_trait: Vec<usize> = Vec::new(); // trait impls
     let mut phase8: Vec<usize> = Vec::new(); // fn
-    let mut phase9: Vec<usize> = Vec::new(); // #[cfg(test)] mod
+    let mut phase9: Vec<usize> = Vec::new(); // inline #[cfg(test)] mod
 
     for (idx, item) in parsed.items.iter().enumerate() {
         match item.kind() {
@@ -93,7 +95,11 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
             ItemKind::Other => phase1.push(idx),
             ItemKind::Use => phase2.push(idx),
             ItemKind::Mod => {
-                if item.is_test_module() {
+                // Only an inline `#[cfg(test)] mod x { ... }` lands last.
+                // File-based `mod x;` declarations (test or not) and inline
+                // non-test mods stay in the mod phase - rustfmt owns
+                // alphabetical order for file-based decls.
+                if item.is_test_module() && item.is_inline() {
                     phase9.push(idx);
                 } else {
                     phase3.push(idx);
@@ -135,7 +141,8 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
     // ── Phase 2: use (stable original order; rustfmt controls sorting) ──
     final_order.extend(&phase2);
 
-    // ── Phase 3: mod (non-test, stable original order; rustfmt controls sorting) ──
+    // ── Phase 3: mod (file-based test or not + inline non-test; stable original
+    //    order; rustfmt controls sorting of file-based decls) ──
     final_order.extend(&phase3);
 
     // ── Phase 4: macro defs (dependency → alphabetical), each followed by
@@ -297,7 +304,7 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
         }
     }
 
-    // ── Phase 10: #[cfg(test)] mod (stable original order) ──
+    // ── Phase 10: inline #[cfg(test)] mod (stable original order) ──
     final_order.extend(&phase9);
 
     Ok(final_order)
@@ -467,5 +474,62 @@ mod tests {
 
         // c(2), b(1), a(0): callees before callers.
         assert_eq!(order, vec![2, 1, 0]);
+    }
+
+    /// A file-based `#[cfg(test)] mod x;` declaration stays in the mod phase,
+    /// keeping its source position among file-based mods instead of moving to
+    /// the end (rustfmt owns its alphabetical placement).
+    #[test]
+    fn file_based_test_mod_stays_in_mod_phase() {
+        // Source order: zeta(0), test_helpers(1), alpha(2).
+        let source = r#"
+            mod zeta;
+            #[cfg(test)] mod test_helpers;
+            mod alpha;
+        "#;
+
+        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let order = compute_order(&parsed).unwrap();
+
+        // All three are mods -> phase 3, stable source order; the test mod does
+        // not jump to the last (phase 10) position.
+        assert_eq!(order, vec![0, 1, 2]);
+    }
+
+    /// An inline `#[cfg(test)] mod x { ... }` definition lands last, after all
+    /// other phases.
+    #[test]
+    fn inline_test_mod_lands_last() {
+        // Source order: inline test mod(0), alpha(1).
+        let source = r#"
+            #[cfg(test)] mod tests {
+                fn helper() {}
+            }
+            mod alpha;
+        "#;
+
+        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let order = compute_order(&parsed).unwrap();
+
+        // The file-based mod alpha stays in phase 3 (0-index 1) and the inline
+        // test mod goes to phase 10, so it is emitted last.
+        assert_eq!(order, vec![1, 0]);
+    }
+
+    /// Inline non-test and file-based test mods both stay in the mod phase,
+    /// preserving source order.
+    #[test]
+    fn inline_non_test_and_file_based_test_stay_in_mod_phase() {
+        // Source order: file-based test mod(0), inline non-test mod(1).
+        let source = r#"
+            #[cfg(test)] mod file_tests;
+            mod helpers_pub {}
+        "#;
+
+        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let order = compute_order(&parsed).unwrap();
+
+        // Neither is an inline test mod, so both stay in phase 3, source order.
+        assert_eq!(order, vec![0, 1]);
     }
 }
