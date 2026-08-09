@@ -80,6 +80,8 @@ pub(crate) fn resolve_all(inputs: &[PathBuf], exts: &[&str]) -> anyhow::Result<V
             .with_context(|| format!("failed to resolve path {}", input.display()))?;
         paths.extend(resolved);
     }
+    paths.sort();
+    paths.dedup();
     Ok(paths)
 }
 
