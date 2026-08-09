@@ -1,6 +1,6 @@
 [package]
 name = "rust-llm-tidy-model"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 description = "Shared Rust source model: parse top-level items with spans, visibility, and doc comments."
 repository = "https://github.com/Sewer56/rust-llm-tidy"

@@ -1,6 +1,6 @@
 [package]
 name = "rust-llm-tidy-vis"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "Narrows bare `pub` items nested inside restricted-visibility inline modules to the module's visibility. Intended for LLM use."
 repository = "https://github.com/Sewer56/rust-llm-tidy"
