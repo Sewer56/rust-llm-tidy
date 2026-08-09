@@ -68,8 +68,8 @@ pub const CODE_VAGUE_ERRORS: &str = "DOC003";
 ///
 /// - `parsed` - the parsed source result whose items are checked.
 pub fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
-    // Each item produces at most a handful of diagnostics; preallocate to the
-    // item count to avoid regrowth on the common dirty-file path.
+    // Each item produces at most a handful of diagnostics; preallocating to the
+    // item count can reduce regrowth on the common dirty-file path.
     let mut diags = Vec::with_capacity(parsed.items.len());
     for item in &parsed.items {
         diags.extend(missing_docs(item));
