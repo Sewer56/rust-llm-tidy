@@ -263,12 +263,18 @@ pub(crate) fn reorder_file(
     Ok(change_records)
 }
 
-/// Build the crate-aware [`VisContext`] from the first input path. Returns
-/// `None` (with a printed warning) when crate-root discovery fails, so
-/// standalone files keep working via `narrow_vis_in_tree` with `floor = None`
-/// and a per-file re-export guard.
+/// Build the crate-aware [`VisContext`] from the first `.rs` input path.
+/// Returns `None` (without warning) when there is no `.rs` input or
+/// crate-root discovery fails, so standalone files keep working via
+/// `narrow_vis_in_tree` with `floor = None` and a per-file re-export guard.
+///
+/// Vis only ever narrows `.rs` items, so non-Rust inputs (e.g. `.md` docs in
+/// `.github/`) must neither select the crate-resolve candidate nor emit a
+/// "narrowing standalone" warning.
 pub(crate) fn resolve_vis_context(paths: &[PathBuf]) -> Option<VisContext> {
-    let first = paths.first()?;
+    let first = paths
+        .iter()
+        .find(|p| crate::paths::ext_in(p.extension().and_then(|e| e.to_str()), &["rs"]))?;
     match discover_crate_root(first) {
         Ok(root) => {
             // Canonicalize the crate root so it matches the canonicalized source

@@ -20,7 +20,7 @@ toggleable through the same rule namespace as the ops, so
 | [`DOC003`]  | Warning  | A `# Errors` section names no concrete error variant.                             |
 | [`DOC004`]  | Warning  | A `pub fn` with parameters has no `# Arguments` section.                          |
 | [`DOC005`]  | Warning  | A `# Arguments` section does not mention every parameter name.                    |
-| [`DOC006`]  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`/`...`).             |
+| [`DOC006`]  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).                   |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
 
 ## Examples
@@ -222,7 +222,7 @@ src/lib.rs:1: warning[DOC005]: parameter(s) not documented in the `# Arguments` 
 ### DOC006 - placeholder text
 
 Doc comments on documentable items must not contain whole-word `TODO`,
-`FIXME`, or `TBD` markers, or the literal `...`.
+`FIXME`, or `TBD` markers.
 
 Before:
 
@@ -242,7 +242,7 @@ pub fn load() {}
 
 ```text
 $ rust-llm-tidy --no-config --include DOC006 src/lib.rs
-src/lib.rs:1: warning[DOC006]: doc comment contains placeholder text (TODO/FIXME/TBD/...) (fn `load`)
+src/lib.rs:1: warning[DOC006]: doc comment contains placeholder text (TODO/FIXME/TBD) (fn `load`)
 ```
 
 `DOC006` is warning-severity, so the run exits 0.

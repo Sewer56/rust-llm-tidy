@@ -383,7 +383,7 @@ fn doc006_clean_not_flagged() {
 
 // ── TEST001: test-function naming ─────────────────────────────────
 
-/// `doc006_placeholders.rs` warns on TODO/FIXME/... in doc comments.
+/// `doc006_placeholders.rs` warns on TODO/FIXME/TBD doc-comment markers.
 #[test]
 fn doc006_placeholders() {
     let (stderr, exit) = run_check_fixture("doc006_placeholders.rs");
@@ -393,7 +393,12 @@ fn doc006_placeholders() {
 
     assert_has_diagnostic(&stderr, "DOC006", Some("todo_task"));
     assert_has_diagnostic(&stderr, "DOC006", Some("fixme_task"));
-    assert_has_diagnostic(&stderr, "DOC006", Some("Placeholder"));
+    assert_has_diagnostic(&stderr, "DOC006", Some("tbd_task"));
+    // A literal `...` is idiomatic prose, not a placeholder marker.
+    assert!(
+        !stderr.contains("Placeholder"),
+        "ellipsis-only docs should not be flagged:\n{stderr}"
+    );
 
     let doc006_count = stderr.matches("DOC006").count();
     assert_eq!(

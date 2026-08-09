@@ -26,6 +26,9 @@ exclude_files:
   # would corrupt them.
   - "**/tests/fixtures/**"
   - "**/benches/fixtures/**"
+  # Git submodules are their own repos (own URL/ref); tidying their checked-out
+  # content would dirty the gitlink and produce a spurious diff upstream.
+  - "**/submodules/**"
 
 # Disable specific rules for files matching a group's patterns.
 exclude:
@@ -61,6 +64,12 @@ exclude:
     rules:
       - links
       - fences
+  # .github holds plain markdown (workflows/templates) outside any Rust crate;
+  # `vis` can't (and needn't) do crate-aware narrowing there.
+  - paths:
+      - ".github/**"
+    rules:
+      - vis
 
 # Commented examples (uncomment and tailor paths to enable):
 #

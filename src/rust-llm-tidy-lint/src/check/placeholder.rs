@@ -1,9 +1,9 @@
 //! `DOC006` - placeholder text in doc comments.
 //!
 //! [`doc_placeholder`] fires on documentable items whose doc comments contain a
-//! placeholder marker (`TODO`, `FIXME`, `TBD`, or `...`). Detection is
-//! delegated to the module-private [`contains_placeholder`] and the
-//! crate-visible [`contains_word`] helper.
+//! placeholder marker (`TODO`, `FIXME`, or `TBD`). Detection is delegated to the
+//! module-private [`contains_placeholder`] and the crate-visible
+//! [`contains_word`] helper.
 
 use crate::check::CODE_DOC_PLACEHOLDER;
 use crate::check::is_documentable;
@@ -13,8 +13,8 @@ use rust_llm_tidy_model::parse::SourceItem;
 /// `DOC006` - doc comments must not contain placeholder text.
 ///
 /// Fires on documentable items whose doc comments contain a placeholder marker
-/// (`TODO`, `FIXME`, `TBD`, or `...`). Such markers signal unfinished docs that
-/// read as finished API documentation.
+/// (`TODO`, `FIXME`, or `TBD`). Such markers signal unfinished docs that read as
+/// finished API documentation.
 ///
 /// # Arguments
 ///
@@ -35,7 +35,7 @@ pub fn doc_placeholder(item: &SourceItem) -> Vec<Diagnostic> {
     vec![Diagnostic {
         severity: Severity::Warning,
         code: CODE_DOC_PLACEHOLDER,
-        message: "doc comment contains placeholder text (TODO/FIXME/TBD/...)".to_string(),
+        message: "doc comment contains placeholder text (TODO/FIXME/TBD)".to_string(),
         line: item.start_line(),
         item_kind: item.kind().to_string(),
         item_name: item.name().map(str::to_string),
@@ -72,13 +72,8 @@ pub(crate) fn contains_word(haystack: &str, needle: &str) -> bool {
     false
 }
 
-/// True when `text` contains a placeholder marker: a whole-word `TODO`,
-/// `FIXME`, or `TBD` (case-insensitive), or a literal `...`.
 fn contains_placeholder(text: &str) -> bool {
-    contains_word(text, "todo")
-        || contains_word(text, "fixme")
-        || contains_word(text, "tbd")
-        || text.contains("...")
+    contains_word(text, "todo") || contains_word(text, "fixme") || contains_word(text, "tbd")
 }
 
 #[cfg(test)]
@@ -104,11 +99,13 @@ mod tests {
         assert_eq!(doc_placeholder(&item).len(), 1);
     }
 
-    // Ellipsis (...) in doc -> warning.
+    // `...` is unambiguous (ellipsis) and idiomatic in prose, so it is NOT
+    // treated as a placeholder marker. Rust shorthand like `Result<...>` is
+    // unaffected.
     #[test]
-    fn test_doc_placeholder_ellipsis() {
+    fn test_doc_placeholder_ellipsis_not_flagged() {
         let item = parse_one("/// Something ... here.\npub fn task() {}");
-        assert_eq!(doc_placeholder(&item).len(), 1);
+        assert!(doc_placeholder(&item).is_empty());
     }
 
     // Clean doc, no placeholder -> no warning.

@@ -51,6 +51,7 @@ serde_json = "1"
 serde_yml = "0.0.13"
 globset = "0.4"
 glob = "0.3"
+ignore = "0.4"
 
 [dev-dependencies]
 criterion = "0.8"

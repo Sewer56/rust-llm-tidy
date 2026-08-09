@@ -226,12 +226,10 @@ pub(crate) fn op_enabled(
 pub(crate) fn run_post_process(steps: &[PostProcessStep], files: &[PathBuf]) -> Vec<PathBuf> {
     let mut failed = Vec::new();
     for step in steps {
+        let exts: Vec<&str> = step.extensions.iter().map(String::as_str).collect();
         for file in files {
             if !step.extensions.is_empty() {
-                let ext_ok = file
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .is_some_and(|e| step.extensions.iter().any(|x| x == e));
+                let ext_ok = crate::paths::ext_in(file.extension().and_then(|e| e.to_str()), &exts);
                 if !ext_ok {
                     continue;
                 }
