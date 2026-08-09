@@ -391,7 +391,7 @@ fn process_one(
         .iter()
         .any(|op| op_enabled(op, enabled, disabled));
 
-    // Fix table alignment first (auto-fixable formatting).
+    // Fix auto-fixable formatting (tables, fences, links) via fix_file.
     if op_enabled("tables", enabled, disabled)
         || op_enabled("fences", enabled, disabled)
         || op_enabled("links", enabled, disabled)
