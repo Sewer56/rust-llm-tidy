@@ -736,6 +736,7 @@ dependencies = [
  "glob",
  "globset",
  "ignore",
+ "rayon",
  "rust-llm-tidy-fix",
  "rust-llm-tidy-lint",
  "rust-llm-tidy-model",
