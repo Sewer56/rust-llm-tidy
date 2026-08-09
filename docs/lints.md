@@ -346,7 +346,12 @@ mode every edit is one plaintext line on stderr:
 src/lib.rs:20: success[REORDER]: rearrange fn a_main from pos 2 to pos 1 (before b_helper) (fn `a_main`)
 ```
 
-The line shape is `path:line: success[CODE]: message (item_kind `item_name`)`.
+The line shape is:
+
+```text
+path:line: success[CODE]: message (item_kind `item_name`)
+```
+
 Fix records are unnamed, so they print like `1: success[FIX]: realign table
 starting at line 1 (table)` without a trailing name. In JSON mode the same
 records appear on stdout as one JSON array with `severity: "success"`:
