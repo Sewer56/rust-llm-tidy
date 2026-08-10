@@ -6,7 +6,7 @@
 
 Realigns misaligned GitHub-Flavored Markdown (GFM) tables, rewrites nested
 fence markers to alternate backticks and tildes, and hoists inline links to
-reference definitions. Pure text processing, zero dependencies.
+reference definitions. Pure text processing with no Markdown parser dependency.
 
 ## What it does
 

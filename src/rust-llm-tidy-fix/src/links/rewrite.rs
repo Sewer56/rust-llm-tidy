@@ -1,8 +1,8 @@
-//! Two-pass core for [`super::fix_links`]: tally eligible inline links, rewrite
-//! hoisted ones to reference form, and append the `[text]: url` definitions
-//! (a trailing block in Markdown, per-comment inside Rust doc comments).
+//! Shared link rewrite helpers plus the counted-threshold tally/rewrite core.
+//! The specialized threshold-one engine reuses link iteration, definition
+//! emission, and replacement-pair construction from this module.
 
-use super::scan::parse_inline_link;
+use super::scan::inline_links;
 use std::collections::{HashMap, HashSet};
 
 /// Append hoisted `[text]: url` definitions at the end of one Rust doc-comment
@@ -21,12 +21,7 @@ pub(super) fn append_block_definitions(
         buf.push_str(le);
     }
     for &(text, url) in defs {
-        buf.push_str(prefix);
-        buf.push('[');
-        buf.push_str(text);
-        buf.push_str("]: ");
-        buf.push_str(url);
-        buf.push_str(le);
+        append_definition(buf, prefix, text, url, le);
     }
 }
 
@@ -41,12 +36,36 @@ pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &
         buf.push_str(le);
     }
     for &(text, url) in hoist {
-        buf.push('[');
-        buf.push_str(text);
-        buf.push_str("]: ");
-        buf.push_str(url);
-        buf.push_str(le);
+        append_definition(buf, "", text, url, le);
     }
+}
+
+/// Append one `[text]: url` definition with an optional doc-comment prefix.
+#[inline]
+pub(super) fn append_definition(buf: &mut String, prefix: &str, text: &str, url: &str, le: &str) {
+    buf.push_str(prefix);
+    buf.push('[');
+    buf.push_str(text);
+    buf.push_str("]: ");
+    buf.push_str(url);
+    buf.push_str(le);
+}
+
+/// Build one externally reported `[text](url)` -> `[text]` replacement pair.
+#[inline]
+pub(super) fn replacement_pair(text: &str, url: &str) -> (String, String) {
+    let mut before = String::with_capacity(text.len() + url.len() + 4);
+    before.push('[');
+    before.push_str(text);
+    before.push_str("](");
+    before.push_str(url);
+    before.push(')');
+
+    let mut after = String::with_capacity(text.len() + 2);
+    after.push('[');
+    after.push_str(text);
+    after.push(']');
+    (before, after)
 }
 
 /// Return the dominant line ending used in `source`: `"\r\n"` when CRLF is at
@@ -57,7 +76,7 @@ pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &
 /// - `source`: the text whose line endings are tallied.
 ///
 /// Mirrors `rust_llm_tidy_model::line_endings::dominant_line_ending`.
-/// Duplicated to keep this crate zero-dependency; keep in sync.
+/// Duplicated to avoid coupling this crate to the model crate; keep in sync.
 pub(super) fn dominant_line_ending(source: &str) -> &'static str {
     let crlf = source.matches("\r\n").count();
     let lf = source.matches('\n').count().saturating_sub(crlf);
@@ -112,21 +131,12 @@ pub(super) fn tally_links<'a>(
     counts: &mut HashMap<(&'a str, &'a str), usize>,
     order: &mut Vec<(&'a str, &'a str)>,
 ) {
-    let mut i = 0usize;
-    while let Some(rel) = body[i..].find('[') {
-        let open = i + rel;
-        if let Some((text, url, end)) = parse_inline_link(body, open) {
-            let prev = counts.get(&(text, url)).copied().unwrap_or(0);
-            if prev == 0 {
-                order.push((text, url));
-            }
-            counts.insert((text, url), prev + 1);
-            i = end;
-            continue;
+    for link in inline_links(body) {
+        let prev = counts.get(&(link.text, link.url)).copied().unwrap_or(0);
+        if prev == 0 {
+            order.push((link.text, link.url));
         }
-        // Not an inline link: step past this `[` (ASCII, so +1 is a char
-        // boundary) and continue the search.
-        i = open + 1;
+        counts.insert((link.text, link.url), prev + 1);
     }
 }
 
@@ -142,30 +152,19 @@ where
 {
     let mut out: Option<String> = None;
     let mut last = 0usize;
-    let mut i = 0usize;
-    while let Some(rel) = body[i..].find('[') {
-        let open = i + rel;
-        match parse_inline_link(body, open) {
-            Some((text, url, end)) if hoist.contains(&(text, url)) => {
-                let o = out.get_or_insert_with(|| {
-                    let mut s = String::with_capacity(prefix.len() + body.len() + term.len());
-                    s.push_str(prefix);
-                    s
-                });
-                o.push_str(&body[last..open]);
-                o.push('[');
-                o.push_str(text);
-                o.push(']');
-                on_rewrite(text, url);
-                last = end;
-                i = end;
-            }
-            // Inline link but not hoisted: skip past it. `last` is unchanged so
-            // its verbatim bytes are emitted in a later gap (or trailing copy).
-            Some((_text, _url, end)) => i = end,
-            // Lone `[` that is not an inline link: step one byte (ASCII
-            // boundary) and continue the search.
-            None => i = open + 1,
+    for link in inline_links(body) {
+        if hoist.contains(&(link.text, link.url)) {
+            let o = out.get_or_insert_with(|| {
+                let mut s = String::with_capacity(prefix.len() + body.len() + term.len());
+                s.push_str(prefix);
+                s
+            });
+            o.push_str(&body[last..link.open]);
+            o.push('[');
+            o.push_str(link.text);
+            o.push(']');
+            on_rewrite(link.text, link.url);
+            last = link.end;
         }
     }
     let mut o = out?;

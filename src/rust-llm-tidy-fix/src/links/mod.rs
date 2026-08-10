@@ -26,11 +26,11 @@
 //!
 //! # Performance
 //!
-//! The common input is already reference-style or link-free and must return a
-//! [`Cow::Borrowed`] after a single tally pass. That pass skips lines without a
-//! `[` and jumps between `[` bytes with [`str::find`] instead of walking every
-//! character; both rewrite paths allocate their output lazily, so a no-op run
-//! pays zero allocation beyond the tally scan.
+//! The default threshold-one path first rejects input without the exact `](`
+//! inline-link shape, then parses each eligible occurrence once. Newlines use
+//! vectorized `memchr`; small candidate/span sets stay inline; rewriting copies
+//! directly between saved spans with exact output capacity. Reference-only and
+//! link-free input returns [`Cow::Borrowed`] without allocation.
 //!
 //! # Example
 //!
@@ -49,13 +49,14 @@
 
 use crate::tables::{split_terminator, strip_doc_prefix};
 use rewrite::{
-    append_block_definitions, append_definitions, dominant_line_ending, rewrite_links,
-    rewrite_links_track, tally_links,
+    append_block_definitions, append_definitions, dominant_line_ending, replacement_pair,
+    rewrite_links, rewrite_links_track, tally_links,
 };
-use scan::{definition_text, doc_block_key, step_fence};
+use scan::{definition_text, doc_block_key, line_segments, step_fence};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
+mod fast;
 mod rewrite;
 mod scan;
 
@@ -66,7 +67,7 @@ mod scan;
 /// Returns the rewritten text and one `(before, after)` substitution per
 /// hoisted link; borrows `input` back with no pairs when nothing is eligible.
 pub fn fix_links(input: &str) -> (Cow<'_, str>, Vec<(String, String)>) {
-    fix_links_with_min(input, 1)
+    fast::fix_links_one(input)
 }
 
 /// Collapse each inline link `[text](url)` to reference form when its
@@ -80,6 +81,16 @@ pub fn fix_links_with_min(
     input: &str,
     min_occurrences: usize,
 ) -> (Cow<'_, str>, Vec<(String, String)>) {
+    if min_occurrences <= 1 {
+        return fast::fix_links_one(input);
+    }
+
+    fix_links_counted(input, min_occurrences)
+}
+
+/// Counted implementation used for configurable thresholds above one and as a
+/// differential correctness oracle for the specialized threshold-one engine.
+fn fix_links_counted(input: &str, min_occurrences: usize) -> (Cow<'_, str>, Vec<(String, String)>) {
     // Fast path: no link-opening bracket means nothing can change.
     if !input.contains('[') {
         return (Cow::Borrowed(input), Vec::new());
@@ -96,7 +107,7 @@ pub fn fix_links_with_min(
     let mut order: Vec<(&str, &str)> = Vec::new();
     let mut existing: HashSet<&str> = HashSet::new();
     let mut rust_context = false;
-    for segment in input.split_inclusive('\n') {
+    for (_, segment) in line_segments(input) {
         let (content, _) = split_terminator(segment);
         let (prefix, body) = strip_doc_prefix(content);
         let fence_delim = step_fence(&mut fence_stack, body);
@@ -151,11 +162,8 @@ fn rewrite_markdown<'a>(
     le: &'a str,
 ) -> (Cow<'a, str>, Vec<(String, String)>) {
     let mut out: Option<String> = None;
-    let mut pos = 0usize;
     let mut fence_stack: Vec<(char, usize)> = Vec::new();
-    for segment in input.split_inclusive('\n') {
-        let seg_start = pos;
-        pos += segment.len();
+    for (seg_start, segment) in line_segments(input) {
         let (content, term) = split_terminator(segment);
         let (_, body) = strip_doc_prefix(content);
         if step_fence(&mut fence_stack, body) {
@@ -202,7 +210,7 @@ fn rewrite_markdown<'a>(
     // One `[text](url)` -> `[text]` pair per hoisted link, in hoist order.
     let pairs = hoist
         .iter()
-        .map(|&(text, url)| (format!("[{text}]({url})"), format!("[{text}]")))
+        .map(|&(text, url)| replacement_pair(text, url))
         .collect();
     (Cow::Owned(buf), pairs)
 }
@@ -220,7 +228,6 @@ fn rewrite_rust_context<'a>(
 ) -> (Cow<'a, str>, Vec<(String, String)>) {
     // Lazily-allocated output; stays `None` when nothing actually changes.
     let mut out: Option<String> = None;
-    let mut pos = 0usize;
     let mut fence_stack: Vec<(char, usize)> = Vec::new();
     // The doc-comment block currently being emitted, its prefix, and its
     // hoisted pairs (defined-when-flushed), tracked for O(1) dedup.
@@ -230,9 +237,7 @@ fn rewrite_rust_context<'a>(
     let mut hoisted: Vec<(&str, &str)> = Vec::new();
     let mut hoisted_seen: HashSet<(&str, &str)> = HashSet::new();
 
-    for segment in input.split_inclusive('\n') {
-        let seg_start = pos;
-        pos += segment.len();
+    for (seg_start, segment) in line_segments(input) {
         let (content, term) = split_terminator(segment);
         let (prefix, body) = strip_doc_prefix(content);
         let block_key = doc_block_key(prefix);
@@ -283,7 +288,7 @@ fn rewrite_rust_context<'a>(
 
     let pairs = hoisted
         .iter()
-        .map(|&(text, url)| (format!("[{text}]({url})"), format!("[{text}]")))
+        .map(|&(text, url)| replacement_pair(text, url))
         .collect();
     (
         Cow::Owned(out.expect("hoisted pairs imply changed output")),
@@ -646,7 +651,17 @@ pub fn f() {
             "/// some doc\nlet s = \"[A](u)\";\n",
         ];
         for &input in cases {
-            let once = fix_links(input).0.into_owned();
+            let (fast_out, fast_pairs) = fix_links(input);
+            let (counted_out, counted_pairs) = fix_links_counted(input, 1);
+            assert_eq!(
+                counted_out, fast_out,
+                "specialized output differs from counted engine for {input:?}"
+            );
+            assert_eq!(
+                counted_pairs, fast_pairs,
+                "specialized pairs differ from counted engine for {input:?}"
+            );
+            let once = fast_out.into_owned();
             let twice = fix_links(&once).0.into_owned();
             assert_eq!(twice, once, "not idempotent for input {input:?}");
         }
@@ -733,7 +748,7 @@ pub fn f() {
         ];
         for &input in cases {
             let (out, pairs) = fix_links(input);
-            let (min_out, min_pairs) = fix_links_with_min(input, 1);
+            let (min_out, min_pairs) = fix_links_counted(input, 1);
             assert_eq!(
                 min_out.into_owned(),
                 out.into_owned(),

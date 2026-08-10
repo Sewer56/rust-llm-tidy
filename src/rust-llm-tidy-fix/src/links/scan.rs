@@ -10,6 +10,56 @@
 //!   with per-comment rewrites.
 
 use crate::fences::parse_fence;
+use memchr::memchr_iter;
+
+/// One parsed inline link and its byte span within a line body.
+pub(super) struct InlineLink<'a> {
+    pub(super) text: &'a str,
+    pub(super) url: &'a str,
+    pub(super) open: usize,
+    pub(super) end: usize,
+}
+
+/// Iterate line segments as `(start, segment)`, retaining each terminator.
+/// Uses `memchr` so every input byte participates in one vectorized newline
+/// search instead of `str::split`'s character-pattern state machine.
+#[inline]
+pub(super) fn line_segments(input: &str) -> impl Iterator<Item = (usize, &str)> {
+    let mut start = 0usize;
+    memchr_iter(b'\n', input.as_bytes())
+        .map(|newline| newline + 1)
+        .chain(std::iter::once(input.len()))
+        .filter_map(move |end| {
+            if end == start {
+                return None;
+            }
+            let segment_start = start;
+            start = end;
+            Some((segment_start, &input[segment_start..end]))
+        })
+}
+
+/// Iterate accepted inline links in one body, skipping malformed bracket runs.
+#[inline]
+pub(super) fn inline_links(body: &str) -> impl Iterator<Item = InlineLink<'_>> {
+    let mut next = 0usize;
+    std::iter::from_fn(move || {
+        while let Some(relative) = body[next..].find('[') {
+            let open = next + relative;
+            if let Some((text, url, end)) = parse_inline_link(body, open) {
+                next = end;
+                return Some(InlineLink {
+                    text,
+                    url,
+                    open,
+                    end,
+                });
+            }
+            next = open + 1;
+        }
+        None
+    })
+}
 
 /// If `body` is a reference-definition line (`[text]: url`), return the link
 /// `text`. Otherwise return `None`.
