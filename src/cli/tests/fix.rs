@@ -5,12 +5,12 @@
 //! module). Each test runs the built CLI binary against fixture files in
 //! `tests/fixtures/fix/`.
 
+use common::binary;
 use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod common;
-use common::binary;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
