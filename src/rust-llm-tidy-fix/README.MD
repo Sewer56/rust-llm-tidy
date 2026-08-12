@@ -52,7 +52,7 @@ inner
 ~~~
 ````
 
-## Repeated inline-link hoisting
+## Inline-link hoisting
 
 [`fix_links`] rewrites every eligible inline link `[text](url)` to reference
 style `[text]` plus a `[text]: url` definition. The hoist threshold defaults to
