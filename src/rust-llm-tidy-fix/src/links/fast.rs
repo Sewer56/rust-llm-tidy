@@ -5,7 +5,9 @@
 //! It avoids pair-count hashing, a second parse, pair-set lookups, per-line
 //! output allocations, and separate line-ending scans.
 
-use super::rewrite::{append_definition, replacement_pair};
+use super::rewrite::{
+    append_definition, blank_line_prefix, needs_blank_before_defs, replacement_pair,
+};
 use super::scan::{definition_text, line_segments, parse_inline_link, step_fence};
 use crate::tables::{split_terminator, strip_doc_prefix};
 use memchr::memmem;
@@ -42,6 +44,9 @@ struct DocBlock<'a> {
     end: usize,
     definition_start: usize,
     definition_end: usize,
+    /// Whether a blank comment line must precede this block's definitions.
+    /// Decided while sizing the output, reused when writing it.
+    needs_blank: bool,
 }
 
 struct Occurrence {
@@ -172,9 +177,15 @@ fn rewrite_rust<'a>(input: &'a str, mut scan: Scan<'a>) -> (Cow<'a, str>, Vec<(S
     if rewrite_count == 0 {
         return (Cow::Borrowed(input), Vec::new());
     }
-    for block in &scan.blocks {
-        if block.definition_start != block.definition_end && !input[..block.end].ends_with('\n') {
-            capacity += scan.line_ending.len();
+    for block in &mut scan.blocks {
+        if block.definition_start != block.definition_end {
+            if !input[..block.end].ends_with('\n') {
+                capacity += scan.line_ending.len();
+            }
+            block.needs_blank = needs_blank_before_defs(&input[..block.end], block.prefix);
+            if block.needs_blank {
+                capacity += blank_line_prefix(block.prefix).len() + scan.line_ending.len();
+            }
         }
     }
 
@@ -215,6 +226,10 @@ fn rewrite_rust<'a>(input: &'a str, mut scan: Scan<'a>) -> (Cow<'a, str>, Vec<(S
         output.push_str(&input[last..block.end]);
         last = block.end;
         if !output.ends_with('\n') {
+            output.push_str(scan.line_ending);
+        }
+        if block.needs_blank {
+            output.push_str(blank_line_prefix(block.prefix));
             output.push_str(scan.line_ending);
         }
         for &candidate_index in &definitions[block.definition_start..block.definition_end] {
@@ -322,6 +337,7 @@ fn scan(input: &str) -> Scan<'_> {
                         end: segment_end,
                         definition_start: 0,
                         definition_end: 0,
+                        needs_blank: false,
                     });
                 }
                 if let Some(candidate) = candidate_for_link(text, url, &mut candidates) {

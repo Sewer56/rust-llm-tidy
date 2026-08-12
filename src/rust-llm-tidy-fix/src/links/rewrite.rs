@@ -11,6 +11,8 @@ use std::collections::{HashMap, HashSet};
 /// (a trailing doc line without a newline still yields separate lines). Block
 /// definitions stay inside the comment so rustdoc still sees a valid,
 /// self-contained comment; they never escape into surrounding code.
+///
+/// See [`needs_blank_before_defs`] for the blank separator line.
 pub(super) fn append_block_definitions(
     buf: &mut String,
     prefix: &str,
@@ -18,6 +20,10 @@ pub(super) fn append_block_definitions(
     le: &str,
 ) {
     if !buf.ends_with('\n') {
+        buf.push_str(le);
+    }
+    if needs_blank_before_defs(buf, prefix) {
+        buf.push_str(blank_line_prefix(prefix));
         buf.push_str(le);
     }
     for &(text, url) in defs {
@@ -56,7 +62,7 @@ pub(super) fn dominant_line_ending(source: &str) -> &'static str {
 }
 
 /// Build one externally reported `[text]` -> `[text]` replacement pair.
-/// [text]: url
+/// \[text\]: url
 #[inline]
 pub(super) fn replacement_pair(text: &str, url: &str) -> (String, String) {
     let mut before = String::with_capacity(text.len() + url.len() + 4);
@@ -139,6 +145,41 @@ pub(super) fn append_definition(buf: &mut String, prefix: &str, text: &str, url:
     buf.push_str("]: ");
     buf.push_str(url);
     buf.push_str(le);
+}
+
+/// The prefix for a blank separator line: the block prefix minus the single
+/// trailing space [`strip_doc_prefix`] keeps, so the line is `///`, not `/// `.
+///
+/// [`strip_doc_prefix`]: crate::tables::strip_doc_prefix
+#[inline]
+pub(super) fn blank_line_prefix(prefix: &str) -> &str {
+    prefix.strip_suffix(' ').unwrap_or(prefix)
+}
+
+/// True when definitions appended after `text` need a blank comment line first.
+/// `text` is any slice ending in the block's last line: the output buffer for
+/// the counted path, `input[..block.end]` for the specialized one.
+///
+/// CommonMark forbids a link reference definition from interrupting a
+/// paragraph, so glued definitions parse as text and rustdoc reports broken
+/// intra-doc links. Blocks already ending in a blank line or definition are
+/// continued contiguously.
+pub(super) fn needs_blank_before_defs(text: &str, prefix: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut end = bytes.len();
+    if end > 0 && bytes[end - 1] == b'\n' {
+        end -= 1;
+        if end > 0 && bytes[end - 1] == b'\r' {
+            end -= 1;
+        }
+    }
+    let start = memchr::memrchr(b'\n', &bytes[..end]).map_or(0, |nl| nl + 1);
+    let last_line = &text[start..end];
+    let body = last_line
+        .strip_prefix(prefix)
+        .unwrap_or(last_line)
+        .trim_start();
+    !body.is_empty() && !(body.starts_with('[') && body.contains("]:"))
 }
 
 fn rewrite_links_inner<'a, F>(

@@ -85,6 +85,7 @@ After:
 
 ```text
 /// See [the docs] for setup.
+///
 /// [the docs]: https://example.com
 ```
 

@@ -390,7 +390,7 @@ after
         // Acceptance case (f): the `///` prefix is preserved on rewritten links
         // and the definition lands inside the comment, on the same prefix.
         let input = "/// see [A](http://x) and [A](http://x)\n";
-        let expected = "/// see [A] and [A]\n/// [A]: http://x\n";
+        let expected = "/// see [A] and [A]\n///\n/// [A]: http://x\n";
         let (out, _) = fix_links(input);
         assert_eq!(&*out, expected);
     }
@@ -439,7 +439,7 @@ after
         // In Rust context, the first-seen URL in a comment wins: the `http://x`
         // pair collapses, the conflicting `http://y` uses stay inline.
         let input = "/// [A](http://x) [A](http://x) [A](http://y) [A](http://y)\n";
-        let expected = "/// [A] [A] [A](http://y) [A](http://y)\n/// [A]: http://x\n";
+        let expected = "/// [A] [A] [A](http://y) [A](http://y)\n///\n/// [A]: http://x\n";
         let (out, pairs) = fix_links(input);
         assert_eq!(&*out, expected);
         assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);
@@ -479,11 +479,13 @@ impl S {}
 ";
         let expected = "\
 /// See [field] and [path].
+///
 /// [field]: Self::field
 /// [path]: crate::path
 pub struct S;
 
 /// [field] again and [path].
+///
 /// [field]: Self::field
 /// [path]: crate::path
 impl S {}
@@ -507,6 +509,7 @@ impl S {}
         let input = "/// [a](self::a) [b](super::b) [c](crate::c) [d](d) [e](foo::Bar::method)\n";
         let expected = "\
 /// [a] [b] [c] [d] [e]
+///
 /// [a]: self::a
 /// [b]: super::b
 /// [c]: crate::c
@@ -522,7 +525,7 @@ impl S {}
         // A link used once in a single `///` comment still hoists by default,
         // gaining its in-comment definition.
         let input = "/// see [A](http://x) once\n";
-        let expected = "/// see [A] once\n/// [A]: http://x\n";
+        let expected = "/// see [A] once\n///\n/// [A]: http://x\n";
         let (out, _) = fix_links(input);
         assert_eq!(&*out, expected);
     }
@@ -533,7 +536,7 @@ impl S {}
         // receives its definition on a separate comment line, never glued onto
         // the rewritten line.
         let input = "/// see [A](http://x) and [A](http://x)";
-        let expected = "/// see [A] and [A]\n/// [A]: http://x\n";
+        let expected = "/// see [A] and [A]\n///\n/// [A]: http://x\n";
         let (out, _) = fix_links(input);
         assert_eq!(&*out, expected);
     }
@@ -551,10 +554,12 @@ pub fn b() {}
 ";
         let expected = "\
 /// first [A]
+///
 /// [A]: http://x
 pub fn a() {}
 
 /// again [A]
+///
 /// [A]: http://x
 pub fn b() {}
 ";
@@ -566,7 +571,7 @@ pub fn b() {}
     fn inner_doc_comment_parity() {
         // `//!` inner doc comments are handled exactly like `///` blocks.
         let input = "//! see [A](http://x) once\n";
-        let expected = "//! see [A] once\n//! [A]: http://x\n";
+        let expected = "//! see [A] once\n//!\n//! [A]: http://x\n";
         let (out, _) = fix_links(input);
         assert_eq!(&*out, expected);
     }

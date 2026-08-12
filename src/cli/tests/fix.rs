@@ -14,14 +14,17 @@ mod common;
 
 /// The byte-exact output of the fix on [`INTRA_DOC_REPRO_SOURCE`]: every link
 /// is hoisted and a `[text]: url` definition is duplicated inside each comment
-/// that uses it, never at EOF.
+/// that uses it, never at EOF, with a blank comment line before the
+/// definitions.
 const INTRA_DOC_REPRO_FIXED: &str = "\
 /// Assembles the final value by driving [the Builder].
+///
 /// [the Builder]: crate::Builder
 pub struct Builder;
 
 impl Builder {
     /// Produces [the Config] and hands it to [the Builder].
+    ///
     /// [the Config]: crate::Config
     /// [the Builder]: crate::Builder
     pub fn build(&self) -> Config {
@@ -29,11 +32,13 @@ impl Builder {
     }
 
     /// Resets the builder before [the build].
+    ///
     /// [the build]: Self::build
     pub fn reset(&mut self) {}
 }
 
 /// The assembled value; see [the Builder].
+///
 /// [the Builder]: crate::Builder
 pub struct Config;
 ";
