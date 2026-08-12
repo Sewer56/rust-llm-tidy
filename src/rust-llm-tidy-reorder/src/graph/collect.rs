@@ -70,7 +70,8 @@ impl<'names> ReferenceCollector<'names> {
 
     /// Walk `tree` and record reference edges for later retrieval via [`into_edges`].
     /// `source` is the full source text, used to extract identifier text.
-    /// [`into_edges`]: Self::into_edges
+    ///
+    /// [`into_edges`]: ReferenceCollector::into_edges
     pub fn collect(&mut self, tree: &Tree, source: &[u8]) {
         self.walk(tree.root_node(), source);
     }
