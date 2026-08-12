@@ -63,6 +63,13 @@ exclude:
       - "docs/tables.md"
     rules:
       - tables
+  # docs/links.md documents the links op with literal `[text](url)` example
+  # source forms; `fix_links` hoists those and emits a `[text]: url`
+  # definition, corrupting the doc.
+  - paths:
+      - "docs/links.md"
+    rules:
+      - links
   # rust-llm-tidy-fix's own docs/examples deliberately embed markdown-bracket
   # and fence-heavy text; the links/fences ops rewrite those destructively and
   # break parsing. Only those two ops are disabled; reorder/vis/tables/lints

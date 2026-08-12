@@ -2,7 +2,7 @@
 
 ## What it does
 
-Every eligible inline link `[text]` is replaced with the reference form
+Every eligible inline link `[text](url)` is replaced with the reference form
 `[text]` plus a `[text]: url` definition, by default even when the link appears
 only once. Runs in `.rs` doc comments and `.md` files.
 
@@ -77,5 +77,4 @@ In JSON mode the same records appear on stdout with `severity: "success"`
 ```
 
 See [Change reporting] for the shared format.
-[text]: url
 [Change reporting]: ./lints.md#change-reporting
