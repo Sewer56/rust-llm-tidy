@@ -27,6 +27,10 @@ impl Builder {
     pub fn build(&self) -> Config {
         Config
     }
+
+    /// Resets the builder before [the build].
+    /// [the build]: Self::build
+    pub fn reset(&mut self) {}
 }
 
 /// The assembled value; see [the Builder].
@@ -45,6 +49,9 @@ impl Builder {
     pub fn build(&self) -> Config {
         Config
     }
+
+    /// Resets the builder before [the build](Self::build).
+    pub fn reset(&mut self) {}
 }
 
 /// The assembled value; see [the Builder](crate::Builder).
@@ -314,7 +321,7 @@ fn fix_links_rs_dry_run_reports_intra_doc_records() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(
         stderr.matches("success[FIX]").count(),
-        2,
+        3,
         "one record per hoisted pair: {stderr}"
     );
     assert!(
@@ -324,6 +331,10 @@ fn fix_links_rs_dry_run_reports_intra_doc_records() {
     assert!(
         stderr.contains("`[the Config](crate::Config)` -> `[the Config]`"),
         "Config hoist reported: {stderr}"
+    );
+    assert!(
+        stderr.contains("`[the build](Self::build)` -> `[the build]`"),
+        "Self:: build hoist reported: {stderr}"
     );
 }
 
