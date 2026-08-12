@@ -757,6 +757,27 @@ fn regular_command_hard_fails_on_non_matching_path() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// `--validate` exits non-zero when `links.min_occurrences` is below 1.
+#[test]
+fn validate_fails_on_links_min_occurrences_zero() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(&cfg, "links:\n  min_occurrences: 0\n").unwrap();
+
+    let output = Command::new(binary())
+        .arg("--config")
+        .arg(&cfg)
+        .arg("--validate")
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        !output.status.success(),
+        "--validate should fail on min_occurrences: 0"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// `--validate` exits non-zero on malformed YAML.
 #[test]
 fn validate_fails_on_malformed_yaml() {

@@ -2,7 +2,8 @@
 //!
 //! [`fix_tables`] scans `input` for contiguous pipe-delimited tables and
 //! re-pads every column so the delimiters and cell borders line up. It is
-//! pure text processing with no dependencies, and works on two kinds of input:
+//! pure text processing with no Markdown parser dependency, and works on two
+//! kinds of input:
 //!
 //! - Plain markdown (`.md`): tables are realigned directly.
 //! - Rust doc comments (`.rs`): a leading `///` or `//!` prefix (with optional
@@ -122,15 +123,17 @@ pub fn fix_tables(input: &str) -> Cow<'_, str> {
 }
 
 /// Split `line` into content and terminator (`\n` or `\r\n`).
+#[inline(always)]
 pub(crate) fn split_terminator(line: &str) -> (&str, &str) {
-    if let Some(rest) = line.strip_suffix('\n') {
-        if let Some(content) = rest.strip_suffix('\r') {
-            (content, "\r\n")
-        } else {
-            (rest, "\n")
-        }
+    let bytes = line.as_bytes();
+    let len = bytes.len();
+    if len == 0 || bytes[len - 1] != b'\n' {
+        return (line, "");
+    }
+    if len > 1 && bytes[len - 2] == b'\r' {
+        (&line[..len - 2], "\r\n")
     } else {
-        (line, "")
+        (&line[..len - 1], "\n")
     }
 }
 
@@ -139,19 +142,25 @@ pub(crate) fn split_terminator(line: &str) -> (&str, &str) {
 /// Returns `(prefix, rest)` where `prefix` is the leading indent plus the
 /// marker (`///` or `//!`) and one separating space. Lines without a doc
 /// marker get an empty prefix.
+#[inline(always)]
 pub(crate) fn strip_doc_prefix(line: &str) -> (&str, &str) {
-    let indent_end = line.len() - line.trim_start_matches([' ', '\t']).len();
-    let core = &line[indent_end..];
-    if let Some(rest) = core
-        .strip_prefix("///")
-        .or_else(|| core.strip_prefix("//!"))
-    {
-        let rest = rest.strip_prefix(' ').unwrap_or(rest);
-        let prefix_len = line.len() - rest.len();
-        (&line[..prefix_len], rest)
-    } else {
-        ("", line)
+    let bytes = line.as_bytes();
+    let mut marker = 0usize;
+    while marker < bytes.len() && matches!(bytes[marker], b' ' | b'\t') {
+        marker += 1;
     }
+    if bytes.len() < marker + 3
+        || bytes[marker] != b'/'
+        || bytes[marker + 1] != b'/'
+        || !matches!(bytes[marker + 2], b'/' | b'!')
+    {
+        return ("", line);
+    }
+    let mut body = marker + 3;
+    if bytes.get(body) == Some(&b' ') {
+        body += 1;
+    }
+    (&line[..body], &line[body..])
 }
 
 /// Gather the contiguous run of pipe-bearing lines starting at byte offset

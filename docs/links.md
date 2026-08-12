@@ -1,11 +1,20 @@
-# `links` - hoist repeated inline links
+# `links` - hoist inline links to reference style
 
 ## What it does
 
-When the same inline link `[text](url)` appears more than once in a file,
-all occurrences are replaced with the reference form `[text]`, with a single
-reference definition
-`[text]: url` appended. Runs in `.md` files and `.rs` doc comments.
+Every eligible inline link `[text](url)` is replaced with the reference form
+`[text]` plus a `[text]: url` definition, by default even when the link appears
+only once. Runs in `.rs` doc comments and `.md` files.
+
+- In `.rs` doc comments, each `[text]: url` definition is duplicated inside
+  every doc comment that uses the label, so each comment is self-sufficient
+  and `cargo doc` stays clean.
+- In `.md` files, all definitions collect in one trailing block at the end of
+  the document.
+
+The hoist threshold defaults to 1 and is configurable via `links.min_occurrences`
+(see the `.rust-llm-tidy.yml` header); raising it leaves a link inline
+until it appears that many times.
 
 ## Before
 
@@ -47,7 +56,7 @@ Every run reports each hoisted link it applies (or would apply under
 mode the records print to stderr:
 
 ```text
-README.md: success[FIX]: `[A](http://x)` -> `[A]` (link)
+src/lib.rs: success[FIX]: `[A](http://x)` -> `[A]` (link)
 ```
 
 In JSON mode the same records appear on stdout with `severity: "success"`
@@ -56,7 +65,7 @@ In JSON mode the same records appear on stdout with `severity: "success"`
 ```json
 [
   {
-    "path": "README.md",
+    "path": "src/lib.rs",
     "line": null,
     "severity": "success",
     "code": "FIX",
@@ -67,4 +76,6 @@ In JSON mode the same records appear on stdout with `severity: "success"`
 ]
 ```
 
-See [Change reporting](./lints.md#change-reporting) for the shared format.
+See [Change reporting] for the shared format.
+
+[Change reporting]: ./lints.md#change-reporting

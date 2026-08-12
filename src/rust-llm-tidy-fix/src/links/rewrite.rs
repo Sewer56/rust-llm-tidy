@@ -1,9 +1,35 @@
-//! Two-pass core for [`super::fix_links`]: tally eligible inline links, rewrite
-//! hoisted ones to reference form, and append the trailing `[text]: url`
-//! definitions.
+//! Shared link rewrite helpers plus the counted-threshold tally/rewrite core.
+//! The specialized threshold-one engine reuses link iteration, definition
+//! emission, and replacement-pair construction from this module.
 
-use super::scan::parse_inline_link;
+use super::scan::inline_links;
 use std::collections::{HashMap, HashSet};
+
+/// Append hoisted `[text]: url` definitions at the end of one Rust doc-comment
+/// block, each on a new line carrying the block's `prefix`. Ensures the block
+/// ends with a newline so the first definition starts on its own comment line
+/// (a trailing doc line without a newline still yields separate lines). Block
+/// definitions stay inside the comment so rustdoc still sees a valid,
+/// self-contained comment; they never escape into surrounding code.
+///
+/// See [`needs_blank_before_defs`] for the blank separator line.
+pub(super) fn append_block_definitions(
+    buf: &mut String,
+    prefix: &str,
+    defs: &[(&str, &str)],
+    le: &str,
+) {
+    if !buf.ends_with('\n') {
+        buf.push_str(le);
+    }
+    if needs_blank_before_defs(buf, prefix) {
+        buf.push_str(blank_line_prefix(prefix));
+        buf.push_str(le);
+    }
+    for &(text, url) in defs {
+        append_definition(buf, prefix, text, url, le);
+    }
+}
 
 /// Append hoisted `[text]: url` definitions at the end of `buf`, each on its
 /// own line using the source's dominant line ending (`le`), so a CRLF
@@ -16,11 +42,7 @@ pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &
         buf.push_str(le);
     }
     for &(text, url) in hoist {
-        buf.push('[');
-        buf.push_str(text);
-        buf.push_str("]: ");
-        buf.push_str(url);
-        buf.push_str(le);
+        append_definition(buf, "", text, url, le);
     }
 }
 
@@ -32,11 +54,29 @@ pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &
 /// - `source`: the text whose line endings are tallied.
 ///
 /// Mirrors `rust_llm_tidy_model::line_endings::dominant_line_ending`.
-/// Duplicated to keep this crate zero-dependency; keep in sync.
+/// Duplicated to avoid coupling this crate to the model crate; keep in sync.
 pub(super) fn dominant_line_ending(source: &str) -> &'static str {
     let crlf = source.matches("\r\n").count();
     let lf = source.matches('\n').count().saturating_sub(crlf);
     if crlf > 0 && crlf >= lf { "\r\n" } else { "\n" }
+}
+
+/// Build one externally reported `[text]` -> `[text]` replacement pair.
+/// \[text\]: url
+#[inline]
+pub(super) fn replacement_pair(text: &str, url: &str) -> (String, String) {
+    let mut before = String::with_capacity(text.len() + url.len() + 4);
+    before.push('[');
+    before.push_str(text);
+    before.push_str("](");
+    before.push_str(url);
+    before.push(')');
+
+    let mut after = String::with_capacity(text.len() + 2);
+    after.push('[');
+    after.push_str(text);
+    after.push(']');
+    (before, after)
 }
 
 /// Rewrite eligible inline links in `body` to `[text]`, then re-attach `prefix`
@@ -54,42 +94,29 @@ pub(super) fn rewrite_links<'a>(
     term: &str,
     hoist: &HashSet<(&'a str, &'a str)>,
 ) -> Option<String> {
-    let mut out: Option<String> = None;
-    let mut last = 0usize;
-    let mut i = 0usize;
-    while let Some(rel) = body[i..].find('[') {
-        let open = i + rel;
-        match parse_inline_link(body, open) {
-            Some((text, url, end)) if hoist.contains(&(text, url)) => {
-                let o = out.get_or_insert_with(|| {
-                    let mut s = String::with_capacity(prefix.len() + body.len() + term.len());
-                    s.push_str(prefix);
-                    s
-                });
-                o.push_str(&body[last..open]);
-                o.push('[');
-                o.push_str(text);
-                o.push(']');
-                last = end;
-                i = end;
-            }
-            // Inline link but not hoisted: skip past it. `last` is unchanged so
-            // its verbatim bytes are emitted in a later gap (or trailing copy).
-            Some((_text, _url, end)) => i = end,
-            // Lone `[` that is not an inline link: step one byte (ASCII
-            // boundary) and continue the search.
-            None => i = open + 1,
-        }
-    }
-    let mut o = out?;
-    o.push_str(&body[last..]);
-    o.push_str(term);
-    Some(o)
+    rewrite_links_inner(prefix, body, term, hoist, |_, _| {})
 }
 
-/// Scan `body` for inline links `[text](url)` and tally each `(text, url)`,
-/// recording first-seen order in `order`. Reference-style, autolink, and
-/// whitespace-URL forms never match the inline shape, so they are skipped.
+/// Rewrite eligible inline links and report each hoisted occurrence via
+/// `on_rewrite(text, url)` as it is rewritten. The Rust rewrite path uses this
+/// to collect which definitions belong to the enclosing doc-comment block.
+pub(super) fn rewrite_links_track<'a, F>(
+    prefix: &str,
+    body: &'a str,
+    term: &str,
+    hoist: &HashSet<(&'a str, &'a str)>,
+    on_rewrite: F,
+) -> Option<String>
+where
+    F: FnMut(&'a str, &'a str),
+{
+    rewrite_links_inner(prefix, body, term, hoist, on_rewrite)
+}
+
+/// Scan `body` for inline links (`[`-opening `(url)` forms) and tally each
+/// `(text, url)`, recording first-seen order in `order`. Reference-style,
+/// autolink, and whitespace-URL forms never match the inline shape, so they
+/// are skipped.
 ///
 /// Jumps between `[` bytes with [`str::find`] instead of walking every
 /// character: the cost is O(number of brackets), not O(text). `[` is ASCII, so
@@ -100,20 +127,90 @@ pub(super) fn tally_links<'a>(
     counts: &mut HashMap<(&'a str, &'a str), usize>,
     order: &mut Vec<(&'a str, &'a str)>,
 ) {
-    let mut i = 0usize;
-    while let Some(rel) = body[i..].find('[') {
-        let open = i + rel;
-        if let Some((text, url, end)) = parse_inline_link(body, open) {
-            let prev = counts.get(&(text, url)).copied().unwrap_or(0);
-            if prev == 0 {
-                order.push((text, url));
-            }
-            counts.insert((text, url), prev + 1);
-            i = end;
-            continue;
+    for link in inline_links(body) {
+        let prev = counts.get(&(link.text, link.url)).copied().unwrap_or(0);
+        if prev == 0 {
+            order.push((link.text, link.url));
         }
-        // Not an inline link: step past this `[` (ASCII, so +1 is a char
-        // boundary) and continue the search.
-        i = open + 1;
+        counts.insert((link.text, link.url), prev + 1);
     }
+}
+
+/// Append one `[text]: url` definition with an optional doc-comment prefix.
+#[inline]
+pub(super) fn append_definition(buf: &mut String, prefix: &str, text: &str, url: &str, le: &str) {
+    buf.push_str(prefix);
+    buf.push('[');
+    buf.push_str(text);
+    buf.push_str("]: ");
+    buf.push_str(url);
+    buf.push_str(le);
+}
+
+/// The prefix for a blank separator line: the block prefix minus the single
+/// trailing space [`strip_doc_prefix`] keeps, so the line is `///`, not `/// `.
+///
+/// [`strip_doc_prefix`]: crate::tables::strip_doc_prefix
+#[inline]
+pub(super) fn blank_line_prefix(prefix: &str) -> &str {
+    prefix.strip_suffix(' ').unwrap_or(prefix)
+}
+
+/// True when definitions appended after `text` need a blank comment line first.
+/// `text` is any slice ending in the block's last line: the output buffer for
+/// the counted path, `input[..block.end]` for the specialized one.
+///
+/// CommonMark forbids a link reference definition from interrupting a
+/// paragraph, so glued definitions parse as text and rustdoc reports broken
+/// intra-doc links. Blocks already ending in a blank line or definition are
+/// continued contiguously.
+pub(super) fn needs_blank_before_defs(text: &str, prefix: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut end = bytes.len();
+    if end > 0 && bytes[end - 1] == b'\n' {
+        end -= 1;
+        if end > 0 && bytes[end - 1] == b'\r' {
+            end -= 1;
+        }
+    }
+    let start = memchr::memrchr(b'\n', &bytes[..end]).map_or(0, |nl| nl + 1);
+    let last_line = &text[start..end];
+    let body = last_line
+        .strip_prefix(prefix)
+        .unwrap_or(last_line)
+        .trim_start();
+    !body.is_empty() && !(body.starts_with('[') && body.contains("]:"))
+}
+
+fn rewrite_links_inner<'a, F>(
+    prefix: &str,
+    body: &'a str,
+    term: &str,
+    hoist: &HashSet<(&'a str, &'a str)>,
+    mut on_rewrite: F,
+) -> Option<String>
+where
+    F: FnMut(&'a str, &'a str),
+{
+    let mut out: Option<String> = None;
+    let mut last = 0usize;
+    for link in inline_links(body) {
+        if hoist.contains(&(link.text, link.url)) {
+            let o = out.get_or_insert_with(|| {
+                let mut s = String::with_capacity(prefix.len() + body.len() + term.len());
+                s.push_str(prefix);
+                s
+            });
+            o.push_str(&body[last..link.open]);
+            o.push('[');
+            o.push_str(link.text);
+            o.push(']');
+            on_rewrite(link.text, link.url);
+            last = link.end;
+        }
+    }
+    let mut o = out?;
+    o.push_str(&body[last..]);
+    o.push_str(term);
+    Some(o)
 }

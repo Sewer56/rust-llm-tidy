@@ -1,9 +1,9 @@
 //! Benchmarks for the `fix` link-hoist pass.
 //!
-//! Measures [`fix_links`] over each fixture, mirroring the CLI's `fix_file`
-//! link step (run after fence fixing) minus file I/O. `clean` fixtures are
-//! borrowed back unchanged; `dirty` fixtures trigger inline-link rewriting plus
-//! appended `[text]: url` definitions.
+//! Measures [`fix_links`] over each fixture (the CLI's fix-file link step minus
+//! file I/O). Links hoist to `[text]` with per-comment definitions in `doc/*`,
+//! a trailing block in Markdown; `doc/noop` (reference-style only) is borrowed
+//! back unchanged.
 //!
 //! [`fix_links`]: rust_llm_tidy_fix::fix_links
 

@@ -146,8 +146,9 @@ pub(crate) fn check_file(
 /// single file.
 ///
 /// Reads the source, runs [`fix::fix_tables`], [`fix::fix_fences`], then
-/// [`fix::fix_links`], and writes the result back via [`io::atomic_write`]
-/// unless `--dry-run` is given.
+/// [`fix::fix_links`] (or [`fix::fix_links_with_min`] when
+/// `links_min_occurrences` exceeds 1), and writes the result back via
+/// [`io::atomic_write`] unless `--dry-run` is given.
 ///
 /// Every edit reports a [`changes::Change`] in both dry-run and in-place modes:
 /// fences via the fix crate's anchors; tables as one per-file record
@@ -161,6 +162,7 @@ pub(crate) fn fix_file(
     dry_run: bool,
     enabled: &Option<HashSet<String>>,
     disabled: &HashSet<String>,
+    links_min_occurrences: usize,
 ) -> anyhow::Result<Vec<changes::Change>> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
@@ -189,7 +191,14 @@ pub(crate) fn fix_file(
     }
     if pipeline::op_enabled("links", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        match fix::fix_links(&prior) {
+        // Threshold 1 is the unchanged default: reuse `fix_links`; higher
+        // thresholds delegate to `fix_links_with_min`.
+        let result = if links_min_occurrences <= 1 {
+            fix::fix_links(&prior)
+        } else {
+            fix::fix_links_with_min(&prior, links_min_occurrences)
+        };
+        match result {
             (Cow::Owned(after), pairs) => {
                 change_records.extend(changes::link_changes(&pairs));
                 out = after;

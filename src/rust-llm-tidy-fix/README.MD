@@ -1,12 +1,12 @@
 # rust-llm-tidy-fix
 
-[![Crates.io](https://img.shields.io/crates/v/rust-llm-tidy-fix.svg)][Crates.io]
-[![Docs.rs](https://docs.rs/rust-llm-tidy-fix/badge.svg)][Docs.rs]
-[![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
+[![Crates.io]][crates-io]
+[![Docs.rs]][docs-rs]
+[![CI]][ci-actions]
 
 Realigns misaligned GitHub-Flavored Markdown (GFM) tables, rewrites nested
-fence markers to alternate backticks and tildes, and hoists repeated inline
-links to reference definitions. Pure text processing, zero dependencies.
+fence markers to alternate backticks and tildes, and hoists inline links to
+reference definitions. Pure text processing with no Markdown parser dependency.
 
 ## What it does
 
@@ -52,40 +52,49 @@ inner
 ~~~
 ````
 
-## Repeated inline-link hoisting
+## Inline-link hoisting
 
-[`fix_links`] rewrites inline links `[text](url)` that appear 2+ times in the
-same document to reference-style `[text]` in prose plus a single trailing
-`[text]: url` definition, reducing token count and visual clutter.
+[`fix_links`] rewrites every eligible inline link `[text](url)` to reference
+style `[text]` plus a `[text]: url` definition. The hoist threshold defaults to
+1, tunable via `links.min_occurrences`.
 
-Before (the same pair is repeated verbatim):
+Definitions land inside each doc comment that uses the label (`.rs`), or in one
+trailing block at the end of the document (`.md`).
+
+Markdown - before:
 
 ```text
-See [the docs](https://example.com) for setup and
-[the docs](https://example.com) for troubleshooting.
+See [the docs](https://example.com) for setup.
 ```
 
-After (hoisted to reference style):
+After:
 
 ```text
-See [the docs] for setup and
-[the docs] for troubleshooting.
+See [the docs] for setup.
 
 [the docs]: https://example.com
 ```
 
-The pass skips links that would not benefit or would break:
+Rust doc comment - before:
 
-- **Single-occurrence** inline links (no repetition to hoist).
-- **Autolink** (`<url>`) or whitespace/newline-URL forms.
-- Already **reference-style** links (`[text][ref]`, `[text][]`, `[text]`).
-- Links whose **text** already has a `[text]:` definition.
-- Links inside **fenced code blocks** (reuses the same fence-tracking
-  discipline as `fix_fences`).
+```text
+/// See [the docs](https://example.com) for setup.
+```
 
-The function is idempotent: an already-hoisted document is returned unchanged.
-The hoisted `[text]: url` definitions use the source's dominant line ending
-(`\r\n` or `\n`), so a CRLF document stays CRLF after hoisting.
+After:
+
+```text
+/// See [the docs] for setup.
+///
+/// [the docs]: https://example.com
+```
+
+Never hoisted: autolinks and whitespace-URL forms, already-reference-style
+links, texts with an existing definition, and links inside fenced code blocks
+(same fence discipline as `fix_fences`).
+
+Idempotent: already-hoisted output returns unchanged. Definitions use the
+source's dominant line ending (`\r\n` or `\n`), so CRLF stays CRLF.
 
 ## Usage
 
@@ -120,6 +129,9 @@ Per-column alignment is parsed from the delimiter row:
 
 Licensed under Apache 2.0
 
-[Crates.io]: https://crates.io/crates/rust-llm-tidy-fix
-[Docs.rs]: https://docs.rs/rust-llm-tidy-fix
-[CI]: https://github.com/Sewer56/rust-llm-tidy/actions
+[Crates.io]: https://img.shields.io/crates/v/rust-llm-tidy-fix.svg
+[Docs.rs]: https://docs.rs/rust-llm-tidy-fix/badge.svg
+[CI]: https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg
+[crates-io]: https://crates.io/crates/rust-llm-tidy-fix
+[docs-rs]: https://docs.rs/rust-llm-tidy-fix
+[ci-actions]: https://github.com/Sewer56/rust-llm-tidy/actions

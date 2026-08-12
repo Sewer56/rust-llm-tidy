@@ -19,6 +19,16 @@
 # Rule names (used in include.rules, exclude.rules, --include, --exclude):
 # ops tables, fences, links, reorder, vis, lints - plus lint codes
 # DOC001-DOC006 and TEST001. The `lints` op groups all seven lint codes.
+#
+# The `links` op hoists inline links `[text](url)` to `[text]` + a definition
+# (threshold 1 by default) in `.rs` doc comments and `.md`. Tune it per file:
+#   links:
+#     min_occurrences: 2        # hoist a pair only after this many uses; >= 1.
+#     by_extension: { rs: 2 }   # per-extension override; unknown keys are inert.
+# Effective threshold: by_extension[ext] else min_occurrences else 1.
+
+links:
+  min_occurrences: 1
 
 # Skip ALL processing for files matching any pattern.
 exclude_files:
@@ -42,17 +52,26 @@ exclude:
     rules:
       - links
   # The README has a nested-fence before+after example that `fix_fences`
-  # would corrupt.
+  # would corrupt, and inline-code `[text](url)` examples that `fix_links`
+  # hoists into a bogus `[text]: url` definition. Disable both ops here.
   - paths:
       - "src/rust-llm-tidy-fix/README.MD"
     rules:
       - fences
+      - links
   # docs/tables.md shows a deliberately misaligned "Before" table inside a
   # fenced example; `fix_tables` realigns it, destroying the illustration.
   - paths:
       - "docs/tables.md"
     rules:
       - tables
+  # docs/links.md documents the links op with literal `[text](url)` example
+  # source forms; `fix_links` hoists those and emits a `[text]: url`
+  # definition, corrupting the doc.
+  - paths:
+      - "docs/links.md"
+    rules:
+      - links
   # rust-llm-tidy-fix's own docs/examples deliberately embed markdown-bracket
   # and fence-heavy text; the links/fences ops rewrite those destructively and
   # break parsing. Only those two ops are disabled; reorder/vis/tables/lints

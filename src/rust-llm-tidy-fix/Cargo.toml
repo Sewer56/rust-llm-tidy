@@ -19,7 +19,9 @@ name = "fix"
 harness = false
 
 [dependencies]
+memchr = "2"
+smallvec = "1"
 
 [dev-dependencies]
-# Dev-only: keeps the published crate zero-dependency.
+# Benchmark-only dependency.
 criterion = "0.8"

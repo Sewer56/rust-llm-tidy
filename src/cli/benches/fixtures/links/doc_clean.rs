@@ -1,5 +1,5 @@
 //! Benchmark fixture: laminar packet structure module.
-//! doc tier; clean for fix_links (single-use /// inline links only, borrowed no-op).
+//! doc tier; hoists under always-hoist (single-use /// inline links rewrite to [text] with per-comment definitions).
 //! Source (pinned): https://github.com/TimonPost/laminar/blob/e8ffb26a915bb6ac3c8d959031d63f8a776e763c/src/packet/packet_structure.rs
 //! Embedded verbatim via include_str! in benches/common.rs.
 use std::net::SocketAddr;

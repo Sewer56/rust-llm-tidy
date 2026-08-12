@@ -12,18 +12,18 @@
 //!
 //! # Hard-fail policy
 //!
-//! Any config error - bad YAML, bad glob syntax, unknown rule name, or a
-//! pattern matching zero files - causes [`load_and_compile`] to return `Err`,
-//! which the CLI propagates as a non-zero exit on every command. The
-//! `--validate` flag exists for CI to check the config without processing
-//! files.
+//! Any config error - bad YAML, bad glob syntax, unknown rule name, a
+//! `links` value below 1, or a pattern matching zero files - causes
+//! [`load_and_compile`] to return `Err`, which the CLI propagates as a non-zero
+//! exit on every command. The `--validate` flag exists for CI to check the
+//! config without processing files.
 
 use anyhow::{Context, anyhow, bail};
 use glob::glob as fs_glob;
 use globset::{GlobBuilder, GlobSet};
 use rust_llm_tidy_lint::check::LINT_CODES;
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Fix/operation names that can be disabled/excluded. Kept in sync with the
@@ -45,6 +45,8 @@ pub struct CompiledConfig {
     exclude_groups: Vec<CompiledRuleGroup>,
     /// Stored so the CLI can run the post-processing pass without re-parsing.
     post_process: Vec<PostProcessStep>,
+    /// Link-hoist threshold settings (`None` = always hoist at threshold 1).
+    links: Option<LinkConfig>,
 }
 
 /// Raw serde view of `.rust-llm-tidy.yml`. Paths/globs are relative to the
@@ -67,6 +69,9 @@ pub struct Config {
     /// External commands run on every processed file after rust-llm-tidy.
     #[serde(default)]
     pub post_process: Vec<PostProcessStep>,
+    /// Link-hoist threshold settings. Absent = always hoist (threshold 1).
+    #[serde(default)]
+    pub links: Option<LinkConfig>,
 }
 
 /// Runtime policy for a single file: whether to skip it entirely, which ops are
@@ -88,6 +93,24 @@ pub struct FilePolicy {
 struct CompiledRuleGroup {
     set: GlobSet,
     rules: Vec<String>,
+}
+
+/// Link-hoist threshold settings under the top-level `links` key.
+///
+/// The effective per-file threshold is `by_extension[ext]`, else the global
+/// `min_occurrences`, else 1. Extension keys are free-form so future languages
+/// need no schema change; keys for extensions the pipeline does not process are
+/// inert. Values must be `>= 1`.
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)] // Reject hallucinated `links` sub-keys at parse time.
+pub struct LinkConfig {
+    /// Global minimum occurrences before a pair is hoisted. Default 1 = always
+    /// hoist, unchanged behavior.
+    #[serde(default = "default_one")]
+    pub min_occurrences: usize,
+    /// Per-extension thresholds, applied before the global setting.
+    #[serde(default)]
+    pub by_extension: BTreeMap<String, usize>,
 }
 
 /// One external post-processing step. The processed file path is appended as
@@ -120,6 +143,20 @@ impl CompiledConfig {
     /// per-file loop.
     pub fn post_process_steps(&self) -> &[PostProcessStep] {
         &self.post_process
+    }
+
+    /// Effective link-hoist threshold for files with extension `ext` (no
+    /// leading dot): `by_extension[ext]`, else the global `min_occurrences`,
+    /// else 1. `ext` is matched exactly against the config's extension keys.
+    pub fn links_min_occurrences_for(&self, ext: &str) -> usize {
+        match &self.links {
+            None => 1,
+            Some(links) => links
+                .by_extension
+                .get(ext)
+                .copied()
+                .unwrap_or(links.min_occurrences),
+        }
     }
 
     /// Test-only accessor for the canonicalized config directory. Used by the
@@ -261,6 +298,23 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         bail!("cannot use `include` (whitelist) and `exclude` (blacklist) together; pick one");
     }
 
+    // Link thresholds: every value must be >= 1 (a missing `min_occurrences`
+    // already defaults to 1). A non-integer value fails YAML deserialization
+    // above, so only a literal 0 reaches this check.
+    if let Some(links) = &config.links {
+        if links.min_occurrences < 1 {
+            bail!(
+                "links.min_occurrences must be >= 1, got {}",
+                links.min_occurrences
+            );
+        }
+        for (ext, &count) in &links.by_extension {
+            if count < 1 {
+                bail!("links.by_extension.{ext} must be >= 1, got {count}");
+            }
+        }
+    }
+
     let valid = known_rules();
 
     // Validate rule names + compile include groups.
@@ -333,6 +387,7 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         include_groups,
         exclude_groups,
         post_process: config.post_process,
+        links: config.links,
     })
 }
 
@@ -376,6 +431,12 @@ fn compile_glob_set(patterns: &[String], _config_dir: &Path) -> anyhow::Result<G
     builder
         .build()
         .map_err(|e| anyhow!("failed to build glob set: {e}"))
+}
+
+/// `serde` default helper: an absent `min_occurrences` means threshold 1
+/// (always hoist).
+fn default_one() -> usize {
+    1
 }
 
 #[cfg(test)]
@@ -548,5 +609,107 @@ mod tests {
         for op in ["tables", "fences", "links", "reorder", "vis", "lints"] {
             assert!(rules.iter().any(|r| *r == op), "missing fix/operation {op}");
         }
+    }
+
+    // ── links.min_occurrences + links.by_extension ──
+
+    #[test]
+    fn absent_links_defaults_threshold_to_one_for_any_extension() {
+        let cc = compile("exclude_files: []\n", &[("src/lib.rs", "fn x() {}\n")]);
+        for ext in ["rs", "md", "py"] {
+            assert_eq!(
+                cc.links_min_occurrences_for(ext),
+                1,
+                "absent `links` must hoist at threshold 1 for {ext}"
+            );
+        }
+    }
+
+    #[test]
+    fn global_min_occurrences_applies_to_all_extensions() {
+        let cc = compile("links:\n  min_occurrences: 2\n", &[]);
+        for ext in ["rs", "md"] {
+            assert_eq!(
+                cc.links_min_occurrences_for(ext),
+                2,
+                "global `min_occurrences: 2` must apply to {ext}"
+            );
+        }
+    }
+
+    #[test]
+    fn by_extension_overrides_only_the_named_extension() {
+        let cc = compile(
+            "links:\n  min_occurrences: 4\n  by_extension:\n    rs: 3\n",
+            &[],
+        );
+        assert_eq!(cc.links_min_occurrences_for("rs"), 3, "rs override wins");
+        assert_eq!(
+            cc.links_min_occurrences_for("md"),
+            4,
+            "md falls back to the global threshold"
+        );
+    }
+
+    #[test]
+    fn by_extension_without_global_falls_back_to_one() {
+        // `min_occurrences` is absent, so a non-overridden extension falls back
+        // to its default of 1 while `rs` uses the explicit override.
+        let cc = compile("links:\n  by_extension:\n    rs: 3\n", &[]);
+        assert_eq!(cc.links_min_occurrences_for("rs"), 3);
+        assert_eq!(cc.links_min_occurrences_for("md"), 1);
+    }
+
+    #[test]
+    fn unknown_extension_keys_are_accepted_and_stored() {
+        // Free-form by_extension keys for future/unprocessed languages are
+        // accepted and stored without a parse error.
+        let cc = compile("links:\n  by_extension:\n    py: 2\n    go: 3\n", &[]);
+        assert_eq!(cc.links_min_occurrences_for("py"), 2);
+        assert_eq!(cc.links_min_occurrences_for("go"), 3);
+        assert_eq!(cc.links_min_occurrences_for("rs"), 1, "unlisted falls back");
+    }
+
+    #[test]
+    fn min_occurrences_zero_is_rejected() {
+        let dir = std::env::temp_dir().join(format!("rlt-cfg-min0-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_path = dir.join(".rust-llm-tidy.yml");
+        std::fs::write(&cfg_path, "links:\n  min_occurrences: 0\n").unwrap();
+        let err = load_and_compile(&cfg_path).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("links.min_occurrences must be >= 1"),
+            "zero threshold must be rejected: {err:#}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn by_extension_zero_is_rejected() {
+        let dir = std::env::temp_dir().join(format!("rlt-cfg-bext0-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_path = dir.join(".rust-llm-tidy.yml");
+        std::fs::write(&cfg_path, "links:\n  by_extension:\n    rs: 0\n").unwrap();
+        let err = load_and_compile(&cfg_path).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("links.by_extension.rs must be >= 1"),
+            "zero per-extension threshold must be rejected: {err:#}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn non_integer_links_value_is_rejected() {
+        // A non-integer value fails YAML deserialization before the >= 1 check.
+        let dir = std::env::temp_dir().join(format!("rlt-cfg-nonint-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_path = dir.join(".rust-llm-tidy.yml");
+        std::fs::write(&cfg_path, "links:\n  min_occurrences: many\n").unwrap();
+        let err = load_and_compile(&cfg_path).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("failed to parse YAML config"),
+            "non-integer threshold must fail at parse: {err:#}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

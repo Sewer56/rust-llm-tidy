@@ -71,7 +71,7 @@ Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
 | --------- | --------------------------------------- | ------- | ----------- |
 | `tables`  | align GFM tables                        | yes     | yes         |
 | `fences`  | alternate nested fence delimiters       | yes     | yes         |
-| `links`   | hoist repeated inline links             | yes     | yes         |
+| `links`   | hoist inline links to reference style   | yes     | yes         |
 | `reorder` | canonical item ordering                 | yes     | yes         |
 | `vis`     | narrow bare `pub` in restricted modules | yes     | yes         |
 | `lints`   | run DOC001-DOC006 + TEST001 checks      | no      | yes         |
@@ -106,19 +106,19 @@ Fields:
 In JSON mode the per-line plaintext diagnostics are not printed to stderr.
 Change records and lint findings are folded into the same document.
 `--dry-run` previews the changes without writing them.
-See [change reporting](./docs/lints.md#change-reporting) for the shared record
+See [change reporting] for the shared record
 format.
 
 #### Feature documentation
 
-| Feature                        | Page                                 |
-| ------------------------------ | ------------------------------------ |
-| Reorder                        | [docs/reorder.md](./docs/reorder.md) |
-| Visibility narrowing           | [docs/vis.md](./docs/vis.md)         |
-| Table alignment                | [docs/tables.md](./docs/tables.md)   |
-| Fence delimiters               | [docs/fences.md](./docs/fences.md)   |
-| Link hoisting                  | [docs/links.md](./docs/links.md)     |
-| Lints (DOC001-DOC006, TEST001) | [docs/lints.md](./docs/lints.md)     |
+| Feature                        | Page              |
+| ------------------------------ | ----------------- |
+| Reorder                        | [docs/reorder.md] |
+| Visibility narrowing           | [docs/vis.md]     |
+| Table alignment                | [docs/tables.md]  |
+| Fence delimiters               | [docs/fences.md]  |
+| Link hoisting                  | [docs/links.md]   |
+| Lints (DOC001-DOC006, TEST001) | [docs/lints.md]   |
 
 ### Configuration
 
@@ -169,7 +169,7 @@ rust-llm-tidy --no-config --include tables README.md
 
 #### Opt-in example
 
-[`.rust-llm-tidy.example.yml`](./.rust-llm-tidy.example.yml) shows whitelist
+[`.rust-llm-tidy.example.yml`] shows whitelist
 configuration with feature levels. It is not auto-discovered. Copy it to
 `.rust-llm-tidy.yml`, or pass it explicitly with `--config`.
 
@@ -185,7 +185,7 @@ unexpected lint failures after a tool update.
 - [rust-llm-tidy-reorder]: Reordering library - reference-graph ordering of items into canonical 10-phase order
 - [rust-llm-tidy-vis]: Visibility narrowing - narrows bare `pub` items inside restricted-visibility inline modules to the module's visibility
 - [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/`# Arguments`, placeholder, and test-naming checks
-- [rust-llm-tidy-fix]: Markdown/doc-comment tidying - realigns GFM tables, fixes nested fence delimiters, and hoists repeated inline links in `.rs` doc comments and `.md` files
+- [rust-llm-tidy-fix]: Markdown/doc-comment tidying - realigns GFM tables, fixes nested fence delimiters, and hoists inline links to reference style in `.rs` doc comments and `.md` files
 - [cli]: Unified command-line interface (fix, reorder, vis, lints)
 
 ## Git Hook (optional)
@@ -250,3 +250,11 @@ Licensed under [Apache 2.0].
 [Developer Manual]: https://reloaded-project.github.io/reloaded-templates-rust/manual/
 [Contributing Guide]: https://reloaded-project.github.io/reloaded-templates-rust/manual/#contributing
 [Apache 2.0]: ./LICENSE
+[change reporting]: ./docs/lints.md#change-reporting
+[docs/reorder.md]: ./docs/reorder.md
+[docs/vis.md]: ./docs/vis.md
+[docs/tables.md]: ./docs/tables.md
+[docs/fences.md]: ./docs/fences.md
+[docs/links.md]: ./docs/links.md
+[docs/lints.md]: ./docs/lints.md
+[`.rust-llm-tidy.example.yml`]: ./.rust-llm-tidy.example.yml

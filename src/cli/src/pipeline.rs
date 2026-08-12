@@ -396,7 +396,14 @@ fn process_one(
         || op_enabled("fences", enabled, disabled)
         || op_enabled("links", enabled, disabled)
     {
-        match super::fix_file(path, dry_run, enabled, disabled) {
+        // Resolve the link-hoist threshold by the file's extension (1 when no
+        // config), so a single per-file value reaches fix_file.
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let links_min = match config {
+            Some(c) => c.links_min_occurrences_for(ext),
+            None => 1,
+        };
+        match super::fix_file(path, dry_run, enabled, disabled, links_min) {
             Ok(found) => out.record_changes(path, found, json_mode),
             Err(e) => {
                 out.fail(path, &e);

@@ -12,6 +12,56 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 mod common;
 
+/// The byte-exact output of the fix on [`INTRA_DOC_REPRO_SOURCE`]: every link
+/// is hoisted and a `[text]: url` definition is duplicated inside each comment
+/// that uses it, never at EOF, with a blank comment line before the
+/// definitions.
+const INTRA_DOC_REPRO_FIXED: &str = "\
+/// Assembles the final value by driving [the Builder].
+///
+/// [the Builder]: crate::Builder
+pub struct Builder;
+
+impl Builder {
+    /// Produces [the Config] and hands it to [the Builder].
+    ///
+    /// [the Config]: crate::Config
+    /// [the Builder]: crate::Builder
+    pub fn build(&self) -> Config {
+        Config
+    }
+
+    /// Resets the builder before [the build].
+    ///
+    /// [the build]: Self::build
+    pub fn reset(&mut self) {}
+}
+
+/// The assembled value; see [the Builder].
+///
+/// [the Builder]: crate::Builder
+pub struct Config;
+";
+/// Reported multi-comment intra-doc repro (`Self::`/`crate::`-style links used
+/// across several doc comments) with resolvable targets, so it is doc-build
+/// clean both before and after the fix.
+const INTRA_DOC_REPRO_SOURCE: &str = "\
+/// Assembles the final value by driving [the Builder](crate::Builder).
+pub struct Builder;
+
+impl Builder {
+    /// Produces [the Config](crate::Config) and hands it to [the Builder](crate::Builder).
+    pub fn build(&self) -> Config {
+        Config
+    }
+
+    /// Resets the builder before [the build](Self::build).
+    pub fn reset(&mut self) {}
+}
+
+/// The assembled value; see [the Builder](crate::Builder).
+pub struct Config;
+";
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Default all-pass `fix` on a file where only the table changes: the later
@@ -254,6 +304,100 @@ fn fix_links_in_place_preserves_crlf() {
     );
 }
 
+/// `fix --include links --dry-run` over a `.rs` file with intra-doc links in
+/// several doc comments reports one link record per hoisted pair on stderr and
+/// leaves the file untouched.
+#[test]
+fn fix_links_rs_dry_run_reports_intra_doc_records() {
+    let tmp = temp_file("rs");
+    fs::write(&tmp, INTRA_DOC_REPRO_SOURCE).unwrap();
+
+    let output = run_command(&["--include", "links", "--dry-run"], &tmp);
+    let _ = fs::remove_file(&tmp);
+    assert!(
+        output.status.success(),
+        "fix --dry-run should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "dry-run must not print reconstructed source to stdout"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        stderr.matches("success[FIX]").count(),
+        3,
+        "one record per hoisted pair: {stderr}"
+    );
+    assert!(
+        stderr.contains("`[the Builder](crate::Builder)` -> `[the Builder]`"),
+        "Builder hoist reported: {stderr}"
+    );
+    assert!(
+        stderr.contains("`[the Config](crate::Config)` -> `[the Config]`"),
+        "Config hoist reported: {stderr}"
+    );
+    assert!(
+        stderr.contains("`[the build](Self::build)` -> `[the build]`"),
+        "Self:: build hoist reported: {stderr}"
+    );
+}
+
+/// In-place `fix --include links` on the intra-doc repro produces the
+/// byte-exact per-comment definitions: no definition is emitted at EOF or on a
+/// non-doc-comment line.
+#[test]
+fn fix_links_rs_in_place_produces_per_comment_defs() {
+    let tmp = temp_file("rs");
+    fs::write(&tmp, INTRA_DOC_REPRO_SOURCE).unwrap();
+
+    let output = run_command(&["--include", "links"], &tmp);
+    assert!(
+        output.status.success(),
+        "fix in-place should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(&tmp).unwrap();
+    let _ = fs::remove_file(&tmp);
+    assert_eq!(
+        actual, INTRA_DOC_REPRO_FIXED,
+        "in-place output must match the per-comment reference form"
+    );
+}
+
+/// A scratch crate embedding the intra-doc repro passes
+/// `cargo doc --document-private-items` with `RUSTDOCFLAGS="-D warnings"` after
+/// the fix, proving the per-comment rewritten output is doc-build clean.
+#[test]
+fn fix_links_rs_output_is_doc_build_clean() {
+    let dir = temp_dir();
+    let src = dir.join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(
+        dir.join("Cargo.toml"),
+        "[package]\nname = \"intradoc_repro\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n",
+    )
+    .unwrap();
+    // Embed the fixed (post-op) output so the scratch crate documents the exact
+    // bytes the fix produces.
+    fs::write(src.join("lib.rs"), INTRA_DOC_REPRO_FIXED).unwrap();
+
+    let output = Command::new("cargo")
+        .current_dir(&dir)
+        .env("RUSTDOCFLAGS", "-D warnings")
+        .args(["doc", "--document-private-items"])
+        .output()
+        .unwrap_or_else(|e| panic!("failed to spawn cargo doc: {e}"));
+
+    let _ = fs::remove_dir_all(&dir);
+    assert!(
+        output.status.success(),
+        "cargo doc must be clean on the fixed output:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 /// `fix --dry-run` on `table_md_before.md` reports a change record on stderr
 /// and leaves stdout empty.
 #[test]
@@ -361,6 +505,110 @@ fn fix_recursive_directory_collects_md_and_rs() {
         ".rs file should be fixed"
     );
 
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// With `links.by_extension: { rs: 2 }`, a single-use doc-comment link in a
+/// `.rs` file is below the threshold: it stays byte-unchanged with no link
+/// record (dry-run), while a `.md` file at the default threshold 1 hoists.
+#[test]
+fn links_by_extension_rs_two_leaves_single_use_rs_unchanged() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let rs = dir.join("lib.rs");
+    let rs_source = "/// see [A](http://x) once\npub fn f() {}\n";
+    fs::write(&rs, rs_source).unwrap();
+    let md = dir.join("doc.md");
+    fs::write(&md, "only [A](http://x) once\n").unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(&cfg, "links:\n  by_extension:\n    rs: 2\n").unwrap();
+
+    // The .rs single use is below the rs threshold of 2: no record, unchanged.
+    let output = Command::new(binary())
+        .args([
+            "--config",
+            cfg.to_str().unwrap(),
+            "--include",
+            "links",
+            "--dry-run",
+        ])
+        .arg(&rs)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "dry-run should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("`[A](http://x)` -> `[A]`"),
+        "single-use .rs link below threshold must not hoist: {stderr:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&rs).unwrap(),
+        rs_source,
+        "single-use .rs file must stay byte-unchanged"
+    );
+
+    // The .md file has no rs override, so the default threshold 1 applies and
+    // hoists the single use with a trailing definition.
+    let output = Command::new(binary())
+        .args(["--config", cfg.to_str().unwrap(), "--include", "links"])
+        .arg(&md)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "md in-place should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(&md).unwrap(),
+        "only [A] once\n[A]: http://x\n",
+        ".md at threshold 1 must hoist the single use"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A global `links.min_occurrences: 2` suppresses a single-use `.rs` link.
+#[test]
+fn links_global_min_two_suppresses_single_use_rs() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let rs = dir.join("lib.rs");
+    let rs_source = "/// see [A](http://x) once\npub fn f() {}\n";
+    fs::write(&rs, rs_source).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(&cfg, "links:\n  min_occurrences: 2\n").unwrap();
+
+    let output = Command::new(binary())
+        .args([
+            "--config",
+            cfg.to_str().unwrap(),
+            "--include",
+            "links",
+            "--dry-run",
+        ])
+        .arg(&rs)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "dry-run should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("`[A](http://x)` -> `[A]`"),
+        "single-use .rs link below threshold 2 must not hoist: {stderr:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&rs).unwrap(),
+        rs_source,
+        "single-use .rs file must stay byte-unchanged under min_occurrences: 2"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 

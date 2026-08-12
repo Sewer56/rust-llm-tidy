@@ -12,12 +12,16 @@
 //! - `fixtures/fences/`: named `<size>_<clean|dirty>` (plus `doc_*`) by fence
 //!   outcome (`clean` = no nested same-marker fences, a borrowed no-op).
 //! - `fixtures/links/`: named `<size>_<clean|dirty>` (plus `doc_*`) by link
-//!   outcome (`clean` = no inline link repeated 2+ times, a borrowed no-op).
+//!   outcome. Under always-hoist every eligible inline link hoists (even a
+//!   single use); only already-reference-style inputs (`doc/noop`) are a
+//!   borrowed no-op.
 //!
 //! Each fixture is a real `.rs` file from an open-source project, embedded
 //! verbatim with [`include_str!`] (byte-exact copies, so the benchmarks
 //! reflect realistic parse characteristics). Provenance (repo, path, pinned
-//! permalink) is documented in the header comment of each fixture file.
+//! permalink) is documented in the header comment of each fixture file. The
+//! reference-only `doc/noop` fixture is the exception: it is synthetic and
+//! says so in its header.
 
 use rust_llm_tidy_vis::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
@@ -102,15 +106,12 @@ pub const FENCE_FIXTURES: &[(&str, &str)] = &[
     ("doc/clean", include_str!("fixtures/fences/doc_clean.rs")),
     ("doc/dirty", include_str!("fixtures/fences/doc_dirty.rs")),
 ];
-/// Link-hoist benchmark fixtures: `(name, source)` pairs, named by size tier and
-/// link state.
+/// Link-hoist benchmark fixtures: `(name, source)` pairs, named by link state.
 ///
-/// `clean` fixtures contain inline links but none repeated 2+ times, so
-/// [`fix_links`] returns the input borrowed (a no-op that still exercises the
-/// tally pass). `dirty` fixtures contain at least one `[text](url)` pair seen
-/// 2+ times, which is rewritten to `[text]` plus an appended `[text]: url`
-/// definition. The `doc/*` variants are Rust source with `///`/`//!`
-/// inline links, exercising the doc-prefix stripping path.
+/// Under always-hoist, every eligible inline link (single-use and intra-doc
+/// included) becomes `[text]` plus a `[text]: url` definition - one trailing
+/// block in Markdown, duplicated per using doc comment in `doc/*`. `doc/noop`
+/// (reference-style only) is the borrowed no-op, still exercising the tally.
 ///
 /// [`fix_links`]: rust_llm_tidy_fix::fix_links
 #[allow(dead_code)] // each bench compiles `common` separately, using one set
@@ -129,6 +130,7 @@ pub const LINK_FIXTURES: &[(&str, &str)] = &[
     ("large/dirty", include_str!("fixtures/links/large_dirty.md")),
     ("doc/clean", include_str!("fixtures/links/doc_clean.rs")),
     ("doc/dirty", include_str!("fixtures/links/doc_dirty.rs")),
+    ("doc/noop", include_str!("fixtures/links/doc_noop.rs")),
 ];
 /// Lint benchmark fixtures: `(name, source)` pairs, named by lint state.
 ///

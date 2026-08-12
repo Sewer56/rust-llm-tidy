@@ -752,6 +752,8 @@ name = "rust-llm-tidy-fix"
 version = "0.2.0"
 dependencies = [
  "criterion",
+ "memchr",
+ "smallvec",
 ]
 
 [[package]]

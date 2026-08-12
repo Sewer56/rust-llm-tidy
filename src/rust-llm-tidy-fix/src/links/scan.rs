@@ -2,11 +2,23 @@
 //!
 //! Helpers shared by both the tally and rewrite passes:
 //! - [`step_fence`]: advance the open-fence stack for a doc-prefix-stripped
-//!   line, in lock-step with [`crate::fences::fix_fences`].
+//!   line, reusing [`crate::fences::parse_fence`] for delimiter recognition.
 //! - [`parse_inline_link`]: recognize an inline `[text](url)` link.
 //! - [`definition_text`]: recognize a `[text]: url` reference definition.
+//! - [`doc_block_key`]: classify a raw line into the doc-comment block it
+//!   belongs to, so the rewrite pass keeps per-comment definitions in lock-step
+//!   with per-comment rewrites.
 
 use crate::fences::parse_fence;
+use memchr::memchr_iter;
+
+/// One parsed inline link and its byte span within a line body.
+pub(super) struct InlineLink<'a> {
+    pub(super) text: &'a str,
+    pub(super) url: &'a str,
+    pub(super) open: usize,
+    pub(super) end: usize,
+}
 
 /// If `body` is a reference-definition line (`[text]: url`), return the link
 /// `text`. Otherwise return `None`.
@@ -22,6 +34,108 @@ pub(super) fn definition_text(body: &str) -> Option<&str> {
         Some(text)
     } else {
         None
+    }
+}
+
+/// The doc-comment block key for a line with doc `prefix`.
+///
+/// Lines outside any `///` / `//!` doc comment return `None`. A line belongs
+/// to the doc-comment block identified by `Some(prefix)`, and a block is the
+/// maximal run of consecutive lines sharing the same `Some(prefix)`. The
+/// rewrite pass uses this to keep each rustdoc comment's definitions inside
+/// the same block.
+#[inline]
+pub(super) fn doc_block_key(prefix: &str) -> Option<&str> {
+    if prefix.is_empty() {
+        None
+    } else {
+        Some(prefix)
+    }
+}
+
+/// Iterate accepted inline links in one body, skipping malformed bracket runs.
+#[inline]
+pub(super) fn inline_links(body: &str) -> impl Iterator<Item = InlineLink<'_>> {
+    let mut next = 0usize;
+    std::iter::from_fn(move || {
+        while let Some(relative) = body[next..].find('[') {
+            let open = next + relative;
+            if let Some((text, url, end)) = parse_inline_link(body, open) {
+                next = end;
+                return Some(InlineLink {
+                    text,
+                    url,
+                    open,
+                    end,
+                });
+            }
+            next = open + 1;
+        }
+        None
+    })
+}
+
+/// Iterate line segments as `(start, segment)`, retaining each terminator.
+/// Uses `memchr` so every input byte participates in one vectorized newline
+/// search instead of `str::split`'s character-pattern state machine.
+#[inline]
+pub(super) fn line_segments(input: &str) -> impl Iterator<Item = (usize, &str)> {
+    let mut start = 0usize;
+    memchr_iter(b'\n', input.as_bytes())
+        .map(|newline| newline + 1)
+        .chain(std::iter::once(input.len()))
+        .filter_map(move |end| {
+            if end == start {
+                return None;
+            }
+            let segment_start = start;
+            start = end;
+            Some((segment_start, &input[segment_start..end]))
+        })
+}
+
+/// Update the open-fence stack for the (doc-prefix-stripped) line `body` and
+/// report whether it is a fence delimiter line (an opener or its closer).
+/// Reuses the byte-exact [`crate::fences::parse_fence`] for recognition.
+///
+/// Follows CommonMark block structure: while a fence is open, every other
+/// marker run is code-block content, so a `~~~` line inside a backtick fence
+/// (or a too-short run of the same marker) neither opens nor closes anything
+/// and the original fence still closes on its own delimiter. The stack
+/// therefore holds at most one entry; it stays a `Vec` because callers test it
+/// with `is_empty`.
+///
+/// `body` is the result of [`crate::tables::strip_doc_prefix`], so the `///` /
+/// `//!` marker (and its indent) is already gone; only an optional inner indent
+/// may remain.
+pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
+    // Cheap candidate check: after leading whitespace, a fence must start with
+    // a backtick/tilde run. Non-ASCII-leading lines defer to the full Unicode
+    // `trim_start` (sound superset gate, identical to `fix_fences`'s
+    // `is_fence_candidate`), so typical code/prose lines skip the pipeline.
+    if !is_fence_candidate_body(body) {
+        return false;
+    }
+    let stripped = body.trim_start();
+    let Some((marker, run_len, info)) = parse_fence(stripped) else {
+        return false;
+    };
+    match stack.last() {
+        // A fence is open: only a matching closer (same marker, run at least as
+        // long as the opener's, empty info string) ends it. Anything else is
+        // block content, so the marker run is ignored.
+        Some(&(open_marker, open_len)) => {
+            let is_closer = info.is_empty() && open_marker == marker && open_len <= run_len;
+            if is_closer {
+                stack.pop();
+            }
+            is_closer
+        }
+        // No fence open: this run opens one.
+        None => {
+            stack.push((marker, run_len));
+            true
+        }
     }
 }
 
@@ -74,39 +188,6 @@ pub(super) fn parse_inline_link(body: &str, open: usize) -> Option<(&str, &str, 
         return None;
     }
     Some((text, url, k + 1))
-}
-
-/// Update the open-fence stack for the (doc-prefix-stripped) line `body` and
-/// report whether it is a fence delimiter line. Reuses the byte-exact
-/// [`crate::fences::parse_fence`], so fence skipping stays in lock-step with
-/// `fix_fences`.
-///
-/// `body` is the result of [`crate::tables::strip_doc_prefix`], so the `///` /
-/// `//!` marker (and its indent) is already gone; only an optional inner indent
-/// may remain.
-pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
-    // Cheap candidate check: after leading whitespace, a fence must start with
-    // a backtick/tilde run. Non-ASCII-leading lines defer to the full Unicode
-    // `trim_start` (sound superset gate, identical to `fix_fences`'s
-    // `is_fence_candidate`), so typical code/prose lines skip the pipeline.
-    if !is_fence_candidate_body(body) {
-        return false;
-    }
-    let stripped = body.trim_start();
-    let Some((marker, run_len, info)) = parse_fence(stripped) else {
-        return false;
-    };
-    let is_closer = info.is_empty()
-        && stack
-            .last()
-            .map(|(m, r)| *m == marker && *r <= run_len)
-            .unwrap_or(false);
-    if is_closer {
-        stack.pop();
-    } else {
-        stack.push((marker, run_len));
-    }
-    true
 }
 
 /// Cheaply decide whether the doc-prefix-stripped `body` could begin a fence
