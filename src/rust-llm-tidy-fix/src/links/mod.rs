@@ -386,6 +386,46 @@ after
     }
 
     #[test]
+    fn mismatched_marker_inside_fence_is_content() {
+        // A `~~~` line inside a backtick fence is code-block content, not a
+        // second opener, so the `` ``` `` closer really closes the block and the
+        // link after it is still hoisted.
+        let input = "```text\n~~~\n```\nsee [A](http://x) here\n";
+        let expected = "```text\n~~~\n```\nsee [A] here\n[A]: http://x\n";
+        let (out, pairs) = fix_links(input);
+        assert_eq!(
+            &*out, expected,
+            "fence must close despite the inner `~~~` line"
+        );
+        assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);
+    }
+
+    #[test]
+    fn mismatched_marker_inside_doc_fence_is_content() {
+        // Same case inside a `///` comment: the doc fence closes and the link
+        // after it hoists with an in-comment definition.
+        let input = "/// ```text\n/// ~~~\n/// ```\n/// see [A](http://x) here\n";
+        let expected = "/// ```text\n/// ~~~\n/// ```\n/// see [A] here\n///\n/// [A]: http://x\n";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected);
+    }
+
+    #[test]
+    fn short_same_marker_run_inside_fence_is_content() {
+        // A shorter run of the opener's marker cannot close it, and must not
+        // open a nested block either; the 4-backtick closer still closes.
+        let input = "````text\n```\nsee [A](http://x) inside\n````\nsee [B](http://y) after\n";
+        let expected =
+            "````text\n```\nsee [A](http://x) inside\n````\nsee [B] after\n[B]: http://y\n";
+        let (out, pairs) = fix_links(input);
+        assert_eq!(
+            &*out, expected,
+            "only the link outside the fence should hoist"
+        );
+        assert_eq!(pairs, [("[B](http://y)".into(), "[B]".into())]);
+    }
+
+    #[test]
     fn autolink_and_whitespace_url_untouched() {
         // Acceptance case (d): `<...>` autolink and whitespace URLs are skipped.
         let input = "see [A](<http://x>) and [B](http://x y)\n";
@@ -637,6 +677,9 @@ pub fn f() {
             "text\n```rust\n[A](u) and [A](u)\n```\nafter\n",
             "~~~\n[A](u) [A](u)\n~~~\n",
             "~~~text\n```rust\n[A](u) [A](u)\n```\n~~~\n",
+            "```text\n~~~\n```\n[A](u) after\n",
+            "````text\n```\n[A](u) inside\n````\n[B](v) after\n",
+            "/// ```text\n/// ~~~\n/// ```\n/// [A](u) after\n",
             "/// see [A](u) and [A](u)\n",
             "//! [A](u) [A](u)\n",
             "/// [A](u) once only\n",

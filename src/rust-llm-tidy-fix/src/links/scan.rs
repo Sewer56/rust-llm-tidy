@@ -2,7 +2,7 @@
 //!
 //! Helpers shared by both the tally and rewrite passes:
 //! - [`step_fence`]: advance the open-fence stack for a doc-prefix-stripped
-//!   line, in lock-step with [`crate::fences::fix_fences`].
+//!   line, reusing [`crate::fences::parse_fence`] for delimiter recognition.
 //! - [`parse_inline_link`]: recognize an inline `[text](url)` link.
 //! - [`definition_text`]: recognize a `[text]: url` reference definition.
 //! - [`doc_block_key`]: classify a raw line into the doc-comment block it
@@ -95,9 +95,15 @@ pub(super) fn line_segments(input: &str) -> impl Iterator<Item = (usize, &str)> 
 }
 
 /// Update the open-fence stack for the (doc-prefix-stripped) line `body` and
-/// report whether it is a fence delimiter line. Reuses the byte-exact
-/// [`crate::fences::parse_fence`], so fence skipping stays in lock-step with
-/// `fix_fences`.
+/// report whether it is a fence delimiter line (an opener or its closer).
+/// Reuses the byte-exact [`crate::fences::parse_fence`] for recognition.
+///
+/// Follows CommonMark block structure: while a fence is open, every other
+/// marker run is code-block content, so a `~~~` line inside a backtick fence
+/// (or a too-short run of the same marker) neither opens nor closes anything
+/// and the original fence still closes on its own delimiter. The stack
+/// therefore holds at most one entry; it stays a `Vec` because callers test it
+/// with `is_empty`.
 ///
 /// `body` is the result of [`crate::tables::strip_doc_prefix`], so the `///` /
 /// `//!` marker (and its indent) is already gone; only an optional inner indent
@@ -114,17 +120,23 @@ pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
     let Some((marker, run_len, info)) = parse_fence(stripped) else {
         return false;
     };
-    let is_closer = info.is_empty()
-        && stack
-            .last()
-            .map(|(m, r)| *m == marker && *r <= run_len)
-            .unwrap_or(false);
-    if is_closer {
-        stack.pop();
-    } else {
-        stack.push((marker, run_len));
+    match stack.last() {
+        // A fence is open: only a matching closer (same marker, run at least as
+        // long as the opener's, empty info string) ends it. Anything else is
+        // block content, so the marker run is ignored.
+        Some(&(open_marker, open_len)) => {
+            let is_closer = info.is_empty() && open_marker == marker && open_len <= run_len;
+            if is_closer {
+                stack.pop();
+            }
+            is_closer
+        }
+        // No fence open: this run opens one.
+        None => {
+            stack.push((marker, run_len));
+            true
+        }
     }
-    true
 }
 
 /// If `body` at byte index `open` (`[`) opens an inline link `[text](url)`,
