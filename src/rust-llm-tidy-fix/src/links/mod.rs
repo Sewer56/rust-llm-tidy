@@ -66,6 +66,10 @@ mod scan;
 /// intra-doc included, becomes `[text]` plus a `[text]: url` definition.
 /// Returns the rewritten text and one `(before, after)` substitution per
 /// hoisted link; borrows `input` back with no pairs when nothing is eligible.
+///
+/// # Arguments
+///
+/// - `input` - the Markdown or Rust source to rewrite.
 pub fn fix_links(input: &str) -> (Cow<'_, str>, Vec<(String, String)>) {
     fast::fix_links_one(input)
 }
@@ -77,6 +81,12 @@ pub fn fix_links(input: &str) -> (Cow<'_, str>, Vec<(String, String)>) {
 /// `min_occurrences = 1` reproduces [`fix_links`] exactly. Returns the rewritten
 /// text plus one `(before, after)` substitution per hoisted link, borrowing
 /// `input` back with no pairs when nothing is eligible.
+///
+/// # Arguments
+///
+/// - `input` - the Markdown or Rust source to rewrite.
+/// - `min_occurrences` - how often a `(text, url)` pair must occur to hoist;
+///   values below 1 are treated as 1.
 pub fn fix_links_with_min(
     input: &str,
     min_occurrences: usize,
