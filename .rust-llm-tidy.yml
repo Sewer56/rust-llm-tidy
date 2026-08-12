@@ -52,11 +52,13 @@ exclude:
     rules:
       - links
   # The README has a nested-fence before+after example that `fix_fences`
-  # would corrupt.
+  # would corrupt, and inline-code `[text](url)` examples that `fix_links`
+  # hoists into a bogus `[text]: url` definition. Disable both ops here.
   - paths:
       - "src/rust-llm-tidy-fix/README.MD"
     rules:
       - fences
+      - links
   # docs/tables.md shows a deliberately misaligned "Before" table inside a
   # fenced example; `fix_tables` realigns it, destroying the illustration.
   - paths:
