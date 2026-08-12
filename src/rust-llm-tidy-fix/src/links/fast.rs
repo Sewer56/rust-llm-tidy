@@ -77,6 +77,7 @@ fn rewrite_markdown<'a>(input: &'a str, scan: Scan<'a>) -> (Cow<'a, str>, Vec<(S
         return (Cow::Borrowed(input), Vec::new());
     }
 
+    // Size references and definitions before allocating.
     let mut capacity = input.len();
     if !input.ends_with('\n') {
         capacity += scan.line_ending.len();
@@ -135,6 +136,7 @@ fn rewrite_rust<'a>(input: &'a str, mut scan: Scan<'a>) -> (Cow<'a, str>, Vec<(S
     let mut definitions: SmallVec<[usize; 24]> = SmallVec::new();
     let mut capacity = input.len();
 
+    // Plan per-block definitions and output size.
     for occurrence in &scan.occurrences {
         if occurrence.block == NO_BLOCK {
             continue;
@@ -147,9 +149,11 @@ fn rewrite_rust<'a>(input: &'a str, mut scan: Scan<'a>) -> (Cow<'a, str>, Vec<(S
         capacity -= url.len() + 2;
 
         if candidate.last_block == NO_BLOCK {
+            // Report each label once.
             hoisted.push(occurrence.candidate);
         }
         if candidate.last_block != occurrence.block {
+            // Add one definition per label per block.
             candidate.last_block = occurrence.block;
             let block = &mut scan.blocks[occurrence.block];
             if block.definition_start == block.definition_end {
@@ -177,6 +181,7 @@ fn rewrite_rust<'a>(input: &'a str, mut scan: Scan<'a>) -> (Cow<'a, str>, Vec<(S
     let mut output = String::with_capacity(capacity);
     let mut last = 0usize;
     let mut occurrence_index = 0usize;
+    // Merge ordered occurrences and blocks in one pass.
     for (block_index, block) in scan.blocks.iter().enumerate() {
         while occurrence_index < scan.occurrences.len() {
             let occurrence = &scan.occurrences[occurrence_index];
@@ -282,6 +287,7 @@ fn scan(input: &str) -> Scan<'_> {
                 blocks[current_block].end = segment_end;
             }
         } else {
+            // Wait for a link before creating a doc block.
             current_prefix = Some(prefix);
             current_block = NO_BLOCK;
         }
@@ -301,6 +307,7 @@ fn scan(input: &str) -> Scan<'_> {
 
         if let Some(text) = definition_text(body) {
             let candidate = candidate_for_definition(text, &mut candidates);
+            // Disqualify labels with existing definitions.
             candidates[candidate].url = None;
         }
         let mut i = 0usize;
@@ -308,6 +315,7 @@ fn scan(input: &str) -> Scan<'_> {
             let open = i + relative;
             if let Some((text, url, end)) = parse_inline_link(body, open) {
                 if !prefix.is_empty() && current_block == NO_BLOCK {
+                    // Start a doc block at its first inline link.
                     current_block = blocks.len();
                     blocks.push(DocBlock {
                         prefix,
@@ -369,6 +377,7 @@ fn candidate_for_link<'a>(
         .iter()
         .position(|candidate| candidate.text == text)
     {
+        // Keep conflicting targets inline.
         return (candidates[index].url == Some(url)).then_some(index);
     }
     let index = candidates.len();
