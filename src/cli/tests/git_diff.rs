@@ -5,12 +5,12 @@
 //! binary with no path args. Guarded by `git_available()` so dev machines
 //! without git skip rather than fail (CI always has git).
 
+use common::binary;
 use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod common;
-use common::binary;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 

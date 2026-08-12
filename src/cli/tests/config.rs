@@ -7,12 +7,12 @@
 //! `--config <path>`. Existing tests use `--no-config` (see `fix.rs`), so the
 //! repo-root sample config never interferes here.
 
+use common::binary;
 use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod common;
-use common::binary;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
