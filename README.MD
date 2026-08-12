@@ -111,14 +111,14 @@ format.
 
 #### Feature documentation
 
-| Feature                        | Page                                 |
-| ------------------------------ | ------------------------------------ |
+| Feature                        | Page              |
+| ------------------------------ | ----------------- |
 | Reorder                        | [docs/reorder.md] |
-| Visibility narrowing           | [docs/vis.md]         |
-| Table alignment                | [docs/tables.md]   |
-| Fence delimiters               | [docs/fences.md]   |
-| Link hoisting                  | [docs/links.md]     |
-| Lints (DOC001-DOC006, TEST001) | [docs/lints.md]     |
+| Visibility narrowing           | [docs/vis.md]     |
+| Table alignment                | [docs/tables.md]  |
+| Fence delimiters               | [docs/fences.md]  |
+| Link hoisting                  | [docs/links.md]   |
+| Lints (DOC001-DOC006, TEST001) | [docs/lints.md]   |
 
 ### Configuration
 
