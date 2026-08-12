@@ -20,47 +20,6 @@ pub(super) struct InlineLink<'a> {
     pub(super) end: usize,
 }
 
-/// Iterate line segments as `(start, segment)`, retaining each terminator.
-/// Uses `memchr` so every input byte participates in one vectorized newline
-/// search instead of `str::split`'s character-pattern state machine.
-#[inline]
-pub(super) fn line_segments(input: &str) -> impl Iterator<Item = (usize, &str)> {
-    let mut start = 0usize;
-    memchr_iter(b'\n', input.as_bytes())
-        .map(|newline| newline + 1)
-        .chain(std::iter::once(input.len()))
-        .filter_map(move |end| {
-            if end == start {
-                return None;
-            }
-            let segment_start = start;
-            start = end;
-            Some((segment_start, &input[segment_start..end]))
-        })
-}
-
-/// Iterate accepted inline links in one body, skipping malformed bracket runs.
-#[inline]
-pub(super) fn inline_links(body: &str) -> impl Iterator<Item = InlineLink<'_>> {
-    let mut next = 0usize;
-    std::iter::from_fn(move || {
-        while let Some(relative) = body[next..].find('[') {
-            let open = next + relative;
-            if let Some((text, url, end)) = parse_inline_link(body, open) {
-                next = end;
-                return Some(InlineLink {
-                    text,
-                    url,
-                    open,
-                    end,
-                });
-            }
-            next = open + 1;
-        }
-        None
-    })
-}
-
 /// If `body` is a reference-definition line (`[text]: url`), return the link
 /// `text`. Otherwise return `None`.
 #[inline]
@@ -92,6 +51,80 @@ pub(super) fn doc_block_key(prefix: &str) -> Option<&str> {
     } else {
         Some(prefix)
     }
+}
+
+/// Iterate accepted inline links in one body, skipping malformed bracket runs.
+#[inline]
+pub(super) fn inline_links(body: &str) -> impl Iterator<Item = InlineLink<'_>> {
+    let mut next = 0usize;
+    std::iter::from_fn(move || {
+        while let Some(relative) = body[next..].find('[') {
+            let open = next + relative;
+            if let Some((text, url, end)) = parse_inline_link(body, open) {
+                next = end;
+                return Some(InlineLink {
+                    text,
+                    url,
+                    open,
+                    end,
+                });
+            }
+            next = open + 1;
+        }
+        None
+    })
+}
+
+/// Iterate line segments as `(start, segment)`, retaining each terminator.
+/// Uses `memchr` so every input byte participates in one vectorized newline
+/// search instead of `str::split`'s character-pattern state machine.
+#[inline]
+pub(super) fn line_segments(input: &str) -> impl Iterator<Item = (usize, &str)> {
+    let mut start = 0usize;
+    memchr_iter(b'\n', input.as_bytes())
+        .map(|newline| newline + 1)
+        .chain(std::iter::once(input.len()))
+        .filter_map(move |end| {
+            if end == start {
+                return None;
+            }
+            let segment_start = start;
+            start = end;
+            Some((segment_start, &input[segment_start..end]))
+        })
+}
+
+/// Update the open-fence stack for the (doc-prefix-stripped) line `body` and
+/// report whether it is a fence delimiter line. Reuses the byte-exact
+/// [`crate::fences::parse_fence`], so fence skipping stays in lock-step with
+/// `fix_fences`.
+///
+/// `body` is the result of [`crate::tables::strip_doc_prefix`], so the `///` /
+/// `//!` marker (and its indent) is already gone; only an optional inner indent
+/// may remain.
+pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
+    // Cheap candidate check: after leading whitespace, a fence must start with
+    // a backtick/tilde run. Non-ASCII-leading lines defer to the full Unicode
+    // `trim_start` (sound superset gate, identical to `fix_fences`'s
+    // `is_fence_candidate`), so typical code/prose lines skip the pipeline.
+    if !is_fence_candidate_body(body) {
+        return false;
+    }
+    let stripped = body.trim_start();
+    let Some((marker, run_len, info)) = parse_fence(stripped) else {
+        return false;
+    };
+    let is_closer = info.is_empty()
+        && stack
+            .last()
+            .map(|(m, r)| *m == marker && *r <= run_len)
+            .unwrap_or(false);
+    if is_closer {
+        stack.pop();
+    } else {
+        stack.push((marker, run_len));
+    }
+    true
 }
 
 /// If `body` at byte index `open` (`[`) opens an inline link `[text](url)`,
@@ -143,39 +176,6 @@ pub(super) fn parse_inline_link(body: &str, open: usize) -> Option<(&str, &str, 
         return None;
     }
     Some((text, url, k + 1))
-}
-
-/// Update the open-fence stack for the (doc-prefix-stripped) line `body` and
-/// report whether it is a fence delimiter line. Reuses the byte-exact
-/// [`crate::fences::parse_fence`], so fence skipping stays in lock-step with
-/// `fix_fences`.
-///
-/// `body` is the result of [`crate::tables::strip_doc_prefix`], so the `///` /
-/// `//!` marker (and its indent) is already gone; only an optional inner indent
-/// may remain.
-pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
-    // Cheap candidate check: after leading whitespace, a fence must start with
-    // a backtick/tilde run. Non-ASCII-leading lines defer to the full Unicode
-    // `trim_start` (sound superset gate, identical to `fix_fences`'s
-    // `is_fence_candidate`), so typical code/prose lines skip the pipeline.
-    if !is_fence_candidate_body(body) {
-        return false;
-    }
-    let stripped = body.trim_start();
-    let Some((marker, run_len, info)) = parse_fence(stripped) else {
-        return false;
-    };
-    let is_closer = info.is_empty()
-        && stack
-            .last()
-            .map(|(m, r)| *m == marker && *r <= run_len)
-            .unwrap_or(false);
-    if is_closer {
-        stack.pop();
-    } else {
-        stack.push((marker, run_len));
-    }
-    true
 }
 
 /// Cheaply decide whether the doc-prefix-stripped `body` could begin a fence

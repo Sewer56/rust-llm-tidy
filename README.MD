@@ -106,19 +106,19 @@ Fields:
 In JSON mode the per-line plaintext diagnostics are not printed to stderr.
 Change records and lint findings are folded into the same document.
 `--dry-run` previews the changes without writing them.
-See [change reporting](./docs/lints.md#change-reporting) for the shared record
+See [change reporting] for the shared record
 format.
 
 #### Feature documentation
 
 | Feature                        | Page                                 |
 | ------------------------------ | ------------------------------------ |
-| Reorder                        | [docs/reorder.md](./docs/reorder.md) |
-| Visibility narrowing           | [docs/vis.md](./docs/vis.md)         |
-| Table alignment                | [docs/tables.md](./docs/tables.md)   |
-| Fence delimiters               | [docs/fences.md](./docs/fences.md)   |
-| Link hoisting                  | [docs/links.md](./docs/links.md)     |
-| Lints (DOC001-DOC006, TEST001) | [docs/lints.md](./docs/lints.md)     |
+| Reorder                        | [docs/reorder.md] |
+| Visibility narrowing           | [docs/vis.md]         |
+| Table alignment                | [docs/tables.md]   |
+| Fence delimiters               | [docs/fences.md]   |
+| Link hoisting                  | [docs/links.md]     |
+| Lints (DOC001-DOC006, TEST001) | [docs/lints.md]     |
 
 ### Configuration
 
@@ -169,7 +169,7 @@ rust-llm-tidy --no-config --include tables README.md
 
 #### Opt-in example
 
-[`.rust-llm-tidy.example.yml`](./.rust-llm-tidy.example.yml) shows whitelist
+[`.rust-llm-tidy.example.yml`] shows whitelist
 configuration with feature levels. It is not auto-discovered. Copy it to
 `.rust-llm-tidy.yml`, or pass it explicitly with `--config`.
 
@@ -250,3 +250,11 @@ Licensed under [Apache 2.0].
 [Developer Manual]: https://reloaded-project.github.io/reloaded-templates-rust/manual/
 [Contributing Guide]: https://reloaded-project.github.io/reloaded-templates-rust/manual/#contributing
 [Apache 2.0]: ./LICENSE
+[change reporting]: ./docs/lints.md#change-reporting
+[docs/reorder.md]: ./docs/reorder.md
+[docs/vis.md]: ./docs/vis.md
+[docs/tables.md]: ./docs/tables.md
+[docs/fences.md]: ./docs/fences.md
+[docs/links.md]: ./docs/links.md
+[docs/lints.md]: ./docs/lints.md
+[`.rust-llm-tidy.example.yml`]: ./.rust-llm-tidy.example.yml

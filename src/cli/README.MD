@@ -99,7 +99,7 @@ Fields:
 In JSON mode the plaintext per-line diagnostics are not printed to stderr.
 `--output-mode json` combines freely with `--dry-run`; the would-be changes are
 folded into the same document. See
-[dry-run change reporting](../../docs/lints.md#change-reporting) for
+[dry-run change reporting] for
 the shared record format.
 
 ### Operations
@@ -123,7 +123,7 @@ repository README for the full schema.
 
 The algorithm orders top-level items across phases. Within most phases, an item
 comes before any item it references; alphabetical order breaks ties. See
-[docs/reorder.md](../../docs/reorder.md) for an annotated 10-phase example.
+[docs/reorder.md] for an annotated 10-phase example.
 
 ## License
 
@@ -133,3 +133,5 @@ Licensed under Apache 2.0
 [Docs.rs]: https://docs.rs/rust-llm-tidy-cli
 [CI]: https://github.com/Sewer56/rust-llm-tidy/actions
 [rust-llm-tidy-reorder]: ../rust-llm-tidy-reorder/README.MD
+[dry-run change reporting]: ../../docs/lints.md#change-reporting
+[docs/reorder.md]: ../../docs/reorder.md

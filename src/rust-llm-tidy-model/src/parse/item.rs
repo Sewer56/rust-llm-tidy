@@ -345,8 +345,9 @@ impl SourceItem {
 
 impl ItemKind {
     /// The stable `&'static str` form of this kind (e.g. `"fn"`), shared by
-    /// [`Display`](fmt::Display) and structured change/diagnostic reporting so
+    /// [`Display`] and structured change/diagnostic reporting so
     /// records can hold the kind without an owned allocation.
+    /// [`Display`]: fmt::Display
     pub fn as_str(&self) -> &'static str {
         match self {
             ItemKind::Fn => "fn",

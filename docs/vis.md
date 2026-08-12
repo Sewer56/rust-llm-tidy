@@ -62,4 +62,5 @@ In JSON mode the records appear on stdout with `severity: "success"`:
 ]
 ```
 
-See [Change reporting](./lints.md#change-reporting) for the shared format.
+See [Change reporting] for the shared format.
+[Change reporting]: ./lints.md#change-reporting

@@ -1,8 +1,8 @@
 # rust-llm-tidy-fix
 
-[![Crates.io](https://img.shields.io/crates/v/rust-llm-tidy-fix.svg)][Crates.io]
-[![Docs.rs](https://docs.rs/rust-llm-tidy-fix/badge.svg)][Docs.rs]
-[![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
+[![Crates.io]][Crates.io]
+[![Docs.rs]][Docs.rs]
+[![CI]][CI]
 
 Realigns misaligned GitHub-Flavored Markdown (GFM) tables, rewrites nested
 fence markers to alternate backticks and tildes, and hoists inline links to
@@ -131,3 +131,6 @@ Licensed under Apache 2.0
 [Crates.io]: https://crates.io/crates/rust-llm-tidy-fix
 [Docs.rs]: https://docs.rs/rust-llm-tidy-fix
 [CI]: https://github.com/Sewer56/rust-llm-tidy/actions
+[Crates.io]: https://img.shields.io/crates/v/rust-llm-tidy-fix.svg
+[Docs.rs]: https://docs.rs/rust-llm-tidy-fix/badge.svg
+[CI]: https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg

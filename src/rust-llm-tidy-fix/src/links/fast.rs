@@ -14,9 +14,19 @@ use std::borrow::Cow;
 
 const NO_BLOCK: usize = usize::MAX;
 
+struct Scan<'a> {
+    candidates: Candidates<'a>,
+    occurrences: Occurrences,
+    blocks: DocBlocks<'a>,
+    rust_context: bool,
+    line_ending: &'static str,
+}
+
 type Candidates<'a> = SmallVec<[Candidate<'a>; 16]>;
-type Occurrences = SmallVec<[Occurrence; 24]>;
+
 type DocBlocks<'a> = SmallVec<[DocBlock<'a>; 2]>;
+
+type Occurrences = SmallVec<[Occurrence; 24]>;
 
 struct Candidate<'a> {
     text: &'a str,
@@ -27,12 +37,6 @@ struct Candidate<'a> {
     last_block: usize,
 }
 
-struct Occurrence {
-    start: usize,
-    candidate: usize,
-    block: usize,
-}
-
 struct DocBlock<'a> {
     prefix: &'a str,
     end: usize,
@@ -40,12 +44,10 @@ struct DocBlock<'a> {
     definition_end: usize,
 }
 
-struct Scan<'a> {
-    candidates: Candidates<'a>,
-    occurrences: Occurrences,
-    blocks: DocBlocks<'a>,
-    rust_context: bool,
-    line_ending: &'static str,
+struct Occurrence {
+    start: usize,
+    candidate: usize,
+    block: usize,
 }
 
 /// Hoist every eligible inline link while parsing each occurrence only once.
@@ -62,140 +64,6 @@ pub(super) fn fix_links_one(input: &str) -> (Cow<'_, str>, Vec<(String, String)>
     } else {
         rewrite_markdown(input, scan)
     }
-}
-
-/// Parse non-fenced inline links, existing definitions, doc blocks, and line
-/// endings in one line pass. Candidate indices replace pair hashes downstream.
-fn scan(input: &str) -> Scan<'_> {
-    let mut candidates = Candidates::new();
-    let mut occurrences = Occurrences::new();
-    let mut blocks = DocBlocks::new();
-    let mut current_prefix: Option<&str> = None;
-    let mut current_block = NO_BLOCK;
-    let mut fence_stack = Vec::new();
-    let mut rust_context = false;
-    let mut crlf = 0usize;
-    let mut lf = 0usize;
-    for (segment_start, segment) in line_segments(input) {
-        let segment_end = segment_start + segment.len();
-        let (content, term) = split_terminator(segment);
-        if term.len() == 2 {
-            crlf += 1;
-        } else if term.len() == 1 {
-            lf += 1;
-        }
-
-        let (prefix, body) = strip_doc_prefix(content);
-        if prefix.is_empty() {
-            current_prefix = None;
-            current_block = NO_BLOCK;
-        } else if current_prefix == Some(prefix) {
-            if current_block != NO_BLOCK {
-                blocks[current_block].end = segment_end;
-            }
-        } else {
-            current_prefix = Some(prefix);
-            current_block = NO_BLOCK;
-        }
-
-        let fence_delimiter = step_fence(&mut fence_stack, body);
-        if !prefix.is_empty() && (fence_delimiter || fence_stack.is_empty()) {
-            rust_context = true;
-        }
-        if fence_delimiter || !fence_stack.is_empty() {
-            continue;
-        }
-
-        let body_start = segment_start + prefix.len();
-        if !body.contains('[') {
-            continue;
-        }
-
-        if let Some(text) = definition_text(body) {
-            let candidate = candidate_for_definition(text, &mut candidates);
-            candidates[candidate].url = None;
-        }
-        let mut i = 0usize;
-        while let Some(relative) = body[i..].find('[') {
-            let open = i + relative;
-            if let Some((text, url, end)) = parse_inline_link(body, open) {
-                if !prefix.is_empty() && current_block == NO_BLOCK {
-                    current_block = blocks.len();
-                    blocks.push(DocBlock {
-                        prefix,
-                        end: segment_end,
-                        definition_start: 0,
-                        definition_end: 0,
-                    });
-                }
-                if let Some(candidate) = candidate_for_link(text, url, &mut candidates) {
-                    candidates[candidate].occurrences += 1;
-                    occurrences.push(Occurrence {
-                        start: body_start + open,
-                        candidate,
-                        block: current_block,
-                    });
-                }
-                i = end;
-            } else {
-                i = open + 1;
-            }
-        }
-    }
-
-    let line_ending = if crlf > 0 && crlf >= lf { "\r\n" } else { "\n" };
-    Scan {
-        candidates,
-        occurrences,
-        blocks,
-        rust_context,
-        line_ending,
-    }
-}
-
-#[inline]
-fn candidate_for_definition<'a>(text: &'a str, candidates: &mut Candidates<'a>) -> usize {
-    if let Some(index) = candidates
-        .iter()
-        .position(|candidate| candidate.text == text)
-    {
-        return index;
-    }
-    let index = candidates.len();
-    candidates.push(Candidate {
-        text,
-        url: None,
-        occurrences: 0,
-        last_block: NO_BLOCK,
-    });
-    index
-}
-
-#[inline]
-fn candidate_for_link<'a>(
-    text: &'a str,
-    url: &'a str,
-    candidates: &mut Candidates<'a>,
-) -> Option<usize> {
-    if let Some(index) = candidates
-        .iter()
-        .position(|candidate| candidate.text == text)
-    {
-        return (candidates[index].url == Some(url)).then_some(index);
-    }
-    let index = candidates.len();
-    candidates.push(Candidate {
-        text,
-        url: Some(url),
-        occurrences: 0,
-        last_block: NO_BLOCK,
-    });
-    Some(index)
-}
-
-#[inline]
-fn is_eligible(scan: &Scan<'_>, occurrence: &Occurrence) -> bool {
-    scan.candidates[occurrence.candidate].url.is_some()
 }
 
 /// Rewrite document-scoped Markdown links by copying gaps between saved spans.
@@ -377,4 +245,138 @@ fn build_pairs<'a>(
         pairs.push(replacement_pair(candidate.text, url));
     }
     pairs
+}
+
+#[inline]
+fn is_eligible(scan: &Scan<'_>, occurrence: &Occurrence) -> bool {
+    scan.candidates[occurrence.candidate].url.is_some()
+}
+
+/// Parse non-fenced inline links, existing definitions, doc blocks, and line
+/// endings in one line pass. Candidate indices replace pair hashes downstream.
+fn scan(input: &str) -> Scan<'_> {
+    let mut candidates = Candidates::new();
+    let mut occurrences = Occurrences::new();
+    let mut blocks = DocBlocks::new();
+    let mut current_prefix: Option<&str> = None;
+    let mut current_block = NO_BLOCK;
+    let mut fence_stack = Vec::new();
+    let mut rust_context = false;
+    let mut crlf = 0usize;
+    let mut lf = 0usize;
+    for (segment_start, segment) in line_segments(input) {
+        let segment_end = segment_start + segment.len();
+        let (content, term) = split_terminator(segment);
+        if term.len() == 2 {
+            crlf += 1;
+        } else if term.len() == 1 {
+            lf += 1;
+        }
+
+        let (prefix, body) = strip_doc_prefix(content);
+        if prefix.is_empty() {
+            current_prefix = None;
+            current_block = NO_BLOCK;
+        } else if current_prefix == Some(prefix) {
+            if current_block != NO_BLOCK {
+                blocks[current_block].end = segment_end;
+            }
+        } else {
+            current_prefix = Some(prefix);
+            current_block = NO_BLOCK;
+        }
+
+        let fence_delimiter = step_fence(&mut fence_stack, body);
+        if !prefix.is_empty() && (fence_delimiter || fence_stack.is_empty()) {
+            rust_context = true;
+        }
+        if fence_delimiter || !fence_stack.is_empty() {
+            continue;
+        }
+
+        let body_start = segment_start + prefix.len();
+        if !body.contains('[') {
+            continue;
+        }
+
+        if let Some(text) = definition_text(body) {
+            let candidate = candidate_for_definition(text, &mut candidates);
+            candidates[candidate].url = None;
+        }
+        let mut i = 0usize;
+        while let Some(relative) = body[i..].find('[') {
+            let open = i + relative;
+            if let Some((text, url, end)) = parse_inline_link(body, open) {
+                if !prefix.is_empty() && current_block == NO_BLOCK {
+                    current_block = blocks.len();
+                    blocks.push(DocBlock {
+                        prefix,
+                        end: segment_end,
+                        definition_start: 0,
+                        definition_end: 0,
+                    });
+                }
+                if let Some(candidate) = candidate_for_link(text, url, &mut candidates) {
+                    candidates[candidate].occurrences += 1;
+                    occurrences.push(Occurrence {
+                        start: body_start + open,
+                        candidate,
+                        block: current_block,
+                    });
+                }
+                i = end;
+            } else {
+                i = open + 1;
+            }
+        }
+    }
+
+    let line_ending = if crlf > 0 && crlf >= lf { "\r\n" } else { "\n" };
+    Scan {
+        candidates,
+        occurrences,
+        blocks,
+        rust_context,
+        line_ending,
+    }
+}
+
+#[inline]
+fn candidate_for_definition<'a>(text: &'a str, candidates: &mut Candidates<'a>) -> usize {
+    if let Some(index) = candidates
+        .iter()
+        .position(|candidate| candidate.text == text)
+    {
+        return index;
+    }
+    let index = candidates.len();
+    candidates.push(Candidate {
+        text,
+        url: None,
+        occurrences: 0,
+        last_block: NO_BLOCK,
+    });
+    index
+}
+
+#[inline]
+fn candidate_for_link<'a>(
+    text: &'a str,
+    url: &'a str,
+    candidates: &mut Candidates<'a>,
+) -> Option<usize> {
+    if let Some(index) = candidates
+        .iter()
+        .position(|candidate| candidate.text == text)
+    {
+        return (candidates[index].url == Some(url)).then_some(index);
+    }
+    let index = candidates.len();
+    candidates.push(Candidate {
+        text,
+        url: Some(url),
+        occurrences: 0,
+        last_block: NO_BLOCK,
+    });
+    Some(index)
 }

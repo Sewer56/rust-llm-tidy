@@ -40,18 +40,23 @@ pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &
     }
 }
 
-/// Append one `[text]: url` definition with an optional doc-comment prefix.
-#[inline]
-pub(super) fn append_definition(buf: &mut String, prefix: &str, text: &str, url: &str, le: &str) {
-    buf.push_str(prefix);
-    buf.push('[');
-    buf.push_str(text);
-    buf.push_str("]: ");
-    buf.push_str(url);
-    buf.push_str(le);
+/// Return the dominant line ending used in `source`: `"\r\n"` when CRLF is at
+/// least as common as LF, otherwise `"\n"`.
+///
+/// # Arguments
+///
+/// - `source`: the text whose line endings are tallied.
+///
+/// Mirrors `rust_llm_tidy_model::line_endings::dominant_line_ending`.
+/// Duplicated to avoid coupling this crate to the model crate; keep in sync.
+pub(super) fn dominant_line_ending(source: &str) -> &'static str {
+    let crlf = source.matches("\r\n").count();
+    let lf = source.matches('\n').count().saturating_sub(crlf);
+    if crlf > 0 && crlf >= lf { "\r\n" } else { "\n" }
 }
 
-/// Build one externally reported `[text](url)` -> `[text]` replacement pair.
+/// Build one externally reported `[text]` -> `[text]` replacement pair.
+/// [text]: url
 #[inline]
 pub(super) fn replacement_pair(text: &str, url: &str) -> (String, String) {
     let mut before = String::with_capacity(text.len() + url.len() + 4);
@@ -66,21 +71,6 @@ pub(super) fn replacement_pair(text: &str, url: &str) -> (String, String) {
     after.push_str(text);
     after.push(']');
     (before, after)
-}
-
-/// Return the dominant line ending used in `source`: `"\r\n"` when CRLF is at
-/// least as common as LF, otherwise `"\n"`.
-///
-/// # Arguments
-///
-/// - `source`: the text whose line endings are tallied.
-///
-/// Mirrors `rust_llm_tidy_model::line_endings::dominant_line_ending`.
-/// Duplicated to avoid coupling this crate to the model crate; keep in sync.
-pub(super) fn dominant_line_ending(source: &str) -> &'static str {
-    let crlf = source.matches("\r\n").count();
-    let lf = source.matches('\n').count().saturating_sub(crlf);
-    if crlf > 0 && crlf >= lf { "\r\n" } else { "\n" }
 }
 
 /// Rewrite eligible inline links in `body` to `[text]`, then re-attach `prefix`
@@ -138,6 +128,17 @@ pub(super) fn tally_links<'a>(
         }
         counts.insert((link.text, link.url), prev + 1);
     }
+}
+
+/// Append one `[text]: url` definition with an optional doc-comment prefix.
+#[inline]
+pub(super) fn append_definition(buf: &mut String, prefix: &str, text: &str, url: &str, le: &str) {
+    buf.push_str(prefix);
+    buf.push('[');
+    buf.push_str(text);
+    buf.push_str("]: ");
+    buf.push_str(url);
+    buf.push_str(le);
 }
 
 fn rewrite_links_inner<'a, F>(

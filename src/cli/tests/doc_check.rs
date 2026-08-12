@@ -6,12 +6,12 @@
 //! isolation. Each test runs the built CLI binary against a fixture file in
 //! `tests/fixtures/doc/` and asserts on its exit code and stderr diagnostics.
 
+use common::binary;
 use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod common;
-use common::binary;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
