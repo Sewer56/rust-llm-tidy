@@ -19,7 +19,10 @@
 //! that uses the label, on new lines with that block's doc prefix; links on
 //! non-doc-comment lines are left alone. Otherwise (Markdown), one
 //! document-scoped trailing definition block is appended at the end of the
-//! input. Definitions use the source's dominant line ending.
+//! input, separated from a trailing paragraph by a blank line so the
+//! definitions parse as definitions (CommonMark forbids a link reference
+//! definition from interrupting a paragraph). Definitions use the source's
+//! dominant line ending.
 //!
 //! The function is idempotent and returns a borrowed [`Cow`] with empty pairs
 //! when nothing is eligible.
@@ -40,7 +43,7 @@
 //!
 //! // Markdown: a single use still hoists, with a trailing definition.
 //! let input = "see [A](http://x)\n";
-//! let expected = "see [A]\n[A]: http://x\n";
+//! let expected = "see [A]\n\n[A]: http://x\n";
 //! let (out, pairs) = fix_links(input);
 //! assert_eq!(out.into_owned(), expected);
 //! assert_eq!(pairs, [("[A](http://x)".to_string(), "[A]".to_string())]);
@@ -354,7 +357,7 @@ mod tests {
     fn hoists_repeated_inline_link() {
         // Acceptance case (a): two occurrences -> two `[A]` + one definition.
         let input = "see [A](http://x) and [A](http://x)\n";
-        let expected = "see [A] and [A]\n[A]: http://x\n";
+        let expected = "see [A] and [A]\n\n[A]: http://x\n";
         let (out, pairs) = fix_links(input);
         assert_eq!(&*out, expected, "repeated inline link should be hoisted");
         assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);
@@ -365,7 +368,7 @@ mod tests {
         // Acceptance case (b): a link used once in Markdown is still hoisted
         // by default, gaining a trailing definition.
         let input = "only [A](http://x) once\n";
-        let expected = "only [A] once\n[A]: http://x\n";
+        let expected = "only [A] once\n\n[A]: http://x\n";
         let (out, pairs) = fix_links(input);
         assert_eq!(&*out, expected, "single Markdown link should hoist");
         assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);
@@ -391,7 +394,7 @@ after
         // second opener, so the `` ``` `` closer really closes the block and the
         // link after it is still hoisted.
         let input = "```text\n~~~\n```\nsee [A](http://x) here\n";
-        let expected = "```text\n~~~\n```\nsee [A] here\n[A]: http://x\n";
+        let expected = "```text\n~~~\n```\nsee [A] here\n\n[A]: http://x\n";
         let (out, pairs) = fix_links(input);
         assert_eq!(
             &*out, expected,
@@ -416,7 +419,7 @@ after
         // open a nested block either; the 4-backtick closer still closes.
         let input = "````text\n```\nsee [A](http://x) inside\n````\nsee [B](http://y) after\n";
         let expected =
-            "````text\n```\nsee [A](http://x) inside\n````\nsee [B] after\n[B]: http://y\n";
+            "````text\n```\nsee [A](http://x) inside\n````\nsee [B] after\n\n[B]: http://y\n";
         let (out, pairs) = fix_links(input);
         assert_eq!(
             &*out, expected,
@@ -448,7 +451,7 @@ after
     #[test]
     fn already_reference_style_is_borrowed() {
         // Acceptance case (g): re-running on reference-style output is a no-op.
-        let input = "see [A] and [A]\n[A]: http://x\n";
+        let input = "see [A] and [A]\n\n[A]: http://x\n";
         let (out, pairs) = fix_links(input);
         assert!(matches!(out, Cow::Borrowed(_)));
         assert!(pairs.is_empty());
@@ -457,11 +460,14 @@ after
 
     #[test]
     fn existing_definition_prevents_hoist() {
-        // A pre-existing `[A]:` definition (any URL) excludes the pair, so the
-        // inline occurrences are left as-is rather than re-targeted.
-        let input = "[A](http://x) [A](http://x)\n[A]: http://z\n";
-        let (out, _) = fix_links(input);
-        assert_eq!(&*out, input);
+        // A pre-existing `[A]:` definition (any URL, including the valid empty
+        // angle destination `<>`) excludes the pair, so the inline occurrences
+        // are left as-is rather than re-targeted.
+        for dest in ["http://z", "<>"] {
+            let input = format!("[A](http://x) [A](http://x)\n[A]: {dest}\n");
+            let (out, _) = fix_links(&input);
+            assert_eq!(&*out, input, "existing destination {dest:?}");
+        }
     }
 
     #[test]
@@ -647,6 +653,71 @@ pub fn f() {
     }
 
     #[test]
+    fn markdown_defs_separated_from_trailing_paragraph() {
+        // A definition cannot interrupt a paragraph, so a document ending in
+        // paragraph text gets one blank line before the definition block.
+        let input = "see [A](http://x) and [A](http://x)\ntext\n";
+        let expected = "see [A] and [A]\ntext\n\n[A]: http://x\n";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected, "blank line must separate defs");
+    }
+
+    #[test]
+    fn markdown_defs_after_trailing_blank_line_add_no_extra() {
+        // A document already ending in a blank line keeps exactly that one
+        // separator; no second blank line is inserted.
+        let input = "see [A](http://x) and [A](http://x)\n\n";
+        let expected = "see [A] and [A]\n\n[A]: http://x\n";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected, "existing blank line must not double");
+    }
+
+    #[test]
+    fn markdown_defs_continue_existing_definition_block() {
+        // A document ending in a complete reference definition appends the new
+        // definitions contiguously, with no blank line between them.
+        let input = "see [A](http://x) and [A](http://x)\n\n[B]: http://y\n";
+        let expected = "see [A] and [A]\n\n[B]: http://y\n[A]: http://x\n";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected, "definitions must stay contiguous");
+    }
+
+    #[test]
+    fn definition_shaped_trailing_line_still_gets_blank() {
+        // `[x]:` (no destination) and `[x]: junk` (trailing junk after the
+        // destination, no valid title) are paragraph text, not definitions, so
+        // appended definitions need a blank separator after them.
+        for bad in ["[x]:", "[x]: not a valid dest title junk"] {
+            let input = format!("see [A](http://x) and [A](http://x)\n{bad}\n");
+            let (out, _) = fix_links(&input);
+            let expected = format!("see [A] and [A]\n{bad}\n\n[A]: http://x\n");
+            assert_eq!(&*out, expected, "must separate after pseudo-def {bad:?}");
+        }
+    }
+
+    #[test]
+    fn definition_with_title_counts_as_definition() {
+        // A complete definition carrying a title keeps the contiguous append.
+        let input = "see [A](http://x) and [A](http://x)\n\n[B]: http://y \"t\"\n";
+        let expected = "see [A] and [A]\n\n[B]: http://y \"t\"\n[A]: http://x\n";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected, "titled definition stays contiguous");
+    }
+
+    #[test]
+    fn crlf_markdown_defs_get_crlf_blank_separator() {
+        // The blank separator uses the source's dominant line ending: every
+        // `\n` in the output stays part of a `\r\n`.
+        let input = "see [A](http://x) and [A](http://x)\r\ntext\r\n";
+        let (out, _) = fix_links(input);
+        let s = out.into_owned();
+        assert!(
+            s.contains("text\r\n\r\n[A]: http://x\r\n"),
+            "CRLF blank separator expected: {s:?}"
+        );
+    }
+
+    #[test]
     fn idempotent_on_hoisted_output() {
         let input = "see [A](http://x) and [A](http://x)\n";
         let once = fix_links(input).0.into_owned();
@@ -683,7 +754,7 @@ pub fn f() {
             "/// see [A](u) and [A](u)\n",
             "//! [A](u) [A](u)\n",
             "/// [A](u) once only\n",
-            "see [A] and [A]\n[A]: http://x\n",
+            "see [A] and [A]\n\n[A]: http://x\n",
             "[a [b] c](u) repeated [a [b] c](u)\n",
             "[[x]](u) and [[x]](u)\n",
             "[not a link\n",
@@ -691,6 +762,9 @@ pub fn f() {
             "text [only] bracket\n",
             "a](b) without open\n",
             "[A]: http://a\n[B]: http://b\n[A](u) [A](u)\n",
+            "[A]: http://a(junk\n[A](u) [A](u)\n",
+            "/// [A](u) [A](u)\n/// [A]: http://x(junk\n",
+            "[B]: http://x(y)z \"ti(tle)\"\n[A](u) [A](u)\n",
             "café [A](u) déjà [A](u) vu\n",
             "emoji 😀 [A](u) 🚀 [A](u)\n",
             "/// 日本語 [A](u) and [A](u)\n",
@@ -723,6 +797,92 @@ pub fn f() {
             let twice = fix_links(&once).0.into_owned();
             assert_eq!(twice, once, "not idempotent for input {input:?}");
         }
+    }
+
+    #[test]
+    fn malformed_definition_lines_do_not_block_hoist() {
+        // Each line is definition-shaped but malformed: CommonMark leaves it
+        // as paragraph text, so the label is free to hoist and the appended
+        // definition needs a blank separator after it. `definition_text` and
+        // `is_reference_definition` share one parser, so both reject these.
+        // Labels need one non-space character; unescaped `[` can never be in
+        // a label; an absent, unclosed, or unbalanced destination, an
+        // unclosed angle form, and a title glued to an angle destination all
+        // leave paragraph text. (`[A]:u` is valid: whitespace after the
+        // colon is optional, and a bare destination may contain quotes.)
+        let bad_lines = [
+            "[A]:",
+            "[A] : u",
+            "[ ]: u",
+            "[A[x]: u",
+            "[A]: http://x(junk",
+            "[A]: http://x((y) z",
+            "[A]: <u",
+            "[A]: <a<b>",
+            "[A]: <u>\"t\"",
+        ];
+        for bad in bad_lines {
+            let input = format!("see [A](http://x) and [A](http://x)\n{bad}\n");
+            let (out, pairs) = fix_links(&input);
+            let expected = format!("see [A] and [A]\n{bad}\n\n[A]: http://x\n");
+            assert_eq!(
+                &*out, expected,
+                "malformed definition {bad:?} must not block hoisting"
+            );
+            assert_eq!(
+                pairs,
+                [("[A](http://x)".into(), "[A]".into())],
+                "pairs for {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn complete_definition_forms_stay_contiguous() {
+        // Complete CommonMark definitions: the trailing append stays
+        // contiguous (no blank separator) for every accepted form.
+        let good_lines = [
+            "[B]: http://y",
+            "[B]:http://y",
+            "[B]: http://x(y)z",
+            "[B]: http://x\\(y\\)",
+            "[B]: <http://x>",
+            "[B]: <u\\>v>",
+            "[B]: http://y \"t\"",
+            "[B]: http://y 't'",
+            "[B]: http://y (t)",
+            "[B]: http://y (t (u))",
+        ];
+        for good in good_lines {
+            let input = format!("see [A](http://x) and [A](http://x)\n\n{good}\n");
+            let (out, _) = fix_links(&input);
+            let expected = format!("see [A] and [A]\n\n{good}\n[A]: http://x\n");
+            assert_eq!(
+                &*out, expected,
+                "valid definition {good:?} must stay contiguous"
+            );
+        }
+    }
+
+    #[test]
+    fn doc_block_malformed_def_line_gets_blank_separator() {
+        // A malformed `[A]:`-shaped line at the end of a doc-comment block is
+        // paragraph text: `needs_blank_before_defs` inserts the blank comment
+        // line before the hoisted in-comment definition.
+        for bad in ["[A]:", "[A]: http://x(junk", "[A]: <u>\"t\""] {
+            let input = format!("/// see [A](http://x) and [A](http://x)\n/// {bad}\n");
+            let (out, _) = fix_links(&input);
+            let expected = format!("/// see [A] and [A]\n/// {bad}\n///\n/// [A]: http://x\n");
+            assert_eq!(
+                &*out, expected,
+                "doc pseudo-definition {bad:?} must get a blank separator"
+            );
+        }
+        // A complete definition at the block end stays contiguous.
+        let input = "/// see [A](u) and [A](u)\n/// [B]: http://y\n";
+        let expected = "/// see [A] and [A]\n/// [B]: http://y\n/// [A]: u\n";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected, "complete doc definition stays contiguous");
     }
 
     #[test]
@@ -846,7 +1006,7 @@ pub fn f() {
     fn fix_links_with_min_two_still_hoists_repeated_pair() {
         // A threshold of 2 must still hoist a pair that appears twice.
         let input = "see [A](http://x) and [A](http://x)\n";
-        let expected = "see [A] and [A]\n[A]: http://x\n";
+        let expected = "see [A] and [A]\n\n[A]: http://x\n";
         let (out, pairs) = fix_links_with_min(input, 2);
         assert_eq!(out.into_owned(), expected);
         assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);

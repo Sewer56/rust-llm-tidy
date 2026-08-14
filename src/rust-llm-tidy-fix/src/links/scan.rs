@@ -10,7 +10,7 @@
 //!   with per-comment rewrites.
 
 use crate::fences::parse_fence;
-use memchr::memchr_iter;
+use memchr::{memchr_iter, memchr3};
 
 /// One parsed inline link and its byte span within a line body.
 pub(super) struct InlineLink<'a> {
@@ -20,21 +20,22 @@ pub(super) struct InlineLink<'a> {
     pub(super) end: usize,
 }
 
-/// If `body` is a reference-definition line (`[text]: url`), return the link
-/// `text`. Otherwise return `None`.
+/// If `body` is a complete reference-definition line (`[text]: url` plus an
+/// optional title), return the link `text`. Otherwise return `None`.
+///
+/// Shares [`parse_definition`] with [`is_reference_definition`], so a
+/// definition-shaped but malformed line never registers an existing
+/// definition. The leading-`[` gate keeps the common `[`-bearing prose line
+/// out of the (too large to inline) full parser.
 #[inline]
 pub(super) fn definition_text(body: &str) -> Option<&str> {
+    // Leading-`[` gate on the trimmed line keeps the common `[`-bearing
+    // prose line out of the (too large to inline) full parser.
     let s = body.trim_start();
-    let after = s.strip_prefix('[')?;
-    let close = after.find(']')?;
-    let text = &after[..close];
-    let rest = after[close + 1..].strip_prefix(':')?;
-    // CommonMark requires whitespace (or end-of-line) after the colon.
-    if rest.is_empty() || rest.starts_with(' ') || rest.starts_with('\t') {
-        Some(text)
-    } else {
-        None
+    if !s.starts_with('[') {
+        return None;
     }
+    parse_definition(s)
 }
 
 /// The doc-comment block key for a line with doc `prefix`.
@@ -73,6 +74,14 @@ pub(super) fn inline_links(body: &str) -> impl Iterator<Item = InlineLink<'_>> {
         }
         None
     })
+}
+
+/// True when `body` is a complete CommonMark link reference definition:
+/// `[label]: destination` plus an optional quoted or parenthesized title, with
+/// nothing else on the line. Shares [`parse_definition`] with
+/// [`definition_text`], so both agree on what counts as a definition.
+pub(super) fn is_reference_definition(body: &str) -> bool {
+    parse_definition(body.trim_start()).is_some()
 }
 
 /// Iterate line segments as `(start, segment)`, retaining each terminator.
@@ -218,5 +227,181 @@ fn is_fence_candidate_body(body: &str) -> bool {
         Some(_) => true,
         // Line was whitespace only (or empty): not a fence.
         None => false,
+    }
+}
+
+/// Parse the leading-whitespace-trimmed `s` as one complete CommonMark link
+/// reference definition, `[label]: destination` plus an optional quoted or
+/// parenthesized title, with nothing else on the line. Returns the label. Any
+/// malformed form (blank label, unescaped bracket in the label, invalid
+/// destination, glued title, trailing junk) is paragraph text, not a
+/// definition.
+///
+/// Recognition is deliberately conservative where full CommonMark needs inline
+/// parsing: labels may not contain unescaped `[`; the destination must be a
+/// non-empty balanced bare run (parens only backslash-escaped or balanced) or
+/// an angle form, possibly empty, with no unescaped `<`/`>`; a title must be
+/// preceded by
+/// whitespace; a `\` escape is honored only before ASCII punctuation.
+#[inline]
+fn parse_definition(s: &str) -> Option<&str> {
+    let after = s.strip_prefix('[')?;
+    let close = closing_bracket(after)?;
+    let text = &after[..close];
+    // CommonMark: a label needs one character that is not a space or tab.
+    if text.bytes().all(|b| matches!(b, b' ' | b'\t')) {
+        return None;
+    }
+    let rest = after[close + 1..].strip_prefix(':')?;
+    // CommonMark: whitespace after the colon is optional, so trim it away
+    // whether present or not.
+    let rest = rest.trim_start();
+    let dest_len = parse_destination(rest)?;
+    // Optional title, then only whitespace to end-of-line. A title must be
+    // separated from the destination by whitespace (CommonMark), which the
+    // angle form does not get for free.
+    let after_dest = &rest[dest_len..];
+    let tail = after_dest.trim_start();
+    if !after_dest.is_empty() && tail.len() == after_dest.len() {
+        return None;
+    }
+    if tail.is_empty() {
+        return Some(text);
+    }
+    let close = match tail.as_bytes()[0] {
+        b'"' => b'"',
+        b'\'' => b'\'',
+        b'(' => b')',
+        _ => return None,
+    };
+    let end = closing_delimiter(&tail[1..], close)?;
+    tail[end + 2..].trim().is_empty().then_some(text)
+}
+
+/// Index of the `]` closing a label opened before `after`: the first `]` not
+/// preceded by a backslash escape (CommonMark). `\\]` does not close, and an
+/// unescaped nested `[` can never belong to a label.
+#[inline]
+fn closing_bracket(after: &str) -> Option<usize> {
+    let bytes = after.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 2,
+            b']' => return Some(i),
+            b'[' => return None,
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// Length of a title's content `tail`: the position of the first unescaped
+/// `close` byte (quotes) or the position of its matching unescaped `)`
+/// (parenthesized titles need balanced content).
+#[inline]
+fn closing_delimiter(tail: &str, close: u8) -> Option<usize> {
+    let bytes = tail.as_bytes();
+    let mut i = 0;
+    if close == b')' {
+        let mut depth = 1usize;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\\' => i += 2,
+                b'(' => {
+                    depth += 1;
+                    i += 1;
+                }
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(i);
+                    }
+                    i += 1;
+                }
+                _ => i += 1,
+            }
+        }
+        None
+    } else {
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\\' => i += 2,
+                b if b == close => return Some(i),
+                _ => i += 1,
+            }
+        }
+        None
+    }
+}
+
+/// Length of the destination at the start of `rest`: an angle form `<...>`
+/// (possibly empty, no unescaped `<`, closed by the first unescaped `>`)
+/// or a non-empty bare run without whitespace or control characters whose
+/// unescaped parentheses balance.
+#[inline]
+fn parse_destination(rest: &str) -> Option<usize> {
+    let bytes = rest.as_bytes();
+    if bytes.first() == Some(&b'<') {
+        // `angle` indexes into `rest[1..]`; the closing `>` ends the
+        // destination, an unescaped `<` or a missing closer invalidates it.
+        let angle = &bytes[1..];
+        let mut i = 0;
+        while i < angle.len() {
+            match angle[i] {
+                b'\\' => i += 2,
+                b'<' => return None,
+                b'>' => return Some(i + 2),
+                _ => i += 1,
+            }
+        }
+        None
+    } else {
+        // Fast path: a destination without `(`, `)`, or `\` anywhere (the
+        // overwhelming majority) is a plain run to the first ASCII
+        // whitespace or control byte.
+        if memchr3(b'(', b')', b'\\', bytes).is_none() {
+            // `b' '`, `b'\t'`, and every ASCII control byte except 0x7f are
+            // `<= b' '`, so one compare per byte finds the run's end.
+            let end = bytes
+                .iter()
+                .position(|&b| b <= b' ' || b == 0x7f)
+                .unwrap_or(bytes.len());
+            // Empty is not a destination; an ASCII control byte invalidates
+            // the whole run (whitespace or end-of-line merely ends it).
+            return match bytes.get(end) {
+                Some(b' ') | Some(b'\t') | None if end > 0 => Some(end),
+                _ => None,
+            };
+        }
+        let mut i = 0;
+        let mut depth = 0usize;
+        while i < bytes.len() {
+            match bytes[i] {
+                // Only `\(` and `\)` are escapes; a `\` before anything else
+                // is a literal byte.
+                b'\\' if matches!(bytes.get(i + 1), Some(b'(' | b')')) => i += 2,
+                b'(' => {
+                    depth += 1;
+                    i += 1;
+                }
+                b')' => {
+                    depth = depth.checked_sub(1)?;
+                    if depth == 0 {
+                        // Balanced close: the destination can end here; a
+                        // non-whitespace continuation keeps the run going.
+                        match bytes.get(i + 1) {
+                            Some(b' ') | Some(b'\t') | None => return Some(i + 1),
+                            _ => {}
+                        }
+                    }
+                    i += 1;
+                }
+                b' ' | b'\t' => return (i > 0).then_some(i),
+                b if b < 0x20 || b == 0x7f => return None,
+                _ => i += 1,
+            }
+        }
+        (i > 0 && depth == 0).then_some(i)
     }
 }

@@ -565,7 +565,7 @@ fn links_by_extension_rs_two_leaves_single_use_rs_unchanged() {
     );
     assert_eq!(
         fs::read_to_string(&md).unwrap(),
-        "only [A] once\n[A]: http://x\n",
+        "only [A] once\n\n[A]: http://x\n",
         ".md at threshold 1 must hoist the single use"
     );
 

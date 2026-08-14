@@ -117,6 +117,13 @@ fn rewrite_markdown<'a>(input: &'a str, scan: Scan<'a>) -> (Cow<'a, str>, Vec<(S
     if !output.ends_with('\n') {
         output.push_str(scan.line_ending);
     }
+    // A definition cannot interrupt a paragraph: when the document ends in
+    // paragraph text, separate the trailing definition block with one blank
+    // line (see `needs_blank_before_defs`).
+    if needs_blank_before_defs(&output, "") {
+        capacity += scan.line_ending.len();
+        output.push_str(scan.line_ending);
+    }
     for candidate in &scan.candidates {
         if let Some(url) = candidate.url {
             append_definition(&mut output, "", candidate.text, url, scan.line_ending);

@@ -2,7 +2,7 @@
 //! The specialized threshold-one engine reuses link iteration, definition
 //! emission, and replacement-pair construction from this module.
 
-use super::scan::inline_links;
+use super::scan::{inline_links, is_reference_definition};
 use std::collections::{HashMap, HashSet};
 
 /// Append hoisted `[text]: url` definitions at the end of one Rust doc-comment
@@ -33,12 +33,17 @@ pub(super) fn append_block_definitions(
 
 /// Append hoisted `[text]: url` definitions at the end of `buf`, each on its
 /// own line using the source's dominant line ending (`le`), so a CRLF
-/// document stays CRLF after hoisting. Ensures `buf` ends with a newline so
-/// the first definition starts on its own line; if the document already ends
-/// with a reference definition the new definitions continue that block
-/// contiguously.
+/// document stays CRLF after hoisting. Ensures the buffer ends with a newline
+/// so the first definition starts on its own line; inserts a blank separator
+/// line first when the document otherwise ends in paragraph text (CommonMark
+/// forbids a link reference definition from interrupting a paragraph, so
+/// glued definitions parse as text). Documents already ending in a blank
+/// line or reference definition continue that block contiguously.
 pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &str) {
     if !buf.ends_with('\n') {
+        buf.push_str(le);
+    }
+    if needs_blank_before_defs(buf, "") {
         buf.push_str(le);
     }
     for &(text, url) in hoist {
@@ -162,8 +167,8 @@ pub(super) fn blank_line_prefix(prefix: &str) -> &str {
 ///
 /// CommonMark forbids a link reference definition from interrupting a
 /// paragraph, so glued definitions parse as text and rustdoc reports broken
-/// intra-doc links. Blocks already ending in a blank line or definition are
-/// continued contiguously.
+/// intra-doc links. Blocks already ending in a blank line or a complete
+/// reference definition are continued contiguously.
 pub(super) fn needs_blank_before_defs(text: &str, prefix: &str) -> bool {
     let bytes = text.as_bytes();
     let mut end = bytes.len();
@@ -179,7 +184,8 @@ pub(super) fn needs_blank_before_defs(text: &str, prefix: &str) -> bool {
         .strip_prefix(prefix)
         .unwrap_or(last_line)
         .trim_start();
-    !body.is_empty() && !(body.starts_with('[') && body.contains("]:"))
+    !body.is_empty()
+        && !(body.starts_with('[') && body.contains("]:") && is_reference_definition(body))
 }
 
 fn rewrite_links_inner<'a, F>(
