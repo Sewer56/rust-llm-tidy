@@ -19,7 +19,10 @@
 //! that uses the label, on new lines with that block's doc prefix; links on
 //! non-doc-comment lines are left alone. Otherwise (Markdown), one
 //! document-scoped trailing definition block is appended at the end of the
-//! input. Definitions use the source's dominant line ending.
+//! input, separated from a trailing paragraph by a blank line so the
+//! definitions parse as definitions (CommonMark forbids a link reference
+//! definition from interrupting a paragraph). Definitions use the source's
+//! dominant line ending.
 //!
 //! The function is idempotent and returns a borrowed [`Cow`] with empty pairs
 //! when nothing is eligible.
@@ -40,7 +43,7 @@
 //!
 //! // Markdown: a single use still hoists, with a trailing definition.
 //! let input = "see [A](http://x)\n";
-//! let expected = "see [A]\n[A]: http://x\n";
+//! let expected = "see [A]\n\n[A]: http://x\n";
 //! let (out, pairs) = fix_links(input);
 //! assert_eq!(out.into_owned(), expected);
 //! assert_eq!(pairs, [("[A](http://x)".to_string(), "[A]".to_string())]);
@@ -354,7 +357,7 @@ mod tests {
     fn hoists_repeated_inline_link() {
         // Acceptance case (a): two occurrences -> two `[A]` + one definition.
         let input = "see [A](http://x) and [A](http://x)\n";
-        let expected = "see [A] and [A]\n[A]: http://x\n";
+        let expected = "see [A] and [A]\n\n[A]: http://x\n";
         let (out, pairs) = fix_links(input);
         assert_eq!(&*out, expected, "repeated inline link should be hoisted");
         assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);
@@ -365,7 +368,7 @@ mod tests {
         // Acceptance case (b): a link used once in Markdown is still hoisted
         // by default, gaining a trailing definition.
         let input = "only [A](http://x) once\n";
-        let expected = "only [A] once\n[A]: http://x\n";
+        let expected = "only [A] once\n\n[A]: http://x\n";
         let (out, pairs) = fix_links(input);
         assert_eq!(&*out, expected, "single Markdown link should hoist");
         assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);
@@ -391,7 +394,7 @@ after
         // second opener, so the `` ``` `` closer really closes the block and the
         // link after it is still hoisted.
         let input = "```text\n~~~\n```\nsee [A](http://x) here\n";
-        let expected = "```text\n~~~\n```\nsee [A] here\n[A]: http://x\n";
+        let expected = "```text\n~~~\n```\nsee [A] here\n\n[A]: http://x\n";
         let (out, pairs) = fix_links(input);
         assert_eq!(
             &*out, expected,
@@ -416,7 +419,7 @@ after
         // open a nested block either; the 4-backtick closer still closes.
         let input = "````text\n```\nsee [A](http://x) inside\n````\nsee [B](http://y) after\n";
         let expected =
-            "````text\n```\nsee [A](http://x) inside\n````\nsee [B] after\n[B]: http://y\n";
+            "````text\n```\nsee [A](http://x) inside\n````\nsee [B] after\n\n[B]: http://y\n";
         let (out, pairs) = fix_links(input);
         assert_eq!(
             &*out, expected,
@@ -448,7 +451,7 @@ after
     #[test]
     fn already_reference_style_is_borrowed() {
         // Acceptance case (g): re-running on reference-style output is a no-op.
-        let input = "see [A] and [A]\n[A]: http://x\n";
+        let input = "see [A] and [A]\n\n[A]: http://x\n";
         let (out, pairs) = fix_links(input);
         assert!(matches!(out, Cow::Borrowed(_)));
         assert!(pairs.is_empty());
@@ -647,6 +650,39 @@ pub fn f() {
     }
 
     #[test]
+    fn markdown_defs_separated_from_trailing_paragraph() {
+        // A definition cannot interrupt a paragraph, so a document ending in
+        // paragraph text gets one blank line before the definition block.
+        let input = "see [A](http://x) and [A](http://x)\ntext\n";
+        let expected = "see [A] and [A]\ntext\n\n[A]: http://x\n";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected, "blank line must separate defs");
+    }
+
+    #[test]
+    fn markdown_defs_after_trailing_blank_line_add_no_extra() {
+        // A document already ending in a blank line keeps exactly that one
+        // separator; no second blank line is inserted.
+        let input = "see [A](http://x) and [A](http://x)\n\n";
+        let expected = "see [A] and [A]\n\n[A]: http://x\n";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected, "existing blank line must not double");
+    }
+
+    #[test]
+    fn crlf_markdown_defs_get_crlf_blank_separator() {
+        // The blank separator uses the source's dominant line ending: every
+        // `\n` in the output stays part of a `\r\n`.
+        let input = "see [A](http://x) and [A](http://x)\r\ntext\r\n";
+        let (out, _) = fix_links(input);
+        let s = out.into_owned();
+        assert!(
+            s.contains("text\r\n\r\n[A]: http://x\r\n"),
+            "CRLF blank separator expected: {s:?}"
+        );
+    }
+
+    #[test]
     fn idempotent_on_hoisted_output() {
         let input = "see [A](http://x) and [A](http://x)\n";
         let once = fix_links(input).0.into_owned();
@@ -683,7 +719,7 @@ pub fn f() {
             "/// see [A](u) and [A](u)\n",
             "//! [A](u) [A](u)\n",
             "/// [A](u) once only\n",
-            "see [A] and [A]\n[A]: http://x\n",
+            "see [A] and [A]\n\n[A]: http://x\n",
             "[a [b] c](u) repeated [a [b] c](u)\n",
             "[[x]](u) and [[x]](u)\n",
             "[not a link\n",
@@ -846,7 +882,7 @@ pub fn f() {
     fn fix_links_with_min_two_still_hoists_repeated_pair() {
         // A threshold of 2 must still hoist a pair that appears twice.
         let input = "see [A](http://x) and [A](http://x)\n";
-        let expected = "see [A] and [A]\n[A]: http://x\n";
+        let expected = "see [A] and [A]\n\n[A]: http://x\n";
         let (out, pairs) = fix_links_with_min(input, 2);
         assert_eq!(out.into_owned(), expected);
         assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);

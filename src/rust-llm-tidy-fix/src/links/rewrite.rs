@@ -33,12 +33,17 @@ pub(super) fn append_block_definitions(
 
 /// Append hoisted `[text]: url` definitions at the end of `buf`, each on its
 /// own line using the source's dominant line ending (`le`), so a CRLF
-/// document stays CRLF after hoisting. Ensures `buf` ends with a newline so
-/// the first definition starts on its own line; if the document already ends
-/// with a reference definition the new definitions continue that block
-/// contiguously.
+/// document stays CRLF after hoisting. Ensures the buffer ends with a newline
+/// so the first definition starts on its own line; inserts a blank separator
+/// line first when the document otherwise ends in paragraph text (CommonMark
+/// forbids a link reference definition from interrupting a paragraph, so
+/// glued definitions parse as text). Documents already ending in a blank
+/// line or reference definition continue that block contiguously.
 pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &str) {
     if !buf.ends_with('\n') {
+        buf.push_str(le);
+    }
+    if needs_blank_before_defs(buf, "") {
         buf.push_str(le);
     }
     for &(text, url) in hoist {
