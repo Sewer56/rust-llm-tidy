@@ -240,7 +240,8 @@ fn is_fence_candidate_body(body: &str) -> bool {
 /// Recognition is deliberately conservative where full CommonMark needs inline
 /// parsing: labels may not contain unescaped `[`; the destination must be a
 /// non-empty balanced bare run (parens only backslash-escaped or balanced) or
-/// an angle form with no unescaped `<`/`>`; a title must be preceded by
+/// an angle form, possibly empty, with no unescaped `<`/`>`; a title must be
+/// preceded by
 /// whitespace; a `\` escape is honored only before ASCII punctuation.
 #[inline]
 fn parse_definition(s: &str) -> Option<&str> {
@@ -335,7 +336,7 @@ fn closing_delimiter(tail: &str, close: u8) -> Option<usize> {
 }
 
 /// Length of the destination at the start of `rest`: an angle form `<...>`
-/// (non-empty content, no unescaped `<`, closed by the first unescaped `>`)
+/// (possibly empty, no unescaped `<`, closed by the first unescaped `>`)
 /// or a non-empty bare run without whitespace or control characters whose
 /// unescaped parentheses balance.
 #[inline]
@@ -350,7 +351,7 @@ fn parse_destination(rest: &str) -> Option<usize> {
             match angle[i] {
                 b'\\' => i += 2,
                 b'<' => return None,
-                b'>' => return (i > 0).then_some(i + 2),
+                b'>' => return Some(i + 2),
                 _ => i += 1,
             }
         }

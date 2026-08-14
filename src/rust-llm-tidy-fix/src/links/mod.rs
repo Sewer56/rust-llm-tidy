@@ -460,11 +460,14 @@ after
 
     #[test]
     fn existing_definition_prevents_hoist() {
-        // A pre-existing `[A]:` definition (any URL) excludes the pair, so the
-        // inline occurrences are left as-is rather than re-targeted.
-        let input = "[A](http://x) [A](http://x)\n[A]: http://z\n";
-        let (out, _) = fix_links(input);
-        assert_eq!(&*out, input);
+        // A pre-existing `[A]:` definition (any URL, including the valid empty
+        // angle destination `<>`) excludes the pair, so the inline occurrences
+        // are left as-is rather than re-targeted.
+        for dest in ["http://z", "<>"] {
+            let input = format!("[A](http://x) [A](http://x)\n[A]: {dest}\n");
+            let (out, _) = fix_links(&input);
+            assert_eq!(&*out, input, "existing destination {dest:?}");
+        }
     }
 
     #[test]
