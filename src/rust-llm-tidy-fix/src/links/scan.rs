@@ -378,7 +378,7 @@ fn parse_destination(rest: &str) -> Option<usize> {
         let mut depth = 0usize;
         while i < bytes.len() {
             match bytes[i] {
-                // Only `\<` and `\>` are escapes; a `\` before anything else
+                // Only `\(` and `\)` are escapes; a `\` before anything else
                 // is a literal byte.
                 b'\\' if matches!(bytes.get(i + 1), Some(b'(' | b')')) => i += 2,
                 b'(' => {
