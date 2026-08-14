@@ -185,9 +185,7 @@ pub(super) fn needs_blank_before_defs(text: &str, prefix: &str) -> bool {
         .unwrap_or(last_line)
         .trim_start();
     !body.is_empty()
-        && !(body.starts_with('[')
-            && body.contains("]:")
-            && is_reference_definition(body))
+        && !(body.starts_with('[') && body.contains("]:") && is_reference_definition(body))
 }
 
 fn rewrite_links_inner<'a, F>(
