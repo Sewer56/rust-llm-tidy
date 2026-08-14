@@ -27,21 +27,42 @@ pub(super) fn definition_text(body: &str) -> Option<&str> {
     split_definition(body).map(|(text, _)| text)
 }
 
-/// Split a reference-definition-shaped line into `(label, after_colon)`.
-/// The colon must be followed by whitespace or end-of-line (CommonMark).
+/// The doc-comment block key for a line with doc `prefix`.
+///
+/// Lines outside any `///` / `//!` doc comment return `None`. A line belongs
+/// to the doc-comment block identified by `Some(prefix)`, and a block is the
+/// maximal run of consecutive lines sharing the same `Some(prefix)`. The
+/// rewrite pass uses this to keep each rustdoc comment's definitions inside
+/// the same block.
 #[inline]
-fn split_definition(body: &str) -> Option<(&str, &str)> {
-    let s = body.trim_start();
-    let after = s.strip_prefix('[')?;
-    let close = after.find(']')?;
-    let text = &after[..close];
-    let rest = after[close + 1..].strip_prefix(':')?;
-    // CommonMark requires whitespace (or end-of-line) after the colon.
-    if rest.is_empty() || rest.starts_with(' ') || rest.starts_with('\t') {
-        Some((text, rest))
-    } else {
+pub(super) fn doc_block_key(prefix: &str) -> Option<&str> {
+    if prefix.is_empty() {
         None
+    } else {
+        Some(prefix)
     }
+}
+
+/// Iterate accepted inline links in one body, skipping malformed bracket runs.
+#[inline]
+pub(super) fn inline_links(body: &str) -> impl Iterator<Item = InlineLink<'_>> {
+    let mut next = 0usize;
+    std::iter::from_fn(move || {
+        while let Some(relative) = body[next..].find('[') {
+            let open = next + relative;
+            if let Some((text, url, end)) = parse_inline_link(body, open) {
+                next = end;
+                return Some(InlineLink {
+                    text,
+                    url,
+                    open,
+                    end,
+                });
+            }
+            next = open + 1;
+        }
+        None
+    })
 }
 
 /// True when `body` is a complete CommonMark link reference definition:
@@ -85,44 +106,6 @@ pub(super) fn is_reference_definition(body: &str) -> bool {
         return false;
     };
     tail[end + 2..].trim().is_empty()
-}
-
-/// The doc-comment block key for a line with doc `prefix`.
-///
-/// Lines outside any `///` / `//!` doc comment return `None`. A line belongs
-/// to the doc-comment block identified by `Some(prefix)`, and a block is the
-/// maximal run of consecutive lines sharing the same `Some(prefix)`. The
-/// rewrite pass uses this to keep each rustdoc comment's definitions inside
-/// the same block.
-#[inline]
-pub(super) fn doc_block_key(prefix: &str) -> Option<&str> {
-    if prefix.is_empty() {
-        None
-    } else {
-        Some(prefix)
-    }
-}
-
-/// Iterate accepted inline links in one body, skipping malformed bracket runs.
-#[inline]
-pub(super) fn inline_links(body: &str) -> impl Iterator<Item = InlineLink<'_>> {
-    let mut next = 0usize;
-    std::iter::from_fn(move || {
-        while let Some(relative) = body[next..].find('[') {
-            let open = next + relative;
-            if let Some((text, url, end)) = parse_inline_link(body, open) {
-                next = end;
-                return Some(InlineLink {
-                    text,
-                    url,
-                    open,
-                    end,
-                });
-            }
-            next = open + 1;
-        }
-        None
-    })
 }
 
 /// Iterate line segments as `(start, segment)`, retaining each terminator.
@@ -268,5 +251,22 @@ fn is_fence_candidate_body(body: &str) -> bool {
         Some(_) => true,
         // Line was whitespace only (or empty): not a fence.
         None => false,
+    }
+}
+
+/// Split a reference-definition-shaped line into `(label, after_colon)`.
+/// The colon must be followed by whitespace or end-of-line (CommonMark).
+#[inline]
+fn split_definition(body: &str) -> Option<(&str, &str)> {
+    let s = body.trim_start();
+    let after = s.strip_prefix('[')?;
+    let close = after.find(']')?;
+    let text = &after[..close];
+    let rest = after[close + 1..].strip_prefix(':')?;
+    // CommonMark requires whitespace (or end-of-line) after the colon.
+    if rest.is_empty() || rest.starts_with(' ') || rest.starts_with('\t') {
+        Some((text, rest))
+    } else {
+        None
     }
 }
