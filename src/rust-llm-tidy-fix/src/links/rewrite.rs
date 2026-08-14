@@ -2,7 +2,7 @@
 //! The specialized threshold-one engine reuses link iteration, definition
 //! emission, and replacement-pair construction from this module.
 
-use super::scan::inline_links;
+use super::scan::{inline_links, is_reference_definition};
 use std::collections::{HashMap, HashSet};
 
 /// Append hoisted `[text]: url` definitions at the end of one Rust doc-comment
@@ -167,8 +167,8 @@ pub(super) fn blank_line_prefix(prefix: &str) -> &str {
 ///
 /// CommonMark forbids a link reference definition from interrupting a
 /// paragraph, so glued definitions parse as text and rustdoc reports broken
-/// intra-doc links. Blocks already ending in a blank line or definition are
-/// continued contiguously.
+/// intra-doc links. Blocks already ending in a blank line or a complete
+/// reference definition are continued contiguously.
 pub(super) fn needs_blank_before_defs(text: &str, prefix: &str) -> bool {
     let bytes = text.as_bytes();
     let mut end = bytes.len();
@@ -184,7 +184,10 @@ pub(super) fn needs_blank_before_defs(text: &str, prefix: &str) -> bool {
         .strip_prefix(prefix)
         .unwrap_or(last_line)
         .trim_start();
-    !body.is_empty() && !(body.starts_with('[') && body.contains("]:"))
+    !body.is_empty()
+        && !(body.starts_with('[')
+            && body.contains("]:")
+            && is_reference_definition(body))
 }
 
 fn rewrite_links_inner<'a, F>(

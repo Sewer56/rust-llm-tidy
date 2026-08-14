@@ -670,6 +670,38 @@ pub fn f() {
     }
 
     #[test]
+    fn markdown_defs_continue_existing_definition_block() {
+        // A document ending in a complete reference definition appends the new
+        // definitions contiguously, with no blank line between them.
+        let input = "see [A](http://x) and [A](http://x)\n\n[B]: http://y\n";
+        let expected = "see [A] and [A]\n\n[B]: http://y\n[A]: http://x\n";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected, "definitions must stay contiguous");
+    }
+
+    #[test]
+    fn definition_shaped_trailing_line_still_gets_blank() {
+        // `[x]:` (no destination) and `[x]: junk` (trailing junk after the
+        // destination, no valid title) are paragraph text, not definitions, so
+        // appended definitions need a blank separator after them.
+        for bad in ["[x]:", "[x]: not a valid dest title junk"] {
+            let input = format!("see [A](http://x) and [A](http://x)\n{bad}\n");
+            let (out, _) = fix_links(&input);
+            let expected = format!("see [A] and [A]\n{bad}\n\n[A]: http://x\n");
+            assert_eq!(&*out, expected, "must separate after pseudo-def {bad:?}");
+        }
+    }
+
+    #[test]
+    fn definition_with_title_counts_as_definition() {
+        // A complete definition carrying a title keeps the contiguous append.
+        let input = "see [A](http://x) and [A](http://x)\n\n[B]: http://y \"t\"\n";
+        let expected = "see [A] and [A]\n\n[B]: http://y \"t\"\n[A]: http://x\n";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected, "titled definition stays contiguous");
+    }
+
+    #[test]
     fn crlf_markdown_defs_get_crlf_blank_separator() {
         // The blank separator uses the source's dominant line ending: every
         // `\n` in the output stays part of a `\r\n`.

@@ -24,6 +24,13 @@ pub(super) struct InlineLink<'a> {
 /// `text`. Otherwise return `None`.
 #[inline]
 pub(super) fn definition_text(body: &str) -> Option<&str> {
+    split_definition(body).map(|(text, _)| text)
+}
+
+/// Split a reference-definition-shaped line into `(label, after_colon)`.
+/// The colon must be followed by whitespace or end-of-line (CommonMark).
+#[inline]
+fn split_definition(body: &str) -> Option<(&str, &str)> {
     let s = body.trim_start();
     let after = s.strip_prefix('[')?;
     let close = after.find(']')?;
@@ -31,10 +38,53 @@ pub(super) fn definition_text(body: &str) -> Option<&str> {
     let rest = after[close + 1..].strip_prefix(':')?;
     // CommonMark requires whitespace (or end-of-line) after the colon.
     if rest.is_empty() || rest.starts_with(' ') || rest.starts_with('\t') {
-        Some(text)
+        Some((text, rest))
     } else {
         None
     }
+}
+
+/// True when `body` is a complete CommonMark link reference definition:
+/// `[label]: destination` plus an optional quoted or parenthesized title, with
+/// nothing else on the line. Stricter than [`definition_text`]: rejects
+/// definition-shaped lines with no destination (`[x]:`) or with trailing junk
+/// (`[x]: not a title`), which CommonMark leaves as paragraph text.
+pub(super) fn is_reference_definition(body: &str) -> bool {
+    let Some((_, rest)) = split_definition(body) else {
+        return false;
+    };
+    let rest = rest.trim_start();
+    // Destination: `<...>` or a non-empty run without whitespace or control
+    // characters. An absent destination is not a definition.
+    let after_dest = if let Some(angle) = rest.strip_prefix('<') {
+        let Some(end) = angle.find('>') else {
+            return false;
+        };
+        &angle[end + 1..]
+    } else {
+        let end = rest
+            .find(|c: char| c.is_whitespace() || c.is_control())
+            .unwrap_or(rest.len());
+        if end == 0 {
+            return false;
+        }
+        &rest[end..]
+    };
+    // Optional title after whitespace, then only whitespace to end-of-line.
+    let tail = after_dest.trim_start();
+    if tail.is_empty() {
+        return true;
+    }
+    let close = match tail.as_bytes()[0] {
+        b'"' => '"',
+        b'\'' => '\'',
+        b'(' => ')',
+        _ => return false,
+    };
+    let Some(end) = tail[1..].find(close) else {
+        return false;
+    };
+    tail[end + 2..].trim().is_empty()
 }
 
 /// The doc-comment block key for a line with doc `prefix`.
