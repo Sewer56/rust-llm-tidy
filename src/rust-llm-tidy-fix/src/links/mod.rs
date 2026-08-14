@@ -759,6 +759,9 @@ pub fn f() {
             "text [only] bracket\n",
             "a](b) without open\n",
             "[A]: http://a\n[B]: http://b\n[A](u) [A](u)\n",
+            "[A]: http://a(junk\n[A](u) [A](u)\n",
+            "/// [A](u) [A](u)\n/// [A]: http://x(junk\n",
+            "[B]: http://x(y)z \"ti(tle)\"\n[A](u) [A](u)\n",
             "café [A](u) déjà [A](u) vu\n",
             "emoji 😀 [A](u) 🚀 [A](u)\n",
             "/// 日本語 [A](u) and [A](u)\n",
@@ -791,6 +794,92 @@ pub fn f() {
             let twice = fix_links(&once).0.into_owned();
             assert_eq!(twice, once, "not idempotent for input {input:?}");
         }
+    }
+
+    #[test]
+    fn malformed_definition_lines_do_not_block_hoist() {
+        // Each line is definition-shaped but malformed: CommonMark leaves it
+        // as paragraph text, so the label is free to hoist and the appended
+        // definition needs a blank separator after it. `definition_text` and
+        // `is_reference_definition` share one parser, so both reject these.
+        // Labels need one non-space character; unescaped `[` can never be in
+        // a label; an absent, unclosed, or unbalanced destination, an
+        // unclosed angle form, and a title glued to an angle destination all
+        // leave paragraph text. (`[A]:u` is valid: whitespace after the
+        // colon is optional, and a bare destination may contain quotes.)
+        let bad_lines = [
+            "[A]:",
+            "[A] : u",
+            "[ ]: u",
+            "[A[x]: u",
+            "[A]: http://x(junk",
+            "[A]: http://x((y) z",
+            "[A]: <u",
+            "[A]: <a<b>",
+            "[A]: <u>\"t\"",
+        ];
+        for bad in bad_lines {
+            let input = format!("see [A](http://x) and [A](http://x)\n{bad}\n");
+            let (out, pairs) = fix_links(&input);
+            let expected = format!("see [A] and [A]\n{bad}\n\n[A]: http://x\n");
+            assert_eq!(
+                &*out, expected,
+                "malformed definition {bad:?} must not block hoisting"
+            );
+            assert_eq!(
+                pairs,
+                [("[A](http://x)".into(), "[A]".into())],
+                "pairs for {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn complete_definition_forms_stay_contiguous() {
+        // Complete CommonMark definitions: the trailing append stays
+        // contiguous (no blank separator) for every accepted form.
+        let good_lines = [
+            "[B]: http://y",
+            "[B]:http://y",
+            "[B]: http://x(y)z",
+            "[B]: http://x\\(y\\)",
+            "[B]: <http://x>",
+            "[B]: <u\\>v>",
+            "[B]: http://y \"t\"",
+            "[B]: http://y 't'",
+            "[B]: http://y (t)",
+            "[B]: http://y (t (u))",
+        ];
+        for good in good_lines {
+            let input = format!("see [A](http://x) and [A](http://x)\n\n{good}\n");
+            let (out, _) = fix_links(&input);
+            let expected = format!("see [A] and [A]\n\n{good}\n[A]: http://x\n");
+            assert_eq!(
+                &*out, expected,
+                "valid definition {good:?} must stay contiguous"
+            );
+        }
+    }
+
+    #[test]
+    fn doc_block_malformed_def_line_gets_blank_separator() {
+        // A malformed `[A]:`-shaped line at the end of a doc-comment block is
+        // paragraph text: `needs_blank_before_defs` inserts the blank comment
+        // line before the hoisted in-comment definition.
+        for bad in ["[A]:", "[A]: http://x(junk", "[A]: <u>\"t\""] {
+            let input = format!("/// see [A](http://x) and [A](http://x)\n/// {bad}\n");
+            let (out, _) = fix_links(&input);
+            let expected = format!("/// see [A] and [A]\n/// {bad}\n///\n/// [A]: http://x\n");
+            assert_eq!(
+                &*out, expected,
+                "doc pseudo-definition {bad:?} must get a blank separator"
+            );
+        }
+        // A complete definition at the block end stays contiguous.
+        let input = "/// see [A](u) and [A](u)\n/// [B]: http://y\n";
+        let expected = "/// see [A] and [A]\n/// [B]: http://y\n/// [A]: u\n";
+        let (out, _) = fix_links(input);
+        assert_eq!(&*out, expected, "complete doc definition stays contiguous");
     }
 
     #[test]
