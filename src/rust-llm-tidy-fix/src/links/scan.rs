@@ -3,7 +3,8 @@
 //! Helpers shared by both the tally and rewrite passes:
 //! - [`step_fence`]: advance the open-fence stack for a doc-prefix-stripped
 //!   line, reusing [`crate::fences::parse_fence`] for delimiter recognition.
-//! - [`parse_inline_link`]: recognize an inline `[text](url)` link.
+//! - [`parse_inline_link`]: recognize a hoist-eligible inline `[text](url)`
+//!   link (flat, non-blank text only).
 //! - [`definition_text`]: recognize a `[text]: url` reference definition.
 //! - [`doc_block_key`]: classify a raw line into the doc-comment block it
 //!   belongs to, so the rewrite pass keeps per-comment definitions in lock-step
@@ -54,7 +55,10 @@ pub(super) fn doc_block_key(prefix: &str) -> Option<&str> {
     }
 }
 
-/// Iterate accepted inline links in one body, skipping malformed bracket runs.
+/// Iterate hoist-eligible inline links in one body (see
+/// [`parse_inline_link`] for the label rule), resuming one byte past each
+/// rejected `[` so a badge's declined outer link still yields its flat inner
+/// image.
 #[inline]
 pub(super) fn inline_links(body: &str) -> impl Iterator<Item = InlineLink<'_>> {
     let mut next = 0usize;
@@ -148,30 +152,51 @@ pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
     }
 }
 
-/// If `body` at byte index `open` (`[`) opens an inline link `[text](url)`,
-/// return `(text, url, end)` where `end` is one past the closing `)`.
-/// Returns `None` for reference-style forms, autolink `<...>` URLs, URLs
-/// containing whitespace/newline, or unbalanced brackets.
+/// If `body` at byte index `open` (`[`) opens an inline link `[text](url)`
+/// eligible for hoisting, return `(text, url, end)` where `end` is one past
+/// the closing `)`. Eligible text is non-blank (at least one byte that is
+/// not a space or tab) and contains no `[` or `]` byte, nested or escaped;
+/// [`super`] documents why.
+///
+/// Returns `None` for:
+///
+/// - reference-style forms
+/// - autolink `<...>` URLs
+/// - URLs containing whitespace/newline
+/// - unbalanced brackets
+/// - text failing the label rule
 #[inline]
 pub(super) fn parse_inline_link(body: &str, open: usize) -> Option<(&str, &str, usize)> {
     let bytes = body.as_bytes();
-    // Walk to the matching `]`, allowing balanced nested `[ ]`.
+    // Walk to the matching `]`, allowing balanced nested `[ ]`, and track in
+    // the same pass whether the text qualifies as a hoisted label: flat (no
+    // bracket bytes inside the text) and non-blank (a non-space/tab byte).
     let mut depth = 1usize;
+    let mut flat = true;
+    let mut non_blank = false;
     let mut j = open + 1;
     while j < bytes.len() {
         match bytes[j] {
-            b'[' => depth += 1,
+            b'[' => {
+                depth += 1;
+                flat = false;
+            }
             b']' => {
                 depth -= 1;
                 if depth == 0 {
                     break;
                 }
+                flat = false;
             }
-            _ => {}
+            b' ' | b'\t' => {}
+            _ => non_blank = true,
         }
         j += 1;
     }
     if depth != 0 || j >= bytes.len() {
+        return None;
+    }
+    if !flat || !non_blank {
         return None;
     }
     let close_bracket = j;

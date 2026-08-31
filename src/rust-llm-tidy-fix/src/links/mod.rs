@@ -6,23 +6,39 @@
 //! link hoists, including a single use and intra-doc `Self::…` / `crate::…`
 //! targets.
 //!
-//! A `(text, url)` pair is eligible when it appears at least `min_occurrences`
-//! times (default 1) in the non-fenced input and its text has no existing
-//! `[text]:` definition. Skipped forms are unchanged:
-//! autolinks (`<...>`), whitespace/newline-URL forms, already-reference-style
-//! links (`[text][ref]`, `[text][]`, `[text]`), links whose text already has a
-//! definition, and links inside fenced code blocks.
+//! Eligible `(text, url)` pairs:
 //!
-//! Definitions are placed by content, not by file type. When the input carries
-//! `///` or `//!` doc-comment lines outside code fences (Rust context), each
-//! `[text]: url` definition is written at the end of every doc-comment block
-//! that uses the label, on new lines with that block's doc prefix; links on
-//! non-doc-comment lines are left alone. Otherwise (Markdown), one
-//! document-scoped trailing definition block is appended at the end of the
-//! input, separated from a trailing paragraph by a blank line so the
-//! definitions parse as definitions (CommonMark forbids a link reference
-//! definition from interrupting a paragraph). Definitions use the source's
-//! dominant line ending.
+//! - appear at least `min_occurrences` times (default 1) in the non-fenced
+//!   input
+//! - have no existing `[text]:` definition for the text
+//! - use a valid label: non-blank and free of `[`/`]` bytes
+//!
+//! A label with an unescaped bracket or a blank label makes the hoisted
+//! `[text]: url` line parse as paragraph text. Escaped brackets are declined
+//! too, keeping the rule simple. A badge's outer `[![alt](img)](url)` link is
+//! therefore declined while its flat inner image still hoists.
+//!
+//! Skipped forms stay unchanged:
+//!
+//! - autolinks (`<...>`)
+//! - whitespace/newline-URL forms
+//! - already-reference-style links (`[text][ref]`, `[text][]`, `[text]`)
+//! - links whose text already has a definition
+//! - links whose text contains brackets or is blank
+//! - links inside fenced code blocks
+//!
+//! Definitions are placed by content, not by file type:
+//!
+//! - Rust context (the input carries `///` or `//!` doc-comment lines outside
+//!   code fences): each `[text]: url` definition is written at the end of
+//!   every doc-comment block that uses the label, on new lines with that
+//!   block's doc prefix. Links on non-doc-comment lines are left alone.
+//! - Markdown context (everything else): one document-scoped trailing
+//!   definition block is appended at the end of the input, separated from a
+//!   trailing paragraph by a blank line (CommonMark forbids a link reference
+//!   definition from interrupting a paragraph).
+//!
+//! Definitions use the source's dominant line ending.
 //!
 //! The function is idempotent and returns a borrowed [`Cow`] with empty pairs
 //! when nothing is eligible.
@@ -436,6 +452,81 @@ after
         assert!(matches!(out, Cow::Borrowed(_)), "non-inline forms borrowed");
         assert!(pairs.is_empty());
         assert_eq!(&*out, input);
+    }
+
+    #[test]
+    fn badge_link_hoists_inner_image_only() {
+        // A repeated badge hoists only its flat inner image: occurrences
+        // keep the inline `[![alt]](url)` shape and the definition carries
+        // the flat `[alt]` label.
+        let input = "[![Crates.io](https://img.shields.io/crates/v/t.svg)](https://crates.io/crates/t)\n\
+                     [![Crates.io](https://img.shields.io/crates/v/t.svg)](https://crates.io/crates/t)\n";
+        let expected = "[![Crates.io]](https://crates.io/crates/t)\n\
+                        [![Crates.io]](https://crates.io/crates/t)\n\
+                        \n\
+                        [Crates.io]: https://img.shields.io/crates/v/t.svg\n";
+
+        let (out, pairs) = fix_links(input);
+
+        assert_eq!(&*out, expected, "badge must hoist via its inner image");
+        assert_eq!(
+            pairs,
+            [(
+                "[Crates.io](https://img.shields.io/crates/v/t.svg)".into(),
+                "[Crates.io]".into()
+            )]
+        );
+    }
+
+    #[test]
+    fn bracket_text_link_untouched() {
+        // A repeated link whose text contains `[`/`]` bytes has no valid
+        // hoisted label: the input comes back byte-identical.
+        for input in [
+            "[text [x]](u) and [text [x]](u)\n",
+            "[\\[x\\]](u) and [\\[x\\]](u)\n",
+        ] {
+            let (out, pairs) = fix_links(input);
+
+            assert!(matches!(out, Cow::Borrowed(_)), "declined: {input:?}");
+            assert!(pairs.is_empty(), "no pairs for {input:?}");
+            assert_eq!(&*out, input);
+        }
+    }
+
+    #[test]
+    fn blank_text_link_untouched() {
+        // A repeated link with whitespace-only text never hoists: the
+        // input comes back byte-identical.
+        let input = "[ ](u) and [ ](u)\n";
+
+        let (out, pairs) = fix_links(input);
+
+        assert!(matches!(out, Cow::Borrowed(_)), "blank text declines hoist");
+        assert!(pairs.is_empty());
+        assert_eq!(&*out, input);
+    }
+
+    #[test]
+    fn corrupted_badge_definition_line_untouched() {
+        // A badge-shaped `[![Crates.io]]: url` line (paragraph text, not a
+        // definition) stays byte-identical while flat links elsewhere
+        // still hoist.
+        let input = "\
+[![Crates.io]]: https://crates.io/crates/t
+see [A](http://x) and [A](http://x)
+";
+        let expected = "\
+[![Crates.io]]: https://crates.io/crates/t
+see [A] and [A]
+
+[A]: http://x
+";
+
+        let (out, pairs) = fix_links(input);
+
+        assert_eq!(&*out, expected, "corrupted definition stays untouched");
+        assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);
     }
 
     #[test]
