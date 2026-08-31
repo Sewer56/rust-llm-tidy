@@ -1,5 +1,5 @@
-//! Plaintext extraction and segmentation for the paragraph and line-length
-//! checks.
+//! Plaintext extraction, segmentation, and the paragraph and line-length
+//! checks built on them.
 //!
 //! Converts raw file text into numbered stripped doc lines, paragraphs, and
 //! exemption classifications in one linear pass. Comment prefixes and indents
@@ -12,9 +12,17 @@
 //! - [`analyze`] - strips, numbers, and segments the file.
 //! - [`Paragraph`] - a measured paragraph: plain prose or a bullet with its
 //!   wrapped continuations.
+//! - [`run_text_checks`] - DOC007/DOC008 over the analysis result.
 
-// Currently unreferenced: the DOC007/DOC008 checks are the intended consumers.
-#![allow(dead_code)]
+use crate::check::{CODE_LINE_LENGTH, CODE_PARAGRAPH_SIZE};
+use crate::diagnostic::{Diagnostic, Severity};
+
+/// Recommended maximum bullet length, stated in the shortening guidance.
+const BULLET_RECOMMENDED: usize = 160;
+/// Maximum stripped line length before DOC008 fires.
+const LINE_LIMIT: usize = 80;
+/// Maximum measured paragraph size before DOC007 fires.
+const PARAGRAPH_LIMIT: usize = 240;
 
 /// Stripped lines and paragraphs extracted from one file.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -48,6 +56,44 @@ pub(crate) enum ParagraphKind {
     Plain,
     /// A bullet marker line plus its wrapped continuation lines.
     Bullet,
+}
+
+/// Runs DOC007 and DOC008 over one file's raw text.
+///
+/// DOC007 fires an Error when a plain paragraph's measured size exceeds 240
+/// chars, and a Warning when a bullet's does; DOC008 fires a Warning for every
+/// stripped line over 80 chars, with no content exemptions.
+///
+/// # Arguments
+///
+/// - `source` - the raw file text.
+/// - `ext` - the file extension, selecting the comment marker table.
+/// - `path` - the file path, named in each message.
+///
+/// # Returns
+///
+/// Diagnostics in source order: DOC007 per over-limit paragraph (bullet
+/// warnings after their paragraph position), then DOC008 per over-limit line.
+pub fn run_text_checks(source: &str, ext: &str, path: &str) -> Vec<Diagnostic> {
+    let doc = analyze(source, ext);
+
+    let mut diags = Vec::new();
+    for para in &doc.paragraphs {
+        if para.size <= PARAGRAPH_LIMIT {
+            continue;
+        }
+        diags.push(match para.kind {
+            ParagraphKind::Plain => paragraph_diagnostic(path, para),
+            ParagraphKind::Bullet => bullet_diagnostic(path, para),
+        });
+    }
+    for line in &doc.lines {
+        let len = line.text.chars().count();
+        if len > LINE_LIMIT {
+            diags.push(line_length_diagnostic(path, line, len));
+        }
+    }
+    diags
 }
 
 /// Strips and segments `source` for the given file extension in one linear
@@ -157,6 +203,25 @@ fn bullet_content(trimmed: &str) -> Option<&str> {
     }
 }
 
+/// DOC007 Warning for an over-limit bullet, with shortening guidance.
+fn bullet_diagnostic(path: &str, para: &Paragraph) -> Diagnostic {
+    let guidance = format!(
+        "{path}: bullet at line {} measures {} chars, over the \
+         {PARAGRAPH_LIMIT}-char limit. Shorten it to one checkable action, \
+         <= {BULLET_RECOMMENDED} chars recommended; split it at the nearest \
+         idea change with a blank line or into separate bullets.",
+        para.first_line, para.size
+    );
+    Diagnostic {
+        severity: Severity::Warning,
+        code: CODE_PARAGRAPH_SIZE,
+        message: guidance,
+        line: para.first_line,
+        item_kind: "file".to_string(),
+        item_name: None,
+    }
+}
+
 /// Folds the accumulated member lengths into a finished paragraph, if any.
 fn flush(pending: &mut Option<(ParagraphKind, usize, usize, usize)>, doc: &mut Document) {
     if let Some((kind, first_line, len, count)) = pending.take() {
@@ -178,6 +243,45 @@ fn is_exempt_content(trimmed: &str) -> bool {
         || trimmed.contains("https://")
         || trimmed.contains('`')
         || is_signature_line(trimmed)
+}
+
+/// DOC008 Warning for one over-limit stripped line.
+fn line_length_diagnostic(path: &str, line: &StrippedLine, len: usize) -> Diagnostic {
+    let guidance = format!(
+        "{path}: line {} is {len} chars long, over the {LINE_LIMIT}-char \
+         limit. Split it at the nearest idea change with a blank line; \
+         code-block lines count too.",
+        line.number
+    );
+    Diagnostic {
+        severity: Severity::Warning,
+        code: CODE_LINE_LENGTH,
+        message: guidance,
+        line: line.number,
+        item_kind: "file".to_string(),
+        item_name: None,
+    }
+}
+
+/// DOC007 Error for an over-limit plain paragraph, reported at its first line.
+fn paragraph_diagnostic(path: &str, para: &Paragraph) -> Diagnostic {
+    let guidance = format!(
+        "{path}: paragraph at line {} measures {} chars, over the {PARAGRAPH_LIMIT}-char \
+         limit. Split it at the nearest idea change with a blank line; convert \
+         list-like paragraphs into bullets (one checkable action each, \
+         <= {BULLET_RECOMMENDED} chars); move remarks into their own sections. \
+         Code, URLs, tables, headings, and signature lines are exempt: do not \
+         split them.",
+        para.first_line, para.size
+    );
+    Diagnostic {
+        severity: Severity::Error,
+        code: CODE_PARAGRAPH_SIZE,
+        message: guidance,
+        line: para.first_line,
+        item_kind: "file".to_string(),
+        item_name: None,
+    }
 }
 
 /// Strips leading whitespace, the first matching comment marker, and at most
@@ -404,5 +508,156 @@ mod tests {
         let doc = analyze("/// run `cargo test` to verify\n", "rs");
         assert!(doc.paragraphs.is_empty());
         assert_eq!(doc.lines.len(), 1);
+    }
+
+    // ── DOC007: paragraph and bullet budgets ──
+
+    // Returns only the diagnostics with the given code.
+    fn codes<'a>(diags: &'a [Diagnostic], code: &str) -> Vec<&'a Diagnostic> {
+        diags.iter().filter(|d| d.code == code).collect()
+    }
+
+    // Builds a `///` comment paragraph of `words` filler words.
+    fn paragraph_source(words: usize) -> String {
+        (0..words)
+            .map(|i| format!("/// w{i}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n"
+    }
+
+    // Over-limit plain paragraph -> DOC007 Error at the first line, with
+    // split and exemption guidance.
+    #[test]
+    fn text_checks_error_on_oversized_plain_paragraph() {
+        let source = paragraph_source(80);
+        let diags = run_text_checks(&source, "rs", "file.rs");
+        let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].severity, Severity::Error);
+        assert_eq!(found[0].line, 1);
+        let msg = &found[0].message;
+        assert!(msg.contains("file.rs"), "message must name the file");
+        assert!(msg.contains("over the 240-char limit"));
+        assert!(msg.contains("blank line"));
+        assert!(msg.contains("bullets"));
+        assert!(msg.contains("160"));
+        assert!(msg.contains("URLs, tables, headings, and signature"));
+    }
+
+    // Paragraph at or under the limit is silent.
+    #[test]
+    fn text_checks_silent_on_paragraph_within_limit() {
+        let source = paragraph_source(30);
+        let diags = run_text_checks(&source, "rs", "file.rs");
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
+    }
+
+    // A paragraph measuring exactly 240 chars is at the limit, not over it.
+    #[test]
+    fn text_checks_silent_on_paragraph_at_exact_limit() {
+        let source = format!("/// {}\n", "x".repeat(240));
+        let diags = run_text_checks(&source, "rs", "file.rs");
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
+    }
+
+    // The Error is reported at the paragraph's first line, not where the
+    // budget overflowed.
+    #[test]
+    fn text_checks_report_paragraph_at_its_first_line() {
+        let source = format!(
+            "/// short intro\n\n{}\n",
+            "/// ".to_string() + &"y".repeat(300)
+        );
+        let diags = run_text_checks(&source, "rs", "file.rs");
+        let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].line, 3);
+    }
+
+    // Over-limit bullet -> DOC007 Warning only, with shortening guidance and
+    // the 160-char recommendation.
+    #[test]
+    fn text_checks_warn_on_oversized_bullet() {
+        let bullet = "- ".to_string() + &"word ".repeat(60);
+        let source = format!("{bullet}\n");
+        let diags = run_text_checks(&source, "md", "file.md");
+        let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].severity, Severity::Warning);
+        assert_eq!(found[0].line, 1);
+        let msg = &found[0].message;
+        assert!(msg.contains("Shorten"));
+        assert!(msg.contains("160"));
+        assert!(msg.contains("bullets"));
+    }
+
+    // Bullet within the limit is silent.
+    #[test]
+    fn text_checks_silent_on_bullet_within_limit() {
+        let source = format!("- {}\n", "word ".repeat(10));
+        let diags = run_text_checks(&source, "md", "file.md");
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
+    }
+
+    // Bullet content never inflates the enclosing paragraph's budget.
+    #[test]
+    fn text_checks_exclude_bullets_from_paragraph_budget() {
+        let prose = "sentence ".repeat(20);
+        let bullet = "- ".to_string() + &"word ".repeat(20);
+        // Prose alone stays under 240; adding the bullet words would cross it.
+        let source = format!("{prose}\n{bullet}\n");
+        assert!(prose.trim().len() < 240);
+        let diags = run_text_checks(&source, "md", "file.md");
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
+    }
+
+    // A whole-line code-span exemption keeps its prose remainder free of the
+    // paragraph budget.
+    #[test]
+    fn text_checks_exempt_line_costs_no_paragraph_budget() {
+        let prose = "sentence ".repeat(25);
+        let source = format!("{prose}\nrun `cargo test` now please\n");
+        let diags = run_text_checks(&source, "md", "file.md");
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
+    }
+
+    // ── DOC008: line length ──
+
+    // Over-limit stripped line -> DOC008 Warning naming file, line, measured
+    // length, and the limit. Indent and comment marker are not measured.
+    #[test]
+    fn text_checks_warn_on_long_stripped_line() {
+        let text = "x".repeat(81);
+        let source = format!("\t/// {text}\n");
+        let diags = run_text_checks(&source, "rs", "file.rs");
+        let found = codes(&diags, CODE_LINE_LENGTH);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].severity, Severity::Warning);
+        assert_eq!(found[0].line, 1);
+        let msg = &found[0].message;
+        assert!(msg.contains("file.rs"));
+        assert!(msg.contains("line 1"));
+        assert!(msg.contains("81 chars"));
+        assert!(msg.contains("80-char limit"));
+    }
+
+    // A line of exactly 80 chars passes.
+    #[test]
+    fn text_checks_silent_on_line_at_limit() {
+        let source = format!("{}\n", "x".repeat(80));
+        let diags = run_text_checks(&source, "md", "file.md");
+        assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
+    }
+
+    // No content exemptions: fenced code-block lines also warn.
+    #[test]
+    fn text_checks_warn_on_long_lines_inside_fenced_code() {
+        let inner = "y".repeat(90);
+        let source = format!("```\n{inner}\n```\n");
+        let diags = run_text_checks(&source, "md", "file.md");
+        let found = codes(&diags, CODE_LINE_LENGTH);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].line, 2);
     }
 }
