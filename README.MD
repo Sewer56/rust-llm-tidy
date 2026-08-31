@@ -3,16 +3,15 @@
 [![Crates.io](https://img.shields.io/crates/v/rust-llm-tidy-cli.svg)][Crates.io CLI]
 [![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
 
-Rust project for automatically reordering Rust source file items into an
-opinionated order with dependency resolution. Intended for LLM use.
+Opinionated linter for my Rust and Markdown preferences. Primarily for
+fixing LLM output, but useful for any code.
 
-> **⚠ Vibecoded jank - personal tooling, not production software.**
+> **⚠ Largely written by LLMs - personal tooling, not production software.**
+>
+> Just a disclaimer.
 > 
-> This project was built for my own LLM-assisted Rust workflows.
-> It's quite frankly- shit compared to the polished diamonds I usually make.
-> 
-> It may have rough edges, including untested edge cases.
-> Use at your own risk - or don't.
+> Although I review each line, and patch by hand as I go.
+> This isn't done to the same quality standard as my other projects.
 
 ## Quick Start
 
