@@ -2,15 +2,18 @@
 //! post-process runner.
 //!
 //! Files are processed independently of each other, so the per-file work is
-//! run in parallel with rayon. Each task buffers its plaintext lines and
-//! results; a sequential pass immediately after re-emits them in input order,
-//! keeping stderr and JSON output byte-identical to a single-threaded run.
+//! run in parallel with rayon.
+//!
+//! Each task buffers its plaintext lines and results; a sequential pass
+//! immediately after re-emits them in input order, keeping stderr and JSON
+//! output byte-identical to a single-threaded run.
 //!
 //! That buffering is the price of deterministic ordering: nothing is printed
 //! until every file finishes, so a huge run holds all output (plus per-file
-//! results) in memory before the replay pass. Streaming would interleave
-//! lines across threads and break byte-identical output, which JSON consumers
-//! and diffing depend on.
+//! results) in memory before the replay pass.
+//!
+//! Streaming would interleave lines across threads and break byte-identical
+//! output, which JSON consumers and diffing depend on.
 
 use super::{Cli, VisContext};
 use crate::config::{CompiledConfig, PostProcessStep};
@@ -159,8 +162,9 @@ pub(crate) fn run_pipeline(
 
     // Emit the full JSON document on stdout before any bail (post-process,
     // processing-failure, or error-count) so consumers receive every finding
-    // and change record together with the non-zero exit code. Plaintext stays
-    // on stderr (already printed above).
+    // and change record together with the non-zero exit code.
+    //
+    // Plaintext stays on stderr (already printed above).
     if json_mode {
         crate::output::emit_json(&diagnostics, &changes)?;
     }
@@ -346,9 +350,12 @@ fn dedup_inputs(paths: Vec<PathBuf>) -> Vec<PathBuf> {
 
 /// Process a single file: run every enabled op in the canonical order
 /// (fix, reorder, vis, lints), buffering results and plaintext lines.
+///
 /// Shared state is read-only; each file mutates only its own path (atomic
-/// write), so safe to run on one rayon thread per file. Inputs were deduped
-/// before dispatch, so no two tasks touch the same inode even under aliases.
+/// write), so safe to run on one rayon thread per file.
+///
+/// Inputs were deduped before dispatch, so no two tasks touch the same inode
+/// even under aliases.
 fn process_one(
     path: &Path,
     config: Option<&CompiledConfig>,
@@ -412,33 +419,28 @@ fn process_one(
         }
     }
 
-    // Reorder/check are Rust-only operations.
+    // Reorder and vis are Rust-only; lints below run for every input.
     let is_rust = crate::paths::ext_in(path.extension().and_then(|e| e.to_str()), &["rs"]);
-    if !is_rust {
-        if should_post_process {
-            out.processed = true;
-        }
-        return out;
-    }
-
-    // Reorder next (fixes ordering).
-    if op_enabled("reorder", enabled, disabled) {
-        match super::reorder_file(path, dry_run, disabled) {
-            Ok(found) => out.record_changes(path, found, json_mode),
-            Err(e) => {
-                out.fail(path, &e);
-                return out;
+    if is_rust {
+        // Reorder next (fixes ordering).
+        if op_enabled("reorder", enabled, disabled) {
+            match super::reorder_file(path, dry_run, disabled) {
+                Ok(found) => out.record_changes(path, found, json_mode),
+                Err(e) => {
+                    out.fail(path, &e);
+                    return out;
+                }
             }
         }
-    }
-    // Narrow visibility next (fixes misleading bare `pub` inside
-    // restricted-visibility inline modules).
-    if op_enabled("vis", enabled, disabled) {
-        match super::vis_file(path, dry_run, ctx, disabled) {
-            Ok(found) => out.record_changes(path, found, json_mode),
-            Err(e) => {
-                out.fail(path, &e);
-                return out;
+        // Narrow visibility next (fixes misleading bare `pub` inside
+        // restricted-visibility inline modules).
+        if op_enabled("vis", enabled, disabled) {
+            match super::vis_file(path, dry_run, ctx, disabled) {
+                Ok(found) => out.record_changes(path, found, json_mode),
+                Err(e) => {
+                    out.fail(path, &e);
+                    return out;
+                }
             }
         }
     }

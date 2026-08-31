@@ -123,17 +123,30 @@ impl Cli {
 ///
 /// Returns `(path, diagnostics)` pairs so the caller can either print the
 /// plaintext lines to stderr (default output) or project them to JSON.
+///
+/// Tree-sitter checks run only for `.rs`; the plaintext checks (DOC007/DOC008)
+/// run for both `.rs` and `.md`, scanning the raw text without parsing.
 pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
 ) -> anyhow::Result<Vec<(PathBuf, rust_llm_tidy_lint::Diagnostic)>> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
-    let parsed = model_parse::parse_source(&source)
-        .with_context(|| format!("failed to parse {}", path.display()))?;
-
-    let mut diagnostics = check::run_all(&parsed);
+    let mut diagnostics = Vec::new();
+    if crate::paths::ext_in(Some(ext), &["rs"]) {
+        let parsed = model_parse::parse_source(&source)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        diagnostics = check::run_all(&parsed);
+    }
+    if crate::paths::ext_in(Some(ext), &["rs", "md"]) {
+        diagnostics.extend(check::run_text_checks(
+            &source,
+            ext,
+            &path.display().to_string(),
+        ));
+    }
     diagnostics.retain(|d| !disabled.contains(d.code));
 
     Ok(diagnostics
