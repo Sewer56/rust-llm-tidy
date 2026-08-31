@@ -456,9 +456,9 @@ after
 
     #[test]
     fn badge_link_hoists_inner_image_only() {
-        // A repeated badge hoists only its flat inner image: occurrences
-        // keep the inline `[![alt]](url)` shape and the definition carries
-        // the flat `[alt]` label.
+        // A repeated badge hoists only its flat inner image: occurrences keep
+        // the inline `[![alt]](url)` shape and the definition carries the
+        // flat `[alt]` label. Both engines agree.
         let input = "[![Crates.io](https://img.shields.io/crates/v/t.svg)](https://crates.io/crates/t)\n\
                      [![Crates.io](https://img.shields.io/crates/v/t.svg)](https://crates.io/crates/t)\n";
         let expected = "[![Crates.io]](https://crates.io/crates/t)\n\
@@ -476,42 +476,97 @@ after
                 "[Crates.io]".into()
             )]
         );
+
+        let (counted_out, counted_pairs) = fix_links_with_min(input, 2);
+        assert_eq!(
+            counted_out.into_owned(),
+            expected,
+            "counted engine must hoist the same inner image"
+        );
+        assert_eq!(counted_pairs, pairs);
+    }
+
+    #[test]
+    fn flat_image_hoists_in_both_engines() {
+        // A flat image `![alt](img)` hoists exactly like a flat link: each
+        // occurrence becomes `![alt]` (the `!` sits outside the rewritten
+        // span) and one `[alt]: img` definition is appended, in both engines.
+        let input = "lead ![logo](i.png) mid ![logo](i.png)\n";
+        let expected = "lead ![logo] mid ![logo]\n\n[logo]: i.png\n";
+
+        let (out, pairs) = fix_links(input);
+
+        assert_eq!(&*out, expected, "flat image must keep hoisting");
+        assert_eq!(pairs, [("[logo](i.png)".into(), "[logo]".into())]);
+
+        let (counted_out, counted_pairs) = fix_links_with_min(input, 2);
+        assert_eq!(
+            counted_out.into_owned(),
+            expected,
+            "counted engine must hoist the same image"
+        );
+        assert_eq!(counted_pairs, pairs);
     }
 
     #[test]
     fn bracket_text_link_untouched() {
         // A repeated link whose text contains `[`/`]` bytes has no valid
-        // hoisted label: the input comes back byte-identical.
+        // hoisted label: the input comes back byte-identical in both engines.
         for input in [
             "[text [x]](u) and [text [x]](u)\n",
             "[\\[x\\]](u) and [\\[x\\]](u)\n",
+            "[[x]](u) and [[x]](u)\n",
+            "[a [b] c](u) repeated [a [b] c](u)\n",
         ] {
             let (out, pairs) = fix_links(input);
 
             assert!(matches!(out, Cow::Borrowed(_)), "declined: {input:?}");
             assert!(pairs.is_empty(), "no pairs for {input:?}");
             assert_eq!(&*out, input);
+
+            let (counted_out, counted_pairs) = fix_links_with_min(input, 2);
+            assert!(
+                matches!(counted_out, Cow::Borrowed(_)),
+                "counted declines: {input:?}"
+            );
+            assert!(counted_pairs.is_empty(), "counted no pairs for {input:?}");
+            assert_eq!(&*counted_out, input);
         }
     }
 
     #[test]
     fn blank_text_link_untouched() {
-        // A repeated link with whitespace-only text never hoists: the
-        // input comes back byte-identical.
-        let input = "[ ](u) and [ ](u)\n";
+        // A repeated link with whitespace-only text never hoists: both
+        // engines return the input byte-identical.
+        for input in [
+            "[ ](u) and [ ](u)\n",
+            "[\t](u) and [\t](u)\n",
+            "[](u) and [](u)\n",
+        ] {
+            let (out, pairs) = fix_links(input);
 
-        let (out, pairs) = fix_links(input);
+            assert!(
+                matches!(out, Cow::Borrowed(_)),
+                "blank text declines hoist: {input:?}"
+            );
+            assert!(pairs.is_empty(), "no pairs for {input:?}");
+            assert_eq!(&*out, input);
 
-        assert!(matches!(out, Cow::Borrowed(_)), "blank text declines hoist");
-        assert!(pairs.is_empty());
-        assert_eq!(&*out, input);
+            let (counted_out, counted_pairs) = fix_links_with_min(input, 2);
+            assert!(
+                matches!(counted_out, Cow::Borrowed(_)),
+                "counted declines: {input:?}"
+            );
+            assert!(counted_pairs.is_empty(), "counted no pairs for {input:?}");
+            assert_eq!(&*counted_out, input);
+        }
     }
 
     #[test]
     fn corrupted_badge_definition_line_untouched() {
         // A badge-shaped `[![Crates.io]]: url` line (paragraph text, not a
-        // definition) stays byte-identical while flat links elsewhere
-        // still hoist.
+        // definition) stays byte-identical while flat links elsewhere still
+        // hoist, in both engines.
         let input = "\
 [![Crates.io]]: https://crates.io/crates/t
 see [A](http://x) and [A](http://x)
@@ -527,6 +582,14 @@ see [A] and [A]
 
         assert_eq!(&*out, expected, "corrupted definition stays untouched");
         assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);
+
+        let (counted_out, counted_pairs) = fix_links_with_min(input, 2);
+        assert_eq!(
+            counted_out.into_owned(),
+            expected,
+            "counted engine keeps the corrupted line untouched"
+        );
+        assert_eq!(counted_pairs, pairs);
     }
 
     #[test]
@@ -810,19 +873,37 @@ pub fn f() {
 
     #[test]
     fn idempotent_on_hoisted_output() {
-        let input = "see [A](http://x) and [A](http://x)\n";
-        let once = fix_links(input).0.into_owned();
-        let twice = fix_links(&once).0.into_owned();
-        assert_eq!(twice, once, "fix_links must be idempotent");
+        // Re-running `fix_links` on its own output is a borrowed no-op for
+        // every hoisted shape: flat links, flat images, badges hoisted via
+        // their inner image, and a corrupted badge definition line that
+        // coexists with a hoisted flat link.
+        let cases = [
+            "see [A](http://x) and [A](http://x)\n",
+            "lead ![logo](i.png) mid ![logo](i.png)\n",
+            "[![Crates.io](https://img.shields.io/crates/v/t.svg)](https://crates.io/crates/t)\n\
+             [![Crates.io](https://img.shields.io/crates/v/t.svg)](https://crates.io/crates/t)\n",
+            "[![Crates.io]]: https://crates.io/crates/t\nsee [A](http://x) and [A](http://x)\n",
+        ];
+        for input in cases {
+            let once = fix_links(input).0.into_owned();
+            let (twice, pairs) = fix_links(&once);
+            assert!(
+                matches!(twice, Cow::Borrowed(_)),
+                "re-run must borrow for {input:?}"
+            );
+            assert!(pairs.is_empty(), "no pairs on re-run for {input:?}");
+            assert_eq!(&*twice, &once, "fix_links must be idempotent for {input:?}");
+        }
     }
 
     #[test]
     fn optimized_is_idempotent_on_diverse_cases() {
         // Broad corpus: repeated vs single-use links, reference definitions,
         // autolinks, whitespace URLs, links inside code fences, doc-comment
-        // prefixes, intra-doc forms, nested brackets, non-ASCII text,
-        // unbalanced edge cases, and multi-comment Rust inputs. `fix_links`
-        // must stay idempotent on every input.
+        // prefixes, intra-doc forms, nested brackets, blank-text links,
+        // badges hoisted via their inner image (outer bracket-bearing link
+        // declined), non-ASCII text, unbalanced edge cases, and multi-comment
+        // Rust inputs. `fix_links` must stay idempotent on every input.
         let cases: &[&str] = &[
             "",
             "no brackets at all\n",
@@ -848,6 +929,8 @@ pub fn f() {
             "see [A] and [A]\n\n[A]: http://x\n",
             "[a [b] c](u) repeated [a [b] c](u)\n",
             "[[x]](u) and [[x]](u)\n",
+            "[ ](u) and [ ](u)\n",
+            "/// [![b](i)](u) and [![b](i)](u)\n",
             "[not a link\n",
             "[no](paren\n",
             "text [only] bracket\n",
