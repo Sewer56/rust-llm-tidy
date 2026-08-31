@@ -10,7 +10,7 @@
 //! | Op      | Does                                               | Mutates |
 //! | ------- | -------------------------------------------------- | ------- |
 //! | fix     | align tables, fix fences, hoist links              | yes     |
-//! | reorder | canonical 10-phase item ordering                   | yes     |
+//! | reorder | review-friendly item order                         | yes     |
 //! | vis     | narrow bare `pub` in restricted-visibility modules | yes     |
 //! | lints   | DOC001-DOC006 + TEST001 checks                     | no      |
 //!

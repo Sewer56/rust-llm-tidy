@@ -1,9 +1,11 @@
-# `reorder` - canonical item ordering
+# `reorder` - review-friendly item order
 
 ## What it does
 
-Reorders top-level items of a Rust source file into a canonical 10-phase
-order. Within most phases an item precedes anything it references;
+Reorders top-level items of a Rust source file into a review-friendly
+10-phase order, so a human can read the file top to bottom in review.
+
+Within most phases an item precedes anything it references;
 alphabetical order breaks ties. `fn main()` comes first in its tier;
 inline `#[cfg(test)] mod tests { ... }` definitions come last.
 
