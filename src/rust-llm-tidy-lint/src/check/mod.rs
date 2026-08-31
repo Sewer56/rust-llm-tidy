@@ -29,6 +29,7 @@ mod arguments;
 mod docs;
 mod errors;
 mod placeholder;
+mod plaintext;
 mod test_naming;
 
 /// All lint codes accepted through `include.rules`, `exclude.rules`,
