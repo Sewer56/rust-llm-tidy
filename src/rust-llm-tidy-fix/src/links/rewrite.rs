@@ -8,8 +8,9 @@ use std::collections::{HashMap, HashSet};
 /// Append hoisted `[text]: url` definitions at the end of one Rust doc-comment
 /// block, each on a new line carrying the block's `prefix`. Ensures the block
 /// ends with a newline so the first definition starts on its own comment line
-/// (a trailing doc line without a newline still yields separate lines). Block
-/// definitions stay inside the comment so rustdoc still sees a valid,
+/// (a trailing doc line without a newline still yields separate lines).
+///
+/// Block definitions stay inside the comment so rustdoc still sees a valid,
 /// self-contained comment; they never escape into surrounding code.
 ///
 /// See [`needs_blank_before_defs`] for the blank separator line.
@@ -34,10 +35,13 @@ pub(super) fn append_block_definitions(
 /// Append hoisted `[text]: url` definitions at the end of `buf`, each on its
 /// own line using the source's dominant line ending (`le`), so a CRLF
 /// document stays CRLF after hoisting. Ensures the buffer ends with a newline
-/// so the first definition starts on its own line; inserts a blank separator
-/// line first when the document otherwise ends in paragraph text (CommonMark
-/// forbids a link reference definition from interrupting a paragraph, so
-/// glued definitions parse as text). Documents already ending in a blank
+/// so the first definition starts on its own line.
+///
+/// Inserts a blank separator line first when the document otherwise ends in
+/// paragraph text: CommonMark forbids a link reference definition from
+/// interrupting a paragraph, so glued definitions parse as text.
+///
+/// Documents already ending in a blank
 /// line or reference definition continue that block contiguously.
 pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &str) {
     if !buf.ends_with('\n') {
@@ -167,8 +171,10 @@ pub(super) fn blank_line_prefix(prefix: &str) -> &str {
 ///
 /// CommonMark forbids a link reference definition from interrupting a
 /// paragraph, so glued definitions parse as text and rustdoc reports broken
-/// intra-doc links. Blocks already ending in a blank line or a complete
-/// reference definition are continued contiguously.
+/// intra-doc links.
+///
+/// Blocks already ending in a blank line or a complete reference definition
+/// are continued contiguously.
 pub(super) fn needs_blank_before_defs(text: &str, prefix: &str) -> bool {
     let bytes = text.as_bytes();
     let mut end = bytes.len();

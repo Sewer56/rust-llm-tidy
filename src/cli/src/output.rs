@@ -1,11 +1,12 @@
 //! Structured (JSON) output for lint diagnostics and dry-run change records.
 //!
-//! The CLI can report its findings either as the human-readable plaintext
-//! lines printed to stderr (the default, byte-identical to prior releases) or
-//! as a single JSON array on stdout. This module owns the serializable
-//! projection of lint findings and dry-run change records and the emit
-//! routine, keeping the projection separate from the per-file pipeline and
-//! never touching the serde-free `rust-llm-tidy-lint` crate.
+//! The CLI can report its findings either as human-readable plaintext lines
+//! on stderr (the default) or as a single JSON array on stdout.
+//!
+//! This module owns the serializable projection of lint findings and dry-run
+//! change records and the emit routine, keeping the projection separate from
+//! the per-file pipeline and never touching the serde-free
+//! `rust-llm-tidy-lint` crate.
 
 use crate::changes::Change;
 use rust_llm_tidy_lint::{Diagnostic, Severity};

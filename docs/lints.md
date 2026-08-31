@@ -2,11 +2,11 @@
 
 ## What it does
 
-The `lints` op runs seven read-only checks (DOC001-DOC006 + TEST001). It is
+The `lints` op runs nine read-only checks (DOC001-DOC008 + TEST001). It is
 on by default in the pipeline and never mutates files. Exits non-zero when
 any error-severity finding is present (warnings do not fail).
 
-The seven lint codes are sub-checks of `lints`; they stay individually
+The nine lint codes are sub-checks of `lints`; they stay individually
 toggleable through the same rule namespace as the ops, so
 `exclude: [{rules: [DOC001]}]` turns off just missing-docs and
 `exclude: [{rules: [lints]}]` turns off all linting.
@@ -21,6 +21,8 @@ toggleable through the same rule namespace as the ops, so
 | [`DOC004`]  | Warning  | A `pub fn` with parameters has no `# Arguments` section.                          |
 | [`DOC005`]  | Warning  | A `# Arguments` section does not mention every parameter name.                    |
 | [`DOC006`]  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).                   |
+| [`DOC007`]  | Error    | A paragraph of stripped doc text measures over 240 chars (bullets: Warning).      |
+| [`DOC008`]  | Warning  | A stripped doc line measures over 80 chars, with no content exemptions.           |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
 
 ## Examples
@@ -247,6 +249,80 @@ src/lib.rs:1: warning[DOC006]: doc comment contains placeholder text (TODO/FIXME
 
 `DOC006` is warning-severity, so the run exits 0.
 
+### DOC007 - oversized paragraph
+
+A paragraph of stripped doc text over 240 chars is an error. A bullet over
+240 chars warns instead and recommends one checkable action of at most 160
+chars. Nested bullets are separate paragraphs.
+
+Both checks strip leading whitespace, the comment marker (`//`, `///`, `//!`
+in Rust), and one following space. They run on `.rs` and `.md` files. Code,
+URLs, tables, headings, and signature lines are exempt from the paragraph
+budget.
+
+Before:
+
+```rust
+/// Loads the configured data from disk, parses it, validates every field
+/// against the schema, resolves relative paths against the config
+/// directory, retries transient failures with bounded backoff, and logs a
+/// one-line summary when the load settles.
+pub fn load() {}
+```
+
+After:
+
+```rust
+/// Loads the configured data from disk and parses it.
+///
+/// - Validates every field against the schema.
+/// - Resolves relative paths against the config directory.
+/// - Retries transient failures with bounded backoff.
+/// - Logs a one-line summary when the load settles.
+pub fn load() {}
+```
+
+#### DOC007 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include DOC007 src/lib.rs
+src/lib.rs:1: error[DOC007]: src/lib.rs: paragraph at line 1 measures 120 chars, over the 240-char limit. Split it at the nearest idea change with a blank line; convert list-like paragraphs into bullets (one checkable action each, <= 160 chars); move remarks into their own sections. Code, URLs, tables, headings, and signature lines are exempt: do not split them. (file)
+```
+
+`DOC007` (prose) is error-severity, so the run exits non-zero. A bullet over
+the limit fires a warning instead and exits 0.
+
+### DOC008 - long line
+
+A stripped doc line over 80 chars is a warning, with no content exemptions:
+code-block lines count too. The measurement strips leading whitespace, the
+comment marker, and at most one following space, so indent depth does not eat
+the budget. It runs on `.rs` and `.md` files.
+
+Split long lines at the nearest idea change with a blank line:
+
+Before:
+
+```md
+The config is discovered by walking up from the current directory to the repo root, checking each level.
+```
+
+After:
+
+```md
+The config is discovered by walking up from the current directory to the repo
+root, checking each level.
+```
+
+#### DOC008 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include DOC008 README.md
+README.md:1: warning[DOC008]: README.md: line 1 is 98 chars long, over the 80-char limit. Split it at the nearest idea change with a blank line; code-block lines count too. (file)
+```
+
+`DOC008` is warning-severity, so the run exits 0.
+
 ### TEST001 - non-behavioral test name
 
 Test-attributed functions should describe behavior, not use `test`, `test_*`,
@@ -378,4 +454,6 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`DOC004`]: #doc004---missing-arguments-section
 [`DOC005`]: #doc005---undocumented-parameter
 [`DOC006`]: #doc006---placeholder-text
+[`DOC007`]: #doc007---oversized-paragraph
+[`DOC008`]: #doc008---long-line
 [`TEST001`]: #test001---non-behavioral-test-name

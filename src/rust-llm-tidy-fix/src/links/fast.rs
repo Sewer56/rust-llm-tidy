@@ -1,7 +1,9 @@
 //! Specialized always-hoist implementation for the default threshold of one.
 //!
 //! Unlike the configurable counted path, this path records parsed link spans
-//! once, keys candidates only by label, and rewrites directly from those spans.
+//! once, keys candidates only by label, and rewrites directly from those
+//! spans.
+//!
 //! It avoids pair-count hashing, a second parse, pair-set lookups, per-line
 //! output allocations, and separate line-ending scans.
 

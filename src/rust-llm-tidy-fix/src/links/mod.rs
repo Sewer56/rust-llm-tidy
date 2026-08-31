@@ -30,14 +30,16 @@
 //!
 //! Definitions are placed by content, not by file type:
 //!
-//! - Rust context (the input carries `///` or `//!` doc-comment lines outside
-//!   code fences): each `[text]: url` definition is written at the end of
-//!   every doc-comment block that uses the label, on new lines with that
-//!   block's doc prefix. Links on non-doc-comment lines are left alone.
+//! - Rust context (input carries `///` or `//!` doc-comment lines outside
+//!   code fences): each `[text]: url` definition goes at the end of every
+//!   doc-comment block using the label, prefixed like that block. Links on
+//!   non-doc-comment lines are left alone.
 //! - Markdown context (everything else): one document-scoped trailing
 //!   definition block is appended at the end of the input, separated from a
-//!   trailing paragraph by a blank line (CommonMark forbids a link reference
-//!   definition from interrupting a paragraph).
+//!   trailing paragraph by a blank line.
+//!
+//!   CommonMark forbids a link reference definition from interrupting a
+//!   paragraph, hence the required separator.
 //!
 //! Definitions use the source's dominant line ending.
 //!
@@ -903,10 +905,12 @@ pub fn f() {
     fn optimized_is_idempotent_on_diverse_cases() {
         // Broad corpus: repeated vs single-use links, reference definitions,
         // autolinks, whitespace URLs, links inside code fences, doc-comment
-        // prefixes, intra-doc forms, nested brackets, blank-text links,
-        // badges hoisted via their inner image (outer bracket-bearing link
-        // declined), non-ASCII text, unbalanced edge cases, and multi-comment
-        // Rust inputs. `fix_links` must stay idempotent on every input.
+        // prefixes, intra-doc forms, nested brackets, and blank-text links.
+        //
+        // Also badges hoisted via their inner image (outer bracket-bearing
+        // link declined), unbalanced edge cases, non-ASCII text, and
+        // multi-comment Rust inputs. `fix_links` must stay idempotent on
+        // every input.
         let cases: &[&str] = &[
             "",
             "no brackets at all\n",

@@ -101,9 +101,11 @@ impl<'names> ReferenceCollector<'names> {
             // `macro_invocation` is a reference site (its `macro` field is a
             // macro-call path). Record it once and do NOT recurse: the macro
             // path identifier is recorded here, and re-walking it would
-            // double-record. The invocation's argument token_tree is not
-            // scanned (mirrors syn, which only scanned macro *definition*
-            // bodies, not invocation arguments).
+            // double-record.
+            //
+            // The invocation's argument token_tree is not scanned (mirrors
+            // syn, which only scanned macro *definition* bodies, not
+            // invocation arguments).
             "macro_invocation" => {
                 if let Some(mac) = node.child_by_field_name("macro") {
                     self.record_ref(mac, source);
