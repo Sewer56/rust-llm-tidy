@@ -91,8 +91,8 @@ After:
 
 Never hoisted: autolinks and whitespace-URL forms, already-reference-style
 links, texts with an existing definition, bracketed or blank texts (e.g. a
-badge's outer link), and links inside fenced code blocks (same fence
-discipline as `fix_fences`).
+badge's outer link), escaped `\[` opens, and links inside fenced code blocks
+(same fence discipline as `fix_fences`).
 
 Idempotent: already-hoisted output returns unchanged. Definitions use the
 source's dominant line ending (`\r\n` or `\n`), so CRLF stays CRLF.

@@ -23,6 +23,7 @@
 //! - autolinks (`<...>`)
 //! - whitespace/newline-URL forms
 //! - already-reference-style links (`[text][ref]`, `[text][]`, `[text]`)
+//! - escaped `\[` opens (a literal bracket, never a link)
 //! - links whose text already has a definition
 //! - links whose text contains brackets or is blank
 //! - links inside fenced code blocks
@@ -510,11 +511,13 @@ after
 
     #[test]
     fn bracket_text_link_untouched() {
-        // A repeated link whose text contains `[`/`]` bytes has no valid
+        // A repeated link whose text contains `[`/`]` bytes, or whose open
+        // `[` is escaped (literal `\[x](u)` text, never a link), has no valid
         // hoisted label: the input comes back byte-identical in both engines.
         for input in [
             "[text [x]](u) and [text [x]](u)\n",
             "[\\[x\\]](u) and [\\[x\\]](u)\n",
+            "\\[x](u) and \\[x](u)\n",
             "[[x]](u) and [[x]](u)\n",
             "[a [b] c](u) repeated [a [b] c](u)\n",
         ] {

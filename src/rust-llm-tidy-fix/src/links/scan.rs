@@ -164,10 +164,21 @@ pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
 /// - autolink `<...>` URLs
 /// - URLs containing whitespace/newline
 /// - unbalanced brackets
+/// - an escaped open (an odd-length backslash run before the `[` makes it a
+///   literal `\[`, not a link opener)
 /// - text failing the label rule
 #[inline]
 pub(super) fn parse_inline_link(body: &str, open: usize) -> Option<(&str, &str, usize)> {
     let bytes = body.as_bytes();
+    // An odd-length backslash run escapes the `[` (an even run escapes
+    // itself), so the candidate is a literal `\[`, never a link opener.
+    let mut escapes = 0usize;
+    while escapes < open && bytes[open - 1 - escapes] == b'\\' {
+        escapes += 1;
+    }
+    if escapes % 2 == 1 {
+        return None;
+    }
     // Walk to the matching `]`, allowing balanced nested `[ ]`, and track in
     // the same pass whether the text qualifies as a hoisted label: flat (no
     // bracket bytes inside the text) and non-blank (a non-space/tab byte).

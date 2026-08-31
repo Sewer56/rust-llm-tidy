@@ -12,9 +12,9 @@ only once. Runs in `.rs` doc comments and `.md` files.
 - In `.md` files, all definitions collect in one trailing block at the end of
   the document.
 
-Eligible link text is non-blank and free of `[`/`]` bytes. Other links stay
-inline, e.g. a badge's outer `[![alt](img)](url)` link; only its flat inner
-image hoists.
+Eligible link text is non-blank and free of `[`/`]` bytes, and the open `[`
+must be unescaped (`\[x](u)` is literal text). Other links stay inline, e.g. a
+badge's outer `[![alt](img)](url)` link; only its flat inner image hoists.
 
 The hoist threshold defaults to 1 and is configurable via `links.min_occurrences`
 (see the `.rust-llm-tidy.yml` header); raising it leaves a link inline
