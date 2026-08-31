@@ -256,9 +256,10 @@ A paragraph of stripped doc text over 240 chars is an error. A bullet over
 chars. Nested bullets are separate paragraphs.
 
 Both checks strip leading whitespace, the comment marker (`//`, `///`, `//!`
-in Rust), and one following space. They run on `.rs` and `.md` files. Code,
-URLs, tables, headings, and signature lines are exempt from the paragraph
-budget.
+in Rust), and one following space. They run on `.rs` and `.md` files.
+
+Code, URLs, tables, headings, signature lines, and link definitions are
+exempt from the paragraph budget.
 
 Before:
 
@@ -286,20 +287,23 @@ pub fn load() {}
 
 ```text
 $ rust-llm-tidy --no-config --include DOC007 src/lib.rs
-src/lib.rs:1: error[DOC007]: src/lib.rs: paragraph at line 1 measures 120 chars, over the 240-char limit. Split it at the nearest idea change with a blank line; convert list-like paragraphs into bullets (one checkable action each, <= 160 chars); move remarks into their own sections. Code, URLs, tables, headings, and signature lines are exempt: do not split them. (file)
+src/lib.rs:1: error[DOC007]: paragraph is 243 chars long.
+  - Paragraphs over 240 chars outlast a short attention span.
+  - Split it at the nearest idea change with a blank line.
+  - Convert list-like paragraphs into bullets.
+  - Keep each bullet to one checkable action of at most 160 chars.
+  - Move remarks into their own sections.
+  - Do not split code, links, URLs, tables, headings, or signature lines. (file)
+Error: found 1 error(s)
 ```
 
-`DOC007` (prose) is error-severity, so the run exits non-zero. A bullet over
-the limit fires a warning instead and exits 0.
+`DOC007` is error-severity for prose, so the run exits non-zero; bullets
+exit 0.
 
 ### DOC008 - long line
 
 A stripped doc line over 80 chars is a warning, with no content exemptions:
-code-block lines count too. The measurement strips leading whitespace, the
-comment marker, and at most one following space, so indent depth does not eat
-the budget. It runs on `.rs` and `.md` files.
-
-Split long lines at the nearest idea change with a blank line:
+code-block lines count too.
 
 Before:
 
@@ -318,7 +322,10 @@ root, checking each level.
 
 ```text
 $ rust-llm-tidy --no-config --include DOC008 README.md
-README.md:1: warning[DOC008]: README.md: line 1 is 98 chars long, over the 80-char limit. Split it at the nearest idea change with a blank line; code-block lines count too. (file)
+README.md:1: warning[DOC008]: line is 104 chars long.
+  - Lines over 80 chars strain short attention spans and need wide monitors.
+  - Split it at the nearest idea change with a blank line.
+  - Code-block lines count too. (file)
 ```
 
 `DOC008` is warning-severity, so the run exits 0.

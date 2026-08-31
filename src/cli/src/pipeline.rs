@@ -394,9 +394,16 @@ fn process_one(
 
     let enabled = &policy.enabled;
     let disabled = &policy.disabled;
-    let should_post_process = ["tables", "fences", "links", "reorder", "vis"]
+    // Reorder and vis are Rust-only, so they only qualify a Rust file for
+    // post-processing; the md fix ops qualify any file they may mutate.
+    let is_rust = crate::paths::ext_in(path.extension().and_then(|e| e.to_str()), &["rs"]);
+    let should_post_process = ["tables", "fences", "links"]
         .iter()
-        .any(|op| op_enabled(op, enabled, disabled));
+        .any(|op| op_enabled(op, enabled, disabled))
+        || (is_rust
+            && ["reorder", "vis"]
+                .iter()
+                .any(|op| op_enabled(op, enabled, disabled)));
 
     // Fix auto-fixable formatting (tables, fences, links) via fix_file.
     if op_enabled("tables", enabled, disabled)
@@ -419,8 +426,6 @@ fn process_one(
         }
     }
 
-    // Reorder and vis are Rust-only; lints below run for every input.
-    let is_rust = crate::paths::ext_in(path.extension().and_then(|e| e.to_str()), &["rs"]);
     if is_rust {
         // Reorder next (fixes ordering).
         if op_enabled("reorder", enabled, disabled) {

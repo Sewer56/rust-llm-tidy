@@ -123,9 +123,6 @@ impl Cli {
 ///
 /// Returns `(path, diagnostics)` pairs so the caller can either print the
 /// plaintext lines to stderr (default output) or project them to JSON.
-///
-/// Tree-sitter checks run only for `.rs`; the plaintext checks (DOC007/DOC008)
-/// run for both `.rs` and `.md`, scanning the raw text without parsing.
 pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
@@ -141,11 +138,7 @@ pub(crate) fn check_file(
         diagnostics = check::run_all(&parsed);
     }
     if crate::paths::ext_in(Some(ext), &["rs", "md"]) {
-        diagnostics.extend(check::run_text_checks(
-            &source,
-            ext,
-            &path.display().to_string(),
-        ));
+        diagnostics.extend(check::run_text_checks(&source, ext));
     }
     diagnostics.retain(|d| !disabled.contains(d.code));
 

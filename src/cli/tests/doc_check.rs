@@ -821,8 +821,8 @@ fn md_long_line_warns_doc008_without_failing() {
         "DOC008 warnings must not fail the run: {stderr}"
     );
     assert!(
-        stderr.contains("DOC008") && stderr.contains("line 1"),
-        "expected a DOC008 warning naming line 1, got:\n{stderr}"
+        stderr.contains(":1: warning[DOC008]"),
+        "expected a DOC008 warning at line 1, got:\n{stderr}"
     );
 }
 
@@ -839,7 +839,7 @@ fn md_paragraph_over_limit_fails_with_doc007() {
         "DOC007 errors on markdown must fail the run: {stderr}"
     );
     assert!(
-        stderr.contains("DOC007") && stderr.contains("paragraph at line 3"),
+        stderr.contains(":3: error[DOC007]"),
         "expected a DOC007 error at the paragraph's first line, got:\n{stderr}"
     );
 }
@@ -872,11 +872,7 @@ fn rs_diagnostics_match_direct_check_composition() {
     // Path B: the two check sources composed directly over the same source.
     let parsed = rust_llm_tidy_model::parse::parse_source(&source).unwrap();
     let mut expected = rust_llm_tidy_lint::check::run_all(&parsed);
-    expected.extend(rust_llm_tidy_lint::check::run_text_checks(
-        &source,
-        "rs",
-        &path.display().to_string(),
-    ));
+    expected.extend(rust_llm_tidy_lint::check::run_text_checks(&source, "rs"));
     let expected: Vec<(usize, String, String)> = expected
         .iter()
         .map(|d| {
@@ -910,7 +906,7 @@ fn rs_long_doc_comment_warns_doc008() {
         "DOC008 warnings must not fail the run: {stderr}"
     );
     assert!(
-        stderr.contains("DOC008") && stderr.contains("line 1"),
+        stderr.contains(":1: warning[DOC008]"),
         "expected a DOC008 warning for the over-limit comment, got:\n{stderr}"
     );
 }
