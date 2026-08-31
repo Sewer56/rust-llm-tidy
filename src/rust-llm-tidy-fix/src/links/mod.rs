@@ -6,23 +6,40 @@
 //! link hoists, including a single use and intra-doc `Self::…` / `crate::…`
 //! targets.
 //!
-//! A `(text, url)` pair is eligible when it appears at least `min_occurrences`
-//! times (default 1) in the non-fenced input and its text has no existing
-//! `[text]:` definition. Skipped forms are unchanged:
-//! autolinks (`<...>`), whitespace/newline-URL forms, already-reference-style
-//! links (`[text][ref]`, `[text][]`, `[text]`), links whose text already has a
-//! definition, and links inside fenced code blocks.
+//! Eligible `(text, url)` pairs:
 //!
-//! Definitions are placed by content, not by file type. When the input carries
-//! `///` or `//!` doc-comment lines outside code fences (Rust context), each
-//! `[text]: url` definition is written at the end of every doc-comment block
-//! that uses the label, on new lines with that block's doc prefix; links on
-//! non-doc-comment lines are left alone. Otherwise (Markdown), one
-//! document-scoped trailing definition block is appended at the end of the
-//! input, separated from a trailing paragraph by a blank line so the
-//! definitions parse as definitions (CommonMark forbids a link reference
-//! definition from interrupting a paragraph). Definitions use the source's
-//! dominant line ending.
+//! - appear at least `min_occurrences` times (default 1) in the non-fenced
+//!   input
+//! - have no existing `[text]:` definition for the text
+//! - use a valid label: non-blank and free of `[`/`]` bytes
+//!
+//! A label with an unescaped bracket or a blank label makes the hoisted
+//! `[text]: url` line parse as paragraph text. Escaped brackets are declined
+//! too, keeping the rule simple. A badge's outer `[![alt](img)](url)` link is
+//! therefore declined while its flat inner image still hoists.
+//!
+//! Skipped forms stay unchanged:
+//!
+//! - autolinks (`<...>`)
+//! - whitespace/newline-URL forms
+//! - already-reference-style links (`[text][ref]`, `[text][]`, `[text]`)
+//! - escaped `\[` opens (a literal bracket, never a link)
+//! - links whose text already has a definition
+//! - links whose text contains brackets or is blank
+//! - links inside fenced code blocks
+//!
+//! Definitions are placed by content, not by file type:
+//!
+//! - Rust context (the input carries `///` or `//!` doc-comment lines outside
+//!   code fences): each `[text]: url` definition is written at the end of
+//!   every doc-comment block that uses the label, on new lines with that
+//!   block's doc prefix. Links on non-doc-comment lines are left alone.
+//! - Markdown context (everything else): one document-scoped trailing
+//!   definition block is appended at the end of the input, separated from a
+//!   trailing paragraph by a blank line (CommonMark forbids a link reference
+//!   definition from interrupting a paragraph).
+//!
+//! Definitions use the source's dominant line ending.
 //!
 //! The function is idempotent and returns a borrowed [`Cow`] with empty pairs
 //! when nothing is eligible.
@@ -439,6 +456,146 @@ after
     }
 
     #[test]
+    fn badge_link_hoists_inner_image_only() {
+        // A repeated badge hoists only its flat inner image: occurrences keep
+        // the inline `[![alt]](url)` shape and the definition carries the
+        // flat `[alt]` label. Both engines agree.
+        let input = "[![Crates.io](https://img.shields.io/crates/v/t.svg)](https://crates.io/crates/t)\n\
+                     [![Crates.io](https://img.shields.io/crates/v/t.svg)](https://crates.io/crates/t)\n";
+        let expected = "[![Crates.io]](https://crates.io/crates/t)\n\
+                        [![Crates.io]](https://crates.io/crates/t)\n\
+                        \n\
+                        [Crates.io]: https://img.shields.io/crates/v/t.svg\n";
+
+        let (out, pairs) = fix_links(input);
+
+        assert_eq!(&*out, expected, "badge must hoist via its inner image");
+        assert_eq!(
+            pairs,
+            [(
+                "[Crates.io](https://img.shields.io/crates/v/t.svg)".into(),
+                "[Crates.io]".into()
+            )]
+        );
+
+        let (counted_out, counted_pairs) = fix_links_with_min(input, 2);
+        assert_eq!(
+            counted_out.into_owned(),
+            expected,
+            "counted engine must hoist the same inner image"
+        );
+        assert_eq!(counted_pairs, pairs);
+    }
+
+    #[test]
+    fn flat_image_hoists_in_both_engines() {
+        // A flat image `![alt](img)` hoists exactly like a flat link: each
+        // occurrence becomes `![alt]` (the `!` sits outside the rewritten
+        // span) and one `[alt]: img` definition is appended, in both engines.
+        let input = "lead ![logo](i.png) mid ![logo](i.png)\n";
+        let expected = "lead ![logo] mid ![logo]\n\n[logo]: i.png\n";
+
+        let (out, pairs) = fix_links(input);
+
+        assert_eq!(&*out, expected, "flat image must keep hoisting");
+        assert_eq!(pairs, [("[logo](i.png)".into(), "[logo]".into())]);
+
+        let (counted_out, counted_pairs) = fix_links_with_min(input, 2);
+        assert_eq!(
+            counted_out.into_owned(),
+            expected,
+            "counted engine must hoist the same image"
+        );
+        assert_eq!(counted_pairs, pairs);
+    }
+
+    #[test]
+    fn bracket_text_link_untouched() {
+        // A repeated link whose text contains `[`/`]` bytes, or whose open
+        // `[` is escaped (literal `\[x](u)` text, never a link), has no valid
+        // hoisted label: the input comes back byte-identical in both engines.
+        for input in [
+            "[text [x]](u) and [text [x]](u)\n",
+            "[\\[x\\]](u) and [\\[x\\]](u)\n",
+            "\\[x](u) and \\[x](u)\n",
+            "[[x]](u) and [[x]](u)\n",
+            "[a [b] c](u) repeated [a [b] c](u)\n",
+        ] {
+            let (out, pairs) = fix_links(input);
+
+            assert!(matches!(out, Cow::Borrowed(_)), "declined: {input:?}");
+            assert!(pairs.is_empty(), "no pairs for {input:?}");
+            assert_eq!(&*out, input);
+
+            let (counted_out, counted_pairs) = fix_links_with_min(input, 2);
+            assert!(
+                matches!(counted_out, Cow::Borrowed(_)),
+                "counted declines: {input:?}"
+            );
+            assert!(counted_pairs.is_empty(), "counted no pairs for {input:?}");
+            assert_eq!(&*counted_out, input);
+        }
+    }
+
+    #[test]
+    fn blank_text_link_untouched() {
+        // A repeated link with whitespace-only text never hoists: both
+        // engines return the input byte-identical.
+        for input in [
+            "[ ](u) and [ ](u)\n",
+            "[\t](u) and [\t](u)\n",
+            "[](u) and [](u)\n",
+        ] {
+            let (out, pairs) = fix_links(input);
+
+            assert!(
+                matches!(out, Cow::Borrowed(_)),
+                "blank text declines hoist: {input:?}"
+            );
+            assert!(pairs.is_empty(), "no pairs for {input:?}");
+            assert_eq!(&*out, input);
+
+            let (counted_out, counted_pairs) = fix_links_with_min(input, 2);
+            assert!(
+                matches!(counted_out, Cow::Borrowed(_)),
+                "counted declines: {input:?}"
+            );
+            assert!(counted_pairs.is_empty(), "counted no pairs for {input:?}");
+            assert_eq!(&*counted_out, input);
+        }
+    }
+
+    #[test]
+    fn corrupted_badge_definition_line_untouched() {
+        // A badge-shaped `[![Crates.io]]: url` line (paragraph text, not a
+        // definition) stays byte-identical while flat links elsewhere still
+        // hoist, in both engines.
+        let input = "\
+[![Crates.io]]: https://crates.io/crates/t
+see [A](http://x) and [A](http://x)
+";
+        let expected = "\
+[![Crates.io]]: https://crates.io/crates/t
+see [A] and [A]
+
+[A]: http://x
+";
+
+        let (out, pairs) = fix_links(input);
+
+        assert_eq!(&*out, expected, "corrupted definition stays untouched");
+        assert_eq!(pairs, [("[A](http://x)".into(), "[A]".into())]);
+
+        let (counted_out, counted_pairs) = fix_links_with_min(input, 2);
+        assert_eq!(
+            counted_out.into_owned(),
+            expected,
+            "counted engine keeps the corrupted line untouched"
+        );
+        assert_eq!(counted_pairs, pairs);
+    }
+
+    #[test]
     fn doc_comment_prefix_preserved() {
         // Acceptance case (f): the `///` prefix is preserved on rewritten links
         // and the definition lands inside the comment, on the same prefix.
@@ -719,19 +876,37 @@ pub fn f() {
 
     #[test]
     fn idempotent_on_hoisted_output() {
-        let input = "see [A](http://x) and [A](http://x)\n";
-        let once = fix_links(input).0.into_owned();
-        let twice = fix_links(&once).0.into_owned();
-        assert_eq!(twice, once, "fix_links must be idempotent");
+        // Re-running `fix_links` on its own output is a borrowed no-op for
+        // every hoisted shape: flat links, flat images, badges hoisted via
+        // their inner image, and a corrupted badge definition line that
+        // coexists with a hoisted flat link.
+        let cases = [
+            "see [A](http://x) and [A](http://x)\n",
+            "lead ![logo](i.png) mid ![logo](i.png)\n",
+            "[![Crates.io](https://img.shields.io/crates/v/t.svg)](https://crates.io/crates/t)\n\
+             [![Crates.io](https://img.shields.io/crates/v/t.svg)](https://crates.io/crates/t)\n",
+            "[![Crates.io]]: https://crates.io/crates/t\nsee [A](http://x) and [A](http://x)\n",
+        ];
+        for input in cases {
+            let once = fix_links(input).0.into_owned();
+            let (twice, pairs) = fix_links(&once);
+            assert!(
+                matches!(twice, Cow::Borrowed(_)),
+                "re-run must borrow for {input:?}"
+            );
+            assert!(pairs.is_empty(), "no pairs on re-run for {input:?}");
+            assert_eq!(&*twice, &once, "fix_links must be idempotent for {input:?}");
+        }
     }
 
     #[test]
     fn optimized_is_idempotent_on_diverse_cases() {
         // Broad corpus: repeated vs single-use links, reference definitions,
         // autolinks, whitespace URLs, links inside code fences, doc-comment
-        // prefixes, intra-doc forms, nested brackets, non-ASCII text,
-        // unbalanced edge cases, and multi-comment Rust inputs. `fix_links`
-        // must stay idempotent on every input.
+        // prefixes, intra-doc forms, nested brackets, blank-text links,
+        // badges hoisted via their inner image (outer bracket-bearing link
+        // declined), non-ASCII text, unbalanced edge cases, and multi-comment
+        // Rust inputs. `fix_links` must stay idempotent on every input.
         let cases: &[&str] = &[
             "",
             "no brackets at all\n",
@@ -757,6 +932,8 @@ pub fn f() {
             "see [A] and [A]\n\n[A]: http://x\n",
             "[a [b] c](u) repeated [a [b] c](u)\n",
             "[[x]](u) and [[x]](u)\n",
+            "[ ](u) and [ ](u)\n",
+            "/// [![b](i)](u) and [![b](i)](u)\n",
             "[not a link\n",
             "[no](paren\n",
             "text [only] bracket\n",
