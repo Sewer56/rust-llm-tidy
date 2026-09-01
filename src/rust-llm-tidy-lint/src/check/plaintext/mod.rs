@@ -299,9 +299,12 @@ fn is_link_reference_definition(trimmed: &str) -> bool {
 }
 
 /// True for lines that look like code signatures rather than plain text.
+///
+/// Signature keywords must start the line, after any Rust visibility
+/// modifier; keyword mentions inside prose stay measured.
 fn is_signature_line(trimmed: &str) -> bool {
     for keyword in ["fn ", "struct ", "enum ", "trait ", "impl "] {
-        if trimmed.contains(keyword) {
+        if starts_with_signature_keyword(trimmed, keyword) {
             return true;
         }
     }
@@ -309,6 +312,19 @@ fn is_signature_line(trimmed: &str) -> bool {
         || trimmed.ends_with('{')
         || trimmed.ends_with('(')
         || trimmed.ends_with("->")
+}
+
+/// True when `keyword` starts `line`, after any Rust visibility modifier
+/// (`pub`, `pub(crate)`, `pub(in path)`).
+fn starts_with_signature_keyword(line: &str, keyword: &str) -> bool {
+    let Some(after_pub) = line.strip_prefix("pub") else {
+        return line.starts_with(keyword);
+    };
+    let after_visibility = match after_pub.strip_prefix('(') {
+        Some(inner) => inner.split_once(')').map_or("", |(_, after)| after),
+        None => after_pub,
+    };
+    after_visibility.trim_start().starts_with(keyword)
 }
 
 #[cfg(test)]
@@ -554,6 +570,36 @@ mod tests {
         let doc = analyze(source, "rs");
         assert_eq!(doc.paragraphs.len(), 1);
         assert_eq!(paragraph_at(&doc, 1).unwrap().size, "prose".len());
+    }
+
+    // Signature keywords exempt only at the line start, after Rust
+    // visibility modifiers.
+    #[test]
+    fn analyze_exempts_signature_keywords_at_line_start() {
+        let source = indoc! {"
+            /// fn compute(x: usize) -> usize
+            /// pub struct Config
+            /// pub(crate) enum Mode
+            /// pub(in crate::base) trait Load
+        "};
+        let doc = analyze(source, "rs");
+        assert!(doc.paragraphs.is_empty());
+    }
+
+    // Inline keyword mentions in prose are measured, not exempted.
+    #[test]
+    fn analyze_measures_prose_with_inline_signature_keywords() {
+        let source = indoc! {"
+            /// prose naming a struct or an impl block mid-line
+            /// more prose about the enum
+        "};
+        let doc = analyze(source, "rs");
+        assert_eq!(doc.paragraphs.len(), 1);
+        let para = paragraph_at(&doc, 1).unwrap();
+        assert_eq!(
+            para.size,
+            "prose naming a struct or an impl block mid-line more prose about the enum".len()
+        );
     }
 
     // Markdown link reference definitions are exempt content.
