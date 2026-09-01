@@ -59,7 +59,7 @@ pub fn fix_fences(input: &str) -> FixOutcome<'_> {
     // change is found. Until then the input is borrowed verbatim.
     //
     // The overwhelmingly common case (already-canonical input, or an
-    // idempotent re-run) pays zero allocation and zero copying.
+    // idempotent re-run) pays zero output-buffer allocation and zero copying.
     //
     // The two costs that remain are the marker presence check above and a
     // cheap per-line scan.
