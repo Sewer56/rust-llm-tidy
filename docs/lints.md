@@ -294,7 +294,7 @@ src/lib.rs:1: error[DOC007]: paragraph is 243 chars long.
   - Convert list-like paragraphs into bullets.
   - Keep each bullet to one checkable action of at most 160 chars.
   - Move remarks into their own sections.
-  - Do not split code, links, URLs, tables, headings, or signature lines. (file)
+  - The check skips code blocks, tables, headings, signature lines, and link definitions. (file)
 Error: found 1 error(s)
 ```
 

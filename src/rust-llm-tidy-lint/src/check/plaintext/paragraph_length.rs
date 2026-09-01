@@ -56,7 +56,8 @@ fn paragraph_diagnostic(para: &Paragraph) -> Diagnostic {
              {BULLET_RECOMMENDED} chars."
         ),
         "Move remarks into their own sections.".to_string(),
-        "Do not split code, links, URLs, tables, headings, or signature lines.".to_string(),
+        "The check skips code blocks, tables, headings, signature lines, and link definitions."
+            .to_string(),
     ];
     Diagnostic {
         severity: Severity::Error,
@@ -106,9 +107,9 @@ mod tests {
         assert!(msg.contains("blank line"));
         assert!(msg.contains("bullets"));
         assert!(msg.contains("160"));
-        assert!(
-            msg.contains("Do not split code, links, URLs, tables, headings, or signature lines.")
-        );
+        assert!(msg.contains(
+            "The check skips code blocks, tables, headings, signature lines, and link definitions."
+        ));
     }
 
     // Paragraph at or under the limit is silent.
