@@ -114,8 +114,10 @@ pub(crate) fn analyze(source: &str, ext: &str) -> Document {
 
         // One linear pass: strip, classify, and fold each line exactly once.
         let Some((text, raw_indent)) = strip_comment_prefix(raw, markers) else {
-            // A non-doc line breaks paragraph consecutiveness.
+            // A non-doc line breaks paragraph consecutiveness and closes any
+            // open fence: a doc fence cannot span source code.
             flush(&mut pending, &mut doc);
+            in_fence = false;
             continue;
         };
         let number = idx + 1;
@@ -535,6 +537,21 @@ mod tests {
         assert_eq!(doc.paragraphs.len(), 2);
         assert_eq!(paragraph_at(&doc, 1).unwrap().size, "text".len());
         assert_eq!(paragraph_at(&doc, 6).unwrap().size, "after".len());
+    }
+
+    // A non-doc source line closes an open fence: doc lines after it are
+    // measured as prose, not swallowed as code-block content.
+    #[test]
+    fn analyze_closes_fence_at_non_doc_line() {
+        let source = indoc! {"
+            /// ```text
+            let x = 1;
+            /// measured prose
+        "};
+        let doc = analyze(source, "rs");
+        let line = doc.lines.iter().find(|l| l.number == 3).unwrap();
+        assert!(!line.in_code_block);
+        assert_eq!(paragraph_at(&doc, 3).unwrap().size, "measured prose".len());
     }
 
     // Tab- or 4-space-indented doc lines are exempt indented code.
