@@ -27,6 +27,19 @@ pub(crate) struct Document {
     pub paragraphs: Vec<Paragraph>,
 }
 
+/// The paragraph under construction between boundary lines. `len` sums the
+/// member char counts without joining spaces; [`flush`] adds one joining
+/// space per extra member, derived from `count`.
+struct PendingParagraph {
+    kind: ParagraphKind,
+    /// 1-based line number of the paragraph's first member line.
+    first_line: usize,
+    /// Summed char count of the member lines so far.
+    len: usize,
+    /// Number of member lines so far.
+    count: usize,
+}
+
 /// A measured paragraph. `size` is the length of the member lines joined with
 /// single spaces; exempt lines are never members, so they cost nothing.
 #[derive(Debug, PartialEq, Eq)]
@@ -220,19 +233,6 @@ fn bullet_content(trimmed: &str) -> Option<&str> {
 /// A summary line plus one indented bullet per guidance sentence.
 fn bulleted(summary: &str, bullets: &[String]) -> String {
     format!("{summary}\n  - {}", bullets.join("\n  - "))
-}
-
-/// The paragraph under construction between boundary lines. `len` sums the
-/// member char counts without joining spaces; [`flush`] adds one joining
-/// space per extra member, derived from `count`.
-struct PendingParagraph {
-    kind: ParagraphKind,
-    /// 1-based line number of the paragraph's first member line.
-    first_line: usize,
-    /// Summed char count of the member lines so far.
-    len: usize,
-    /// Number of member lines so far.
-    count: usize,
 }
 
 /// Folds the accumulated member lengths into a finished paragraph, if any.
