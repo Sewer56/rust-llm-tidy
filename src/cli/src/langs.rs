@@ -1,0 +1,504 @@
+//! Language admission registry: the single authority deciding which pipeline
+//! ops may run for a source-file extension, and which line-comment prefixes
+//! the fix passes strip around tables and fences.
+//!
+//! Every admitted extension is governed by a [`Profile`]:
+//!
+//! - `ops`: ops the extension may ever run
+//! - `prefixes`: line-comment markers, longest first
+//! - `default_ops`: ops that run when no include list narrows the run
+//! - `backend`: whether an AST parser is registered for the extension
+//!
+//! # Tiers
+//!
+//! - Markdown family (`md`, `markdown`, `txt`, `text`, `mdx`): the text ops
+//!   `tables`, `fences`, `links` plus text-based `lints`
+//! - Rust (`rs`): every op - `tables`, `fences`, `links`, `reorder`, `vis`,
+//!   `lints` - with the `///`/`//!` doc prefixes
+//! - C# (`cs`): `tables` plus the AST ops `reorder`/`lints`; `fences` only
+//!   through an explicit include; no `links`
+//! - Code languages: `tables` by default, `fences` only through an explicit
+//!   include, no `links`, no AST ops; tables inside comments realign with the
+//!   language's marker re-applied
+//! - Unmapped extensions: `tables` only, no prefixes
+//! - Data formats (`ini`, `json`, `toml`, `yaml`, `yml`): no ops; never in
+//!   [`DEFAULT_EXTENSIONS`]
+//!
+//! `reorder` and the parser-driven `lints` checks require `backend` in
+//! addition to `ops` membership, so they stay dormant for extensions
+//! without a parser.
+//!
+//! The markdown family's `lints` are text checks that need no parser;
+//! `vis` appears only in the Rust profile.
+//!
+//! # Lookup
+//!
+//! [`profile_for`] matches extensions ASCII case-insensitively (`.MD`
+//! resolves like `.md`, matching [`crate::paths::ext_in`]) by binary search
+//! over sorted static tables.
+//!
+//! Lookups allocate nothing and never run per line or per item - at most
+//! once per file.
+
+use std::cmp::Ordering;
+
+/// Data formats: no ops.
+const DATA: Profile = Profile {
+    ops: &[],
+    prefixes: &[],
+    default_ops: &[],
+    backend: false,
+};
+/// Data formats excluded from default admission, sorted; they resolve to the
+/// no-op [`DATA`] profile and never appear in [`DEFAULT_EXTENSIONS`].
+const DATA_EXTENSIONS: &[&str] = &["ini", "json", "toml", "yaml", "yml"];
+/// Extensions admitted by default: every language-table extension, sorted.
+///
+/// Derived from [`LANG_ENTRIES`], so it stays in lockstep with the registry;
+/// the op-less data formats are absent by construction.
+pub(crate) const DEFAULT_EXTENSIONS: &[&str] = &{
+    let mut out = [""; LANG_ENTRIES.len()];
+    let mut i = 0;
+    while i < LANG_ENTRIES.len() {
+        out[i] = LANG_ENTRIES[i].0;
+        i += 1;
+    }
+    out
+};
+/// Extensions outside the language tables: tables only, no prefixes.
+const UNMAPPED: Profile = Profile {
+    ops: &["tables"],
+    prefixes: &[],
+    default_ops: &["tables"],
+    backend: false,
+};
+/// Extension-to-profile table, sorted by extension (ASCII) so binary search
+/// applies. The sortedness test guards this invariant.
+const LANG_ENTRIES: &[(&str, Profile)] = &[
+    ("ada", CODE_DASH),
+    ("bash", CODE_HASH),
+    ("c", CODE_SLASH),
+    ("cc", CODE_SLASH),
+    ("clj", CODE_SEMI),
+    ("cljc", CODE_SEMI),
+    ("conf", CODE_HASH),
+    ("cpp", CODE_SLASH),
+    ("cs", C_SHARP),
+    ("dart", CODE_SLASH),
+    ("el", CODE_SEMI),
+    ("elm", CODE_DASH),
+    ("erl", CODE_PERCENT),
+    ("go", CODE_SLASH),
+    ("h", CODE_SLASH),
+    ("hpp", CODE_SLASH),
+    ("hs", CODE_DASH),
+    ("java", CODE_SLASH),
+    ("jl", CODE_HASH),
+    ("js", CODE_SLASH),
+    ("kt", CODE_SLASH),
+    ("lisp", CODE_SEMI),
+    ("lua", CODE_DASH),
+    ("m", CODE_PERCENT),
+    ("markdown", MARKDOWN),
+    ("md", MARKDOWN),
+    ("mdx", MARKDOWN),
+    ("mjs", CODE_SLASH),
+    ("nim", CODE_HASH),
+    ("php", CODE_SLASH),
+    ("pl", CODE_HASH),
+    ("py", CODE_HASH),
+    ("pyi", CODE_HASH),
+    ("r", CODE_HASH),
+    ("rb", CODE_HASH),
+    ("rs", RUST),
+    ("scala", CODE_SLASH),
+    ("scm", CODE_SEMI),
+    ("sh", CODE_HASH),
+    ("sql", CODE_DASH),
+    ("swift", CODE_SLASH),
+    ("tex", CODE_PERCENT),
+    ("text", MARKDOWN),
+    ("ts", CODE_SLASH),
+    ("tsx", CODE_SLASH),
+    ("txt", MARKDOWN),
+    ("zig", CODE_SLASH),
+    ("zsh", CODE_HASH),
+];
+/// Code tier for `--`-comment languages.
+const CODE_DASH: Profile = Profile {
+    ops: &["tables", "fences"],
+    prefixes: &["--"],
+    default_ops: &["tables"],
+    backend: false,
+};
+/// Code tier for `#`-comment languages.
+const CODE_HASH: Profile = Profile {
+    ops: &["tables", "fences"],
+    prefixes: &["#"],
+    default_ops: &["tables"],
+    backend: false,
+};
+/// Code tier for `%`-comment languages.
+const CODE_PERCENT: Profile = Profile {
+    ops: &["tables", "fences"],
+    prefixes: &["%"],
+    default_ops: &["tables"],
+    backend: false,
+};
+/// Code tier for `;`-comment languages.
+const CODE_SEMI: Profile = Profile {
+    ops: &["tables", "fences"],
+    prefixes: &[";"],
+    default_ops: &["tables"],
+    backend: false,
+};
+/// Code tier for `//`-comment languages other than C#.
+const CODE_SLASH: Profile = Profile {
+    ops: &["tables", "fences"],
+    prefixes: &["//"],
+    default_ops: &["tables"],
+    backend: false,
+};
+/// C#: tables plus the backend-gated AST ops; no links - appended
+/// `[text]: url` definitions are invalid C#.
+const C_SHARP: Profile = Profile {
+    ops: &["tables", "fences", "reorder", "lints"],
+    prefixes: &["///", "//"],
+    default_ops: &["tables", "reorder", "lints"],
+    backend: false,
+};
+/// Markdown family: every text op plus text-based lints.
+const MARKDOWN: Profile = Profile {
+    ops: &["tables", "fences", "links", "lints"],
+    prefixes: DOC_LINE_PREFIXES,
+    default_ops: &["tables", "fences", "links", "lints"],
+    backend: false,
+};
+/// Rust: every op, pinned to the pipeline's current behavior.
+const RUST: Profile = Profile {
+    ops: &["tables", "fences", "links", "reorder", "vis", "lints"],
+    prefixes: DOC_LINE_PREFIXES,
+    default_ops: &["tables", "fences", "links", "reorder", "vis", "lints"],
+    backend: true,
+};
+/// Rust doc-comment markers, longest first; shared by the Rust and markdown
+/// tiers so markdown files keep their current prefix-aware behavior.
+const DOC_LINE_PREFIXES: &[&str] = &["///", "//!"];
+
+/// One extension's admission data: the ops it may run and the comment
+/// prefixes its fix passes use.
+///
+/// All members are static: profiles are compile-time table rows, never built
+/// at runtime.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Profile {
+    /// Ops this extension may ever run, as rule names accepted by
+    /// `--include`/`--exclude`, in [`crate::config::KNOWN_FIX_OPS`] order.
+    pub ops: &'static [&'static str],
+    /// Line-comment markers stripped and re-applied around tables and fences,
+    /// longest first (a `///` marker must precede `//`); empty when the tier
+    /// has no comment prefixes.
+    pub prefixes: &'static [&'static str],
+    /// Ops that run when no explicit include list narrows the run; always a
+    /// subset of `ops`.
+    ///
+    /// Code languages keep `fences` out of the defaults: comment and string
+    /// literals are indistinguishable without a parser, so `fences` needs an
+    /// explicit `--include fences` or config include.
+    pub default_ops: &'static [&'static str],
+    /// Whether an AST parser is registered for the extension; `reorder` and
+    /// the parser-driven `lints` checks require this in addition to appearing
+    /// in `ops`. The markdown family's `lints` are text checks that need no
+    /// parser.
+    pub backend: bool,
+}
+
+/// The profile governing `ext`, ASCII case-insensitively (`.MD` resolves like
+/// `.md`).
+///
+/// Extensions outside the language table resolve to the tables-only
+/// [`UNMAPPED`] profile, except the data formats, which resolve to the
+/// no-op [`DATA`] profile.
+///
+/// # Arguments
+///
+/// - `ext`: a path extension without the leading dot; an empty string
+///   resolves to [`UNMAPPED`].
+#[inline]
+pub(crate) fn profile_for(ext: &str) -> &'static Profile {
+    if let Ok(i) = LANG_ENTRIES.binary_search_by(|probe| cmp_ext(probe.0, ext)) {
+        return &LANG_ENTRIES[i].1;
+    }
+    if DATA_EXTENSIONS
+        .binary_search_by(|probe| cmp_ext(probe, ext))
+        .is_ok()
+    {
+        return &DATA;
+    }
+    &UNMAPPED
+}
+
+/// ASCII case-insensitive ordering, matching [`crate::paths::ext_in`]
+/// comparisons.
+#[inline]
+fn cmp_ext(a: &str, b: &str) -> Ordering {
+    a.bytes()
+        .map(|byte| byte.to_ascii_lowercase())
+        .cmp(b.bytes().map(|byte| byte.to_ascii_lowercase()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    /// The approved matrix's markdown-family extensions.
+    const MD_FAMILY: &[&str] = &["md", "markdown", "txt", "text", "mdx"];
+
+    /// The approved matrix's code-language extensions, grouped by the
+    /// profile they must resolve to and the comment marker their tier
+    /// strips.
+    const CODE_FAMILIES: &[(&[&str], &Profile, &str)] = &[
+        (
+            &[
+                "c", "h", "cpp", "cc", "hpp", "java", "js", "mjs", "ts", "tsx", "go", "swift",
+                "kt", "php", "dart", "scala", "zig",
+            ],
+            &CODE_SLASH,
+            "//",
+        ),
+        (
+            &[
+                "py", "pyi", "rb", "sh", "bash", "zsh", "r", "pl", "jl", "nim", "conf",
+            ],
+            &CODE_HASH,
+            "#",
+        ),
+        (&["lua", "sql", "hs", "elm", "ada"], &CODE_DASH, "--"),
+        (&["el", "lisp", "clj", "cljc", "scm"], &CODE_SEMI, ";"),
+        (&["tex", "erl", "m"], &CODE_PERCENT, "%"),
+    ];
+
+    /// Assert `ext` resolves to `profile` so failures name the extension.
+    fn assert_profile(ext: &str, profile: &Profile) {
+        assert_eq!(profile_for(ext), profile, "wrong tier for .{ext}");
+    }
+
+    /// The markdown family shares one profile: every text op runs by default,
+    /// with the same doc prefixes `.md` files use today.
+    #[test]
+    fn markdown_family_resolves_full_text_ops() {
+        for ext in MD_FAMILY {
+            assert_profile(ext, &MARKDOWN);
+        }
+
+        assert_eq!(
+            MARKDOWN.ops,
+            ["tables", "fences", "links", "lints"].as_slice()
+        );
+        assert_eq!(MARKDOWN.default_ops, MARKDOWN.ops);
+        assert_eq!(MARKDOWN.prefixes, ["///", "//!"].as_slice());
+        assert!(!MARKDOWN.backend);
+    }
+
+    /// `rs` keeps exactly the op set the pipeline runs for it today: the fix
+    /// ops, reorder, vis, and lints.
+    #[test]
+    fn rust_profile_matches_current_pipeline_ops() {
+        assert_profile("rs", &RUST);
+
+        assert_eq!(
+            RUST.ops,
+            ["tables", "fences", "links", "reorder", "vis", "lints"].as_slice()
+        );
+        assert_eq!(RUST.default_ops, RUST.ops);
+        assert_eq!(RUST.prefixes, ["///", "//!"].as_slice());
+        assert!(RUST.backend, "rs must resolve with an AST backend");
+    }
+
+    /// `cs` gets tables plus the AST ops, `///`/`//` prefixes longest first,
+    /// no links, and fences only through an explicit include.
+    #[test]
+    fn csharp_profile_is_tables_plus_ast_ops_without_links() {
+        assert_profile("cs", &C_SHARP);
+
+        assert_eq!(
+            C_SHARP.ops,
+            ["tables", "fences", "reorder", "lints"].as_slice()
+        );
+        assert_eq!(
+            C_SHARP.default_ops,
+            ["tables", "reorder", "lints"].as_slice()
+        );
+        assert_eq!(C_SHARP.prefixes, ["///", "//"].as_slice());
+        assert!(!C_SHARP.backend);
+    }
+
+    /// Every code language resolves tables-only by default with its own
+    /// comment marker; fences stays reachable through an explicit include.
+    #[test]
+    fn code_families_resolve_tables_only_with_their_comment_marker() {
+        for (exts, profile, marker) in CODE_FAMILIES {
+            for ext in *exts {
+                assert_profile(ext, profile);
+            }
+
+            assert_eq!(profile.ops, ["tables", "fences"].as_slice());
+            assert_eq!(profile.default_ops, ["tables"].as_slice());
+            assert_eq!(profile.prefixes, [*marker].as_slice());
+            assert!(!profile.backend);
+        }
+    }
+
+    /// Uppercase and mixed-case extensions resolve identically to their
+    /// lowercase forms.
+    #[test]
+    fn lookup_matches_extensions_ascii_case_insensitively() {
+        let cases = [
+            ("MD", "md"),
+            ("Rs", "rs"),
+            ("CS", "cs"),
+            ("PY", "py"),
+            ("LUA", "lua"),
+            ("JSON", "json"),
+            ("ORG", "org"),
+        ];
+
+        for (upper, lower) in cases {
+            assert_eq!(
+                profile_for(upper),
+                profile_for(lower),
+                ".{upper} must resolve like .{lower}"
+            );
+        }
+    }
+
+    /// Data formats admit no ops and never appear in the default admitted
+    /// list.
+    #[test]
+    fn data_formats_admit_no_ops_and_are_not_default_admitted() {
+        for ext in DATA_EXTENSIONS {
+            assert!(profile_for(ext).ops.is_empty(), ".{ext} must admit no ops");
+            assert!(
+                !DEFAULT_EXTENSIONS.contains(ext),
+                ".{ext} must not be admitted by default"
+            );
+        }
+    }
+
+    /// Extensions outside every table resolve tables-only with no prefixes.
+    #[test]
+    fn unmapped_extensions_resolve_tables_only_without_prefixes() {
+        for ext in ["org", "unknown", ""] {
+            assert_profile(ext, &UNMAPPED);
+        }
+
+        assert_eq!(UNMAPPED.ops, ["tables"].as_slice());
+        assert!(UNMAPPED.prefixes.is_empty());
+        assert_eq!(UNMAPPED.default_ops, UNMAPPED.ops);
+        assert!(!UNMAPPED.backend);
+    }
+
+    /// The default admitted list covers every language-table extension.
+    #[test]
+    fn default_extensions_covers_every_language_entry() {
+        for (ext, _) in LANG_ENTRIES {
+            assert!(
+                DEFAULT_EXTENSIONS.contains(ext),
+                ".{ext} missing from default admission"
+            );
+        }
+
+        assert_eq!(DEFAULT_EXTENSIONS.len(), LANG_ENTRIES.len());
+    }
+
+    /// The registry lists exactly the approved matrix: no missing, extra, or
+    /// duplicated extensions.
+    #[test]
+    fn registry_lists_exactly_the_approved_matrix() {
+        let mut expected: BTreeSet<&str> = MD_FAMILY.iter().copied().collect();
+        expected.extend(["rs", "cs"]);
+        for (exts, _, _) in CODE_FAMILIES {
+            expected.extend(exts.iter().copied());
+        }
+
+        let actual: BTreeSet<&str> = LANG_ENTRIES.iter().map(|(ext, _)| *ext).collect();
+
+        assert_eq!(actual, expected);
+        assert_eq!(
+            LANG_ENTRIES.len(),
+            actual.len(),
+            "duplicate table keys would collapse in the set"
+        );
+    }
+
+    /// Binary search requires the sortedness of both static tables.
+    #[test]
+    fn registry_tables_stay_sorted_for_binary_search() {
+        for pair in LANG_ENTRIES.windows(2) {
+            assert!(
+                cmp_ext(pair[0].0, pair[1].0) == Ordering::Less,
+                "`{}` must sort before `{}`",
+                pair[0].0,
+                pair[1].0
+            );
+        }
+
+        for pair in DATA_EXTENSIONS.windows(2) {
+            assert!(
+                cmp_ext(pair[0], pair[1]) == Ordering::Less,
+                "`{}` must sort before `{}`",
+                pair[0],
+                pair[1]
+            );
+        }
+    }
+
+    /// Every profile's ops are known rule names, and its defaults stay a
+    /// subset of its admitted ops.
+    #[test]
+    fn ops_are_known_rules_with_defaults_a_subset() {
+        let mut all = vec![&UNMAPPED, &DATA];
+        all.extend(LANG_ENTRIES.iter().map(|(_, profile)| profile));
+
+        for profile in all {
+            for op in profile.ops {
+                assert!(
+                    crate::config::KNOWN_FIX_OPS.contains(op),
+                    "`{op}` is not a known rule name"
+                );
+            }
+            for op in profile.default_ops {
+                assert!(
+                    profile.ops.contains(op),
+                    "default op `{op}` must also be admitted"
+                );
+            }
+        }
+    }
+
+    /// A comment marker that extends another marker must precede it, so the
+    /// longest match wins during prefix stripping.
+    #[test]
+    fn comment_markers_order_longest_first() {
+        let mut all = vec![&UNMAPPED, &DATA];
+        all.extend(LANG_ENTRIES.iter().map(|(_, profile)| profile));
+
+        for profile in all {
+            for (long, short) in profile
+                .prefixes
+                .iter()
+                .flat_map(|long| profile.prefixes.iter().map(move |short| (long, short)))
+                .filter(|(long, short)| long != short && long.starts_with(*short))
+            {
+                let long_idx = profile.prefixes.iter().position(|p| p == long).unwrap();
+                let short_idx = profile.prefixes.iter().position(|p| p == short).unwrap();
+                assert!(
+                    long_idx < short_idx,
+                    "`{long}` must precede `{short}` in {:?}",
+                    profile.prefixes
+                );
+            }
+        }
+    }
+}

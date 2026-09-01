@@ -52,6 +52,10 @@ use std::path::{Path, PathBuf};
 mod changes;
 mod config;
 mod diff;
+// Language admission registry; the admission call sites that will read it
+// land in a follow-up change, so the module is dead code until then.
+#[allow(dead_code)]
+mod langs;
 mod output;
 mod paths;
 mod pipeline;
