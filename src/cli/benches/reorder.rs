@@ -1,10 +1,13 @@
 //! Benchmarks for the `reorder` CLI operation.
 //!
-//! Measures the full reorder pass over each fixture: parse the source, build the
-//! reference graph and topologically sort with [`compute_order`], construct a
-//! [`Permutation`], [`emit`] the reordered source, and run the line-preservation
-//! [`verify_line_preservation`] safety check. This mirrors the CLI's
-//! `reorder_file` path minus file I/O.
+//! Measures the full reorder pass over each fixture:
+//!
+//! - parse the source
+//! - build the reference graph and topologically sort with [`compute_order`]
+//! - construct a [`Permutation`] and [`emit`] the reordered source
+//! - run the line-preservation [`verify_line_preservation`] safety check
+//!
+//! This mirrors the CLI's `reorder_file` path minus file I/O.
 //!
 //! [`compute_order`]: rust_llm_tidy_reorder::graph::compute_order
 //! [`emit`]: rust_llm_tidy_reorder::reorder::emit

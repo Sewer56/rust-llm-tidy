@@ -1,8 +1,8 @@
 # rust-llm-tidy-cli
 
-[![Crates.io](https://img.shields.io/crates/v/rust-llm-tidy-cli.svg)][Crates.io]
-[![Docs.rs](https://docs.rs/rust-llm-tidy-cli/badge.svg)][Docs.rs]
-[![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
+[![Crates.io][crates-badge]][Crates.io]
+[![Docs.rs][docs-badge]][Docs.rs]
+[![CI][ci-badge]][CI]
 
 Command-line interface for [rust-llm-tidy-reorder].
 
@@ -71,9 +71,10 @@ rust-llm-tidy --output-mode json src/main.rs
 ### JSON output
 
 Print every lint finding and change record as one JSON array on stdout instead
-of the default `path:line: sev[CODE]: ...` stderr diagnostics. Change records
-are emitted for both in-place and `--dry-run` runs. Prints `[]` when there are
-no findings or changes, even when the run exits non-zero:
+of the default `path:line: sev[CODE]: ...` stderr diagnostics.
+
+Change records are emitted for both in-place and `--dry-run` runs. Prints `[]`
+when there are no findings or changes, even when the run exits non-zero:
 
 ```json
 [
@@ -91,15 +92,17 @@ no findings or changes, even when the run exits non-zero:
 
 Fields:
 
-- `severity` - `"error"` or `"warning"` for lint findings, `"success"` for change records (applied or would-be changes)
-- `line` - 1-based item start line
+- `severity` - `"error"` or `"warning"` for lint findings, `"success"` for
+  change records (applied or would-be changes)
+- `line` - 1-based item start line, `null` when no specific line (link/table fixes)
 - `item_name` - item name, `null` when unnamed
 - `path`, `code`, `message`, `item_kind` - as in plaintext
 
 In JSON mode the plaintext per-line diagnostics are not printed to stderr.
 `--output-mode json` combines freely with `--dry-run`; the would-be changes are
-folded into the same document. See
-[dry-run change reporting] for
+folded into the same document.
+
+See [dry-run change reporting] for
 the shared record format.
 
 ### Operations
@@ -115,9 +118,10 @@ the shared record format.
 
 An optional YAML config file (`.rust-llm-tidy.yml`) may exclude files from
 processing, whitelist or blacklist specific rules per path, and run external
-programs (e.g. `rustfmt`) on every processed file. Pass `--config <PATH>` to
-use an explicit config or `--no-config` to disable discovery. See the
-repository README for the full schema.
+programs (e.g. `rustfmt`) on every processed file.
+
+Pass `--config <PATH>` to use an explicit config or `--no-config` to disable
+discovery. See the repository README for the full schema.
 
 ## Ordering Rules
 
@@ -132,6 +136,9 @@ Licensed under Apache 2.0
 [Crates.io]: https://crates.io/crates/rust-llm-tidy-cli
 [Docs.rs]: https://docs.rs/rust-llm-tidy-cli
 [CI]: https://github.com/Sewer56/rust-llm-tidy/actions
+[crates-badge]: https://img.shields.io/crates/v/rust-llm-tidy-cli.svg
+[docs-badge]: https://docs.rs/rust-llm-tidy-cli/badge.svg
+[ci-badge]: https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg
 [rust-llm-tidy-reorder]: ../rust-llm-tidy-reorder/README.MD
 [dry-run change reporting]: ../../docs/lints.md#change-reporting
 [docs/reorder.md]: ../../docs/reorder.md

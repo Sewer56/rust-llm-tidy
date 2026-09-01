@@ -18,9 +18,10 @@ mod modules;
 ///
 /// Built once (via [`ParsedFile::new`]) and reused by [`build_module_tree`] and
 /// [`collect_crate_reexports`], so the crate-wide passes parse each file exactly
-/// once instead of re-parsing per pass. The [`Tree`] stores byte offsets (not
-/// references), so it stays valid for `source`'s bytes as long as they are not
-/// mutated.
+/// once instead of re-parsing per pass.
+///
+/// The [`Tree`] stores byte offsets (not references), so it stays valid for
+/// `source`'s bytes as long as they are not mutated.
 pub struct ParsedFile {
     /// Canonical file path (matches [`ModuleTree`] keys when crate-aware).
     pub path: PathBuf,
@@ -37,6 +38,7 @@ pub struct ParsedFile {
 /// Built by [`collect_crate_reexports`]. A glob (`pub use p::*`) in ANY file
 /// records `"*"`, which (soundness) disables narrowing for every named child
 /// across the crate - matching the per-file glob behavior at a crate scope.
+///
 /// This is the conservative default for cross-file glob scope; a
 /// finer-grained per-module-path glob is left as future work.
 #[derive(Default)]
@@ -106,14 +108,18 @@ pub fn collect_crate_reexports<'a>(files: impl IntoIterator<Item = &'a ParsedFil
 
 /// Narrow bare `pub` items using cross-file module visibility (the file's
 /// effective floor from a [`ModuleTree`]) plus a crate-wide re-export guard
-/// ([`ReexportSet`]). This is the sole entry point; a standalone file (no crate
-/// context) is narrowed with `floor = None` and a per-file re-export set built
-/// by the caller.
+/// ([`ReexportSet`]).
+///
+/// This is the sole entry point; a standalone file (no crate context) is
+/// narrowed with `floor = None` and a per-file re-export set built by the
+/// caller.
 ///
 /// Top-level eligible items are narrowed to `floor` (if `Some`); inline `mod {}`
 /// bodies are then recursed by `walk()`, so a tighter inline floor still applies
-/// transitively. `crate_reexports` is consulted for every candidate (named match
-/// OR glob sentinel).
+/// transitively.
+///
+/// `crate_reexports` is consulted for every candidate (named match OR glob
+/// sentinel).
 ///
 /// # Skips
 ///
@@ -129,13 +135,16 @@ pub fn collect_crate_reexports<'a>(files: impl IntoIterator<Item = &'a ParsedFil
 /// # Allocation
 ///
 /// The input is parsed directly with tree-sitter - only the CST is needed,
-/// never the gap-anchored spans the reorder/lint model computes. Visibility
-/// spans come straight from node byte offsets, so no line/column conversion or
-/// `proc_macro2` span hack is required. When no child needs narrowing (no
-/// restricted-visibility inline module with bare-`pub` children, or an
-/// idempotent re-run), the input is borrowed back unchanged ([`Cow::Borrowed`])
-/// with zero allocation; otherwise the rewritten buffer is returned as
-/// [`Cow::Owned`].
+/// never the gap-anchored spans the reorder/lint model computes.
+///
+/// Visibility spans come straight from node byte offsets, so no line/column
+/// conversion or `proc_macro2` span hack is required.
+///
+/// When no child needs narrowing (no restricted-visibility inline module with
+/// bare-`pub` children, or an idempotent re-run), the input is borrowed back
+/// unchanged ([`Cow::Borrowed`]) with zero allocation.
+///
+/// Otherwise the rewritten buffer is returned as [`Cow::Owned`].
 ///
 /// # Arguments
 ///
@@ -149,9 +158,10 @@ pub fn collect_crate_reexports<'a>(files: impl IntoIterator<Item = &'a ParsedFil
 /// # Errors
 ///
 /// tree-sitter performs error recovery, so syntactically invalid Rust still
-/// yields a tree (possibly with `ERROR` nodes) rather than a parse error; the
-/// `Result` is only `Err` with [`anyhow::Error`] when the parser cannot be
-/// allocated, the language is not set, or tree-sitter returns no tree.
+/// yields a tree (possibly with `ERROR` nodes) rather than a parse error.
+///
+/// The `Result` is only `Err` with [`anyhow::Error`] when the parser cannot
+/// be allocated, the language is not set, or tree-sitter returns no tree.
 pub fn narrow_vis_in_tree<'a>(
     source: &'a str,
     floor: Option<&'a str>,
@@ -213,8 +223,10 @@ pub(crate) fn visibility_node<'a>(node: Node<'a>) -> Option<Node<'a>> {
 ///
 /// The replacement text is the floor visibility, which is always at least as
 /// long as the `pub` token it replaces (`pub` -> `pub(crate)` etc.), so the
-/// output grows by a few bytes per edit. Capacity is preallocated with that
-/// slack to keep `replace_range` from reallocating.
+/// output grows by a few bytes per edit.
+///
+/// Capacity is preallocated with that slack to keep `replace_range` from
+/// reallocating.
 fn apply_edits(source: &str, mut edits: Vec<(usize, usize, Cow<'_, str>)>) -> String {
     edits.sort_by_key(|b| std::cmp::Reverse(b.0));
     let mut out = String::with_capacity(source.len() + edits.len() * 8);
@@ -257,6 +269,7 @@ fn collect_reexports(container: Node, source: &[u8], out: &mut Option<AHashSet<S
 
 /// Same as `narrow_if_eligible` but the floor text is owned (the tree path, not
 /// a slice of `source`), so the pushed edit wraps `Cow::Owned(floor.to_string())`.
+///
 /// Kept as a thin twin to preserve `walk()`'s hot-path `&'a str` borrowing (no
 /// allocation).
 fn narrow_if_eligible_owned<'a, 'n>(
@@ -303,8 +316,10 @@ fn parse(source: &str) -> anyhow::Result<Tree> {
 ///
 /// `floor` is the verbatim visibility text of the innermost restricted ancestor
 /// module (e.g. `"pub(crate)"`), or `None` at the crate root / inside a
-/// non-restricted ancestor. Children of a restricted module are narrowed in
-/// place; the walk then recurses so the floor propagates transitively.
+/// non-restricted ancestor.
+///
+/// Children of a restricted module are narrowed in place; the walk then
+/// recurses so the floor propagates transitively.
 fn walk<'a, 'n>(
     container: Node<'n>,
     floor: Option<&'a str>,
@@ -406,9 +421,10 @@ fn collect_use_clause(node: Node, source: &[u8], out: &mut AHashSet<String>) {
 /// edit replacing the `pub` token with the floor's visibility text.
 ///
 /// The replacement text borrows `source` (the floor is already a `&str` slice
-/// of it), so no per-edit [`String`] is allocated. The re-export guard's name
-/// is materialized lazily: only when a `pub use` exists AND the child is bare
-/// `pub`, so the common path allocates nothing.
+/// of it), so no per-edit [`String`] is allocated.
+///
+/// The re-export guard's name is materialized lazily: only when a `pub use`
+/// exists AND the child is bare `pub`, so the common path allocates nothing.
 fn narrow_if_eligible<'a, 'n>(
     item: Node<'n>,
     floor: Option<&'a str>,
@@ -447,9 +463,10 @@ fn rust_language() -> anyhow::Result<tree_sitter::Language> {
 }
 
 /// The `name` field node of an item kind eligible for narrowing (fn, struct,
-/// enum, union, type, const, static, mod, trait, extern crate). Returns `None`
-/// for `use`, `impl`, `macro_rules!`, macro invocations, and other kinds (those
-/// are never narrowed).
+/// enum, union, type, const, static, mod, trait, extern crate).
+///
+/// Returns `None` for `use`, `impl`, `macro_rules!`, macro invocations, and
+/// other kinds (those are never narrowed).
 ///
 /// Returning the borrowed name node (rather than an owned [`String`]) lets the
 /// caller defer - and usually skip - the name allocation, since the name is
@@ -509,8 +526,10 @@ mod tests {
 
     /// Standalone narrowing through the tree entry point: `floor = None` (no
     /// cross-file context) plus a per-file re-export guard built from the file
-    /// itself. Exercises the same inline-mod path `walk()` takes; the unit tests
-    /// below call it to cover inline narrowing, floors, and the re-export guard.
+    /// itself.
+    ///
+    /// Exercises the same inline-mod path `walk()` takes; the unit tests below
+    /// call it to cover inline narrowing, floors, and the re-export guard.
     fn narrow<'a>(src: &'a str) -> anyhow::Result<std::borrow::Cow<'a, str>> {
         let pf = parse(src);
         let reexports = collect_crate_reexports(std::iter::once(&pf));

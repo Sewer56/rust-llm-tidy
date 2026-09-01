@@ -1,9 +1,12 @@
 //! `DOC004` - missing `# Arguments` section, and `DOC005` - undocumented params.
 //!
 //! [`missing_arguments_section`] fires on public functions with parameters that
-//! have no `# Arguments` header; [`undocumented_param`] fires when an existing
-//! section body omits at least one parameter name. Both share
-//! [`ARGUMENTS_HEADERS`], [`find_arguments_section`], and
+//! have no `# Arguments` header.
+//!
+//! [`undocumented_param`] fires when an existing section body omits at least
+//! one parameter name.
+//!
+//! Both share [`ARGUMENTS_HEADERS`], [`find_arguments_section`], and
 //! [`is_pub_fn_with_params`].
 
 use crate::check::placeholder::contains_word;

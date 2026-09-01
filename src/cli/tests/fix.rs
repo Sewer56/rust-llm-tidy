@@ -23,7 +23,8 @@ const INTRA_DOC_REPRO_FIXED: &str = "\
 pub struct Builder;
 
 impl Builder {
-    /// Produces [the Config] and hands it to [the Builder].
+    /// Produces [the Config] and hands it to
+    /// [the Builder].
     ///
     /// [the Config]: crate::Config
     /// [the Builder]: crate::Builder
@@ -50,7 +51,8 @@ const INTRA_DOC_REPRO_SOURCE: &str = "\
 pub struct Builder;
 
 impl Builder {
-    /// Produces [the Config](crate::Config) and hands it to [the Builder](crate::Builder).
+    /// Produces [the Config](crate::Config) and hands it to
+    /// [the Builder](crate::Builder).
     pub fn build(&self) -> Config {
         Config
     }

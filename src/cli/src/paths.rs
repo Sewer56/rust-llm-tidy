@@ -13,19 +13,22 @@ use std::path::{Path, PathBuf};
 ///
 /// Walks with the `ignore` crate so each repo's own `.gitignore` rules decide
 /// what counts as a source input - build output (`target/`), vendored code,
-/// and any user-ignored paths are skipped without a hardcoded list. Ancestor
-/// `.gitignore` files (up to the repo root) apply too, so a subdirectory walk
-/// still honours the repo's root rules. Works when the repo root's `.git` is a
-/// file (worktree/submodule) as well as a directory.
+/// and any user-ignored paths are skipped without a hardcoded list.
+///
+/// Ancestor `.gitignore` files (up to the repo root) apply too, so a
+/// subdirectory walk still honours the repo's root rules. Works when the repo
+/// root's `.git` is a file (worktree/submodule) as well as a directory.
 pub(crate) fn collect_files(
     dir: &Path,
     exts: &[&str],
     out: &mut Vec<PathBuf>,
 ) -> anyhow::Result<()> {
     // `hidden(false)` keeps dot-dirs walkable (gitignore still applies), so
-    // behaviour matches a plain recursive read. Global/exclude gitignore files
-    // are not consulted; only repo `.gitignore` files apply, for reproducible
-    // runs independent of the host's global config.
+    // behaviour matches a plain recursive read.
+    //
+    // Global/exclude gitignore files are not consulted; only repo
+    // `.gitignore` files apply, for reproducible runs independent of the
+    // host's global config.
     let walker = WalkBuilder::new(dir)
         .hidden(false)
         .git_ignore(true)
@@ -65,14 +68,17 @@ pub(crate) fn resolve_inputs(cli: &Cli, exts: &[&str]) -> anyhow::Result<Vec<Pat
 ///
 /// Returns `true` when `ext` (a path extension without the leading dot) matches
 /// any entry in `exts` ignoring ASCII case, so `.RS`/`.MD` variants are
-/// admitted exactly like their lowercase forms. Non-allocating: compares each
-/// candidate byte-wise instead of materializing a lowercase copy.
+/// admitted exactly like their lowercase forms.
+///
+/// Non-allocating: compares each candidate byte-wise instead of materializing a
+/// lowercase copy.
 #[inline]
 pub(crate) fn ext_in(ext: Option<&str>, exts: &[&str]) -> bool {
     ext.is_some_and(|e| exts.iter().any(|x| e.eq_ignore_ascii_case(x)))
 }
 
-/// Resolve a list of input paths into a flat, ordered list of files with matching extensions.
+/// Resolve a list of input paths into a flat, ordered list of files with
+/// matching extensions.
 pub(crate) fn resolve_all(inputs: &[PathBuf], exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
     let mut paths: Vec<PathBuf> = Vec::new();
     for input in inputs {
@@ -129,9 +135,11 @@ mod tests {
     }
 
     /// Build a throwaway repo (`.git` marker + `.gitignore`) and return the
-    /// collected `.rs` files. `git_is_file` selects the worktree case where
-    /// `.git` is a file rather than a directory. `tag` keeps the temp dir
-    /// unique per test so parallel tests cannot clobber each other.
+    /// collected `.rs` files.
+    ///
+    /// `git_is_file` selects the worktree case where `.git` is a file rather
+    /// than a directory. `tag` keeps the temp dir unique per test so
+    /// parallel tests cannot clobber each other.
     fn scan_repo(git_is_file: bool, tag: &str) -> Vec<PathBuf> {
         let dir =
             std::env::temp_dir().join(format!("rlt-path-ignore-{}-{}", tag, std::process::id()));

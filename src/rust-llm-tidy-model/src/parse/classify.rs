@@ -54,10 +54,11 @@ impl<'a> PendingTrivia<'a> {
 
 /// Classify a top-level item node into a [`Classification`].
 ///
-/// `body` is the item node itself (e.g. `function_item`). `pending` holds the
-/// attachable trivia (attrs + outer docs) immediately preceding it, used for
-/// doc-comment extraction and `#[test]`/`#[cfg(test)]` detection. `source` is
-/// the full source text for text extraction.
+/// `body` is the item node itself (e.g. `function_item`).
+///
+/// `pending` holds the attachable trivia (attrs + outer docs) immediately
+/// preceding it, used for doc-comment extraction and `#[test]`/`#[cfg(test)]`
+/// detection. `source` is the full source text for text extraction.
 pub(super) fn classify_item<'a>(
     body: Node<'a>,
     source: &str,
@@ -240,9 +241,10 @@ pub(super) fn classify_item<'a>(
             is_test_fn: false,
         },
         // A top-level macro invocation may appear as a bare `macro_invocation`
-        // node or wrapped in an `expression_statement` (`foo!();`). The body
-        // node passed in is whichever covers the full byte range; locate the
-        // inner `macro_invocation` for the macro path.
+        // node or wrapped in an `expression_statement` (`foo!();`).
+        //
+        // The body node passed in is whichever covers the full byte range;
+        // locate the inner `macro_invocation` for the macro path.
         "macro_invocation" | "expression_statement" => {
             let mac = find_macro_invocation(body);
             Classification {
@@ -346,12 +348,13 @@ fn collect_attributes<'a>(trivia: &[Node<'a>]) -> Vec<Node<'a>> {
 /// Covers both equivalent spellings of an outer doc line:
 ///
 /// - `/// foo` / `/** foo */` comments: the `doc` field child (`doc_comment`)
-///   preserves the leading space (e.g. ` foo`). The trailing newline (part of
-///   the `doc_comment` node for line comments) is stripped to match syn's
-///   `#[doc = " foo"]` value semantics.
+///   preserves the leading space (e.g. ` foo`).
+/// - The trailing newline (part of the `doc_comment` node for line comments)
+///   is stripped to match syn's `#[doc = " foo"]` value semantics.
 /// - `#[doc = "..."]` attributes: the literal's `string_content` text (sans
-///   surrounding quotes) is the value syn stores for the attribute form, so a
-///   `#[doc = " foo"]` line yields ` foo` - identical to the `/// foo` form.
+///   surrounding quotes) is the value syn stores for the attribute form, so
+///   a `#[doc = " foo"]` line yields ` foo` - identical to the `/// foo`
+///   form.
 ///
 /// List-form `#[doc(...)]` (e.g. `#[doc(hidden)]`) and non-`doc` attributes
 /// are not doc-comment lines; they are still collected by `collect_attributes`
@@ -505,7 +508,8 @@ fn attr_first_segment<'a>(attr: Node<'a>, source: &'a str) -> Option<&'a str> {
     attr_path(attr).and_then(|p| first_segment(p, source))
 }
 
-/// Last path segment of an `attribute` node's path (e.g. `test` in `#[tokio::test]`).
+/// Last path segment of an `attribute` node's path (e.g. `test` in
+/// `#[tokio::test]`).
 fn attr_last_segment<'a>(attr: Node<'a>, source: &'a str) -> Option<&'a str> {
     let path = attr_path(attr)?;
     match path.kind() {
@@ -521,10 +525,12 @@ fn attr_last_segment<'a>(attr: Node<'a>, source: &'a str) -> Option<&'a str> {
 ///
 /// Returns the `string_literal`'s `string_content` (sans surrounding quotes),
 /// mirroring syn's `#[doc = "..."]` value (so `#[doc = " foo"]` yields ` foo`,
-/// matching `/// foo`). Returns `None` when `attr` is not an outer-doc
-/// attribute - a list form (`#[doc(hidden)]`), a scoped path
-/// (`#[path::doc = "..."]`), an attribute named something other than `doc`, or
-/// an attribute whose value is not a single string literal.
+/// matching `/// foo`).
+///
+/// Returns `None` when `attr` is not an outer-doc attribute - a list form
+/// (`#[doc(hidden)]`), a scoped path (`#[path::doc = "..."]`), an attribute
+/// named something other than `doc`, or an attribute whose value is not a
+/// single string literal.
 fn doc_attribute_value(attr: Node<'_>, source: &str) -> Option<String> {
     // The attribute path must be exactly `doc` (a plain identifier, not scoped).
     let path = attr_path(attr)?;

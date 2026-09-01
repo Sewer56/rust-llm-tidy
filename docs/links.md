@@ -16,9 +16,9 @@ Eligible link text is non-blank and free of `[`/`]` bytes, and the open `[`
 must be unescaped (`\[x](u)` is literal text). Other links stay inline, e.g. a
 badge's outer `[![alt](img)](url)` link; only its flat inner image hoists.
 
-The hoist threshold defaults to 1 and is configurable via `links.min_occurrences`
-(see the `.rust-llm-tidy.yml` header); raising it leaves a link inline
-until it appears that many times.
+The hoist threshold defaults to 1 and is configurable via
+`links.min_occurrences` (see the `.rust-llm-tidy.yml` header); raising it
+leaves a link inline until it appears that many times.
 
 `links` is idempotent: running it on its own output changes nothing.
 

@@ -8,8 +8,10 @@
 //!
 //! Each fixture is a real file from an open-source project, embedded verbatim
 //! with [`include_str!`] (byte-exact copies, so the benchmarks reflect
-//! realistic table shapes). Provenance (repo, path, pinned permalink) is
-//! documented in the header comment of each fixture file.
+//! realistic table shapes).
+//!
+//! Provenance (repo, path, pinned permalink) is documented in the header
+//! comment of each fixture file.
 
 /// Markdown benchmark fixtures: `(name, source)` pairs across three size tiers.
 pub const MD_FIXTURES: &[(&str, &str)] = &[

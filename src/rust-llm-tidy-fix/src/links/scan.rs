@@ -26,8 +26,10 @@ pub(super) struct InlineLink<'a> {
 ///
 /// Shares [`parse_definition`] with [`is_reference_definition`], so a
 /// definition-shaped but malformed line never registers an existing
-/// definition. The leading-`[` gate keeps the common `[`-bearing prose line
-/// out of the (too large to inline) full parser.
+/// definition.
+///
+/// The leading-`[` gate keeps the common `[`-bearing prose line out of the
+/// (too large to inline) full parser.
 #[inline]
 pub(super) fn definition_text(body: &str) -> Option<&str> {
     // Leading-`[` gate on the trimmed line keeps the common `[`-bearing
@@ -43,9 +45,10 @@ pub(super) fn definition_text(body: &str) -> Option<&str> {
 ///
 /// Lines outside any `///` / `//!` doc comment return `None`. A line belongs
 /// to the doc-comment block identified by `Some(prefix)`, and a block is the
-/// maximal run of consecutive lines sharing the same `Some(prefix)`. The
-/// rewrite pass uses this to keep each rustdoc comment's definitions inside
-/// the same block.
+/// maximal run of consecutive lines sharing the same `Some(prefix)`.
+///
+/// The rewrite pass uses this to keep each rustdoc comment's definitions
+/// inside the same block.
 #[inline]
 pub(super) fn doc_block_key(prefix: &str) -> Option<&str> {
     if prefix.is_empty() {
@@ -82,8 +85,10 @@ pub(super) fn inline_links(body: &str) -> impl Iterator<Item = InlineLink<'_>> {
 
 /// True when `body` is a complete CommonMark link reference definition:
 /// `[label]: destination` plus an optional quoted or parenthesized title, with
-/// nothing else on the line. Shares [`parse_definition`] with
-/// [`definition_text`], so both agree on what counts as a definition.
+/// nothing else on the line.
+///
+/// Shares [`parse_definition`] with [`definition_text`], so both agree on
+/// what counts as a definition.
 pub(super) fn is_reference_definition(body: &str) -> bool {
     parse_definition(body.trim_start()).is_some()
 }
@@ -112,20 +117,25 @@ pub(super) fn line_segments(input: &str) -> impl Iterator<Item = (usize, &str)> 
 /// Reuses the byte-exact [`crate::fences::parse_fence`] for recognition.
 ///
 /// Follows CommonMark block structure: while a fence is open, every other
-/// marker run is code-block content, so a `~~~` line inside a backtick fence
-/// (or a too-short run of the same marker) neither opens nor closes anything
-/// and the original fence still closes on its own delimiter. The stack
-/// therefore holds at most one entry; it stays a `Vec` because callers test it
-/// with `is_empty`.
+/// marker run is code-block content.
+///
+/// A `~~~` line inside a backtick fence (or a too-short run of the same
+/// marker) therefore neither opens nor closes anything, and the original
+/// fence still closes on its own delimiter.
+///
+/// The stack therefore holds at most one entry; it stays a `Vec` because
+/// callers test it with `is_empty`.
 ///
 /// `body` is the result of [`crate::tables::strip_doc_prefix`], so the `///` /
 /// `//!` marker (and its indent) is already gone; only an optional inner indent
 /// may remain.
 pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
     // Cheap candidate check: after leading whitespace, a fence must start with
-    // a backtick/tilde run. Non-ASCII-leading lines defer to the full Unicode
-    // `trim_start` (sound superset gate, identical to `fix_fences`'s
-    // `is_fence_candidate`), so typical code/prose lines skip the pipeline.
+    // a backtick/tilde run.
+    //
+    // Non-ASCII-leading lines defer to the full Unicode `trim_start` (sound
+    // superset gate, identical to `fix_fences`'s `is_fence_candidate`), so
+    // typical code/prose lines skip the pipeline.
     if !is_fence_candidate_body(body) {
         return false;
     }
@@ -239,14 +249,17 @@ pub(super) fn parse_inline_link(body: &str, open: usize) -> Option<(&str, &str, 
 /// under the Unicode `body.trim_start()` pipeline.
 ///
 /// Sound superset gate (mirrors `fix_fences`'s `is_fence_candidate`): returns
-/// `true` for every line the pipeline treats as a fence, plus a few extras the
-/// pipeline emits verbatim. The common case - an ASCII line whose first
-/// non-whitespace byte is not a marker run - short-circuits with a byte scan.
+/// `true` for every line the pipeline treats as a fence, plus a few extras
+/// the pipeline emits verbatim.
+///
+/// The common case - an ASCII line whose first non-whitespace byte is not a
+/// marker run - short-circuits with a byte scan.
 ///
 /// Whitespace in two tiers: ASCII whitespace (`0x09..=0x0d` plus `0x20`, the
-/// ASCII members of [`char::is_whitespace`]) is skipped directly; a leading
-/// non-ASCII byte (`>= 0x80`) may be Unicode whitespace before a fence, so such
-/// lines defer to the full pipeline.
+/// ASCII members of [`char::is_whitespace`]) is skipped directly.
+///
+/// A leading non-ASCII byte (`>= 0x80`) may be Unicode whitespace before a
+/// fence, so such lines defer to the full pipeline.
 #[inline]
 fn is_fence_candidate_body(body: &str) -> bool {
     let bytes = body.as_bytes();
@@ -268,17 +281,21 @@ fn is_fence_candidate_body(body: &str) -> bool {
 
 /// Parse the leading-whitespace-trimmed `s` as one complete CommonMark link
 /// reference definition, `[label]: destination` plus an optional quoted or
-/// parenthesized title, with nothing else on the line. Returns the label. Any
-/// malformed form (blank label, unescaped bracket in the label, invalid
-/// destination, glued title, trailing junk) is paragraph text, not a
-/// definition.
+/// parenthesized title, with nothing else on the line.
 ///
-/// Recognition is deliberately conservative where full CommonMark needs inline
-/// parsing: labels may not contain unescaped `[`; the destination must be a
-/// non-empty balanced bare run (parens only backslash-escaped or balanced) or
-/// an angle form, possibly empty, with no unescaped `<`/`>`; a title must be
-/// preceded by
-/// whitespace; a `\` escape is honored only before ASCII punctuation.
+/// Returns the label. Any malformed form (blank label, unescaped bracket in
+/// the label, invalid destination, glued title, trailing junk) is paragraph
+/// text, not a definition.
+///
+/// Recognition is deliberately conservative where full CommonMark needs
+/// inline parsing:
+///
+/// - labels may not contain unescaped `[`
+/// - the destination must be a non-empty balanced bare run (parens only
+///   backslash-escaped or balanced) or an angle form, possibly empty, with
+///   no unescaped `<`/`>`
+/// - a title must be preceded by whitespace
+/// - a `\` escape is honored only before ASCII punctuation
 #[inline]
 fn parse_definition(s: &str) -> Option<&str> {
     let after = s.strip_prefix('[')?;
@@ -371,10 +388,12 @@ fn closing_delimiter(tail: &str, close: u8) -> Option<usize> {
     }
 }
 
-/// Length of the destination at the start of `rest`: an angle form `<...>`
-/// (possibly empty, no unescaped `<`, closed by the first unescaped `>`)
-/// or a non-empty bare run without whitespace or control characters whose
-/// unescaped parentheses balance.
+/// Length of the destination at the start of `rest`:
+///
+/// - an angle form `<...>` (possibly empty, no unescaped `<`, closed by the
+///   first unescaped `>`)
+/// - or a non-empty bare run without whitespace or control characters whose
+///   unescaped parentheses balance.
 #[inline]
 fn parse_destination(rest: &str) -> Option<usize> {
     let bytes = rest.as_bytes();

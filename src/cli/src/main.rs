@@ -100,6 +100,7 @@ pub(crate) struct Cli {
 
 /// Crate-aware context for the `vis` step: a prebuilt module tree (per-file
 /// floor) + crate-wide re-export set, built ONCE before iterating files.
+///
 /// `None` when crate-root discovery fails (standalone file); each file is then
 /// narrowed with `floor = None` and a per-file re-export guard.
 pub(crate) struct VisContext {
@@ -153,14 +154,20 @@ pub(crate) fn check_file(
 ///
 /// Reads the source, runs [`fix::fix_tables`], [`fix::fix_fences`], then
 /// [`fix::fix_links`] (or [`fix::fix_links_with_min`] when
-/// `links_min_occurrences` exceeds 1), and writes the result back via
-/// [`io::atomic_write`] unless `--dry-run` is given.
+/// `links_min_occurrences` exceeds 1).
 ///
-/// Every edit reports a [`changes::Change`] in both dry-run and in-place modes:
-/// fences via the fix crate's anchors; tables as one per-file record
-/// ([`changes::table_changes`]); link hoists as one record per before/after
-/// pair ([`changes::link_changes`]). A no-op pass borrows its text back and
-/// yields no record.
+/// Writes the result back via [`io::atomic_write`] unless `--dry-run` is
+/// given.
+///
+/// Every edit reports a [`changes::Change`] in both dry-run and in-place
+/// modes:
+///
+/// - fences via the fix crate's anchors
+/// - tables as one per-file record ([`changes::table_changes`])
+/// - link hoists as one record per before/after pair
+///   ([`changes::link_changes`])
+///
+/// A no-op pass borrows its text back and yields no record.
 ///
 /// `fix` never fails on content; it exits non-zero only on I/O errors.
 pub(crate) fn fix_file(
@@ -223,8 +230,10 @@ pub(crate) fn fix_file(
 ///
 /// Returns one per-file [`changes::Change`] record per moved item (derived from
 /// the reorder crate's `ReorderMove` producer) in both dry-run and in-place
-/// modes, and writes the reordered source only when not in dry-run and the
-/// output differs from the original.
+/// modes.
+///
+/// Writes the reordered source only when not in dry-run and the output differs
+/// from the original.
 pub(crate) fn reorder_file(
     path: &Path,
     dry_run: bool,
@@ -280,6 +289,7 @@ pub(crate) fn reorder_file(
 }
 
 /// Build the crate-aware [`VisContext`] from the first `.rs` input path.
+///
 /// Returns `None` (without warning) when there is no `.rs` input or
 /// crate-root discovery fails, so standalone files keep working via
 /// `narrow_vis_in_tree` with `floor = None` and a per-file re-export guard.
@@ -353,12 +363,15 @@ pub(crate) fn resolve_vis_context(paths: &[PathBuf]) -> Option<VisContext> {
 
 /// Narrow visibility in a single source file. With a [`VisContext`] (crate
 /// root discovered) the file's tree floor + crate-wide re-export guard apply,
-/// but only when the file is a node in the resolved crate module tree; a file
-/// outside that tree (e.g. an integration test, example, bench, or a fixture
-/// under `tests/`) is narrowed standalone, since the crate-wide re-export set
-/// is built only from the crate `src/` dir and would miss the file's own
-/// `pub use`. Without a [`VisContext`] (no crate root) every file narrows
-/// standalone with `floor = None` and a per-file re-export guard.
+/// but only when the file is a node in the resolved crate module tree.
+///
+/// A file outside that tree (e.g. an integration test, example, bench, or a
+/// fixture under `tests/`) is narrowed standalone, since the crate-wide
+/// re-export set is built only from the crate `src/` dir and would miss the
+/// file's own `pub use`.
+///
+/// Without a [`VisContext`] (no crate root) every file narrows standalone with
+/// `floor = None` and a per-file re-export guard.
 pub(crate) fn vis_file(
     path: &Path,
     dry_run: bool,

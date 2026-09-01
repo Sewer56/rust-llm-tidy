@@ -3,8 +3,10 @@
 //!
 //! A [`Change`] is one edit: a 1-based anchor line, an operation code (`FIX`,
 //! `REORDER`, or `VIS`), a stable human-readable message, and an item
-//! kind/name. Records are label-level - they describe the affected region from
-//! its first line and never embed the reconstructed source bytes.
+//! kind/name.
+//!
+//! Records are label-level - they describe the affected region from its first
+//! line and never embed the reconstructed source bytes.
 //!
 //! Reorder records come from the reorder crate's `ReorderMove`. Fence fix
 //! records come from the per-entity [`rust_llm_tidy_fix::FixAnchor`]s via
@@ -21,17 +23,19 @@ use std::num::NonZeroU32;
 ///
 /// Records are never mutated after construction, so owned
 /// text rides in `Box<str>`, operation codes ride as `&'static str` without a
-/// heap allocation, and the kind is a byte-sized enum. Fields are declared so
-/// the 4-byte line field sits directly against the enum kind, giving 56 bytes
-/// total on 64-bit, down from 96 with `usize` + `String`.
+/// heap allocation, and the kind is a byte-sized enum.
+///
+/// Fields are declared so the 4-byte line field sits directly against the enum
+/// kind, giving 56 bytes total on 64-bit, down from 96 with `usize` + `String`.
 ///
 /// # Remarks
 ///
 /// Lines are 1-based and non-zero, so `line` uses `Option<NonZeroU32>`
-/// (`None` = the record has no specific line). The niche makes this 4 bytes -
-/// the same size as a plain `u32`, so the packed layout is unchanged - while
-/// the type guarantees a record can never report line 0 and serializes to
-/// `null` when there is no line.
+/// (`None` = the record has no specific line).
+///
+/// The niche makes this 4 bytes - the same size as a plain `u32`, so the
+/// packed layout is unchanged - while the type guarantees a record can never
+/// report line 0 and serializes to `null` when there is no line.
 pub(crate) struct Change {
     /// Optional 1-based line where the affected entity begins (`None` = no line).
     pub(crate) line: Option<NonZeroU32>,
@@ -49,9 +53,11 @@ pub(crate) struct Change {
 /// Typed kind of an affected entity.
 ///
 /// Item kinds reuse the model's [`ItemKind`] rather than redeclaring their
-/// variants; the remaining variants are the fix-pass tags (`fence`, `link`,
-/// `table`) and the `extern crate` phrase the vis pass synthesizes, which is
-/// not an `ItemKind` (`extern` there means an `extern` block).
+/// variants.
+///
+/// The remaining variants are the fix-pass tags (`fence`, `link`, `table`)
+/// and the `extern crate` phrase the vis pass synthesizes, which is not an
+/// `ItemKind` (`extern` there means an `extern` block).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ChangeKind {
     /// A parsed source item kind (e.g. `fn`, `struct`).
@@ -161,9 +167,10 @@ pub(crate) fn table_changes() -> Change {
 ///
 /// Visibility narrowing replaces a bare `pub` token on an item's own line with
 /// the floor visibility, so every narrowed item lands on exactly one line where
-/// `output` differs from `source`. A record is anchored at that line and names
-/// the item from the rewritten line. An already-tidy input (`output == source`)
-/// yields zero records.
+/// `output` differs from `source`.
+///
+/// A record is anchored at that line and names the item from the rewritten
+/// line. An already-tidy input (`output == source`) yields zero records.
 pub(crate) fn vis_changes(source: &str, output: &str) -> Vec<Change> {
     if output == source {
         return Vec::new();
@@ -195,7 +202,9 @@ pub(crate) fn vis_changes(source: &str, output: &str) -> Vec<Change> {
 
 /// Extract the item kind and simple name from a narrowed output line, which
 /// begins with the floor visibility followed by the kind keyword and the item
-/// name. Leading modifiers (`async`, `unsafe`, `default`, `extern`, and `const`
+/// name.
+///
+/// Leading modifiers (`async`, `unsafe`, `default`, `extern`, and `const`
 /// before a kind keyword) are skipped so modifier-carrying items still produce
 /// the right record. Returns `None` for lines that are not a narrowed item.
 fn line_kind_name(line: &str) -> Option<(ChangeKind, String)> {

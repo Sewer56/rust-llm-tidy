@@ -56,7 +56,8 @@ fn paragraph_diagnostic(para: &Paragraph) -> Diagnostic {
              {BULLET_RECOMMENDED} chars."
         ),
         "Move remarks into their own sections.".to_string(),
-        "Do not split code, links, URLs, tables, headings, or signature lines.".to_string(),
+        "The check skips code blocks, tables, headings, signature lines, and link definitions."
+            .to_string(),
     ];
     Diagnostic {
         severity: Severity::Error,
@@ -106,7 +107,9 @@ mod tests {
         assert!(msg.contains("blank line"));
         assert!(msg.contains("bullets"));
         assert!(msg.contains("160"));
-        assert!(msg.contains("URLs, tables, headings, or signature"));
+        assert!(msg.contains(
+            "The check skips code blocks, tables, headings, signature lines, and link definitions."
+        ));
     }
 
     // Paragraph at or under the limit is silent.
@@ -188,13 +191,51 @@ mod tests {
         assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
     }
 
-    // A whole-line code-span exemption keeps the rest of the line free of
-    // the paragraph budget.
+    // Code-span chars count toward the paragraph budget: a span whose chars
+    // push the total over the limit fires DOC007.
     #[test]
-    fn text_checks_exempt_line_costs_no_paragraph_budget() {
-        let prose = "sentence ".repeat(25);
-        let source = format!("{prose}\nrun `cargo test` now please\n");
+    fn text_checks_count_code_span_chars_in_paragraph_budget() {
+        let prose = "x".repeat(200);
+        let span = format!("`{}`", "y".repeat(60));
+        let source = format!("/// {prose} {span}\n");
+        // Measured 263 chars: the span counts in full.
+        let diags = run_text_checks(&source, "rs");
+        let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].severity, Severity::Error);
+        assert_eq!(found[0].line, 1);
+    }
+
+    // Span and URL lines stay paragraph members: the lines join into one
+    // paragraph whose full text crosses the limit, firing one Error.
+    #[test]
+    fn text_checks_error_on_paragraph_joined_across_segment_lines() {
+        let source = formatdoc! {"
+            /// Loads `config` from the given path.
+            /// Docs live at https://example.com/config.
+            /// Merge [defaults](crate::defaults) after loading.
+            /// {}
+        ", "z".repeat(200)};
+        let diags = run_text_checks(&source, "rs");
+        let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].severity, Severity::Error);
+        assert_eq!(found[0].line, 1);
+    }
+
+    // Code-span chars count toward the bullet budget: a bullet whose span
+    // pushes it over the limit warns.
+    #[test]
+    fn text_checks_count_code_spans_in_bullet_budget() {
+        let bullet = format!(
+            "- {} `cargo test --all-features --workspace --all-targets`",
+            "word ".repeat(40)
+        );
+        let source = format!("{bullet}\n");
         let diags = run_text_checks(&source, "md");
-        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
+        let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].severity, Severity::Warning);
+        assert_eq!(found[0].line, 1);
     }
 }

@@ -15,11 +15,12 @@ pub enum TieBreak {
 
 /// Compute a topological ordering of item indices by reference dependencies.
 ///
-/// `fns` is the list of item names (borrowed) in original file order within a
-/// phase (parameter name reflects original function-oriented use; works for any
-/// named item type). `edges` is a set of `(referencer_position,
-/// referenced_position)` pairs, already filtered to positions within this phase.
-/// `tie_break` controls ordering of zero-in-degree nodes and cycle nodes.
+/// - `fns`: the list of item names (borrowed) in original file order within a
+///   phase (parameter name reflects original function-oriented use; works
+///   for any named item type).
+/// - `edges`: a set of `(referencer_position, referenced_position)` pairs,
+///   already filtered to positions within this phase.
+/// - `tie_break`: controls ordering of zero-in-degree nodes and cycle nodes.
 ///
 /// Returns a permutation vector `order` where `order[i]` is the index into
 /// `fns` of the item that should appear at position `i`.
@@ -229,7 +230,8 @@ mod tests {
         assert_eq!(names, vec!["alpha", "moon", "zebra"]);
     }
 
-    /// `toposort` with `Stable` tie-break preserves original file order for independent items.
+    /// `toposort` with `Stable` tie-break preserves original file order for
+    /// independent items.
     #[test]
     fn test_toposort_stable_tie_break() {
         let fns = vec!["zebra", "alpha", "moon"];

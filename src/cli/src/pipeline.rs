@@ -198,9 +198,11 @@ pub(crate) fn run_pipeline(
 /// For each step and each file: if `step.extensions` is non-empty, skip files
 /// whose extension is not in the list; otherwise run
 /// `Command::new(&step.command).args(&step.args).arg(file).output()` (no shell,
-/// no injection). Returns the list of files that failed (non-zero exit or spawn
-/// failure); each failure is also printed to stderr. `--dry-run` callers do not
-/// invoke this function.
+/// no injection).
+///
+/// Returns the list of files that failed (non-zero exit or spawn failure);
+/// each failure is also printed to stderr. `--dry-run` callers do not invoke
+/// this function.
 pub(crate) fn run_post_process(steps: &[PostProcessStep], files: &[PathBuf]) -> Vec<PathBuf> {
     let mut failed = Vec::new();
     for step in steps {
@@ -313,9 +315,13 @@ pub(crate) fn should_parallelize(paths: &[PathBuf]) -> bool {
 ///
 /// The input resolver dedups literal paths only, so one inode reachable under
 /// two spellings (`.` vs `./src`, a symlink, or a dir-walk plus an explicit
-/// file) would otherwise be processed twice: in parallel both copies run on
-/// the original source and emit duplicate change records. Each inode keeps
-/// its first spelling, so displayed paths and output order are unchanged.
+/// file) would otherwise be processed twice.
+///
+/// In parallel, both copies run on the original source and emit duplicate
+/// change records.
+///
+/// Each inode keeps its first spelling, so displayed paths and output order
+/// are unchanged.
 ///
 /// Canonicalization covers relative/absolute differences and symlinks. On
 /// Unix a `(dev, ino)` key additionally catches hardlinks, which

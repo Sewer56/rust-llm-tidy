@@ -305,9 +305,10 @@ impl SourceItem {
     /// Creates a new `SourceItem`.
     ///
     /// See the [`SourceItem`] struct field docs for parameter descriptions:
-    /// `start`, `end`, `start_line`, `kind`, `name`, `impl_target`,
-    /// `is_test_module`, `is_inline`, `is_trait_impl`, `visibility`,
-    /// `doc_comments`, `returns_result`, `params`, and `is_test_fn`.
+    ///
+    /// - `start`, `end`, `start_line`, `kind`, `name`, `impl_target`
+    /// - `is_test_module`, `is_inline`, `is_trait_impl`, `visibility`
+    /// - `doc_comments`, `returns_result`, `params`, and `is_test_fn`.
     pub fn new(
         start: usize,
         end: usize,

@@ -2,9 +2,10 @@
 //!
 //! Measures [`narrow_vis_in_tree`] per file across the multi-file crate
 //! fixtures, mirroring the CLI's crate-aware `vis` step minus file I/O and the
-//! one-time crate-context build. The crate context (module tree + crate-wide
-//! re-export set) is built once per fixture in setup; the hot loop measures only
-//! the per-file narrowing.
+//! one-time crate-context build.
+//!
+//! The crate context (module tree + crate-wide re-export set) is built once
+//! per fixture in setup; the hot loop measures only the per-file narrowing.
 //!
 //! [`narrow_vis_in_tree`]: rust_llm_tidy_vis::narrow_vis_in_tree
 

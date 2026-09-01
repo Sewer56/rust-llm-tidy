@@ -18,9 +18,10 @@ use std::path::{Path, PathBuf};
 
 /// A serializable record that is either a lint finding or a dry-run change
 /// record, matching the documented JSON schema (`{ path, line, severity, code,
-/// message, item_kind, item_name }`). Lint findings use severity `error` or
-/// `warning`; change records use `success`. `item_name` is `null` when the
-/// item is unnamed.
+/// message, item_kind, item_name }`).
+///
+/// Lint findings use severity `error` or `warning`; change records use
+/// `success`. `item_name` is `null` when the item is unnamed.
 ///
 /// Text fields borrow from the projected record as [`Cow`], so a JSON run
 /// allocates nothing per record besides the one `path` string.

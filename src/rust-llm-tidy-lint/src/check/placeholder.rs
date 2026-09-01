@@ -1,9 +1,10 @@
 //! `DOC006` - placeholder text in doc comments.
 //!
 //! [`doc_placeholder`] fires on documentable items whose doc comments contain a
-//! placeholder marker (`TODO`, `FIXME`, or `TBD`). Detection is delegated to the
-//! module-private [`contains_placeholder`] and the crate-visible
-//! [`contains_word`] helper.
+//! placeholder marker (`TODO`, `FIXME`, or `TBD`).
+//!
+//! Detection is delegated to the module-private [`contains_placeholder`] and
+//! the crate-visible [`contains_word`] helper.
 
 use crate::check::CODE_DOC_PLACEHOLDER;
 use crate::check::is_documentable;

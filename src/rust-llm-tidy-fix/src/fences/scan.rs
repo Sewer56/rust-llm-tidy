@@ -10,9 +10,11 @@
 ///
 /// This is a sound superset gate: it returns `true` for every line the pipeline
 /// would treat as a fence, plus a few extras the pipeline would emit verbatim
-/// (still correct). The common case - an ASCII line whose first non-whitespace
-/// byte is not a marker run or `///` / `//!` - short-circuits with a raw byte
-/// scan, so typical code and prose cost almost nothing.
+/// (still correct).
+///
+/// The common case - an ASCII line whose first non-whitespace byte is not a
+/// marker run or `///` / `//!` - short-circuits with a raw byte scan, so
+/// typical code and prose cost almost nothing.
 ///
 /// Whitespace handled in two tiers to stay both exact and fast:
 /// - ASCII whitespace (`0x09..=0x0d` plus space `0x20` - the ASCII members of

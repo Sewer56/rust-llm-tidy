@@ -35,7 +35,9 @@ struct RawEntry<'a> {
 /// Spans are laid back-to-back so each item carries the blank lines and `//`
 /// comments preceding it when reordered: each item's `end` is the byte after
 /// its trailing newline, and every non-first item's `start` is the previous
-/// item's `end`. The span mechanics live in `build_items`.
+/// item's `end`.
+///
+/// The span mechanics live in `build_items`.
 ///
 /// # Arguments
 ///
@@ -80,8 +82,10 @@ pub fn parse_source(source: &str) -> anyhow::Result<ParseResult> {
 ///
 /// Spans are laid back-to-back: each item's `start` is the previous item's
 /// `end` (`preamble_end` for the first), and each `end` is the byte after the
-/// item's trailing newline. Consecutive spans thus touch with no overlap, and
-/// the gap between two items' bodies falls inside the second item's span. For:
+/// item's trailing newline.
+///
+/// Consecutive spans thus touch with no overlap, and the gap between two
+/// items' bodies falls inside the second item's span. For:
 ///
 /// ```text
 /// fn a() {}

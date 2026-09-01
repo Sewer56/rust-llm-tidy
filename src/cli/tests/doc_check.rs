@@ -3,7 +3,9 @@
 //!
 //! These are kept separate from the reorder integration tests
 //! (`integration.rs`) so the documentation-lint behavior is exercised in
-//! isolation. Each test runs the built CLI binary against a fixture file in
+//! isolation.
+//!
+//! Each test runs the built CLI binary against a fixture file in
 //! `tests/fixtures/doc/` and asserts on its exit code and stderr diagnostics.
 
 use common::binary;

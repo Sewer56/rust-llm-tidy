@@ -1,8 +1,11 @@
 # rust-llm-tidy-lint
 
-Linter for Rust source files. Runs a set of checks over a parsed source file and
-reports missing docs, incomplete `# Errors`/`# Arguments` sections, doc-comment
-placeholders, and discouraged test-function names.
+Linter for Rust source files. Runs a set of checks over a parsed source file
+and reports missing docs, incomplete `# Errors`/`# Arguments` sections, and
+doc-comment placeholders.
+
+Also reports oversized paragraphs, long lines, and discouraged
+test-function names.
 
 ## Checks
 
@@ -14,6 +17,8 @@ placeholders, and discouraged test-function names.
 | `DOC004`  | Warning  | A `pub fn` with parameters has no `# Arguments` section.               |
 | `DOC005`  | Warning  | A `# Arguments` section does not mention every parameter name.         |
 | `DOC006`  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).        |
+| `DOC007`  | Error    | A doc paragraph over 240 chars of full text.                           |
+| `DOC008`  | Warning  | A doc line over 80 chars of full text.                                 |
 | `TEST001` | Warning  | A `#[test]` fn uses a `test_*` or `case_*` name, not a behavioral one. |
 
 ## Installation

@@ -12,9 +12,10 @@ use rust_llm_tidy_model::parse::SourceItem;
 ///
 /// Fires on `#[test]` functions whose names use a discouraged pattern
 /// (`test_*`, `case_*`, `test` + digits) instead of a behavioral claim shaped
-/// `subject_should_expectation_when_condition`. Behavioral names describe the
-/// behavior under test without the redundant `test_` prefix the test module
-/// already provides.
+/// `subject_should_expectation_when_condition`.
+///
+/// Behavioral names describe the behavior under test without the redundant
+/// `test_` prefix the test module already provides.
 ///
 /// # Arguments
 ///

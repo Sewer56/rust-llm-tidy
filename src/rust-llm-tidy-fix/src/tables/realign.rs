@@ -29,9 +29,10 @@ enum Alignment {
 ///
 /// - `lines`: the table's content only. Each entry is one row with its
 ///   doc-comment prefix and line terminator already stripped, and every entry
-///   is expected to contain a `|`. Index 0 is the header row, index 1 the
-///   delimiter row (parsed by [`parse_delimiter_row`]), and any further
-///   entries are body rows. For source like
+///   is expected to contain a `|`.
+/// - Index 0 is the header row, index 1 the delimiter row (parsed by
+///   [`parse_delimiter_row`]), and any further entries are body rows. For
+///   source like
 ///
 ///   ```text
 ///   /// | name | value |
@@ -58,14 +59,16 @@ enum Alignment {
 /// # Allocation strategy
 ///
 /// Cells stay borrowed `&str` slices (see [`split_cells_into`]) through the
-/// whole parse/measure/compare phase. `body` is one flat grid (`ncols` per
-/// row, row-major) filled from a single reused `row_buf`, so the parse cost
-/// is a **constant** number of allocations regardless of row count - not one
-/// `Vec` per row.
+/// whole parse/measure/compare phase.
+///
+/// `body` is one flat grid (`ncols` per row, row-major) filled from a single
+/// reused `row_buf`, so the parse cost is a **constant** number of allocations
+/// regardless of row count - not one `Vec` per row.
 ///
 /// An already-aligned table is then rejected with **zero** per-row `String`
 /// allocation: each canonical row is written into one reused buffer
 /// ([`build_row_into`] / [`build_delimiter_into`]) and compared in place.
+///
 /// Only when a change is detected does [`emit_all`] materialize the owned
 /// result rows.
 pub(crate) fn realign_table(lines: &[&str]) -> Option<Vec<String>> {
@@ -104,9 +107,11 @@ pub(crate) fn realign_table(lines: &[&str]) -> Option<Vec<String>> {
     let widths = compute_widths(&header, &body, ncols);
 
     // Phase 1 - change detection: render each line's canonical form into one
-    // reused buffer and compare it against the original. The first mismatch
-    // drops to Phase 2 ([`emit_all`]); if every line matches, the table is
-    // already aligned and we return `None` with no result allocation.
+    // reused buffer and compare it against the original.
+    //
+    // The first mismatch drops to Phase 2 ([`emit_all`]); if every line
+    // matches, the table is already aligned and we return `None` with no
+    // result allocation.
     let rows = body.chunks_exact(ncols);
     let row_len = lines.first().map_or(0, |l| l.len()) + 4;
     let mut buf = String::with_capacity(row_len);

@@ -3,7 +3,9 @@
 //! [`fix_fences`] scans `input` for fenced code blocks. When one fence
 //! directly contains another, it rewrites the inner fence's marker to the
 //! opposite character (backticks <-> tildes) so a nested fence cannot close
-//! the outer block early. The outer (depth-0) marker is always preserved.
+//! the outer block early.
+//!
+//! The outer (depth-0) marker is always preserved.
 //!
 //! This mirrors the doc-comment handling of [`crate::tables::fix_tables`]: a
 //! leading `///` or `//!` prefix is stripped, the fence is processed, and the
@@ -34,10 +36,11 @@ struct OpenFence {
 /// Rewrite nested markdown fences to alternate backtick/tilde markers.
 ///
 /// Only fences nested inside another fence are rewritten; the outer
-/// (depth-0) fence keeps its original marker. Run lengths, info strings,
-/// and any `///` / `//!` doc-comment prefix are preserved. When no fence
-/// changes, the outcome's `text` borrows the original buffer back
-/// (idempotent).
+/// (depth-0) fence keeps its original marker.
+///
+/// Run lengths, info strings, and any `///` / `//!` doc-comment prefix are
+/// preserved. When no fence changes, the outcome's `text` borrows the
+/// original buffer back (idempotent).
 ///
 /// Each flipped opener/closer delimiter line contributes one [`FixAnchor`]
 /// at that line.
@@ -81,10 +84,13 @@ pub fn fix_fences(input: &str) -> FixOutcome<'_> {
         pos += segment.len();
 
         // Cheap candidate check: a line can only be a fence after
-        // [`strip_doc_prefix`] + trim if, ignoring leading whitespace, it begins
-        // with a marker run or a `///` / `//!` doc prefix. The vast majority of
-        // lines (code, prose) fail this and are emitted verbatim with no
-        // further work. See [`is_fence_candidate`] for the exactness argument.
+        // [`strip_doc_prefix`] + trim if, ignoring leading whitespace, it
+        // begins with a marker run or a `///` / `//!` doc prefix.
+        //
+        // The vast majority of lines (code, prose) fail this and are emitted
+        // verbatim with no further work.
+        //
+        // See [`is_fence_candidate`] for the exactness argument.
         if !is_fence_candidate(segment) {
             if let Some(o) = out.as_mut() {
                 o.push_str(segment);
@@ -276,9 +282,11 @@ inner
     #[test]
     fn flips_record_one_anchor_per_delimiter_line() {
         // A nested backtick-inside-backtick fence: both the inner opener and
-        // the inner closer flip to tildes, each on its own line. Written with
-        // single-line `\n` escapes so the repo's own `fix_fences` lint hook
-        // cannot canonicalize the dirty literals before the test runs.
+        // the inner closer flip to tildes, each on its own line.
+        //
+        // Written with single-line `\n` escapes so the repo's own `fix_fences`
+        // lint hook cannot canonicalize the dirty literals before the test
+        // runs.
         let input = "```text\ntext\n```rust\ninner\n```\n```\n";
         let expected = "```text\ntext\n~~~rust\ninner\n~~~\n```\n";
         let out = fix_fences(input);
@@ -453,9 +461,11 @@ deep
     #[test]
     fn unicode_whitespace_before_fence_is_processed() {
         // A fence run preceded by Unicode whitespace (here form feed `\u{c}`)
-        // must still be parsed: the candidate-check fast path uses the same
-        // `trim_start` whitespace notion as the full pipeline, so it cannot
-        // skip such a line (which would desync the nesting stack).
+        // must still be parsed.
+        //
+        // The candidate-check fast path uses the same `trim_start` whitespace
+        // notion as the full pipeline, so it cannot skip such a line (which
+        // would desync the nesting stack).
         let input = "\u{c}```text\n\u{c}```rust\n\u{c}```\n```\n";
         let expected = "\u{c}```text\n\u{c}~~~rust\n\u{c}~~~\n```\n";
         let out = fix_fences(input);

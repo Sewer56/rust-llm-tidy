@@ -1,10 +1,11 @@
 //! Git-diff file collection for `rust-llm-tidy`.
 //!
 //! When the CLI is invoked with no path arguments, [`changed_files`]
-//! collects tracked files changed in the current `git` diff (staged + unstaged),
-//! filtered to the caller's extensions and
-//! skipping deletions and missing files. Shells out to `git` via
-//! `std::process::Command`; no new dependencies.
+//! collects tracked files changed in the current `git` diff (staged +
+//! unstaged), filtered to the caller's extensions and skipping deletions
+//! and missing files.
+//!
+//! Shells out to `git` via `std::process::Command`; no new dependencies.
 
 use anyhow::{Context, anyhow, bail};
 use std::path::{Path, PathBuf};
@@ -25,8 +26,10 @@ use std::process::Command;
 ///
 /// Returns an error if `git rev-parse --show-toplevel` cannot determine the
 /// repo root (e.g. the current directory is outside a git repository) or if a
-/// `git diff` invocation fails. This is an `anyhow::Result`, so any upstream
-/// I/O or `git` failure is propagated as the error.
+/// `git diff` invocation fails.
+///
+/// This is an `anyhow::Result`, so any upstream I/O or `git` failure is
+/// propagated as the error.
 pub fn changed_files(exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
     let root_raw = git_stdout(&["rev-parse", "--show-toplevel"])?;
     let root = PathBuf::from(root_raw.trim());
