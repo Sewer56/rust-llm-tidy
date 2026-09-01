@@ -457,6 +457,10 @@ fn json_dry_run_records_changes_for_both_flags() {
         assert_eq!(array.len(), 1, "expected 1 reorder record, got:\n{stdout}");
         assert_eq!(array[0]["severity"], "success");
         assert_eq!(array[0]["code"], "REORDER");
+        assert!(
+            array[0]["title"].is_null(),
+            "change records carry no title, got:\n{stdout}"
+        );
 
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
@@ -502,6 +506,7 @@ fn json_in_place_run_records_fix_changes() {
     assert_eq!(rec["code"], "FIX");
     assert_eq!(rec["item_kind"], "table");
     assert!(rec["line"].is_null(), "table records carry no line");
+    assert!(rec["title"].is_null(), "change records carry no title");
     assert_eq!(rec["message"], "tables were aligned");
 }
 
@@ -603,16 +608,16 @@ fn json_output_merges_lints_and_changes_in_one_document() {
     });
     let array = records.as_array().expect("JSON output must be an array");
     assert!(
-        array
-            .iter()
-            .any(|r| r["severity"] == "error" && r["code"] == "DOC001"),
-        "array must contain lint findings, got:\n{stdout}"
+        array.iter().any(|r| r["severity"] == "error"
+            && r["code"] == "DOC001"
+            && r["title"] == "missing documentation"),
+        "array must contain titled lint findings, got:\n{stdout}"
     );
     assert!(
         array
             .iter()
-            .any(|r| r["severity"] == "success" && r["code"] == "REORDER"),
-        "array must contain reorder change records, got:\n{stdout}"
+            .any(|r| r["severity"] == "success" && r["code"] == "REORDER" && r["title"].is_null()),
+        "array must contain untitled reorder change records, got:\n{stdout}"
     );
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -642,6 +647,13 @@ fn json_output_prints_document_before_error_bail() {
         "error fixture must produce findings on stdout"
     );
     assert!(array.iter().any(|f| f["severity"] == "error"));
+    assert!(
+        array
+            .iter()
+            .filter(|f| f["code"] == "DOC001")
+            .all(|f| f["title"] == "missing documentation"),
+        "DOC001 findings must carry the friendly title, got:\n{stdout}"
+    );
 }
 
 /// `--output-mode json --dry-run` records the would-be reorder as a
@@ -668,6 +680,18 @@ fn json_output_records_reorder_changes() {
     let rec = &array[0];
     assert_eq!(rec["severity"], "success");
     assert_eq!(rec["code"], "REORDER");
+    // Presence and null are separate pins: indexing a missing key also
+    // yields null, so `is_null` alone would not catch a dropped field.
+    assert!(
+        rec.as_object()
+            .expect("change record is an object")
+            .contains_key("title"),
+        "change records must emit an explicit title: null key, got:\n{stdout}"
+    );
+    assert!(
+        rec["title"].is_null(),
+        "change records carry no title, got:\n{stdout}"
+    );
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -718,7 +742,8 @@ fn json_output_reports_all_findings() {
                 "code",
                 "message",
                 "item_kind",
-                "item_name"
+                "item_name",
+                "title"
             ]
             .into_iter()
             .collect(),
@@ -726,6 +751,7 @@ fn json_output_reports_all_findings() {
         );
         assert_eq!(finding["severity"], "warning");
         assert_eq!(finding["code"], "TEST001");
+        assert_eq!(finding["title"], "non-behavioral test name");
         assert_eq!(finding["item_kind"], "fn");
         assert_eq!(
             finding["path"],

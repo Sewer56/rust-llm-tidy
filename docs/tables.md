@@ -57,7 +57,8 @@ In JSON mode the same record appears on stdout with `severity: "success"`
     "code": "FIX",
     "message": "tables were aligned",
     "item_kind": "table",
-    "item_name": null
+    "item_name": null,
+    "title": null
   }
 ]
 ```

@@ -57,7 +57,8 @@ In JSON mode the records appear on stdout with `severity: "success"`:
     "code": "VIS",
     "message": "narrow visibility of `f` at line 3",
     "item_kind": "fn",
-    "item_name": "f"
+    "item_name": "f",
+    "title": null
   }
 ]
 ```

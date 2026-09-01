@@ -77,7 +77,8 @@ In JSON mode the same records appear on stdout with `severity: "success"`
     "code": "FIX",
     "message": "`[A](http://x)` -> `[A]`",
     "item_kind": "link",
-    "item_name": null
+    "item_name": null,
+    "title": null
   }
 ]
 ```

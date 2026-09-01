@@ -4,6 +4,8 @@
 //! human-readable message, and a location (1-based line number plus the item
 //! kind and name that produced the finding).
 
+use crate::check::title_for_code;
+
 /// A single documentation check finding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic {
@@ -34,6 +36,16 @@ pub enum Severity {
     Warning,
 }
 
+impl Diagnostic {
+    /// Friendly title for this finding's rule code, e.g.
+    /// `"missing documentation"` for `DOC001`.
+    ///
+    /// Falls back to the raw code when the code has no title.
+    pub fn title(&self) -> &'static str {
+        title_for_code(self.code).unwrap_or(self.code)
+    }
+}
+
 impl std::fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let sev = match self.severity {
@@ -61,5 +73,38 @@ impl std::fmt::Display for Diagnostic {
                 kind = self.item_kind,
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::check::CODE_MISSING_DOCS;
+
+    /// Minimal finding carrying `code`; only `title()` reads the fields.
+    fn diagnostic(code: &'static str) -> Diagnostic {
+        Diagnostic {
+            severity: Severity::Warning,
+            code,
+            message: String::new(),
+            line: 1,
+            item_kind: "fn".to_string(),
+            item_name: None,
+        }
+    }
+
+    /// A known code resolves to its friendly title.
+    #[test]
+    fn title_returns_the_friendly_title_for_a_known_code() {
+        assert_eq!(
+            diagnostic(CODE_MISSING_DOCS).title(),
+            "missing documentation"
+        );
+    }
+
+    /// A code with no title entry resolves to the raw code.
+    #[test]
+    fn title_falls_back_to_the_raw_code_when_untitled() {
+        assert_eq!(diagnostic("DOC999").title(), "DOC999");
     }
 }

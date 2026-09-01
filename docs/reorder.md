@@ -106,7 +106,8 @@ In JSON mode the same record appears on stdout with `severity: "success"`:
     "code": "REORDER",
     "message": "rearrange fn a_main from pos 2 to pos 1 (before b_helper)",
     "item_kind": "fn",
-    "item_name": "a_main"
+    "item_name": "a_main",
+    "title": null
   }
 ]
 ```

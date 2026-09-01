@@ -18,10 +18,11 @@ use std::path::{Path, PathBuf};
 
 /// A serializable record that is either a lint finding or a dry-run change
 /// record, matching the documented JSON schema (`{ path, line, severity, code,
-/// message, item_kind, item_name }`).
+/// message, item_kind, item_name, title }`).
 ///
 /// Lint findings use severity `error` or `warning`; change records use
-/// `success`. `item_name` is `null` when the item is unnamed.
+/// `success`. `item_name` is `null` when the item is unnamed, and `title` is
+/// `null` for change records.
 ///
 /// Text fields borrow from the projected record as [`Cow`], so a JSON run
 /// allocates nothing per record besides the one `path` string.
@@ -42,6 +43,9 @@ pub(crate) struct JsonRecord<'a> {
     item_kind: Cow<'a, str>,
     /// Name of the item, or `null` when unnamed.
     item_name: Option<Cow<'a, str>>,
+    /// Friendly title for the finding's rule code, e.g. "missing
+    /// documentation" for `DOC001`; `null` for change records.
+    title: Option<&'static str>,
 }
 
 /// Selects the CLI's lint-diagnostic output format.
@@ -88,6 +92,7 @@ fn project_change<'a>(path: &Path, c: &'a Change) -> JsonRecord<'a> {
         message: Cow::Borrowed(c.message.as_ref()),
         item_kind: Cow::Borrowed(c.kind.as_str()),
         item_name: c.name.as_deref().map(Cow::Borrowed),
+        title: None,
     }
 }
 
@@ -104,5 +109,6 @@ fn project_lint<'a>(path: &Path, d: &'a Diagnostic) -> JsonRecord<'a> {
         message: Cow::Borrowed(d.message.as_ref()),
         item_kind: Cow::Borrowed(d.item_kind.as_ref()),
         item_name: d.item_name.as_deref().map(Cow::Borrowed),
+        title: Some(d.title()),
     }
 }
