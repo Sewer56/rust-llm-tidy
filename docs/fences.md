@@ -68,7 +68,8 @@ In JSON mode the same record appears on stdout with `severity: "success"`:
     "code": "FIX",
     "message": "flip nested fence at line 3",
     "item_kind": "fence",
-    "item_name": null
+    "item_name": null,
+    "title": null
   }
 ]
 ```

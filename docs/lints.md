@@ -407,7 +407,8 @@ changes, and still prints the document when the run exits non-zero:
     "code": "DOC001",
     "message": "non-private item is missing a doc comment",
     "item_kind": "fn",
-    "item_name": "load"
+    "item_name": "load",
+    "title": "missing documentation"
   }
 ]
 ```
@@ -419,6 +420,8 @@ Fields:
 - `line` - 1-based item start line; `null` when the record has no specific
   line (e.g. link/table fixes)
 - `item_name` - item name, `null` when unnamed
+- `title` - friendly per-code title for lint findings, `null` for change
+  records
 - `path`, `code`, `message`, `item_kind` - as in plaintext
 
 In JSON mode the plaintext `path:line: sev[CODE]: ...` diagnostics are not
@@ -454,7 +457,8 @@ records appear on stdout as one JSON array with `severity: "success"`:
     "code": "REORDER",
     "message": "rearrange fn a_main from pos 2 to pos 1 (before b_helper)",
     "item_kind": "fn",
-    "item_name": "a_main"
+    "item_name": "a_main",
+    "title": null
   }
 ]
 ```

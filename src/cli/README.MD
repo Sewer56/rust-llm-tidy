@@ -85,7 +85,8 @@ when there are no findings or changes, even when the run exits non-zero:
     "code": "DOC001",
     "message": "non-private item is missing a doc comment",
     "item_kind": "fn",
-    "item_name": "load"
+    "item_name": "load",
+    "title": "missing documentation"
   }
 ]
 ```
@@ -96,6 +97,8 @@ Fields:
   change records (applied or would-be changes)
 - `line` - 1-based item start line, `null` when no specific line (link/table fixes)
 - `item_name` - item name, `null` when unnamed
+- `title` - friendly per-code title for lint findings, `null` for change
+  records
 - `path`, `code`, `message`, `item_kind` - as in plaintext
 
 In JSON mode the plaintext per-line diagnostics are not printed to stderr.
