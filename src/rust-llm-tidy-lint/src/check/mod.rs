@@ -14,6 +14,8 @@
 //! | `DOC004`  | Warning  | A `pub fn` with parameters has no `# Arguments` section.               |
 //! | `DOC005`  | Warning  | A `# Arguments` section does not mention every parameter name.         |
 //! | `DOC006`  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).        |
+//! | `DOC007`  | Error    | A paragraph of stripped doc text measures over 240 chars.              |
+//! | `DOC008`  | Warning  | A stripped doc line measures over 80 chars.                            |
 //! | `TEST001` | Warning  | A `#[test]` fn uses a `test_*` or `case_*` name, not a behavioral one. |
 
 use crate::diagnostic::Diagnostic;
@@ -21,6 +23,7 @@ pub use arguments::{missing_arguments_section, undocumented_param};
 pub use docs::missing_docs;
 pub use errors::{missing_errors_section, vague_errors};
 pub use placeholder::doc_placeholder;
+pub use plaintext::run_text_checks;
 use rust_llm_tidy_model::parse::ItemKind;
 use rust_llm_tidy_model::parse::ParseResult;
 pub use test_naming::test_naming;
@@ -29,6 +32,7 @@ mod arguments;
 mod docs;
 mod errors;
 mod placeholder;
+mod plaintext;
 mod test_naming;
 
 /// All lint codes accepted through `include.rules`, `exclude.rules`,
@@ -42,16 +46,22 @@ pub const LINT_CODES: &[&str] = &[
     CODE_MISSING_ARGUMENTS,
     CODE_UNDOCUMENTED_PARAM,
     CODE_DOC_PLACEHOLDER,
+    CODE_PARAGRAPH_SIZE,
+    CODE_LINE_LENGTH,
     CODE_TEST_NAMING,
 ];
 /// Rule code for placeholder text in doc comments.
 pub const CODE_DOC_PLACEHOLDER: &str = "DOC006";
+/// Rule code for an over-limit stripped doc line.
+pub const CODE_LINE_LENGTH: &str = "DOC008";
 /// Rule code for a missing `# Arguments` section.
 pub const CODE_MISSING_ARGUMENTS: &str = "DOC004";
 /// Rule code for missing doc comments.
 pub const CODE_MISSING_DOCS: &str = "DOC001";
 /// Rule code for a missing `# Errors` section.
 pub const CODE_MISSING_ERRORS: &str = "DOC002";
+/// Rule code for an over-limit paragraph of stripped doc text.
+pub const CODE_PARAGRAPH_SIZE: &str = "DOC007";
 /// Rule code for a discouraged test-function name.
 pub const CODE_TEST_NAMING: &str = "TEST001";
 /// Rule code for an undocumented parameter.
@@ -152,13 +162,13 @@ mod tests {
     }
 
     #[test]
-    fn lint_codes_lists_all_seven_codes() {
+    fn lint_codes_lists_all_nine_codes() {
         // `LINT_CODES` is the source of truth for CLI rule validation. It must
-        // enumerate every code produced by `run_all`.
+        // enumerate every code produced by `run_all` and `run_text_checks`.
         assert_eq!(
             LINT_CODES.len(),
-            7,
-            "LINT_CODES must list exactly seven codes: {LINT_CODES:?}"
+            9,
+            "LINT_CODES must list exactly nine codes: {LINT_CODES:?}"
         );
         for code in [
             CODE_MISSING_DOCS,
@@ -167,6 +177,8 @@ mod tests {
             CODE_MISSING_ARGUMENTS,
             CODE_UNDOCUMENTED_PARAM,
             CODE_DOC_PLACEHOLDER,
+            CODE_PARAGRAPH_SIZE,
+            CODE_LINE_LENGTH,
             CODE_TEST_NAMING,
         ] {
             assert!(

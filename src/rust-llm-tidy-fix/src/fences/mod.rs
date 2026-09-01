@@ -56,10 +56,13 @@ pub fn fix_fences(input: &str) -> FixOutcome<'_> {
     }
 
     // Output is allocated lazily: only once the first segment that needs to
-    // change is found. Until then the input is borrowed verbatim, so the
-    // overwhelmingly common case (already-canonical input, or an idempotent
-    // re-run) pays zero allocation and zero copying, beyond the marker
-    // presence check above and a cheap per-line scan.
+    // change is found. Until then the input is borrowed verbatim.
+    //
+    // The overwhelmingly common case (already-canonical input, or an
+    // idempotent re-run) pays zero output-buffer allocation and zero copying.
+    //
+    // The two costs that remain are the marker presence check above and a
+    // cheap per-line scan.
     //
     // Because `fix_fences` only swaps `` ` `` <-> `~` marker characters, the
     // output length always equals `input.len()`, so `String::with_capacity`
@@ -627,10 +630,11 @@ deep
     fn optimized_matches_reference_on_generated_inputs() {
         // Deterministic linear congruential generator (LCG; no external test
         // dependency) builds many inputs from a fence-flavoured fragment
-        // alphabet, including ASCII and Unicode leading whitespace, doc
-        // prefixes, mixed markers, run lengths, and info strings. The optimized
-        // `fix_fences` must stay byte-identical to the bc51750 reference for
-        // every generated input.
+        // alphabet: ASCII and Unicode leading whitespace, doc prefixes,
+        // mixed markers, run lengths, and info strings.
+        //
+        // The optimized `fix_fences` must stay byte-identical to the bc51750
+        // reference for every generated input.
         let mut seed: u64 = 0x9E37_79B9_7F4A_7C15;
         let mut next = || {
             seed = seed

@@ -756,6 +756,161 @@ fn json_output_reports_all_findings() {
     );
 }
 
+/// A clean markdown file passes lint dispatch with no diagnostics.
+#[test]
+fn md_clean_file_no_diagnostics() {
+    let path = temp_md("# Title\n\nShort prose paragraph.\n");
+    let output = run_command(&["--include", "lints"], &path);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "clean markdown should pass lint dispatch: {stderr}"
+    );
+    assert!(
+        stderr.is_empty(),
+        "clean markdown should produce no diagnostics, got:\n{stderr}"
+    );
+}
+
+/// `--exclude DOC007` suppresses the markdown paragraph error; the run then
+/// succeeds with no findings.
+#[test]
+fn md_doc007_suppressed_by_exclude() {
+    let path = temp_md(&oversized_paragraph_md());
+    let output = run_command(&["--include", "lints", "--exclude", "DOC007"], &path);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "excluding DOC007 must clear the markdown error: {stderr}"
+    );
+    assert!(
+        !stderr.contains("DOC007"),
+        "excluded code must not be reported, got:\n{stderr}"
+    );
+}
+
+/// A whitelist without `lints` (or any lint code) skips linting entirely,
+/// including the markdown text checks.
+#[test]
+fn md_lints_skipped_when_whitelist_omits_lints() {
+    let path = temp_md(&oversized_paragraph_md());
+    let output = run_command(&["--include", "tables", "--dry-run"], &path);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "tables-only whitelist must not lint markdown: {stderr}"
+    );
+    assert!(
+        !stderr.contains("DOC007") && !stderr.contains("DOC008"),
+        "lint findings must be suppressed without `lints` in the whitelist:\n{stderr}"
+    );
+}
+
+/// A markdown line over 80 chars yields a DOC008 warning without failing.
+#[test]
+fn md_long_line_warns_doc008_without_failing() {
+    let path = temp_md(&format!("{}\n", "x".repeat(81)));
+    let output = run_command(&["--include", "lints"], &path);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "DOC008 warnings must not fail the run: {stderr}"
+    );
+    assert!(
+        stderr.contains(":1: warning[DOC008]"),
+        "expected a DOC008 warning at line 1, got:\n{stderr}"
+    );
+}
+
+/// An over-limit markdown paragraph fails the run with a DOC007 error; the
+/// file is no longer skipped before linting.
+#[test]
+fn md_paragraph_over_limit_fails_with_doc007() {
+    let path = temp_md(&oversized_paragraph_md());
+    let output = run_command(&["--include", "lints"], &path);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "DOC007 errors on markdown must fail the run: {stderr}"
+    );
+    assert!(
+        stderr.contains(":3: error[DOC007]"),
+        "expected a DOC007 error at the paragraph's first line, got:\n{stderr}"
+    );
+}
+
+/// The CLI's rendered rs findings equal the direct composition of the
+/// tree-sitter checks (`run_all`) and the text checks (`run_text_checks`)
+/// over the same file: rs dispatch adds nothing and drops nothing.
+#[test]
+fn rs_diagnostics_match_direct_check_composition() {
+    let path = fixture_dir().join("doc001_missing_docs.rs");
+    let source = fs::read_to_string(&path).unwrap();
+
+    // Path A: the CLI pipeline's rendered JSON findings.
+    let output = run_command(&["--include", "lints", "--output-mode", "json"], &path);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let rendered: Vec<(usize, String, String)> = serde_json::from_str::<serde_json::Value>(&stdout)
+        .expect("JSON diagnostics must parse")
+        .as_array()
+        .expect("diagnostics must be an array")
+        .iter()
+        .map(|f| {
+            (
+                f["line"].as_u64().expect("line must be a number") as usize,
+                f["severity"].as_str().expect("severity").to_string(),
+                f["code"].as_str().expect("code").to_string(),
+            )
+        })
+        .collect();
+
+    // Path B: the two check sources composed directly over the same source.
+    let parsed = rust_llm_tidy_model::parse::parse_source(&source).unwrap();
+    let mut expected = rust_llm_tidy_lint::check::run_all(&parsed);
+    expected.extend(rust_llm_tidy_lint::check::run_text_checks(&source, "rs"));
+    let expected: Vec<(usize, String, String)> = expected
+        .iter()
+        .map(|d| {
+            let sev = match d.severity {
+                rust_llm_tidy_lint::Severity::Error => "error",
+                rust_llm_tidy_lint::Severity::Warning => "warning",
+            };
+            (d.line, sev.to_string(), d.code.to_string())
+        })
+        .collect();
+
+    assert_eq!(
+        rendered, expected,
+        "CLI rs dispatch must render exactly run_all + run_text_checks"
+    );
+}
+
+/// Rust comments flow through the same text checks: an 81-char `///` line
+/// warns with DOC008 while tree-sitter checks stay quiet on a private fn.
+#[test]
+fn rs_long_doc_comment_warns_doc008() {
+    let path = temp_file("rs");
+    fs::write(&path, format!("/// {}\nfn hidden() {{}}\n", "w".repeat(81))).unwrap();
+
+    let output = run_command(&["--include", "lints"], &path);
+    let _ = fs::remove_file(&path);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "DOC008 warnings must not fail the run: {stderr}"
+    );
+    assert!(
+        stderr.contains(":1: warning[DOC008]"),
+        "expected a DOC008 warning for the over-limit comment, got:\n{stderr}"
+    );
+}
+
 /// `should_pass_when_valid` is a behavioral name and is not flagged.
 #[test]
 fn test001_behavioral_not_flagged() {
@@ -807,6 +962,15 @@ fn fix_fixture_dir() -> std::path::PathBuf {
     manifest_dir().join("tests").join("fixtures").join("fix")
 }
 
+/// A markdown paragraph over 240 chars built from short (under-80) lines, so
+/// only DOC007 fires on it.
+fn oversized_paragraph_md() -> String {
+    let lines: String = (0..10)
+        .map(|i| format!("sentence number {i} carries some filler text\n"))
+        .collect();
+    format!("# Title\n\n{lines}\nTrailer.\n")
+}
+
 /// The directory holding reorder fixtures.
 fn reorder_fixture_dir() -> std::path::PathBuf {
     manifest_dir()
@@ -832,11 +996,13 @@ fn temp_dir() -> std::path::PathBuf {
     std::env::temp_dir().join(format!("rust-llm-tidy-lint-dir-{}-{}", pid, seq))
 }
 
-/// Create a numbered temporary file path with the given extension.
-fn temp_file(ext: &str) -> std::path::PathBuf {
-    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = std::process::id();
-    std::env::temp_dir().join(format!("rust-llm-tidy-all-{}-{}.{}", pid, seq, ext))
+// ── Markdown lint dispatch ────────────────────────────────────────
+
+/// Writes `content` to a numbered temp `.md` file and returns its path.
+fn temp_md(content: &str) -> std::path::PathBuf {
+    let path = temp_file("md");
+    fs::write(&path, content).unwrap();
+    path
 }
 
 /// The directory holding lint fixtures.
@@ -850,6 +1016,13 @@ fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
     cmd.args(["--no-config"]).args(args).arg(path);
     cmd.output()
         .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
+}
+
+/// Create a numbered temporary file path with the given extension.
+fn temp_file(ext: &str) -> std::path::PathBuf {
+    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    std::env::temp_dir().join(format!("rust-llm-tidy-all-{}-{}.{}", pid, seq, ext))
 }
 
 /// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.

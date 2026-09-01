@@ -634,6 +634,37 @@ fn post_process_not_run_on_check() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// A `.md` file with only Rust-only ops enabled is not post-processed:
+/// reorder/vis never mutate Markdown, so a failing step must not run on it.
+#[test]
+fn post_process_not_run_on_md_with_only_rust_ops() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let tmp = dir.join("doc.md");
+    fs::write(&tmp, "# Guide\n\nBody text.\n").unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(
+        &cfg,
+        format!(
+            "post_process:\n  - {}\n    extensions: [\"md\"]\n",
+            post_process_command(1)
+        ),
+    )
+    .unwrap();
+
+    let output = Command::new(binary())
+        .args(["--config", cfg.to_str().unwrap(), "--include", "reorder"])
+        .arg(&tmp)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "reorder never mutates .md, so post_process must not run on it: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 // ── post_process ──
 
 /// A successful `post_process` step on a .rs file runs and exits 0.

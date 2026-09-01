@@ -2,10 +2,10 @@
 
 > **⚠ Vibecoded jank - personal tooling, not production software.**
 > 
-> This project was built for my own LLM-assisted Rust workflows.
+> Built for my own LLM-assisted Rust workflows.
+>
 > It's quite frankly- shit compared to the polished diamonds I usually make.
-> 
-> It may have rough edges, including untested edge cases.
+>
 > Use at your own risk - or don't.
 
 [![Crates.io](https://img.shields.io/crates/v/rust-llm-tidy-reorder.svg)][Crates.io]

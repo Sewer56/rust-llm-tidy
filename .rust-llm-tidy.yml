@@ -18,7 +18,7 @@
 #
 # Rule names (used in include.rules, exclude.rules, --include, --exclude):
 # ops tables, fences, links, reorder, vis, lints - plus lint codes
-# DOC001-DOC006 and TEST001. The `lints` op groups all seven lint codes.
+# DOC001-DOC008 and TEST001. The `lints` op groups all nine lint codes.
 #
 # The `links` op hoists inline links `[text](url)` to `[text]` + a definition
 # (threshold 1 by default) in `.rs` doc comments and `.md`. Tune it per file:

@@ -2,8 +2,9 @@
 //!
 //! This module orchestrates parsing: it splits source text into top-level
 //! items with byte spans (comment-pinning prefix comments/attributes to each
-//! item), classifies them, and exposes the data model. Public types are
-//! re-exported from this module for downstream use.
+//! item), classifies them, and exposes the data model.
+//!
+//! Public types are re-exported from this module for downstream use.
 //!
 //! Parsing is performed with tree-sitter (the `tree-sitter-rust` grammar),
 //! which yields byte offsets directly - no line/column conversion is needed.
@@ -185,11 +186,14 @@ fn collect_item_entries(root: tree_sitter::Node<'_>) -> Vec<RawEntry<'_>> {
 ///
 /// `starts[0]` is always `0` (line 1 starts at offset 0). Each subsequent
 /// entry is the byte offset immediately following a `'\n'`, i.e. the first
-/// byte of the next line. Built with a single SIMD-accelerated `memchr` scan.
+/// byte of the next line.
+///
+/// Built with a single SIMD-accelerated `memchr` scan.
 fn line_start_offsets(source: &str) -> Vec<usize> {
     let bytes = source.as_bytes();
     // Heuristic preallocation. Capacity = bytes/D; no regrowth when the file's
     // average bytes/line >= D. Measured across 3820 Rust files (~1.25M lines):
+    //
     //   D=24 -> ~93% no regrow, D=21 -> ~96%, D=20 -> ~97%.
     // D=21 chosen for >95% target with margin (median file = ~33 bytes/line).
     let mut starts: Vec<usize> = Vec::with_capacity(bytes.len() / 21 + 1);

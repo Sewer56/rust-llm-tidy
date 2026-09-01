@@ -129,11 +129,17 @@ pub(crate) fn check_file(
 ) -> anyhow::Result<Vec<(PathBuf, rust_llm_tidy_lint::Diagnostic)>> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
-    let parsed = model_parse::parse_source(&source)
-        .with_context(|| format!("failed to parse {}", path.display()))?;
-
-    let mut diagnostics = check::run_all(&parsed);
+    let mut diagnostics = Vec::new();
+    if crate::paths::ext_in(Some(ext), &["rs"]) {
+        let parsed = model_parse::parse_source(&source)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        diagnostics = check::run_all(&parsed);
+    }
+    if crate::paths::ext_in(Some(ext), &["rs", "md"]) {
+        diagnostics.extend(check::run_text_checks(&source, ext));
+    }
     diagnostics.retain(|d| !disabled.contains(d.code));
 
     Ok(diagnostics

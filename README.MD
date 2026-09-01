@@ -73,7 +73,7 @@ Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
 | `links`   | hoist inline links to reference style   | yes     | yes         |
 | `reorder` | review-friendly item order              | yes     | yes         |
 | `vis`     | narrow bare `pub` in restricted modules | yes     | yes         |
-| `lints`   | run DOC001-DOC006 + TEST001 checks      | no      | yes         |
+| `lints`   | run DOC001-DOC008 + TEST001 checks      | no      | yes         |
 
 #### JSON output
 
@@ -97,8 +97,10 @@ changes, and still prints the document when the run exits non-zero:
 
 Fields:
 
-- `severity` - `"error"` or `"warning"` for lint findings, `"success"` for change records (applied or would-be changes)
-- `line` - 1-based item start line; `null` when the record has no specific line (e.g. link/table fixes)
+- `severity` - `"error"` or `"warning"` for lint findings, `"success"` for
+  change records (applied or would-be changes)
+- `line` - 1-based item start line; `null` when the record has no specific
+  line (e.g. link/table fixes)
 - `item_name` - item name, `null` when unnamed
 - `path`, `code`, `message`, `item_kind` - as in plaintext
 
@@ -117,7 +119,7 @@ format.
 | Table alignment                | [docs/tables.md]  |
 | Fence delimiters               | [docs/fences.md]  |
 | Link hoisting                  | [docs/links.md]   |
-| Lints (DOC001-DOC006, TEST001) | [docs/lints.md]   |
+| Lints (DOC001-DOC008, TEST001) | [docs/lints.md]   |
 
 ### Configuration
 
@@ -141,8 +143,8 @@ Additionally:
   and for excluded files.
 
 Globs are relative to the config file's directory and use `literal_separator`
-semantics (`*` does not cross `/`; `**` recurses). Rule names are the seven
-lint codes (DOC001-DOC006, TEST001) plus the six ops: `tables`, `fences`,
+semantics (`*` does not cross `/`; `**` recurses). Rule names are the nine
+lint codes (DOC001-DOC008, TEST001) plus the six ops: `tables`, `fences`,
 `links`, `reorder`, `vis`, `lints`.
 
 The config is discovered automatically: `rust-llm-tidy` walks up from the
@@ -180,16 +182,24 @@ unexpected lint failures after a tool update.
 
 ## Crates
 
-- [rust-llm-tidy-model]: Shared source model - parse top-level items with spans, visibility, and doc comments; atomic I/O; line-multiset safety
-- [rust-llm-tidy-reorder]: Reordering library - reference-graph ordering of items into a review-friendly 10-phase order
-- [rust-llm-tidy-vis]: Visibility narrowing - narrows bare `pub` items inside restricted-visibility inline modules to the module's visibility
-- [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/`# Arguments`, placeholder, and test-naming checks
-- [rust-llm-tidy-fix]: Markdown/doc-comment tidying - realigns GFM tables, fixes nested fence delimiters, and hoists inline links to reference style in `.rs` doc comments and `.md` files
+- [rust-llm-tidy-model]: Shared source model - parse top-level items with
+  spans, visibility, and doc comments; atomic I/O; line-multiset safety
+- [rust-llm-tidy-reorder]: Reordering library - reference-graph ordering of
+  items into a review-friendly 10-phase order
+- [rust-llm-tidy-vis]: Visibility narrowing - narrows bare `pub` items inside
+  restricted-visibility inline modules to the module's visibility
+- [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/
+  `# Arguments`, paragraph- and line-length, test-naming, etc.; see
+  [docs/lints.md] for all codes
+- [rust-llm-tidy-fix]: Markdown/doc-comment tidying - realigns GFM tables,
+  fixes nested fence delimiters, and hoists inline links to reference style
+  in `.rs` doc comments and `.md` files
 - [cli]: Unified command-line interface (fix, reorder, vis, lints)
 
 ## Git Hook (optional)
 
-Auto-tidy staged `.rs` files on commit (fix + reorder + vis + lints + rustfmt). One-time setup per clone:
+Auto-tidy staged `.rs` files on commit (fix + reorder + vis + lints +
+rustfmt). One-time setup per clone:
 
 ```bash
 git config core.hooksPath .githooks
