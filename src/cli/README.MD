@@ -94,7 +94,7 @@ Fields:
 
 - `severity` - `"error"` or `"warning"` for lint findings, `"success"` for
   change records (applied or would-be changes)
-- `line` - 1-based item start line
+- `line` - 1-based item start line, `null` when no specific line (link/table fixes)
 - `item_name` - item name, `null` when unnamed
 - `path`, `code`, `message`, `item_kind` - as in plaintext
 
