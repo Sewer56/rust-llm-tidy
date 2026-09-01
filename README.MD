@@ -189,7 +189,8 @@ unexpected lint failures after a tool update.
 - [rust-llm-tidy-vis]: Visibility narrowing - narrows bare `pub` items inside
   restricted-visibility inline modules to the module's visibility
 - [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/
-  `# Arguments`, placeholder, and test-naming checks
+  `# Arguments`, paragraph- and line-length, test-naming, etc.; see
+  [docs/lints.md] for all codes
 - [rust-llm-tidy-fix]: Markdown/doc-comment tidying - realigns GFM tables,
   fixes nested fence delimiters, and hoists inline links to reference style
   in `.rs` doc comments and `.md` files
