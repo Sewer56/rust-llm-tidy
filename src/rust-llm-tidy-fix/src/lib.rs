@@ -15,15 +15,30 @@
 //! - [`fix_tables`]: realign GFM pipe tables, including those nested inside
 //!   `///` and `//!` doc comments.
 //!
+//! # Comment-prefix families
+//!
+//! The table and fence passes also come in generalized `_for` forms -
+//! [`fix_fences_for`] and [`fix_tables_for`] - that take the language's
+//! line-comment markers instead of Rust's fixed `///`/`//!` pair.
+//!
+//! Pass the markers longest first (e.g. `["///", "//"]`) so a longer marker
+//! wins over a shorter one it starts with. Tables and fences inside `//`,
+//! `#`, `--`, `;`, or `%` comments then tidy the same way.
+//!
+//! [`strip_comment_prefix`] is the shared prefix stripper the passes use.
+//!
 //! [`fix_fences`] returns a [`FixOutcome`] (text + per-entity [`FixAnchor`]);
 //! [`fix_links`] returns the text plus its substitution pairs; [`fix_tables`]
 //! returns just the rewritten text.
 
 pub use fences::fix_fences;
+pub use fences::fix_fences_for;
 pub use links::fix_links;
 pub use links::fix_links_with_min;
 use std::borrow::Cow;
 pub use tables::fix_tables;
+pub use tables::fix_tables_for;
+pub use tables::strip_comment_prefix;
 
 pub mod fences;
 pub mod links;

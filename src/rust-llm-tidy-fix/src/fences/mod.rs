@@ -8,13 +8,15 @@
 //! The outer (depth-0) marker is always preserved.
 //!
 //! This mirrors the doc-comment handling of [`crate::tables::fix_tables`]: a
-//! leading `///` or `//!` prefix is stripped, the fence is processed, and the
-//! prefix is re-applied.
+//! leading comment prefix is stripped, the fence is processed, and the prefix
+//! is re-applied. [`fix_fences`] uses the Rust `///` / `//!` doc markers;
+//! [`fix_fences_for`] takes any single family of line-comment markers
+//! (`//`, `#`, `--`, `;`, `%`, ...).
 //!
 //! The function is idempotent: a document already using outer-backtick /
 //! inner-tilde alternation is returned unchanged (as a borrowed [`Cow`]).
 
-use crate::tables::{split_terminator, strip_doc_prefix};
+use crate::tables::{DOC_PREFIXES, split_terminator, strip_comment_prefix};
 use crate::{FixAnchor, FixKind, FixOutcome};
 use scan::is_fence_candidate;
 use std::borrow::Cow;
@@ -45,11 +47,53 @@ struct OpenFence {
 /// Each flipped opener/closer delimiter line contributes one [`FixAnchor`]
 /// at that line.
 ///
+/// Delegates to [`fix_fences_for`] with the Rust doc-comment markers
+/// `["///", "//!"]`.
+///
 /// # Arguments
 ///
 /// - `input`: the markdown (or Rust source with `///` / `//!` doc comments)
 ///   to scan for nested fenced code blocks.
 pub fn fix_fences(input: &str) -> FixOutcome<'_> {
+    fix_fences_for(input, DOC_PREFIXES)
+}
+
+/// Rewrite nested markdown fences to alternate markers for one line-comment
+/// prefix family.
+///
+/// Generalized form of [`fix_fences`]: comment lines are recognized by the
+/// markers in `prefixes` instead of the fixed Rust `///` / `//!` pair.
+///
+/// The matched marker, its indent, and one separating space (when present)
+/// are preserved on every rewritten delimiter line.
+///
+/// Only fences nested inside another fence are rewritten; the outer
+/// (depth-0) fence keeps its original marker.
+///
+/// Run lengths and info strings are preserved. When no fence changes, the
+/// outcome's `text` borrows the original buffer back (idempotent).
+///
+/// Each flipped opener/closer delimiter line contributes one [`FixAnchor`]
+/// at that line.
+///
+/// # Arguments
+///
+/// - `input`: the source text to scan for nested fenced code blocks.
+/// - `prefixes`: the language's line-comment markers, longest first (e.g.
+///   `["///", "//"]`) so a longer marker wins over a shorter one it starts
+///   with. An empty slice disables comment-prefix handling (plain markdown).
+///
+/// # Example
+///
+/// ```rust
+/// use rust_llm_tidy_fix::fix_fences_for;
+///
+/// // A nested fence inside `#` comments flips to the alternate marker.
+/// let input = "# ```text\n# ```rust\n# inner\n# ```\n# ```\n";
+/// let out = fix_fences_for(input, &["#"]);
+/// assert_eq!(&*out.text, "# ```text\n# ~~~rust\n# inner\n# ~~~\n# ```\n");
+/// ```
+pub fn fix_fences_for<'a>(input: &'a str, prefixes: &[&str]) -> FixOutcome<'a> {
     // Fast path: no fence markers anywhere means nothing can change.
     if !input.contains('`') && !input.contains('~') {
         return FixOutcome {
@@ -67,9 +111,9 @@ pub fn fix_fences(input: &str) -> FixOutcome<'_> {
     // The two costs that remain are the marker presence check above and a
     // cheap per-line scan.
     //
-    // Because `fix_fences` only swaps `` ` `` <-> `~` marker characters, the
-    // output length always equals `input.len()`, so `String::with_capacity`
-    // never reallocates once allocated.
+    // Because `fix_fences_for` only swaps `` ` `` <-> `~` marker characters,
+    // the output length always equals `input.len()`, so
+    // `String::with_capacity` never reallocates once allocated.
     let mut out: Option<String> = None;
     let mut stack: Vec<OpenFence> = Vec::new();
     let mut anchors: Vec<FixAnchor> = Vec::new();
@@ -84,14 +128,14 @@ pub fn fix_fences(input: &str) -> FixOutcome<'_> {
         pos += segment.len();
 
         // Cheap candidate check: a line can only be a fence after
-        // [`strip_doc_prefix`] + trim if, ignoring leading whitespace, it
-        // begins with a marker run or a `///` / `//!` doc prefix.
+        // [`strip_comment_prefix`] + trim if, ignoring leading whitespace, it
+        // begins with a marker run or a comment prefix from the family.
         //
         // The vast majority of lines (code, prose) fail this and are emitted
         // verbatim with no further work.
         //
         // See [`is_fence_candidate`] for the exactness argument.
-        if !is_fence_candidate(segment) {
+        if !is_fence_candidate(segment, prefixes) {
             if let Some(o) = out.as_mut() {
                 o.push_str(segment);
             }
@@ -99,7 +143,7 @@ pub fn fix_fences(input: &str) -> FixOutcome<'_> {
         }
 
         let (content, term) = split_terminator(segment);
-        let (prefix, body) = strip_doc_prefix(content);
+        let (prefix, body) = strip_comment_prefix(content, prefixes);
         let stripped = body.trim_start();
         if let Some((source_marker, run_len, info)) = parse_fence(stripped) {
             // Body leading whitespace before the fence run (e.g. an indented
@@ -490,9 +534,11 @@ deep
     /// `Cow` variant for every input.
     ///
     /// It shares the module's `parse_fence` / `alternate` / `emit_fence` /
-    /// `split_terminator` / `strip_doc_prefix`, which are logic-identical to
-    /// bc51750 (the byte-based `parse_fence` equals the old char-based one
-    /// because fence markers are ASCII).
+    /// `split_terminator` / `strip_comment_prefix` + [`DOC_PREFIXES`], all
+    /// logic-identical to bc51750.
+    ///
+    /// The byte-based `parse_fence` equals the old char-based one because
+    /// fence markers are ASCII.
     #[allow(clippy::too_many_lines)]
     fn fix_fences_ref(input: &str) -> Cow<'_, str> {
         if !input.contains('`') && !input.contains('~') {
@@ -503,7 +549,7 @@ deep
         let mut stack: Vec<OpenFence> = Vec::new();
         for segment in input.split_inclusive('\n') {
             let (content, term) = split_terminator(segment);
-            let (prefix, body) = strip_doc_prefix(content);
+            let (prefix, body) = strip_comment_prefix(content, DOC_PREFIXES);
             let stripped = body.trim_start();
             if let Some((source_marker, run_len, info)) = parse_fence(stripped) {
                 let lead = &body[..body.len() - stripped.len()];
@@ -733,6 +779,108 @@ deep
                 },
             ],
             "flipped opener/closer anchor their doc-comment lines"
+        );
+    }
+
+    // Prefix-family coverage for `fix_fences_for`. Inputs are built with
+    // `format!` from single-line `\n`-escaped templates so the repo's own
+    // `fix_fences` lint hook cannot canonicalize the literals first (same
+    // trick as the tests above).
+
+    /// One line-comment family per entry: the marker family and a label for
+    /// assertion messages.
+    const PREFIX_FAMILIES: [(&str, &str); 5] = [
+        ("//", "slash"),
+        ("#", "hash"),
+        ("--", "dash"),
+        (";", "semicolon"),
+        ("%", "percent"),
+    ];
+
+    #[test]
+    fn prefix_family_fences_flip_inner_marker_and_keep_prefix() {
+        // Nested fences inside each line-comment family: the inner backtick
+        // fence flips to tildes with the marker kept on every line, each
+        // flipped delimiter anchors its own line, and the pass is idempotent.
+        for (marker, label) in PREFIX_FAMILIES {
+            let input = format!(
+                "{m} ```text\n{m} ```rust\n{m} inner\n{m} ```\n{m} ```\n",
+                m = marker
+            );
+            let expected = format!(
+                "{m} ```text\n{m} ~~~rust\n{m} inner\n{m} ~~~\n{m} ```\n",
+                m = marker
+            );
+            let out = fix_fences_for(&input, &[marker]);
+            assert_eq!(
+                &*out.text, expected,
+                "fences inside {label} comments must flip with prefix kept"
+            );
+            assert_eq!(
+                out.anchors,
+                [
+                    FixAnchor {
+                        line: 2,
+                        kind: FixKind::Fence,
+                    },
+                    FixAnchor {
+                        line: 4,
+                        kind: FixKind::Fence,
+                    },
+                ],
+                "flipped opener and closer anchor their lines for {label}"
+            );
+            let once = out.text.into_owned();
+            let twice = fix_fences_for(&once, &[marker]).text.into_owned();
+            assert_eq!(twice, once, "fix_fences_for must be idempotent for {label}");
+        }
+    }
+
+    #[test]
+    fn prefix_family_fences_preserve_crlf() {
+        // Every line of a family-commented nested fence keeps its `\r\n`
+        // through the marker flip.
+        for (marker, label) in PREFIX_FAMILIES {
+            let input = format!(
+                "{m} ```text\r\n{m} ```rust\r\n{m} inner\r\n{m} ```\r\n{m} ```\r\n",
+                m = marker
+            );
+            let out = fix_fences_for(&input, &[marker]);
+            let flipped_closer = format!("{marker} ~~~\r\n");
+            assert!(
+                out.text.contains(flipped_closer.as_str()),
+                "{label} inner fence must flip: {:?}",
+                out.text
+            );
+            assert_eq!(
+                out.text.matches('\n').count(),
+                out.text.matches("\r\n").count(),
+                "every newline must stay CRLF for {label}: {:?}",
+                out.text
+            );
+        }
+    }
+
+    #[test]
+    fn fence_family_with_overlapping_markers_strips_longest_first() {
+        // A `["///", "//"]` family (doc plus plain markers) still strips the
+        // full `///` marker; stripping only `//` would leave a `/` on the body
+        // and no fence would be recognized.
+        let input = "/// ```text\n/// ```rust\n/// ```\n/// ```\n";
+        let expected = "/// ```text\n/// ~~~rust\n/// ~~~\n/// ```\n";
+        let out = fix_fences_for(input, &["///", "//"]);
+        assert_eq!(&*out.text, expected, "`///` must win over `//`");
+    }
+
+    #[test]
+    fn empty_prefix_family_disables_comment_handling() {
+        // `&[]` is plain-markdown mode: no marker is stripped, so the `///`
+        // lines are not fence candidates and must come back verbatim.
+        let input = "/// ```text\n/// ```rust\n/// inner\n/// ```\n/// ```\n";
+        let out = fix_fences_for(input, &[]);
+        assert_eq!(
+            &*out.text, input,
+            "an empty family must disable prefix handling"
         );
     }
 }
