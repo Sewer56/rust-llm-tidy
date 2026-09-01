@@ -242,6 +242,175 @@ fn excluded_file_not_post_processed() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+// ── `extensions:` key ──
+
+/// The `extensions:` key admits extra extensions additively: the new
+/// extension is processed while the defaults keep working, and `--validate`
+/// accepts the key.
+#[test]
+fn extensions_key_admits_extra_extension_additively() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(&cfg, "extensions: [\"log\"]\n").unwrap();
+    let log = dir.join("notes.log");
+    fs::write(&log, "| a | b |\n| --- | --- |\n| 1 | 22 |\n").unwrap();
+    let md = dir.join("doc.md");
+    fs::write(&md, "| a | b |\n| --- | --- |\n| 1 | 22 |\n").unwrap();
+
+    let validate = Command::new(binary())
+        .args(["--config", cfg.to_str().unwrap(), "--validate"])
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        validate.status.success(),
+        "--validate must accept the extensions key: {}",
+        String::from_utf8_lossy(&validate.stderr)
+    );
+
+    let output = Command::new(binary())
+        .args(["--config", cfg.to_str().unwrap()])
+        .arg(&dir)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "run with extensions key should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("notes.log"),
+        "the added .log file must be admitted and processed: {stderr}"
+    );
+    assert!(
+        stderr.contains("doc.md"),
+        "default admission must keep working: {stderr}"
+    );
+    assert_eq!(
+        stderr.matches("tables were aligned").count(),
+        2,
+        "both tables must be aligned: {stderr}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// `extensions:` composes with `exclude` groups: the admitted `.py` file
+/// whose path matches the group keeps its tables disabled while a sibling
+/// still gets the default table fix.
+#[test]
+fn extensions_key_composes_with_exclude_rules() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(
+        &cfg,
+        "extensions: [\"py\"]\nexclude:\n  - paths: [\"x.py\"]\n    rules: [\"tables\"]\n",
+    )
+    .unwrap();
+    let excluded = dir.join("x.py");
+    let excluded_original = "# | a | b |\n# | --- | --- |\n# | 1 | 22 |\n";
+    fs::write(&excluded, excluded_original).unwrap();
+    let sibling = dir.join("y.py");
+    fs::write(&sibling, "# | a | b |\n# | --- | --- |\n# | 1 | 22 |\n").unwrap();
+
+    let output = Command::new(binary())
+        .args(["--config", cfg.to_str().unwrap()])
+        .arg(&dir)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "run with extensions + exclude should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(&excluded).unwrap(),
+        excluded_original,
+        "tables must stay disabled for the excluded path"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("y.py") && stderr.contains("tables were aligned"),
+        "the sibling must still get its default table fix: {stderr}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// `extensions:` composes with `include` whitelist mode: the admitted `.py`
+/// file runs only the whitelisted op that its profile also admits.
+#[test]
+fn extensions_key_composes_with_include_whitelist() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    // Omitted `paths` implies every path.
+    fs::write(
+        &cfg,
+        "extensions: [\"py\"]\ninclude:\n  - rules: [\"fences\"]\n",
+    )
+    .unwrap();
+    let py = dir.join("x.py");
+    fs::write(
+        &py,
+        "# | a | b |\n# | --- | --- |\n# | 1 | 22 |\n\n# ```text\n# ```rust\n# inner\n# ```\n# ```\n",
+    )
+    .unwrap();
+
+    let output = Command::new(binary())
+        .args(["--config", cfg.to_str().unwrap()])
+        .arg(&py)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "run with extensions + include should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let after = fs::read_to_string(&py).unwrap();
+    assert!(
+        after.contains("# ~~~rust"),
+        "the whitelisted fences op must run: {after}"
+    );
+    assert!(
+        after.contains("# | a | b |\n# | --- | --- |\n# | 1 | 22 |"),
+        "tables must not run outside the whitelist: {after}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Malformed `extensions:` entries fail validation with a non-zero exit and
+/// an error naming the value.
+#[test]
+fn extensions_key_rejects_malformed_entries() {
+    for yaml in [
+        "extensions: [\".log\"]\n",
+        "extensions: [\"\"]\n",
+        "extensions: [\"notes.log\"]\n",
+        "extensions: [\"dir/log\"]\n",
+    ] {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let cfg = dir.join(".rust-llm-tidy.yml");
+        fs::write(&cfg, yaml).unwrap();
+
+        let output = Command::new(binary())
+            .args(["--config", cfg.to_str().unwrap(), "--validate"])
+            .output()
+            .expect("failed to spawn rust-llm-tidy");
+        assert!(
+            !output.status.success(),
+            "malformed entry in `{yaml}` must fail validation"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("invalid extension"),
+            "stderr should name the invalid extension: {stderr}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
 /// Default pipeline with `exclude_files` for the fixture leaves the file unchanged.
 #[test]
 fn fix_exclude_skips_file() {

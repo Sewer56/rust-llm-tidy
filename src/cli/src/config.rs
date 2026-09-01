@@ -14,9 +14,10 @@
 //! # Hard-fail policy
 //!
 //! Any config error - bad YAML, bad glob syntax, unknown rule name, a
-//! `links` value below 1, or a pattern matching zero files - causes
-//! [`load_and_compile`] to return `Err`, which the CLI propagates as a non-zero
-//! exit on every command.
+//! `links` value below 1, a malformed `extensions` entry, or a pattern
+//! matching zero files - causes [`load_and_compile`] to return `Err`.
+//!
+//! The CLI propagates that error as a non-zero exit on every command.
 //!
 //! The `--validate` flag exists for CI to check the config without processing
 //! files.
@@ -50,6 +51,9 @@ pub struct CompiledConfig {
     post_process: Vec<PostProcessStep>,
     /// Link-hoist threshold settings (`None` = always hoist at threshold 1).
     links: Option<LinkConfig>,
+    /// User-added extensions from the `extensions:` key, admitted in
+    /// addition to the registry defaults.
+    extensions: Vec<String>,
 }
 
 /// Raw serde view of `.rust-llm-tidy.yml`. Paths/globs are relative to the
@@ -75,6 +79,11 @@ pub struct Config {
     /// Link-hoist threshold settings. Absent = always hoist (threshold 1).
     #[serde(default)]
     pub links: Option<LinkConfig>,
+    /// Extra file extensions admitted in addition to the defaults
+    /// (additive; default extensions cannot be removed). Entries are
+    /// written without the leading dot and matched case-insensitively.
+    #[serde(default)]
+    pub extensions: Vec<String>,
 }
 
 /// Runtime policy for a single file: whether to skip it entirely, which ops are
@@ -148,6 +157,12 @@ impl CompiledConfig {
     /// per-file loop.
     pub fn post_process_steps(&self) -> &[PostProcessStep] {
         &self.post_process
+    }
+
+    /// The user-added extensions from the `extensions:` key, admitted in
+    /// addition to the registry defaults.
+    pub fn extra_extensions(&self) -> &[String] {
+        &self.extensions
     }
 
     /// Effective link-hoist threshold for files with extension `ext` (no
@@ -257,11 +272,13 @@ pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathB
 /// 1. Read the file and `serde_yml::from_str` it (YAML error -> `Err`).
 /// 2. Canonicalize the config directory (patterns resolve relative to it).
 /// 3. Reject `include` + `exclude` co-presence (xor).
-/// 4. Validate every rule name against `known_rules()`; compile each group's
+/// 4. Validate every `extensions` entry shape via
+///    [`crate::langs::validate_extension`].
+/// 5. Validate every rule name against `known_rules()`; compile each group's
 ///    patterns into a `GlobSet` with `literal_separator(true)`. An
 ///    empty/missing `paths` in a group is treated as `["**"]`.
-/// 5. Compile the `exclude_files` patterns into one `GlobSet`.
-/// 6. Semantic check: expand each pattern via `glob::glob()` joined with
+/// 6. Compile the `exclude_files` patterns into one `GlobSet`.
+/// 7. Semantic check: expand each pattern via `glob::glob()` joined with
 ///    `config_dir`; a pattern yielding zero results is stale -> `Err`.
 ///
 /// # Arguments
@@ -276,6 +293,8 @@ pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathB
 /// - The config path has no parent directory.
 /// - The config directory cannot be canonicalized.
 /// - `include` and `exclude` are both non-empty.
+/// - Any `extensions` entry is empty or contains a dot, a path separator,
+///   or whitespace.
 /// - Any rule name is not in [`known_rules()`].
 /// - Any glob pattern has invalid syntax.
 /// - Any pattern matches zero files under the config directory.
@@ -301,6 +320,12 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
     // XOR: include + exclude both present -> error.
     if !config.include.is_empty() && !config.exclude.is_empty() {
         bail!("cannot use `include` (whitelist) and `exclude` (blacklist) together; pick one");
+    }
+
+    // User-added extensions must be shaped like real path extensions; a
+    // malformed entry fails the run instead of being silently ignored.
+    for ext in &config.extensions {
+        crate::langs::validate_extension(ext)?;
     }
 
     // Link thresholds: every value must be >= 1 (a missing `min_occurrences`
@@ -393,6 +418,7 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         exclude_groups,
         post_process: config.post_process,
         links: config.links,
+        extensions: config.extensions,
     })
 }
 

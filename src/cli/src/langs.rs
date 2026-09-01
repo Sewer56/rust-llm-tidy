@@ -39,8 +39,24 @@
 //!
 //! Lookups allocate nothing and never run per line or per item - at most
 //! once per file.
+//!
+//! # Admission and gating
+//!
+//! [`admitted_extensions`] builds the one extension list a run admits:
+//! [`DEFAULT_EXTENSIONS`] plus the user additions from the config
+//! `extensions:` key and the CLI `--extension` flag.
+//!
+//! Explicit paths, directory walks, and git-diff selection all consume that
+//! single list.
+//!
+//! [`Profile::op_enabled`] then gates each op per file against the profile,
+//! intersecting the user's rule selection with what the profile admits.
+//! [`validate_extension`] is the shared shape check every user-supplied
+//! extension must pass.
 
+use anyhow::bail;
 use std::cmp::Ordering;
+use std::collections::HashSet;
 
 /// Data formats: no ops.
 const DATA: Profile = Profile {
@@ -213,6 +229,71 @@ pub(crate) struct Profile {
     pub backend: bool,
 }
 
+impl Profile {
+    /// Whether `op` is in the profile's admitted `ops` list.
+    #[inline]
+    pub(crate) fn admits(&self, op: &str) -> bool {
+        self.ops.contains(&op)
+    }
+
+    /// Whether `op` runs for a file with this profile under the active rule
+    /// selection (`enabled` whitelist / `disabled` blacklist, exactly as
+    /// [`crate::pipeline`] resolves them).
+    ///
+    /// Whitelist mode intersects the whitelist with the profile's `ops`;
+    /// default mode runs the profile's `default_ops` minus the disabled
+    /// names. Either way an op the profile never admits stays refused -
+    /// `links` outside the markdown family and Rust, or a default-run
+    /// `fences` on a code language.
+    ///
+    /// The AST ops (`reorder`, `vis`, parser-driven `lints`) additionally
+    /// require [`Profile::backend`]; that gate applies where they dispatch.
+    pub(crate) fn op_enabled(
+        &self,
+        op: &str,
+        enabled: &Option<HashSet<String>>,
+        disabled: &HashSet<String>,
+    ) -> bool {
+        match enabled {
+            Some(set) => set.contains(op) && self.admits(op),
+            None => self.default_ops.contains(&op) && !disabled.contains(op),
+        }
+    }
+
+    /// Whether the parser-free text lint checks run for this profile: the
+    /// markdown family measures whole files and Rust measures its `///` doc
+    /// comments.
+    ///
+    /// Every other tier's `lints` op is parser-driven, so it stays dormant
+    /// until a backend registers; code languages get no text checks.
+    pub(crate) fn runs_text_lints(&self) -> bool {
+        *self == MARKDOWN || *self == RUST
+    }
+}
+
+/// The extensions one run admits: [`DEFAULT_EXTENSIONS`] plus the user-added
+/// extensions from the config `extensions:` key and the CLI `--extension`
+/// flag.
+///
+/// Built once per run; explicit paths, directory walks, and git-diff
+/// selection all consume this single list, so admission is identical across
+/// input modes.
+///
+/// Appended entries may repeat defaults or each other - membership checks
+/// are idempotent, and per-file op gating always re-resolves the profile
+/// from the file's own extension.
+pub(crate) fn admitted_extensions<'a>(
+    config: Option<&'a crate::config::CompiledConfig>,
+    cli: &'a crate::Cli,
+) -> Vec<&'a str> {
+    let mut exts: Vec<&str> = DEFAULT_EXTENSIONS.to_vec();
+    if let Some(config) = config {
+        exts.extend(config.extra_extensions().iter().map(String::as_str));
+    }
+    exts.extend(cli.extension.iter().map(String::as_str));
+    exts
+}
+
 /// The profile governing `ext`, ASCII case-insensitively (`.MD` resolves like
 /// `.md`).
 ///
@@ -238,6 +319,34 @@ pub(crate) fn profile_for(ext: &str) -> &'static Profile {
     &UNMAPPED
 }
 
+/// Validate one user-supplied extension from the config `extensions:` key
+/// or the CLI `--extension` flag.
+///
+/// # Arguments
+///
+/// - `ext`: the extension exactly as the user wrote it, without a leading
+///   dot.
+///
+/// # Errors
+///
+/// Returns an error when `ext` is empty, starts with a dot, or contains an
+/// inner dot, a path separator (`/` or `\`), or whitespace - none of those
+/// can match a real path extension, so they fail the run instead of being
+/// silently ignored.
+pub(crate) fn validate_extension(ext: &str) -> anyhow::Result<()> {
+    let shape_ok = !ext.is_empty()
+        && !ext.starts_with('.')
+        && !ext.contains(['.', '/', '\\'])
+        && !ext.chars().any(char::is_whitespace);
+    if !shape_ok {
+        bail!(
+            "invalid extension `{ext}`: write it without a leading dot and with no inner \
+             dot, path separator, or whitespace"
+        );
+    }
+    Ok(())
+}
+
 /// ASCII case-insensitive ordering, matching [`crate::paths::ext_in`]
 /// comparisons.
 #[inline]
@@ -251,6 +360,11 @@ fn cmp_ext(a: &str, b: &str) -> Ordering {
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+
+    /// Build a rule set from names, for whitelist/blacklist gating cases.
+    fn rules(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|n| n.to_string()).collect()
+    }
 
     /// The approved matrix's markdown-family extensions.
     const MD_FAMILY: &[&str] = &["md", "markdown", "txt", "text", "mdx"];
@@ -499,6 +613,105 @@ mod tests {
                     profile.prefixes
                 );
             }
+        }
+    }
+
+    // ── Per-file op gating ──
+
+    /// Op gating intersects the rule selection with the profile: default
+    /// mode runs the profile defaults minus disabled names, whitelist mode
+    /// intersects the whitelist with the admitted ops.
+    #[test]
+    fn op_enabled_combines_rule_selection_with_profile_ops() {
+        let none = None;
+        let empty = rules(&[]);
+
+        // Default mode: code languages run tables but never fences; the
+        // markdown family and Rust run every fix op.
+        assert!(profile_for("py").op_enabled("tables", &none, &empty));
+        assert!(!profile_for("py").op_enabled("fences", &none, &empty));
+        for ext in MD_FAMILY.iter().chain(["rs"].iter()) {
+            for op in ["tables", "fences", "links"] {
+                assert!(
+                    profile_for(ext).op_enabled(op, &none, &empty),
+                    ".{ext} must run {op} by default"
+                );
+            }
+        }
+
+        // Default mode minus a disabled op, and data formats admit nothing.
+        assert!(!profile_for("md").op_enabled("tables", &none, &rules(&["tables"])));
+        assert!(profile_for("md").op_enabled("fences", &none, &rules(&["tables"])));
+        assert!(!profile_for("json").op_enabled("tables", &none, &empty));
+
+        // Whitelist mode: an explicit include reaches a code language's
+        // fences; links outside the markdown family and Rust stay refused,
+        // and so does an op the profile never carries.
+        assert!(profile_for("py").op_enabled("fences", &Some(rules(&["fences"])), &empty));
+        assert!(!profile_for("py").op_enabled("links", &Some(rules(&["links"])), &empty));
+        assert!(!profile_for("md").op_enabled("reorder", &Some(rules(&["reorder"])), &empty));
+    }
+
+    /// Only the markdown family and Rust run the parser-free text lint
+    /// checks; every other tier's `lints` op is parser-driven and dormant.
+    #[test]
+    fn text_lints_run_only_for_markdown_family_and_rust() {
+        for ext in MD_FAMILY.iter().chain(["rs"].iter()) {
+            assert!(
+                profile_for(ext).runs_text_lints(),
+                ".{ext} must run the text lint checks"
+            );
+        }
+        for ext in ["cs", "py", "java", "org", "json"] {
+            assert!(
+                !profile_for(ext).runs_text_lints(),
+                ".{ext} must not run the text lint checks"
+            );
+        }
+    }
+
+    // ── Run-level admission ──
+
+    /// The admitted list carries every default extension plus the config
+    /// and CLI additions.
+    #[test]
+    fn admitted_extensions_merges_defaults_config_and_cli() {
+        let dir = std::env::temp_dir().join(format!("rlt-langs-admit-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_path = dir.join(".rust-llm-tidy.yml");
+        std::fs::write(&cfg_path, "extensions: [\"log\"]\n").unwrap();
+        let config = crate::config::load_and_compile(&cfg_path).unwrap();
+        let cli = <crate::Cli as clap::Parser>::parse_from([
+            "rust-llm-tidy",
+            "--extension",
+            "org",
+            "--extension",
+            "MD",
+        ]);
+
+        let admitted = admitted_extensions(Some(&config), &cli);
+
+        for ext in DEFAULT_EXTENSIONS {
+            assert!(admitted.contains(ext), ".{ext} missing from admission");
+        }
+        for ext in ["log", "org", "MD"] {
+            assert!(admitted.contains(&ext), "addition `{ext}` missing");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Extension validation accepts well-formed values and rejects the
+    /// shapes that can never match a real path extension.
+    #[test]
+    fn validate_extension_rejects_unmatchable_shapes() {
+        for ext in ["rs", "MD", "c++"] {
+            assert!(validate_extension(ext).is_ok(), "`{ext}` should be valid");
+        }
+        for ext in ["", ".rs", "a.md", "src/rs", "a\\b", "a b"] {
+            assert!(
+                validate_extension(ext).is_err(),
+                "`{ext}` should be rejected"
+            );
         }
     }
 }

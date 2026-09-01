@@ -1,4 +1,4 @@
-//! Pipeline orchestration: the main per-file loop, op-enabled check, and
+//! Pipeline orchestration: the main per-file loop, per-file op gating, and
 //! post-process runner.
 //!
 //! Files are processed independently of each other, so the per-file work is
@@ -69,19 +69,6 @@ impl PerFileOut {
     }
 }
 
-/// Whether a single op is enabled for the current file, given the active
-/// whitelist (`enabled`) and blacklist (`disabled`).
-pub(crate) fn op_enabled(
-    name: &str,
-    enabled: &Option<HashSet<String>>,
-    disabled: &HashSet<String>,
-) -> bool {
-    match enabled {
-        Some(set) => set.contains(name),
-        None => !disabled.contains(name),
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Pipeline
 // ---------------------------------------------------------------------------
@@ -94,7 +81,10 @@ pub(crate) fn run_pipeline(
     cli_include: Option<&HashSet<String>>,
     cli_disabled: &HashSet<String>,
 ) -> anyhow::Result<()> {
-    let paths = dedup_inputs(paths::resolve_inputs(cli, &["rs", "md"])?);
+    // Admission is decided once per run: registry defaults plus the
+    // user-added extensions from config `extensions:` and `--extension`.
+    let admitted = crate::langs::admitted_extensions(config, cli);
+    let paths = dedup_inputs(paths::resolve_inputs(cli, &admitted)?);
     // Empty input (empty git diff, or explicit dir with no matching files)
     // is a success: config was already validated up front, and 0 files were
     // processed. post_process runs over 0 files.
@@ -283,8 +273,8 @@ pub(crate) fn should_parallelize(paths: &[PathBuf]) -> bool {
 
     /// Byte weight of one file by extension, in [`WEIGHT_SCALE`] units.
     /// `1000` is markdown (the baseline); anything cheaper than markdown can
-    /// be added below it. Inputs today are only `.rs`/`.md`, so non-Rust
-    /// falls back to markdown.
+    /// be added below it. Non-Rust inputs are text-tier scans, so they fall
+    /// back to the markdown weight.
     fn byte_weight(ext: Option<&str>) -> u64 {
         if crate::paths::ext_in(ext, &["rs"]) {
             RUST_WEIGHT
@@ -400,30 +390,31 @@ fn process_one(
 
     let enabled = &policy.enabled;
     let disabled = &policy.disabled;
-    // Reorder and vis are Rust-only, so they only qualify a Rust file for
-    // post-processing; the md fix ops qualify any file they may mutate.
-    let is_rust = crate::paths::ext_in(path.extension().and_then(|e| e.to_str()), &["rs"]);
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let profile = crate::langs::profile_for(ext);
+    // A fix op qualifies its file for post-processing whenever the profile
+    // admits it; the AST ops additionally need a registered backend, which
+    // only Rust has today.
     let should_post_process = ["tables", "fences", "links"]
         .iter()
-        .any(|op| op_enabled(op, enabled, disabled))
-        || (is_rust
+        .any(|op| profile.op_enabled(op, enabled, disabled))
+        || (profile.backend
             && ["reorder", "vis"]
                 .iter()
-                .any(|op| op_enabled(op, enabled, disabled)));
+                .any(|op| profile.op_enabled(op, enabled, disabled)));
 
     // Fix auto-fixable formatting (tables, fences, links) via fix_file.
-    if op_enabled("tables", enabled, disabled)
-        || op_enabled("fences", enabled, disabled)
-        || op_enabled("links", enabled, disabled)
+    if profile.op_enabled("tables", enabled, disabled)
+        || profile.op_enabled("fences", enabled, disabled)
+        || profile.op_enabled("links", enabled, disabled)
     {
         // Resolve the link-hoist threshold by the file's extension (1 when no
         // config), so a single per-file value reaches fix_file.
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
         let links_min = match config {
             Some(c) => c.links_min_occurrences_for(ext),
             None => 1,
         };
-        match super::fix_file(path, dry_run, enabled, disabled, links_min) {
+        match super::fix_file(path, dry_run, profile, enabled, disabled, links_min) {
             Ok(found) => out.record_changes(path, found, json_mode),
             Err(e) => {
                 out.fail(path, &e);
@@ -432,9 +423,9 @@ fn process_one(
         }
     }
 
-    if is_rust {
+    if profile.backend {
         // Reorder next (fixes ordering).
-        if op_enabled("reorder", enabled, disabled) {
+        if profile.op_enabled("reorder", enabled, disabled) {
             match super::reorder_file(path, dry_run, disabled) {
                 Ok(found) => out.record_changes(path, found, json_mode),
                 Err(e) => {
@@ -445,7 +436,7 @@ fn process_one(
         }
         // Narrow visibility next (fixes misleading bare `pub` inside
         // restricted-visibility inline modules).
-        if op_enabled("vis", enabled, disabled) {
+        if profile.op_enabled("vis", enabled, disabled) {
             match super::vis_file(path, dry_run, ctx, disabled) {
                 Ok(found) => out.record_changes(path, found, json_mode),
                 Err(e) => {
@@ -455,13 +446,15 @@ fn process_one(
             }
         }
     }
-    // Then lints (reports remaining doc gaps).
+    // Then lints (reports remaining doc gaps); a profile that admits no
+    // `lints` op skips the pass entirely.
     let lints_on = !disabled.contains("lints")
         && match enabled {
             Some(set) => {
-                set.contains("lints") || check::LINT_CODES.iter().any(|c| set.contains(*c))
+                (set.contains("lints") || check::LINT_CODES.iter().any(|c| set.contains(*c)))
+                    && profile.admits("lints")
             }
-            None => true,
+            None => profile.op_enabled("lints", enabled, disabled),
         };
     if lints_on {
         // In whitelist mode without `lints` in the set, only whitelisted

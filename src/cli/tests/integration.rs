@@ -187,6 +187,72 @@ fn all_after_fixtures_should_be_idempotent_on_rerun() {
     }
 }
 
+/// A code-language file runs exactly `tables` by default: the table in `#`
+/// comments aligns while the nested fence and repeated link stay untouched;
+/// `--include fences` reaches the fence, and a second run emits zero
+/// records.
+#[test]
+fn code_language_default_run_aligns_tables_only() {
+    let table = "# | Name | Value |\n# | --- | --- |\n# | a | 1 |\n# | longname | 200 |\n";
+    let fence = "# ```text\n# ```rust\n# inner\n# ```\n# ```\n";
+    // Over 80 chars so a wrongly-enabled text lint would fire DOC008 here
+    // and break the second-run zero-record assertion below.
+    let links = "# see [A](http://x) and [A](http://x) padded past eighty chars to prove no text lint fires\n";
+    let source = format!("{table}\n{fence}\n{links}");
+
+    let file = temp_file_ext("py");
+    fs::write(&file, &source).unwrap();
+    let out = run_command(&[], &file);
+    assert!(
+        out.status.success(),
+        "default run on .py should succeed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let after = fs::read_to_string(&file).unwrap();
+    assert_ne!(
+        after, source,
+        "the table inside # comments must be realigned"
+    );
+    assert!(
+        after.contains("# ```text\n# ```rust\n# inner\n# ```\n# ```"),
+        "fences must not flip by default: {after}"
+    );
+    assert!(
+        after.contains("[A](http://x) and [A](http://x)"),
+        "links must not hoist on a code language: {after}"
+    );
+
+    // Second run: idempotent, zero change records.
+    let dry = run_command(&["--dry-run"], &file);
+    assert!(dry.status.success());
+    assert!(
+        String::from_utf8_lossy(&dry.stderr).is_empty(),
+        "second run must emit zero records: {}",
+        String::from_utf8_lossy(&dry.stderr)
+    );
+    let _ = fs::remove_file(&file);
+
+    // The explicit include reaches fences on a code language.
+    let file = temp_file_ext("py");
+    fs::write(&file, &source).unwrap();
+    let out = run_command(&["--include", "fences"], &file);
+    assert!(
+        out.status.success(),
+        "--include fences on .py should succeed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let after = fs::read_to_string(&file).unwrap();
+    assert!(
+        after.contains("# ~~~rust"),
+        "inner fence must flip under --include fences: {after}"
+    );
+    assert!(
+        after.contains("# see [A](http://x) and [A](http://x)"),
+        "links must still not hoist under --include fences: {after}"
+    );
+    let _ = fs::remove_file(&file);
+}
+
 // ── CLI behavior tests ────────────────────────────────────────────
 
 /// `--dry-run` reports the would-be reorder move on stderr without printing
@@ -224,6 +290,60 @@ fn empty_directory_should_run_cleanly() {
         "stdout should be empty for empty directory"
     );
     assert!(stderr.is_empty(), "stderr should be empty on success");
+}
+
+/// `--extension` admits an otherwise-unadmitted extension additively: the
+/// file runs the tables-only unmapped profile, and without the flag the
+/// same file is a silent skip.
+#[test]
+fn extension_flag_admits_unmapped_extension_tables_only() {
+    let source = "| a | b |\n| --- | --- |\n| 1 | 22 |\n";
+
+    // Without the flag the explicit file is a silent skip.
+    let file = temp_file_ext("org");
+    fs::write(&file, source).unwrap();
+    let out = run_command(&["--json"], &file);
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "[]");
+    assert_eq!(fs::read_to_string(&file).unwrap(), source);
+    let _ = fs::remove_file(&file);
+
+    // With the flag the file is admitted and its GFM table aligns.
+    let file = temp_file_ext("org");
+    fs::write(&file, source).unwrap();
+    let out = run_command(&["--extension", "org"], &file);
+    assert!(
+        out.status.success(),
+        "--extension org should admit the file: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("tables were aligned"),
+        "the unmapped profile must run tables: {stderr}"
+    );
+    assert_ne!(fs::read_to_string(&file).unwrap(), source);
+    let _ = fs::remove_file(&file);
+}
+
+/// Malformed `--extension` values fail the run with a non-zero exit.
+#[test]
+fn extension_flag_rejects_malformed_values() {
+    let file = temp_file_ext("rs");
+    fs::write(&file, "fn a() {}\n").unwrap();
+    for bad in [".rs", "a.md", "src/rs", ""] {
+        let out = run_command(&["--extension", bad], &file);
+        assert!(
+            !out.status.success(),
+            "--extension `{bad}` must fail the run"
+        );
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains("invalid extension"),
+            "stderr should name the bad extension: {stderr}"
+        );
+    }
+    let _ = fs::remove_file(&file);
 }
 
 /// In-place write: copy a synthetic before fixture to a temp file, run without
@@ -270,6 +390,76 @@ fn invalid_source_should_abort_with_error() {
     assert!(!stderr.is_empty(), "stderr should contain error message");
 }
 
+// ── Language tiers ────────────────────────────────────────────────
+
+/// Markdown-family siblings (`.markdown`, `.txt`, `.text`, `.mdx`, and the
+/// uppercase `.TXT` variant) behave exactly like `.md` on identical input:
+/// same fixed bytes, same stderr records and lint findings, same exit code.
+#[test]
+fn markdown_family_siblings_match_md_behavior() {
+    // Exercises every markdown-family op plus a text lint: a misaligned
+    // table, a nested fence, a repeated inline link, and an over-limit
+    // line.
+    let source = "\
+| Name | Value |
+| --- | --- |
+| a | 1 |
+| longname | 200 |
+
+```text
+```rust
+inner
+```
+```
+
+see [A](http://example.com/long) and [A](http://example.com/long)
+
+this line is deliberately made far longer than eighty characters so the line-length lint fires
+";
+
+    let md = temp_file_ext("md");
+    fs::write(&md, source).unwrap();
+    let md_out = run_command(&[], &md);
+    let md_bytes = fs::read_to_string(&md).unwrap();
+    let md_exit = md_out.status.code().unwrap_or(-1);
+    let md_stderr = strip_path_prefix(&String::from_utf8_lossy(&md_out.stderr), &md);
+
+    // The .md baseline itself must be non-trivial: fixes applied and the
+    // line-length finding reported, or the parity check below proves
+    // nothing.
+    assert_eq!(md_exit, 0, "md baseline should succeed");
+    assert!(
+        md_stderr.contains("success[FIX]"),
+        "md baseline: {md_stderr}"
+    );
+    assert!(
+        md_stderr.contains("DOC008"),
+        "md baseline lints: {md_stderr}"
+    );
+    assert_ne!(md_bytes, source, "md baseline must change the file");
+
+    for ext in ["markdown", "txt", "TXT", "text", "mdx"] {
+        let file = temp_file_ext(ext);
+        fs::write(&file, source).unwrap();
+        let out = run_command(&[], &file);
+
+        assert_eq!(
+            out.status.code().unwrap_or(-1),
+            md_exit,
+            ".{ext} exit must match .md"
+        );
+        assert_eq!(
+            fs::read_to_string(&file).unwrap(),
+            md_bytes,
+            ".{ext} fixed bytes must match .md"
+        );
+        let stderr = strip_path_prefix(&String::from_utf8_lossy(&out.stderr), &file);
+        assert_eq!(stderr, md_stderr, ".{ext} stderr must match .md");
+        let _ = fs::remove_file(&file);
+    }
+    let _ = fs::remove_file(&md);
+}
+
 /// A non-existent path is rejected with an error exit.
 #[test]
 fn nonexistent_path_should_fail_with_error() {
@@ -298,7 +488,7 @@ fn nonexistent_path_should_fail_with_error() {
 }
 
 /// Directory recursion collects `README.MD`/`lib.RS` case variants and
-/// excludes unrelated extensions like `notes.txt`.
+/// excludes extensions outside the default admission (like `notes.org`).
 #[test]
 fn recursive_dir_collects_uppercase_variants_excludes_others() {
     let dir = temp_dir();
@@ -310,11 +500,11 @@ fn recursive_dir_collects_uppercase_variants_excludes_others() {
         "| Name | Value | Description |\n| --- | --- | --- |\n| a | 1 | first |\n| longname | 200 | second item |\n",
     )
     .unwrap();
-    fs::write(dir.join("notes.txt"), "not rust or markdown\n").unwrap();
+    fs::write(dir.join("notes.org"), "not admitted by default\n").unwrap();
 
     // Rust-only reorder runs on the nested `.RS` and reports it by path.
     let (_stdout, stderr, exit) = run_dir(&dir, &["--dry-run"]);
-    assert_eq!(exit, 0, "dir with .RS/.MD/.txt should succeed");
+    assert_eq!(exit, 0, "dir with .RS/.MD/.org should succeed");
     assert!(
         stderr.contains("lib.RS"),
         "recursion must collect and process lib.RS: {stderr}"
@@ -328,8 +518,8 @@ fn recursive_dir_collects_uppercase_variants_excludes_others() {
         "recursion must collect and process README.MD: {md_stderr}"
     );
     assert!(
-        !md_stderr.contains("notes.txt") && !stderr.contains("notes.txt"),
-        "notes.txt must be excluded silently"
+        !md_stderr.contains("notes.org") && !stderr.contains("notes.org"),
+        "notes.org must be excluded silently"
     );
     let _ = fs::remove_dir_all(&dir);
 }
@@ -633,6 +823,28 @@ fn uppercase_md_explicit_file_runs_fix_not_rust_ops() {
     let _ = fs::remove_file(&file);
 }
 
+/// An explicit `.ORG` file (outside the default admission) is a silent
+/// skip: exit 0 and `[]` in JSON mode.
+#[test]
+fn uppercase_org_explicit_file_is_silently_skipped() {
+    let file = temp_file_ext("ORG");
+    fs::write(&file, "not an admitted extension\n").unwrap();
+
+    let output = run_command(&["--json"], &file);
+    let _ = fs::remove_file(&file);
+
+    assert!(
+        output.status.success(),
+        "unadmitted .ORG file must succeed silently: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "[]",
+        ".ORG explicit file is a silent skip in JSON mode"
+    );
+}
+
 // ── Case-insensitive extension admission ───────
 
 /// An explicit `Foo.RS` file is admitted and runs the Rust reorder op,
@@ -654,27 +866,6 @@ fn uppercase_rs_explicit_file_runs_reorder() {
     assert!(
         stderr.contains("success[REORDER]"),
         ".RS must run the Rust reorder op: {stderr}"
-    );
-}
-
-/// An explicit `.TXT` file is a silent skip: exit 0 and `[]` in JSON mode.
-#[test]
-fn uppercase_txt_explicit_file_is_silently_skipped() {
-    let file = temp_file_ext("TXT");
-    fs::write(&file, "not rust or markdown\n").unwrap();
-
-    let output = run_command(&["--json"], &file);
-    let _ = fs::remove_file(&file);
-
-    assert!(
-        output.status.success(),
-        "unadmitted .TXT file must succeed silently: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout).trim(),
-        "[]",
-        ".TXT explicit file is a silent skip in JSON mode"
     );
 }
 
@@ -756,6 +947,17 @@ fn run_dry_run(path: &std::path::Path) -> (String, String, i32) {
         String::from_utf8_lossy(&output.stderr).to_string(),
         output.status.code().unwrap_or(-1),
     )
+}
+
+/// Strip the `path:` label from every stderr line so outputs for the same
+/// content under different file names compare equal.
+fn strip_path_prefix(stderr: &str, path: &std::path::Path) -> String {
+    let prefix = format!("{}:", path.display());
+    stderr
+        .lines()
+        .map(|line| line.strip_prefix(&prefix).unwrap_or(line))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Create a numbered temporary directory.

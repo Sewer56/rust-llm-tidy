@@ -1,9 +1,15 @@
-//! `rust-llm-tidy` - fix, reorder, narrow visibility, and lint Rust and
-//! Markdown source files.
+//! `rust-llm-tidy` - fix, reorder, narrow visibility, and lint admitted
+//! source files.
 //!
 //! A single default command that runs the full pipeline (fix -> reorder -> vis
-//! -> lints) on `.rs` and `.md` files. When no paths are given, the changed
-//! files from the current git diff are used (filtered to `.rs` and `.md`).
+//! -> lints) on every admitted source file.
+//!
+//! Admitted by default: `.rs`, the markdown family (`.md`, `.markdown`,
+//! `.txt`, `.text`, `.mdx`), and the code languages the default registry
+//! admits for table fixes.
+//!
+//! When no paths are given, the changed files from the current git diff are
+//! used, filtered to the same admitted extensions.
 //!
 //! # Pipeline
 //!
@@ -21,6 +27,7 @@
 //! | `--validate`        | Validate config and exit (no files touched)         |
 //! | `--include <RULE>`  | Run only these rules (repeatable, overrides config) |
 //! | `--exclude <RULE>`  | Skip these rules (repeatable, additive)             |
+//! | `--extension <EXT>` | Admit an extra file extension (repeatable)          |
 //! | `--dry-run`         | Preview the changes without writing them            |
 //! | `--config <PATH>`   | Explicit config path                                |
 //! | `--no-config`       | Disable config discovery                            |
@@ -52,9 +59,8 @@ use std::path::{Path, PathBuf};
 mod changes;
 mod config;
 mod diff;
-// Language admission registry; the admission call sites that will read it
-// land in a follow-up change, so the module is dead code until then.
-#[allow(dead_code)]
+// Language admission registry: the single authority behind every extension
+// admission and per-file op gate.
 mod langs;
 mod output;
 mod paths;
@@ -63,16 +69,17 @@ mod pipeline;
 /// Command-line arguments for `rust-llm-tidy`, parsed via `clap`.
 ///
 /// Collects the input paths plus flags controlling dry-run, validation, rule
-/// selection, and config discovery. See the `# Flags` table in the crate docs.
+/// selection, extension admission, and config discovery. See the `# Flags`
+/// table in the crate docs.
 #[derive(Parser)]
 #[command(
     name = "rust-llm-tidy",
-    about = "Fix, reorder, narrow visibility, and lint Rust source files"
+    about = "Fix, reorder, narrow visibility, and lint admitted source files"
 )]
 pub(crate) struct Cli {
     /// Path(s) to the Rust source file(s) or directory(s) to process. Each
     /// directory is expanded recursively. When omitted, the changed files in
-    /// the current git diff are used (filtered to `.rs` and `.md`).
+    /// the current git diff are used, filtered to the admitted extensions.
     paths: Vec<PathBuf>,
     /// Print the changes that would be made instead of modifying files.
     #[arg(long)]
@@ -86,6 +93,12 @@ pub(crate) struct Cli {
     /// Skip these rules/lint-codes (repeatable). Additive to config `exclude`.
     #[arg(long, value_name = "RULE")]
     exclude: Vec<String>,
+    /// Admit files with this extension in addition to the defaults
+    /// (repeatable). Written without the leading dot and matched
+    /// case-insensitively; additive only - default extensions cannot be
+    /// removed.
+    #[arg(long, value_name = "EXT")]
+    extension: Vec<String>,
     /// Path to a `.rust-llm-tidy.yml` config file. Overrides auto-discovery.
     #[arg(long, global = true)]
     config: Option<PathBuf>,
@@ -128,6 +141,10 @@ impl Cli {
 ///
 /// Returns `(path, diagnostics)` pairs so the caller can either print the
 /// plaintext lines to stderr (default output) or project them to JSON.
+///
+/// The profile decides which passes run: parser-driven checks need a
+/// registered backend (Rust today), and the parser-free text checks run for
+/// the markdown family and Rust.
 pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
@@ -135,14 +152,15 @@ pub(crate) fn check_file(
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let profile = langs::profile_for(ext);
 
     let mut diagnostics = Vec::new();
-    if crate::paths::ext_in(Some(ext), &["rs"]) {
+    if profile.backend {
         let parsed = model_parse::parse_source(&source)
             .with_context(|| format!("failed to parse {}", path.display()))?;
         diagnostics = check::run_all(&parsed);
     }
-    if crate::paths::ext_in(Some(ext), &["rs", "md"]) {
+    if profile.runs_text_lints() {
         diagnostics.extend(check::run_text_checks(&source, ext));
     }
     diagnostics.retain(|d| !disabled.contains(d.code));
@@ -156,9 +174,13 @@ pub(crate) fn check_file(
 /// Fix table alignment, nested fence delimiters, and repeated inline links in a
 /// single file.
 ///
-/// Reads the source, runs [`fix::fix_tables`], [`fix::fix_fences`], then
-/// [`fix::fix_links`] (or [`fix::fix_links_with_min`] when
+/// Reads the source, runs [`fix::fix_tables_for`], [`fix::fix_fences_for`],
+/// then [`fix::fix_links`] (or [`fix::fix_links_with_min`] when
 /// `links_min_occurrences` exceeds 1).
+///
+/// Each pass is gated by the file's [`langs::Profile`] against the active
+/// rule selection: an op the profile never admits never runs, and the table
+/// and fence passes strip and re-apply the profile's comment prefixes.
 ///
 /// Writes the result back via [`io::atomic_write`] unless `--dry-run` is
 /// given.
@@ -177,6 +199,7 @@ pub(crate) fn check_file(
 pub(crate) fn fix_file(
     path: &Path,
     dry_run: bool,
+    profile: &langs::Profile,
     enabled: &Option<HashSet<String>>,
     disabled: &HashSet<String>,
     links_min_occurrences: usize,
@@ -185,9 +208,9 @@ pub(crate) fn fix_file(
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let mut out: String = source.clone();
     let mut change_records = Vec::new();
-    if pipeline::op_enabled("tables", enabled, disabled) {
+    if profile.op_enabled("tables", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        match fix::fix_tables(&prior) {
+        match fix::fix_tables_for(&prior, profile.prefixes) {
             Cow::Owned(after) => {
                 change_records.push(changes::table_changes());
                 out = after;
@@ -195,9 +218,9 @@ pub(crate) fn fix_file(
             Cow::Borrowed(_) => out = prior,
         }
     }
-    if pipeline::op_enabled("fences", enabled, disabled) {
+    if profile.op_enabled("fences", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        let outcome = fix::fix_fences(&prior);
+        let outcome = fix::fix_fences_for(&prior, profile.prefixes);
         match outcome.text {
             Cow::Owned(after) => {
                 change_records.extend(changes::fence_changes(&outcome.anchors));
@@ -206,7 +229,7 @@ pub(crate) fn fix_file(
             Cow::Borrowed(_) => out = prior,
         }
     }
-    if pipeline::op_enabled("links", enabled, disabled) {
+    if profile.op_enabled("links", enabled, disabled) {
         let prior = std::mem::take(&mut out);
         // Threshold 1 is the unchanged default: reuse `fix_links`; higher
         // thresholds delegate to `fix_links_with_min`.
@@ -456,6 +479,9 @@ fn main() -> anyhow::Result<()> {
                 valid.join(", ")
             );
         }
+    }
+    for ext in &cli.extension {
+        langs::validate_extension(ext)?;
     }
     let cli_include: Option<HashSet<String>> = if cli.include.is_empty() {
         None

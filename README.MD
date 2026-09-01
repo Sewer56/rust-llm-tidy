@@ -30,7 +30,11 @@ cargo install rust-llm-tidy-cli
 ```
 
 `rust-llm-tidy` is a single command that runs the full pipeline (fix,
-reorder, vis, lints) by default on `.rs` and `.md` files:
+reorder, vis, lints) by default on every admitted source file.
+
+Admitted by default: `.rs`, the markdown family (`.md`, `.markdown`, `.txt`,
+`.text`, `.mdx`), and the code languages admitted for table fixes. Extra
+extensions can be added with `--extension` or the config `extensions:` key:
 
 ```bash
 # Tidy a file in place
@@ -39,7 +43,7 @@ rust-llm-tidy src/main.rs
 # Preview the changes that would be made without writing them
 rust-llm-tidy --dry-run src/main.rs
 
-# Tidy every .rs/.md file under a directory recursively
+# Tidy every admitted source file under a directory recursively
 rust-llm-tidy src
 
 # No paths given -> process the changed files in the current git diff
@@ -60,9 +64,11 @@ rust-llm-tidy --output-mode json src/main.rs
 ```
 
 Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
-`--include <OP>` (repeatable), `--exclude <OP>` (repeatable),
-`--output-mode <MODE>` (`text` default or `json`), `--json` (alias for
-`--output-mode json`).
+`--include <OP>` (repeatable), and `--exclude <OP>` (repeatable).
+
+`--extension <EXT>` (repeatable) admits extra file extensions.
+`--output-mode <MODE>` selects `text` (default) or `json`; `--json` is an
+alias for `--output-mode json`.
 
 #### Operations
 
@@ -140,6 +146,9 @@ error). Omitting `paths` in an `include` or `exclude` group implies `["**"]`
 
 Additionally:
 
+- `extensions` - extra file extensions admitted in addition to the defaults.
+  Additive only (default extensions cannot be removed); written without the
+  leading dot and matched case-insensitively. Malformed entries fail the run.
 - `post_process` - external commands run on processed files after tidying.
   Each entry has `command`, `args` (default empty), and `extensions`
   (default empty = all). File path appended as last arg.
@@ -158,8 +167,9 @@ checking each level for `.rust-llm-tidy.yml`; the first found wins.
 Override with `--config <PATH>`; disable all discovery and loading with
 `--no-config`.
 
-Every config error - bad YAML, unknown rule name, bad glob syntax, or a pattern
-matching zero files - produces a non-zero exit on every command.
+Every config error - bad YAML, unknown rule name, bad glob syntax, a
+malformed `extensions` entry, or a pattern matching zero files - produces a
+non-zero exit on every command.
 
 This is so LLMs can immediately detect config errors. There is no "warn and
 continue" mode. Use `--validate` to check the config without processing files
