@@ -5,6 +5,7 @@ PROMPT.MD
 PROMPT-*.MD
 PROMPT-*.transcripts/
 *.transcripts/
+artifact/
 
 # Local Code Review
 .vscode/local-reviews/
