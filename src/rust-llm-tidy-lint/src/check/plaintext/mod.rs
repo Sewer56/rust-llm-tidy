@@ -10,19 +10,15 @@
 //!
 //! - [`markers_for`] - data-driven comment markers keyed by file extension.
 //! - [`analyze`] - strips, numbers, and segments the file.
-//! - [`Paragraph`] - a measured paragraph: plain prose or a bullet with its
+//! - [`Paragraph`] - a measured paragraph: plain text or a bullet with its
 //!   wrapped continuations.
-//! - [`run_text_checks`] - DOC007/DOC008 over the analysis result.
+//! - [`run_text_checks`] - DOC007/DOC008 over the analysis result, delegated
+//!   to [`paragraph_length`] and [`line_length`].
 
-use crate::check::{CODE_LINE_LENGTH, CODE_PARAGRAPH_SIZE};
-use crate::diagnostic::{Diagnostic, Severity};
+use crate::diagnostic::Diagnostic;
 
-/// Recommended maximum bullet length, stated in the shortening guidance.
-const BULLET_RECOMMENDED: usize = 160;
-/// Maximum stripped line length before DOC008 fires.
-const LINE_LIMIT: usize = 80;
-/// Maximum measured paragraph size before DOC007 fires.
-const PARAGRAPH_LIMIT: usize = 240;
+mod line_length;
+mod paragraph_length;
 
 /// Stripped lines and paragraphs extracted from one file.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -49,10 +45,10 @@ pub(crate) struct StrippedLine {
     pub text: String,
 }
 
-/// Whether a paragraph is plain prose or a bullet with wrapped continuations.
+/// Whether a paragraph is plain text or a bullet with wrapped continuations.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ParagraphKind {
-    /// Consecutive prose lines up to a blank or exempt boundary line.
+    /// Consecutive text lines up to a blank or exempt boundary line.
     Plain,
     /// A bullet marker line plus its wrapped continuation lines.
     Bullet,
@@ -75,23 +71,8 @@ pub(crate) enum ParagraphKind {
 /// warnings after their paragraph position), then DOC008 per over-limit line.
 pub fn run_text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
     let doc = analyze(source, ext);
-
-    let mut diags = Vec::new();
-    for para in &doc.paragraphs {
-        if para.size <= PARAGRAPH_LIMIT {
-            continue;
-        }
-        diags.push(match para.kind {
-            ParagraphKind::Plain => paragraph_diagnostic(para),
-            ParagraphKind::Bullet => bullet_diagnostic(para),
-        });
-    }
-    for line in &doc.lines {
-        let len = line.text.chars().count();
-        if len > LINE_LIMIT {
-            diags.push(line_length_diagnostic(line, len));
-        }
-    }
+    let mut diags = paragraph_length::diagnostics(&doc);
+    diags.extend(line_length::diagnostics(&doc));
     diags
 }
 
@@ -101,9 +82,7 @@ pub fn run_text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
 pub(crate) fn analyze(source: &str, ext: &str) -> Document {
     let markers = markers_for(ext);
     let mut doc = Document::default();
-    // Open paragraph: kind, first member line, summed member length, member
-    // count. `size` adds one joining space per extra member at flush time.
-    let mut pending: Option<(ParagraphKind, usize, usize, usize)> = None;
+    let mut pending: Option<PendingParagraph> = None;
     let mut in_fence = false;
 
     for (idx, raw) in source.split_inclusive('\n').enumerate() {
@@ -111,7 +90,7 @@ pub(crate) fn analyze(source: &str, ext: &str) -> Document {
         let raw = raw.strip_suffix('\r').unwrap_or(raw);
 
         // One linear pass: strip, classify, and fold each line exactly once.
-        let Some((text, raw_indent)) = strip(raw, markers) else {
+        let Some((text, raw_indent)) = strip_comment_prefix(raw, markers) else {
             // A non-doc line breaks paragraph consecutiveness.
             flush(&mut pending, &mut doc);
             continue;
@@ -128,9 +107,17 @@ pub(crate) fn analyze(source: &str, ext: &str) -> Document {
             continue;
         }
 
+        // Decide whether this line is exempt from paragraph measuring.
+        // A fence is a ``` or ~~~ line: it opens a code block, and the
+        // next fence line closes it.
+        //
+        // Fence lines and everything between them are exempt. Outside a
+        // block, indented code (a tab or 4 spaces) and lines like
+        // headings, tables, and URLs (full list on `is_exempt_content`)
+        // are also exempt.
         let fence = trimmed.starts_with("```") || trimmed.starts_with("~~~");
-        // Marker languages keep code indentation before the marker, so only
-        // post-marker indent counts there; marker-less files use raw indent.
+        // Indented code: the stripped text starts with a tab or 4 spaces, or
+        // the raw line was indented 4+ spaces in a marker-less file.
         let indented_code = text.starts_with('\t')
             || text.starts_with("    ")
             || (markers.is_empty() && raw_indent >= 4);
@@ -152,18 +139,36 @@ pub(crate) fn analyze(source: &str, ext: &str) -> Document {
             text: text.to_string(),
         });
 
+        // Count this line into the current paragraph (`pending`) or start
+        // a new one. A paragraph is a run of consecutive doc lines, ended
+        // by a blank line, an exempt line, or the start of a new bullet.
         if exempt {
+            // Exempt lines are not paragraph text, so this is the end
+            // of the current paragraph.
             flush(&mut pending, &mut doc);
         } else if let Some(content) = bullet_content(trimmed) {
+            // A bullet ends the current paragraph and starts its own,
+            // measured from the text after the bullet marker.
             flush(&mut pending, &mut doc);
-            pending = Some((ParagraphKind::Bullet, number, content.chars().count(), 1));
-        } else if let Some((_, _, len, count)) = pending.as_mut() {
-            // Continuation lines join the open paragraph, bullet or plain;
-            // marker and indent remnants are not paragraph text.
-            *len += trimmed.chars().count();
-            *count += 1;
+            pending = Some(PendingParagraph {
+                kind: ParagraphKind::Bullet,
+                first_line: number,
+                len: content.chars().count(),
+                count: 1,
+            });
+        } else if let Some(open) = pending.as_mut() {
+            // Continuation lines (next plain line or wrapped bullet tail)
+            // join the current paragraph; only trimmed text counts.
+            open.len += trimmed.chars().count();
+            open.count += 1;
         } else {
-            pending = Some((ParagraphKind::Plain, number, trimmed.chars().count(), 1));
+            // Plain text with no paragraph open: start one at this line.
+            pending = Some(PendingParagraph {
+                kind: ParagraphKind::Plain,
+                first_line: number,
+                len: trimmed.chars().count(),
+                count: 1,
+            });
         }
     }
     flush(&mut pending, &mut doc);
@@ -172,7 +177,7 @@ pub(crate) fn analyze(source: &str, ext: &str) -> Document {
 
 /// Line-comment markers stripped before measurement, keyed by file extension,
 /// longest marker first. Extensions outside the marker table use no marker, so
-/// the whole file counts as prose.
+/// the whole file counts as paragraph text.
 pub(crate) fn markers_for(ext: &str) -> &'static [&'static str] {
     match ext {
         "rs" => &["///", "//!", "//"],
@@ -185,6 +190,16 @@ pub(crate) fn markers_for(ext: &str) -> &'static [&'static str] {
 }
 
 /// The paragraph text after the bullet marker, or `None` for non-bullets.
+///
+/// Recognized bullet forms:
+///
+/// ```text
+/// - dash
+/// * asterisk
+/// + plus
+/// 1. ordered with a dot
+/// 2) ordered with a parenthesis
+/// ```
 fn bullet_content(trimmed: &str) -> Option<&str> {
     for marker in ["- ", "* ", "+ "] {
         if let Some(rest) = trimmed.strip_prefix(marker) {
@@ -202,34 +217,32 @@ fn bullet_content(trimmed: &str) -> Option<&str> {
     }
 }
 
-/// DOC007 Warning for an over-limit bullet, with shortening guidance.
-fn bullet_diagnostic(para: &Paragraph) -> Diagnostic {
-    let bullets = [
-        format!("Bullets over {PARAGRAPH_LIMIT} chars outlast a short attention span."),
-        format!(
-            "Shorten it to one checkable action of at most \
-             {BULLET_RECOMMENDED} chars."
-        ),
-        "Split it into separate bullets.".to_string(),
-    ];
-    Diagnostic {
-        severity: Severity::Warning,
-        code: CODE_PARAGRAPH_SIZE,
-        message: bulleted(&format!("bullet is {} chars long.", para.size), &bullets),
-        line: para.first_line,
-        item_kind: "file".to_string(),
-        item_name: None,
-    }
+/// A summary line plus one indented bullet per guidance sentence.
+fn bulleted(summary: &str, bullets: &[String]) -> String {
+    format!("{summary}\n  - {}", bullets.join("\n  - "))
+}
+
+/// The paragraph under construction between boundary lines. `len` sums the
+/// member char counts without joining spaces; [`flush`] adds one joining
+/// space per extra member, derived from `count`.
+struct PendingParagraph {
+    kind: ParagraphKind,
+    /// 1-based line number of the paragraph's first member line.
+    first_line: usize,
+    /// Summed char count of the member lines so far.
+    len: usize,
+    /// Number of member lines so far.
+    count: usize,
 }
 
 /// Folds the accumulated member lengths into a finished paragraph, if any.
-fn flush(pending: &mut Option<(ParagraphKind, usize, usize, usize)>, doc: &mut Document) {
-    if let Some((kind, first_line, len, count)) = pending.take() {
-        let joining_spaces = count.saturating_sub(1);
+fn flush(pending: &mut Option<PendingParagraph>, doc: &mut Document) {
+    if let Some(open) = pending.take() {
+        let joining_spaces = open.count.saturating_sub(1);
         doc.paragraphs.push(Paragraph {
-            first_line,
-            kind,
-            size: len + joining_spaces,
+            first_line: open.first_line,
+            kind: open.kind,
+            size: open.len + joining_spaces,
         });
     }
 }
@@ -247,63 +260,25 @@ fn is_exempt_content(trimmed: &str) -> bool {
         || is_link_reference_definition(trimmed)
 }
 
-/// True for markdown link reference definitions such as `[docs]: ./docs/x.md`.
-fn is_link_reference_definition(trimmed: &str) -> bool {
-    trimmed.starts_with('[') && trimmed.contains("]:")
-}
-
-/// DOC008 Warning for one over-limit stripped line.
-fn line_length_diagnostic(line: &StrippedLine, len: usize) -> Diagnostic {
-    let bullets = [
-        format!(
-            "Lines over {LINE_LIMIT} chars strain short attention spans \
-             and need wide monitors."
-        ),
-        "Split it at the nearest idea change with a blank line.".to_string(),
-        "Code-block lines count too.".to_string(),
-    ];
-    Diagnostic {
-        severity: Severity::Warning,
-        code: CODE_LINE_LENGTH,
-        message: bulleted(&format!("line is {len} chars long."), &bullets),
-        line: line.number,
-        item_kind: "file".to_string(),
-        item_name: None,
-    }
-}
-
-/// DOC007 Error for an over-limit plain paragraph, reported at its first line.
-fn paragraph_diagnostic(para: &Paragraph) -> Diagnostic {
-    let bullets = [
-        format!("Paragraphs over {PARAGRAPH_LIMIT} chars outlast a short attention span."),
-        "Split it at the nearest idea change with a blank line.".to_string(),
-        "Convert list-like paragraphs into bullets.".to_string(),
-        format!(
-            "Keep each bullet to one checkable action of at most \
-             {BULLET_RECOMMENDED} chars."
-        ),
-        "Move remarks into their own sections.".to_string(),
-        "Do not split code, links, URLs, tables, headings, or signature lines.".to_string(),
-    ];
-    Diagnostic {
-        severity: Severity::Error,
-        code: CODE_PARAGRAPH_SIZE,
-        message: bulleted(&format!("paragraph is {} chars long.", para.size), &bullets),
-        line: para.first_line,
-        item_kind: "file".to_string(),
-        item_name: None,
-    }
-}
-
-/// A summary line plus one indented bullet per guidance sentence.
-fn bulleted(summary: &str, bullets: &[String]) -> String {
-    format!("{summary}\n  - {}", bullets.join("\n  - "))
-}
-
 /// Strips leading whitespace, the first matching comment marker, and at most
 /// one following space. Returns the stripped text plus the raw line's leading
 /// whitespace count, or `None` when no marker matches in a marker language.
-fn strip<'a>(raw: &'a str, markers: &[&str]) -> Option<(&'a str, usize)> {
+///
+/// Marker languages (Rust markers shown):
+///
+/// ```text
+/// raw line            -> stripped text       raw indent
+/// "  /// let x = 1;"  -> "let x = 1;"        2
+/// "//  space kept"    -> " space kept"       0
+/// "let x = 1;"        -> None                -
+/// ```
+///
+/// Without markers (Markdown), every line matches; only indent goes:
+///
+/// ```text
+/// "    text"          -> "text"              4
+/// ```
+fn strip_comment_prefix<'a>(raw: &'a str, markers: &[&str]) -> Option<(&'a str, usize)> {
     let without_indent = raw.trim_start();
     let raw_indent = raw.len() - without_indent.len();
     if markers.is_empty() {
@@ -318,7 +293,12 @@ fn strip<'a>(raw: &'a str, markers: &[&str]) -> Option<(&'a str, usize)> {
     None
 }
 
-/// True for lines that look like code signatures rather than prose.
+/// True for markdown link reference definitions such as `[docs]: ./docs/x.md`.
+fn is_link_reference_definition(trimmed: &str) -> bool {
+    trimmed.starts_with('[') && trimmed.contains("]:")
+}
+
+/// True for lines that look like code signatures rather than plain text.
 fn is_signature_line(trimmed: &str) -> bool {
     for keyword in ["fn ", "struct ", "enum ", "trait ", "impl "] {
         if trimmed.contains(keyword) {
@@ -334,10 +314,19 @@ fn is_signature_line(trimmed: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use indoc::indoc;
 
     /// Number of the paragraph that starts at `line`, if present.
     fn paragraph_at(doc: &Document, line: usize) -> Option<&Paragraph> {
         doc.paragraphs.iter().find(|p| p.first_line == line)
+    }
+
+    /// Returns only the diagnostics with the given code.
+    ///
+    /// Shared with the [`paragraph_length`] and [`line_length`] submodule
+    /// tests.
+    pub(crate) fn codes<'a>(diags: &'a [Diagnostic], code: &str) -> Vec<&'a Diagnostic> {
+        diags.iter().filter(|d| d.code == code).collect()
     }
 
     // ── Prefix and indent stripping ──
@@ -361,7 +350,12 @@ mod tests {
     // `//` and `//!` markers strip like `///`.
     #[test]
     fn analyze_strips_all_rust_markers() {
-        let doc = analyze("// a\n//! b\n/// c\n", "rs");
+        let source = indoc! {"
+            // a
+            //! b
+            /// c
+        "};
+        let doc = analyze(source, "rs");
         let texts: Vec<&str> = doc.lines.iter().map(|l| l.text.as_str()).collect();
         assert_eq!(texts, vec!["a", "b", "c"]);
     }
@@ -379,17 +373,26 @@ mod tests {
     // Rust lines without a comment marker are not doc lines at all.
     #[test]
     fn analyze_skips_non_comment_rust_lines() {
-        let doc = analyze("let x = 1;\n// note\n", "rs");
+        let source = indoc! {"
+            let x = 1;
+            // note
+        "};
+        let doc = analyze(source, "rs");
         assert_eq!(doc.lines.len(), 1);
         assert_eq!(doc.lines[0].text, "note");
     }
 
     // ── Marker table: language independence ──
 
-    // Markdown has no marker: the whole file is prose.
+    // Markdown has no marker: every line is measured.
     #[test]
     fn analyze_keeps_all_markdown_lines() {
-        let doc = analyze("# Title\n\nParagraph text.\n", "md");
+        let source = indoc! {"
+            # Title
+
+            Paragraph text.
+        "};
+        let doc = analyze(source, "md");
         assert_eq!(doc.lines.len(), 3);
         assert_eq!(doc.lines[0].text, "# Title");
     }
@@ -397,7 +400,11 @@ mod tests {
     // `cs`-style `//` comments strip through the same path as Rust.
     #[test]
     fn analyze_strips_cs_style_marker() {
-        let doc = analyze("// cs comment\nvar x = 1;\n", "cs");
+        let source = indoc! {"
+            // cs comment
+            var x = 1;
+        "};
+        let doc = analyze(source, "cs");
         assert_eq!(doc.lines.len(), 1);
         assert_eq!(doc.lines[0].text, "cs comment");
     }
@@ -405,7 +412,11 @@ mod tests {
     // `py`-style `#` comments strip through the same path.
     #[test]
     fn analyze_strips_py_style_marker() {
-        let doc = analyze("# py comment\nx = 1\n", "py");
+        let source = indoc! {"
+            # py comment
+            x = 1
+        "};
+        let doc = analyze(source, "py");
         assert_eq!(doc.lines.len(), 1);
         assert_eq!(doc.lines[0].text, "py comment");
     }
@@ -415,7 +426,13 @@ mod tests {
     // Blank lines split paragraphs; size joins lines with single spaces.
     #[test]
     fn analyze_splits_paragraphs_at_blank_lines() {
-        let doc = analyze("/// one two\n/// three\n\n/// four\n", "rs");
+        let source = indoc! {"
+            /// one two
+            /// three
+
+            /// four
+        "};
+        let doc = analyze(source, "rs");
         assert_eq!(doc.paragraphs.len(), 2);
         let first = paragraph_at(&doc, 1).unwrap();
         assert_eq!(first.kind, ParagraphKind::Plain);
@@ -428,7 +445,11 @@ mod tests {
     // A bullet plus wrapped continuation is its own paragraph.
     #[test]
     fn analyze_groups_bullet_with_wrapped_continuation() {
-        let source = "/// intro prose\n/// - bullet start\n///   wrapped tail\n";
+        let source = indoc! {"
+            /// intro prose
+            /// - bullet start
+            ///   wrapped tail
+        "};
         let doc = analyze(source, "rs");
         assert_eq!(doc.paragraphs.len(), 2);
         let bullet = paragraph_at(&doc, 2).unwrap();
@@ -437,10 +458,14 @@ mod tests {
     }
 
     // Nested bullets are separate paragraphs, excluded from the parent bullet
-    // and from any enclosing prose paragraph.
+    // and from any enclosing text paragraph.
     #[test]
     fn analyze_separates_nested_bullets() {
-        let source = "prose line\n- top bullet\n  - nested bullet\n";
+        let source = indoc! {"
+            prose line
+            - top bullet
+              - nested bullet
+        "};
         let doc = analyze(source, "md");
         assert_eq!(doc.paragraphs.len(), 3);
         assert_eq!(paragraph_at(&doc, 1).unwrap().kind, ParagraphKind::Plain);
@@ -455,7 +480,11 @@ mod tests {
     // Ordered `1. ` bullets identify like dash bullets.
     #[test]
     fn analyze_identifies_ordered_bullets() {
-        let doc = analyze("1. first\n2. second\n", "md");
+        let source = indoc! {"
+            1. first
+            2. second
+        "};
+        let doc = analyze(source, "md");
         assert_eq!(doc.paragraphs.len(), 2);
         assert_eq!(paragraph_at(&doc, 1).unwrap().kind, ParagraphKind::Bullet);
     }
@@ -465,7 +494,14 @@ mod tests {
     // Fenced code content is exempt: it forms no paragraph.
     #[test]
     fn analyze_exempts_fenced_code() {
-        let source = "text\n```rust\nlet x = 1;\nlet y = 2;\n```\nafter\n";
+        let source = indoc! {"
+            text
+            ```rust
+            let x = 1;
+            let y = 2;
+            ```
+            after
+        "};
         let doc = analyze(source, "md");
         assert_eq!(doc.paragraphs.len(), 2);
         assert_eq!(paragraph_at(&doc, 1).unwrap().size, "text".len());
@@ -475,7 +511,12 @@ mod tests {
     // Tab- or 4-space-indented doc lines are exempt indented code.
     #[test]
     fn analyze_exempts_indented_code() {
-        let source = "/// prose\n///\n///     let x = 1;\n/// \tlet y = 2;\n";
+        let source = indoc! {"
+            /// prose
+            ///
+            ///     let x = 1;
+            /// \tlet y = 2;
+        "};
         let doc = analyze(source, "rs");
         assert_eq!(doc.paragraphs.len(), 1);
         assert_eq!(paragraph_at(&doc, 1).unwrap().size, "prose".len());
@@ -492,7 +533,12 @@ mod tests {
     // Table rows, headings, URLs, and code spans are exempt content.
     #[test]
     fn analyze_exempts_tables_headings_urls_code_spans() {
-        let source = "| a | b |\n# Heading\nsee https://example.com/x\nrun `cargo test`\n";
+        let source = indoc! {"
+            | a | b |
+            # Heading
+            see https://example.com/x
+            run `cargo test`
+        "};
         let doc = analyze(source, "md");
         assert!(doc.paragraphs.is_empty());
         assert_eq!(doc.lines.len(), 4);
@@ -501,7 +547,10 @@ mod tests {
     // Signature-like lines are exempt content.
     #[test]
     fn analyze_exempts_signature_lines() {
-        let source = "/// prose\n/// `fn do_thing(x: usize) -> bool;`\n";
+        let source = indoc! {"
+            /// prose
+            /// `fn do_thing(x: usize) -> bool;`
+        "};
         let doc = analyze(source, "rs");
         assert_eq!(doc.paragraphs.len(), 1);
         assert_eq!(paragraph_at(&doc, 1).unwrap().size, "prose".len());
@@ -510,195 +559,35 @@ mod tests {
     // Markdown link reference definitions are exempt content.
     #[test]
     fn analyze_exempts_link_reference_definitions() {
-        let source = "[docs]: ./docs/lints.md\n[cli]: ./src/cli/README.MD\n";
+        let source = indoc! {"
+            [docs]: ./docs/lints.md
+            [cli]: ./src/cli/README.MD
+        "};
         let doc = analyze(source, "md");
         assert!(doc.paragraphs.is_empty());
         assert_eq!(doc.lines.len(), 2);
     }
 
-    // An exempt line is a paragraph boundary even between prose lines.
+    // An exempt line is a paragraph boundary even between text lines.
     #[test]
     fn analyze_breaks_paragraph_at_exempt_line() {
-        let source = "/// first part\n/// see https://example.com\n/// second part\n";
+        let source = indoc! {"
+            /// first part
+            /// see https://example.com
+            /// second part
+        "};
         let doc = analyze(source, "rs");
         assert_eq!(doc.paragraphs.len(), 2);
         assert_eq!(paragraph_at(&doc, 1).unwrap().size, "first part".len());
         assert_eq!(paragraph_at(&doc, 3).unwrap().size, "second part".len());
     }
 
-    // A mixed prose + code-span line is exempt as a whole: its prose
-    // remainder costs no paragraph budget.
+    // A mixed text + code-span line is exempt as a whole: the rest of
+    // the line costs no paragraph budget.
     #[test]
     fn analyze_exempts_whole_line_with_inline_code_span() {
         let doc = analyze("/// run `cargo test` to verify\n", "rs");
         assert!(doc.paragraphs.is_empty());
         assert_eq!(doc.lines.len(), 1);
-    }
-
-    // ── DOC007: paragraph and bullet budgets ──
-
-    // Returns only the diagnostics with the given code.
-    fn codes<'a>(diags: &'a [Diagnostic], code: &str) -> Vec<&'a Diagnostic> {
-        diags.iter().filter(|d| d.code == code).collect()
-    }
-
-    // Builds a `///` comment paragraph of `words` filler words.
-    fn paragraph_source(words: usize) -> String {
-        (0..words)
-            .map(|i| format!("/// w{i}"))
-            .collect::<Vec<_>>()
-            .join("\n")
-            + "\n"
-    }
-
-    // Over-limit plain paragraph -> DOC007 Error at the first line, with a
-    // measurement summary plus rationale and fix bullets.
-    #[test]
-    fn text_checks_error_on_oversized_plain_paragraph() {
-        let source = paragraph_source(80);
-        let diags = run_text_checks(&source, "rs");
-        let found = codes(&diags, CODE_PARAGRAPH_SIZE);
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].severity, Severity::Error);
-        assert_eq!(found[0].line, 1);
-        let msg = &found[0].message;
-        assert!(
-            msg.starts_with("paragraph is "),
-            "message must open with the measurement"
-        );
-        assert!(msg.contains("chars long.\n"));
-        assert!(msg.contains("outlast a short attention span"));
-        assert!(msg.contains("blank line"));
-        assert!(msg.contains("bullets"));
-        assert!(msg.contains("160"));
-        assert!(msg.contains("URLs, tables, headings, or signature"));
-    }
-
-    // Paragraph at or under the limit is silent.
-    #[test]
-    fn text_checks_silent_on_paragraph_within_limit() {
-        let source = paragraph_source(30);
-        let diags = run_text_checks(&source, "rs");
-        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
-    }
-
-    // Paragraph size counts chars, not bytes: 240 multibyte chars are over
-    // 240 bytes yet must stay at the limit and stay silent.
-    #[test]
-    fn text_checks_measure_multibyte_paragraph_in_chars() {
-        let source = format!("/// {}\n", "é".repeat(240));
-        let diags = run_text_checks(&source, "rs");
-        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
-    }
-
-    // A paragraph measuring exactly 240 chars is at the limit, not over it.
-    #[test]
-    fn text_checks_silent_on_paragraph_at_exact_limit() {
-        let source = format!("/// {}\n", "x".repeat(240));
-        let diags = run_text_checks(&source, "rs");
-        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
-    }
-
-    // The Error is reported at the paragraph's first line, not where the
-    // budget overflowed.
-    #[test]
-    fn text_checks_report_paragraph_at_its_first_line() {
-        let source = format!(
-            "/// short intro\n\n{}\n",
-            "/// ".to_string() + &"y".repeat(300)
-        );
-        let diags = run_text_checks(&source, "rs");
-        let found = codes(&diags, CODE_PARAGRAPH_SIZE);
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].line, 3);
-    }
-
-    // Over-limit bullet -> DOC007 Warning only, with shortening guidance and
-    // the 160-char recommendation.
-    #[test]
-    fn text_checks_warn_on_oversized_bullet() {
-        let bullet = "- ".to_string() + &"word ".repeat(60);
-        let source = format!("{bullet}\n");
-        let diags = run_text_checks(&source, "md");
-        let found = codes(&diags, CODE_PARAGRAPH_SIZE);
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].severity, Severity::Warning);
-        assert_eq!(found[0].line, 1);
-        let msg = &found[0].message;
-        assert!(msg.starts_with("bullet is "));
-        assert!(msg.contains("outlast a short attention span"));
-        assert!(msg.contains("Shorten"));
-        assert!(msg.contains("160"));
-        assert!(msg.contains("separate bullets"));
-    }
-
-    // Bullet within the limit is silent.
-    #[test]
-    fn text_checks_silent_on_bullet_within_limit() {
-        let source = format!("- {}\n", "word ".repeat(10));
-        let diags = run_text_checks(&source, "md");
-        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
-    }
-
-    // Bullet content never inflates the enclosing paragraph's budget.
-    #[test]
-    fn text_checks_exclude_bullets_from_paragraph_budget() {
-        let prose = "sentence ".repeat(20);
-        let bullet = "- ".to_string() + &"word ".repeat(20);
-        // Prose alone stays under 240; adding the bullet words would cross it.
-        let source = format!("{prose}\n{bullet}\n");
-        assert!(prose.trim().len() < 240);
-        let diags = run_text_checks(&source, "md");
-        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
-    }
-
-    // A whole-line code-span exemption keeps its prose remainder free of the
-    // paragraph budget.
-    #[test]
-    fn text_checks_exempt_line_costs_no_paragraph_budget() {
-        let prose = "sentence ".repeat(25);
-        let source = format!("{prose}\nrun `cargo test` now please\n");
-        let diags = run_text_checks(&source, "md");
-        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
-    }
-
-    // ── DOC008: line length ──
-
-    // Over-limit stripped line -> DOC008 Warning with a measurement summary
-    // plus rationale and fix bullets. Indent and comment marker are not
-    // measured.
-    #[test]
-    fn text_checks_warn_on_long_stripped_line() {
-        let text = "x".repeat(81);
-        let source = format!("\t/// {text}\n");
-        let diags = run_text_checks(&source, "rs");
-        let found = codes(&diags, CODE_LINE_LENGTH);
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].severity, Severity::Warning);
-        assert_eq!(found[0].line, 1);
-        let msg = &found[0].message;
-        assert!(msg.starts_with("line is 81 chars long."));
-        assert!(msg.contains("strain short attention spans"));
-        assert!(msg.contains("blank line"));
-        assert!(msg.contains("Code-block lines count too"));
-    }
-
-    // A line of exactly 80 chars passes.
-    #[test]
-    fn text_checks_silent_on_line_at_limit() {
-        let source = format!("{}\n", "x".repeat(80));
-        let diags = run_text_checks(&source, "md");
-        assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
-    }
-
-    // No content exemptions: fenced code-block lines also warn.
-    #[test]
-    fn text_checks_warn_on_long_lines_inside_fenced_code() {
-        let inner = "y".repeat(90);
-        let source = format!("```\n{inner}\n```\n");
-        let diags = run_text_checks(&source, "md");
-        let found = codes(&diags, CODE_LINE_LENGTH);
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].line, 2);
     }
 }
