@@ -7,16 +7,19 @@
 //!
 //! All patterns are globs relative to the config file's directory and are
 //! compiled with `literal_separator(true)`, so `*` does not cross `/` and
-//! `**` recurses across directories. Files outside the config directory never
-//! match (the prefix strip fails).
+//! `**` recurses across directories.
+//!
+//! Files outside the config directory never match (the prefix strip fails).
 //!
 //! # Hard-fail policy
 //!
 //! Any config error - bad YAML, bad glob syntax, unknown rule name, a
 //! `links` value below 1, or a pattern matching zero files - causes
 //! [`load_and_compile`] to return `Err`, which the CLI propagates as a non-zero
-//! exit on every command. The `--validate` flag exists for CI to check the
-//! config without processing files.
+//! exit on every command.
+//!
+//! The `--validate` flag exists for CI to check the config without processing
+//! files.
 
 use anyhow::{Context, anyhow, bail};
 use glob::glob as fs_glob;
@@ -98,9 +101,11 @@ struct CompiledRuleGroup {
 /// Link-hoist threshold settings under the top-level `links` key.
 ///
 /// The effective per-file threshold is `by_extension[ext]`, else the global
-/// `min_occurrences`, else 1. Extension keys are free-form so future languages
-/// need no schema change; keys for extensions the pipeline does not process are
-/// inert. Values must be `>= 1`.
+/// `min_occurrences`, else 1.
+///
+/// Extension keys are free-form so future languages need no schema change;
+/// keys for extensions the pipeline does not process are inert. Values must
+/// be `>= 1`.
 #[derive(Debug, Deserialize, Default, Clone)]
 #[serde(deny_unknown_fields)] // Reject hallucinated `links` sub-keys at parse time.
 pub struct LinkConfig {

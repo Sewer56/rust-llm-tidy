@@ -2,8 +2,10 @@
 //!
 //! [`compute_order`] is the entry point: it collects intra-file reference
 //! edges, then topologically sorts each item-kind phase to produce a
-//! `Vec<usize>` permutation of the parsed items that puts callers before
-//! callees (and macro/impl definitions before their uses).
+//! `Vec<usize>` permutation of the parsed items.
+//!
+//! The permutation puts callers before callees (and macro/impl definitions
+//! before their uses).
 
 use ahash::{AHashMap, AHashSet};
 pub use collect::ReferenceCollector;
@@ -28,8 +30,10 @@ mod toposort;
 /// 6. struct, enum, union, type (dependency → alphabetical)
 /// 7. trait                (dependency → alphabetical)
 /// 8. impl                 (inherent before trait; after matching type)
-/// 9. fn                   (pub → pub(crate)/pub(super) → private; dependency within; main first)
-/// 10. inline #[cfg(test)] mod (stable, last; file-based mods, test or not, stay in phase 3)
+/// 9. fn                   (pub → pub(crate)/pub(super) → private;
+///    dependency within; main first)
+/// 10. inline #[cfg(test)] mod (stable, last; file-based mods, test or not,
+///     stay in phase 3)
 ///
 /// Returns a `Vec<usize>` suitable for constructing a `Permutation` in the
 /// reorder stage.  Each element is an index into `parsed.items`.
@@ -252,7 +256,8 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
             }
         }
 
-        // Place trait impls after their matching type (and after inherent impls for same type)
+        // Place trait impls after their matching type (and after inherent
+        // impls for same type)
         for i in 0..final_order.len() {
             let type_idx = final_order[i];
             if let Some(type_name) = parsed.items[type_idx].name() {
@@ -283,7 +288,8 @@ pub fn compute_order(parsed: &ParseResult) -> anyhow::Result<Vec<usize>> {
         }
     }
 
-    // ── Phase 9: fn (visibility groups; then dependency within each group; main first) ──
+    // ── Phase 9: fn (visibility groups; then dependency within each group;
+    // main first) ──
     {
         // Group fns by visibility (indices only; names borrowed later).
         let mut pub_fns: Vec<usize> = Vec::new();

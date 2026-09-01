@@ -6,9 +6,11 @@ use super::scan::{inline_links, is_reference_definition};
 use std::collections::{HashMap, HashSet};
 
 /// Append hoisted `[text]: url` definitions at the end of one Rust doc-comment
-/// block, each on a new line carrying the block's `prefix`. Ensures the block
-/// ends with a newline so the first definition starts on its own comment line
-/// (a trailing doc line without a newline still yields separate lines).
+/// block, each on a new line carrying the block's `prefix`.
+///
+/// Ensures the block ends with a newline so the first definition starts on its
+/// own comment line (a trailing doc line without a newline still yields
+/// separate lines).
 ///
 /// Block definitions stay inside the comment so rustdoc still sees a valid,
 /// self-contained comment; they never escape into surrounding code.
@@ -34,8 +36,10 @@ pub(super) fn append_block_definitions(
 
 /// Append hoisted `[text]: url` definitions at the end of `buf`, each on its
 /// own line using the source's dominant line ending (`le`), so a CRLF
-/// document stays CRLF after hoisting. Ensures the buffer ends with a newline
-/// so the first definition starts on its own line.
+/// document stays CRLF after hoisting.
+///
+/// Ensures the buffer ends with a newline so the first definition starts on
+/// its own line.
 ///
 /// Inserts a blank separator line first when the document otherwise ends in
 /// paragraph text: CommonMark forbids a link reference definition from
@@ -93,10 +97,12 @@ pub(super) fn replacement_pair(text: &str, url: &str) -> (String, String) {
 /// `None` (caller emits the original segment verbatim).
 ///
 /// Output is allocated lazily: only once the first hoisted link is found. If
-/// no link in `body` is hoisted, returns `None` with zero allocation. `last`
-/// tracks how far the verbatim prefix of `body` has been emitted; non-hoisted
-/// inline links leave `last` alone so their bytes are emitted verbatim in a
-/// later gap (or the trailing copy), exactly like the eager version.
+/// no link in `body` is hoisted, returns `None` with zero allocation.
+///
+/// `last` tracks how far the verbatim prefix of `body` has been emitted;
+/// non-hoisted inline links leave `last` alone so their bytes are emitted
+/// verbatim in a later gap (or the trailing copy), exactly like the eager
+/// version.
 pub(super) fn rewrite_links<'a>(
     prefix: &str,
     body: &'a str,

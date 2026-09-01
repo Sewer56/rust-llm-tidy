@@ -55,13 +55,16 @@ mod realign;
 ///
 /// The output buffer is allocated lazily: a single read-only scan runs first,
 /// and only when a table actually changes is a `String` allocated and the
-/// unchanged text before it copied in. A fully-aligned document therefore
-/// returns a [`Cow::Borrowed`] with **zero** heap allocation.
+/// unchanged text before it copied in.
+///
+/// A fully-aligned document therefore returns a [`Cow::Borrowed`] with
+/// **zero** heap allocation.
 ///
 /// The scan also fast-forwards over pipe-less regions with [`str::find`]
-/// (which the standard library lowers to a vectorized byte search), so files
-/// where tables are a small fraction - typical Rust source - are not charged
-/// per-line for the surrounding code.
+/// (which the standard library lowers to a vectorized byte search).
+///
+/// Files where tables are a small fraction - typical Rust source - are
+/// therefore not charged per-line for the surrounding code.
 pub fn fix_tables(input: &str) -> Cow<'_, str> {
     // Output buffer, allocated lazily on the first real change. `copied_until`
     // is the byte offset in `input` already present in `output`; the slice
@@ -168,8 +171,10 @@ pub(crate) fn strip_doc_prefix(line: &str) -> (&str, &str) {
 ///
 /// A *run* is the longest prefix of consecutive lines whose body still
 /// contains `|` and whose stripped doc-comment prefix equals the first line's.
+///
 /// The first line is assumed to already contain a pipe - the caller
 /// ([`fix_tables`]) fast-forwards to one - so it always seeds the run.
+///
 /// Folding the gather and the per-line split into a single pass avoids
 /// reparsing each line's prefix on the way back out.
 ///
@@ -279,7 +284,9 @@ no tables here
         // Single-line `\n` escapes (not a multi-line `\`-continuation string):
         // the pre-commit hook runs `fix_tables` on `.rs` source, and would
         // realign any multi-line pipe input back to canonical form, silently
-        // re-breaking this test. One physical line is not seen as a table.
+        // re-breaking this test.
+        //
+        // One physical line is not seen as a table.
         let input = "| a | bb |\n| --- | --- |\n| ccc | d |\n";
         let text = fix_tables(input);
         assert!(text != input, "misaligned table should change");
@@ -436,6 +443,7 @@ trailer
     fn two_misaligned_tables_both_realign() {
         // Two adjacent misaligned tables are two separate runs, so both are
         // realigned. Blank line between them so they are distinct runs.
+        //
         // Written with single-line `\n` escapes (see
         // `realigns_plain_markdown_table`) so the repo's own `fix_tables`
         // pre-commit/lint hook cannot re-align the literals back to canonical.

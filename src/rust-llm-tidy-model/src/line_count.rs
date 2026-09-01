@@ -2,8 +2,10 @@
 //!
 //! `count_lines` counts non-blank lines of a source string into an `AHashMap`
 //! keyed by the borrowed `&str` slice, avoiding the per-line `String`
-//! allocation the previous `HashMap<String, _>` incurred. Keys borrow from the
-//! source string, so the returned map must not outlive it.
+//! allocation the previous `HashMap<String, _>` incurred.
+//!
+//! Keys borrow from the source string, so the returned map must not outlive
+//! it.
 
 use ahash::AHashMap;
 
@@ -18,8 +20,10 @@ use ahash::AHashMap;
 pub fn count_lines(source: &str) -> AHashMap<&str, usize> {
     // Capacity heuristic: one entry per ~24 bytes covers typical line lengths
     // without a second full pass over the source (the previous code called
-    // `source.lines().count()`, which scanned the whole string just to size the
-    // map). Over-estimating slightly is harmless; under-estimating triggers a
+    // `source.lines().count()`, which scanned the whole string just to size
+    // the map).
+    //
+    // Over-estimating slightly is harmless; under-estimating triggers a
     // single regrow.
     let estimate = source.len() / 24 + 1;
     let mut map = AHashMap::with_capacity(estimate);

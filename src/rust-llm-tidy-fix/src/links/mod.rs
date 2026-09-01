@@ -2,9 +2,10 @@
 //!
 //! [`fix_links`] scans `input` for inline links `[text](url)`, rewrites every
 //! eligible occurrence to the reference form `[text]`, and records a
-//! `[text]: url` definition. The default threshold is 1: every eligible inline
-//! link hoists, including a single use and intra-doc `Self::…` / `crate::…`
-//! targets.
+//! `[text]: url` definition.
+//!
+//! The default threshold is 1: every eligible inline link hoists, including
+//! a single use and intra-doc `Self::…` / `crate::…` targets.
 //!
 //! Eligible `(text, url)` pairs:
 //!
@@ -15,8 +16,10 @@
 //!
 //! A label with an unescaped bracket or a blank label makes the hoisted
 //! `[text]: url` line parse as paragraph text. Escaped brackets are declined
-//! too, keeping the rule simple. A badge's outer `[![alt](img)](url)` link is
-//! therefore declined while its flat inner image still hoists.
+//! too, keeping the rule simple.
+//!
+//! A badge's outer `[![alt](img)](url)` link is therefore declined while its
+//! flat inner image still hoists.
 //!
 //! Skipped forms stay unchanged:
 //!
@@ -32,8 +35,8 @@
 //!
 //! - Rust context (input carries `///` or `//!` doc-comment lines outside
 //!   code fences): each `[text]: url` definition goes at the end of every
-//!   doc-comment block using the label, prefixed like that block. Links on
-//!   non-doc-comment lines are left alone.
+//!   doc-comment block using the label, prefixed like that block.
+//! - Links on non-doc-comment lines are left alone.
 //! - Markdown context (everything else): one document-scoped trailing
 //!   definition block is appended at the end of the input, separated from a
 //!   trailing paragraph by a blank line.
@@ -49,10 +52,13 @@
 //! # Performance
 //!
 //! The default threshold-one path first rejects input without the exact `](`
-//! inline-link shape, then parses each eligible occurrence once. Newlines use
-//! vectorized `memchr`; small candidate/span sets stay inline; rewriting copies
-//! directly between saved spans with exact output capacity. Reference-only and
-//! link-free input returns [`Cow::Borrowed`] without allocation.
+//! inline-link shape, then parses each eligible occurrence once.
+//!
+//! Newlines use vectorized `memchr`; small candidate/span sets stay inline;
+//! rewriting copies directly between saved spans with exact output capacity.
+//!
+//! Reference-only and link-free input returns [`Cow::Borrowed`] without
+//! allocation.
 //!
 //! # Example
 //!
@@ -86,6 +92,7 @@ mod scan;
 ///
 /// Always-hoist contract (threshold 1): every eligible link, single-use and
 /// intra-doc included, becomes `[text]` plus a `[text]: url` definition.
+///
 /// Returns the rewritten text and one `(before, after)` substitution per
 /// hoisted link; borrows `input` back with no pairs when nothing is eligible.
 ///
@@ -130,10 +137,11 @@ fn fix_links_counted(input: &str, min_occurrences: usize) -> (Cow<'_, str>, Vec<
 
     // Pass 1: tally eligible inline links (outside code fences), record the
     // texts of every existing `[text]:` definition so we never re-define one,
-    // and detect whether the input is Rust doc-comment content. Splitting each
-    // line once (into content/body) feeds the fence step, the link tally, and
-    // the Rust-context detection, and the `contains('[')` guard skips link
-    // work for the common bracket-less line.
+    // and detect whether the input is Rust doc-comment content.
+    //
+    // Splitting each line once (into content/body) feeds the fence step, the
+    // link tally, and the Rust-context detection, and the `contains('[')`
+    // guard skips link work for the common bracket-less line.
     let mut fence_stack: Vec<(char, usize)> = Vec::new();
     let mut counts: HashMap<(&str, &str), usize> = HashMap::new();
     let mut order: Vec<(&str, &str)> = Vec::new();
@@ -161,9 +169,11 @@ fn fix_links_counted(input: &str, min_occurrences: usize) -> (Cow<'_, str>, Vec<
     }
 
     // Hoist set: pairs seen at least `min_occurrences` times whose text is not
-    // already defined. `existing.insert(text)` returns false for pre-existing
-    // definitions and also dedups by text, so we never emit two `[text]:` lines
-    // for one text and the first-seen `(text, url)` for a repeated text wins.
+    // already defined.
+    //
+    // `existing.insert(text)` returns false for pre-existing definitions and
+    // also dedups by text, so we never emit two `[text]:` lines for one text
+    // and the first-seen `(text, url)` for a repeated text wins.
     let mut hoist: Vec<(&str, &str)> = Vec::new();
     let mut hoist_set: HashSet<(&str, &str)> = HashSet::new();
     for &(text, url) in &order {
@@ -250,9 +260,10 @@ fn rewrite_markdown<'a>(
 /// Rewrite eligible inline links in Rust doc-comment context.
 ///
 /// Hoisted links inside a `///` / `//!` block become `[text]`; a `[text]: url`
-/// definition is appended to every block that uses the label. Links on
-/// non-doc-comment lines are never rewritten or defined. Output is allocated
-/// lazily, so an untouched input costs only the per-line `[` check.
+/// definition is appended to every block that uses the label.
+///
+/// Links on non-doc-comment lines are never rewritten or defined. Output is
+/// allocated lazily, so an untouched input costs only the per-line `[` check.
 fn rewrite_rust_context<'a>(
     input: &'a str,
     hoist_set: &HashSet<(&'a str, &'a str)>,
@@ -682,9 +693,11 @@ see [A] and [A]
     #[test]
     fn multi_comment_repro_duplicates_defs_per_comment() {
         // The reported repro: the same intra-doc pairs in two separate `///`
-        // comments. Each comment keeps its own `[text]` uses plus its own
-        // duplicated definition lines; no definition appears at EOF or between
-        // comments, so every comment stays rustdoc-clean.
+        // comments.
+        //
+        // Each comment keeps its own `[text]` uses plus its own duplicated
+        // definition lines; no definition appears at EOF or between comments,
+        // so every comment stays rustdoc-clean.
         let input = "\
 /// See [field](Self::field) and [path](crate::path).
 pub struct S;
@@ -984,13 +997,18 @@ pub fn f() {
     fn malformed_definition_lines_do_not_block_hoist() {
         // Each line is definition-shaped but malformed: CommonMark leaves it
         // as paragraph text, so the label is free to hoist and the appended
-        // definition needs a blank separator after it. `definition_text` and
-        // `is_reference_definition` share one parser, so both reject these.
+        // definition needs a blank separator after it.
+        //
+        // `definition_text` and `is_reference_definition` share one parser,
+        // so both reject these.
+        //
         // Labels need one non-space character; unescaped `[` can never be in
         // a label; an absent, unclosed, or unbalanced destination, an
         // unclosed angle form, and a title glued to an angle destination all
-        // leave paragraph text. (`[A]:u` is valid: whitespace after the
-        // colon is optional, and a bare destination may contain quotes.)
+        // leave paragraph text.
+        //
+        // (`[A]:u` is valid: whitespace after the colon is optional, and a
+        // bare destination may contain quotes.)
         let bad_lines = [
             "[A]:",
             "[A] : u",

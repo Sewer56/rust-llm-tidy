@@ -2,27 +2,35 @@
 //!
 //! [`ReferenceCollector`] walks a parsed syntax tree and records
 //! `(item_index, referenced_item_index)` edges for every bare path reference
-//! whose first segment matches a known top-level item name. Edges to local
-//! macros are reversed so a macro definition precedes its use sites.
+//! whose first segment matches a known top-level item name.
+//!
+//! Edges to local macros are reversed so a macro definition precedes its use
+//! sites.
 //!
 //! # Allocation strategy
 //!
 //! Identifiers are probed against the name map by writing each one into a
 //! single reused scratch [`String`] (via its `fmt::Write` impl), so the hot
-//! reference paths perform zero per-ident heap allocation. Edges are stored as
-//! item indices, not owned strings.
+//! reference paths perform zero per-ident heap allocation.
+//!
+//! Edges are stored as item indices, not owned strings.
 //!
 //! # Walk model
 //!
 //! Only NAMED top-level items push an index onto the item stack (functions,
 //! structs, enums, unions, type aliases, consts, statics, traits, and
-//! `macro_rules!` definitions). Impls, modules, uses, extern crates, and
-//! macro invocations are NOT pushed, so references inside them are ignored -
-//! mirroring the prior `syn::visit::Visit` behavior. Within a pushed item,
-//! every reference position (a path/type identifier or a scoped identifier)
-//! whose first segment names a top-level item records an edge; macro calls
-//! (`ident!`) to a local macro record a reversed edge so the definition
-//! precedes its use.
+//! `macro_rules!` definitions).
+//!
+//! Impls, modules, uses, extern crates, and macro invocations are NOT
+//! pushed, so references inside them are ignored - mirroring the prior
+//! `syn::visit::Visit` behavior.
+//!
+//! Within a pushed item, every reference position (a path/type identifier or
+//! a scoped identifier) whose first segment names a top-level item records an
+//! edge.
+//!
+//! Macro calls (`ident!`) to a local macro record a reversed edge so the
+//! definition precedes its use.
 
 use ahash::{AHashMap, AHashSet};
 use tree_sitter::{Node, Tree};
@@ -138,8 +146,10 @@ impl<'names> ReferenceCollector<'names> {
             // Non-pushed, non-reference nodes: recurse into children. This
             // covers blocks, expressions, parameters, field lists, type
             // arguments, etc. - their interior references are found on
-            // recursion. (When the item stack is empty - e.g. inside an impl
-            // body at top level - `record_ref` records nothing.)
+            // recursion.
+            //
+            // (When the item stack is empty - e.g. inside an impl body at
+            // top level - `record_ref` records nothing.)
             _ => {
                 self.recurse(node, source);
             }
@@ -164,8 +174,10 @@ impl<'names> ReferenceCollector<'names> {
 
     /// Record a reference edge from the current item to the item named by the
     /// first segment of `node` (a path/type identifier), if it names a
-    /// top-level item other than the current one. Macro calls to a local
-    /// macro reverse the edge so the definition precedes its use.
+    /// top-level item other than the current one.
+    ///
+    /// Macro calls to a local macro reverse the edge so the definition
+    /// precedes its use.
     fn record_ref(&mut self, node: Node, source: &[u8]) {
         let Some(&current_idx) = self.item_stack.last() else {
             // Not inside a named top-level item: no edge (mirrors syn, which

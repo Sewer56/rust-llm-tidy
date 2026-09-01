@@ -133,9 +133,11 @@ impl std::fmt::Display for ReorderMove {
 ///
 /// Only items that move to an *earlier* output position (`to < from`) are
 /// reported; items that merely shift to a later position to fill the gap are
-/// implied by the reported moves and omitted. An already-ordered input yields
-/// an empty list. The returned records are in reordered-output order, so
-/// `before` references the item that follows each move in the new order.
+/// implied by the reported moves and omitted.
+///
+/// An already-ordered input yields an empty list. The returned records are in
+/// reordered-output order, so `before` references the item that follows each
+/// move in the new order.
 ///
 /// # Arguments
 ///
@@ -175,13 +177,17 @@ pub fn compute_moves(
 /// Emit the reordered source by byte-slicing the original source.
 ///
 /// Extracts each item's byte range from `parsed.source` and concatenates
-/// them in the permutation order. Because items are gap-anchored to the
-/// next item, a slice may begin with carried leading trivia (blank lines
-/// and plain `//` section headers). Leading and trailing whitespace are
-/// stripped ([`str::trim`]) so separators do not pile up when items move,
-/// while the `//` header and `///`/`//!` doc lines (non-whitespace) are
-/// preserved. Inter-item spacing is then re-derived from the compact-group
-/// logic below. The preamble and trailer are placed at the start and end.
+/// them in the permutation order.
+///
+/// Because items are gap-anchored to the next item, a slice may begin with
+/// carried leading trivia (blank lines and plain `//` section headers).
+///
+/// Leading and trailing whitespace are stripped ([`str::trim`]) so separators
+/// do not pile up when items move, while the `//` header and `///`/`//!` doc
+/// lines (non-whitespace) are preserved.
+///
+/// Inter-item spacing is then re-derived from the compact-group logic below.
+/// The preamble and trailer are placed at the start and end.
 ///
 /// # Arguments
 ///

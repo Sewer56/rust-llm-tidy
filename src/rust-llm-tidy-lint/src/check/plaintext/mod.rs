@@ -6,6 +6,10 @@
 //! are stripped before measurement so any line-comment language works through
 //! the marker table.
 //!
+//! Both checks count the full line text, code spans, URLs, and link targets
+//! included; table rows, code blocks, and link reference definitions are
+//! exempt.
+//!
 //! # Layers
 //!
 //! - [`markers_for`] - data-driven comment markers keyed by file extension.
@@ -40,8 +44,8 @@ struct PendingParagraph {
     count: usize,
 }
 
-/// A measured paragraph. `size` is the length of the member lines joined with
-/// single spaces; exempt lines are never members, so they cost nothing.
+/// A measured paragraph. `size` is the full member text joined with single
+/// spaces; exempt lines are never members, so they cost nothing.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Paragraph {
     /// 1-based line number of the paragraph's first member line.
@@ -56,6 +60,9 @@ pub(crate) struct Paragraph {
 pub(crate) struct StrippedLine {
     pub number: usize,
     pub text: String,
+    /// True inside fenced or indented code blocks, fence delimiters
+    /// included. Code blocks are exempt from both checks.
+    pub in_code_block: bool,
 }
 
 /// Whether a paragraph is plain text or a bullet with wrapped continuations.
@@ -69,9 +76,12 @@ pub(crate) enum ParagraphKind {
 
 /// Runs DOC007 and DOC008 over one file's raw text.
 ///
-/// DOC007 fires an Error when a plain paragraph's measured size exceeds 240
-/// chars, and a Warning when a bullet's does; DOC008 fires a Warning for every
-/// stripped line over 80 chars, with no content exemptions.
+/// DOC007 fires an Error when a plain paragraph's size exceeds 240 chars,
+/// and a Warning when a bullet's does; DOC008 fires a Warning for every
+/// line over 80 chars.
+///
+/// Both count the full line text; table rows, code blocks, and link
+/// reference definitions are exempt.
 ///
 /// # Arguments
 ///
@@ -116,6 +126,7 @@ pub(crate) fn analyze(source: &str, ext: &str) -> Document {
             doc.lines.push(StrippedLine {
                 number,
                 text: text.to_string(),
+                in_code_block: false,
             });
             continue;
         }
@@ -126,14 +137,15 @@ pub(crate) fn analyze(source: &str, ext: &str) -> Document {
         //
         // Fence lines and everything between them are exempt. Outside a
         // block, indented code (a tab or 4 spaces) and lines like
-        // headings, tables, and URLs (full list on `is_exempt_content`)
-        // are also exempt.
+        // headings, tables, and signature-like lines (full list on
+        // `is_exempt_content`) are also exempt.
         let fence = trimmed.starts_with("```") || trimmed.starts_with("~~~");
         // Indented code: the stripped text starts with a tab or 4 spaces, or
         // the raw line was indented 4+ spaces in a marker-less file.
         let indented_code = text.starts_with('\t')
             || text.starts_with("    ")
             || (markers.is_empty() && raw_indent >= 4);
+        let in_code_block = in_fence || fence || indented_code;
         let exempt = if in_fence {
             if fence {
                 in_fence = false;
@@ -150,6 +162,7 @@ pub(crate) fn analyze(source: &str, ext: &str) -> Document {
         doc.lines.push(StrippedLine {
             number,
             text: text.to_string(),
+            in_code_block,
         });
 
         // Count this line into the current paragraph (`pending`) or start
@@ -247,15 +260,15 @@ fn flush(pending: &mut Option<PendingParagraph>, doc: &mut Document) {
     }
 }
 
-/// Conservative exempt-content heuristics: headings, table rows, URLs, code
-/// spans, signature-like lines, and link reference definitions. Exempt lines
-/// cost no paragraph budget.
+/// Whole-line exempt-content heuristics: headings, table rows, signature-like
+/// lines, and link reference definitions. Exempt lines cost no paragraph
+/// budget and end any open paragraph.
+///
+/// Code spans and URLs are not whole-line exemptions; those lines stay
+/// paragraph members whose full text counts toward the budget.
 fn is_exempt_content(trimmed: &str) -> bool {
     trimmed.starts_with('#')
         || trimmed.starts_with('|')
-        || trimmed.contains("http://")
-        || trimmed.contains("https://")
-        || trimmed.contains('`')
         || is_signature_line(trimmed)
         || is_link_reference_definition(trimmed)
 }
@@ -546,18 +559,16 @@ mod tests {
         assert_eq!(paragraph_at(&doc, 2).unwrap().size, "prose".len());
     }
 
-    // Table rows, headings, URLs, and code spans are exempt content.
+    // Table rows and headings are exempt content.
     #[test]
-    fn analyze_exempts_tables_headings_urls_code_spans() {
+    fn analyze_exempts_tables_and_headings() {
         let source = indoc! {"
             | a | b |
             # Heading
-            see https://example.com/x
-            run `cargo test`
         "};
         let doc = analyze(source, "md");
         assert!(doc.paragraphs.is_empty());
-        assert_eq!(doc.lines.len(), 4);
+        assert_eq!(doc.lines.len(), 2);
     }
 
     // Signature-like lines are exempt content.
@@ -565,11 +576,22 @@ mod tests {
     fn analyze_exempts_signature_lines() {
         let source = indoc! {"
             /// prose
-            /// `fn do_thing(x: usize) -> bool;`
+            /// fn do_thing(x: usize) -> bool;
         "};
         let doc = analyze(source, "rs");
         assert_eq!(doc.paragraphs.len(), 1);
         assert_eq!(paragraph_at(&doc, 1).unwrap().size, "prose".len());
+    }
+
+    // A backtick-wrapped signature mention is prose, not a signature line:
+    // it counts toward the paragraph budget in full.
+    #[test]
+    fn analyze_counts_backtick_wrapped_signature() {
+        let doc = analyze("/// uses `fn do_thing(x: usize) -> bool;` here\n", "rs");
+        assert_eq!(
+            paragraph_at(&doc, 1).unwrap().size,
+            "uses `fn do_thing(x: usize) -> bool;` here".len()
+        );
     }
 
     // Signature keywords exempt only at the line start, after Rust
@@ -614,26 +636,61 @@ mod tests {
         assert_eq!(doc.lines.len(), 2);
     }
 
-    // An exempt line is a paragraph boundary even between text lines.
+    // A URL-bearing line stays a paragraph member: its full text counts,
+    // and the paragraph does not split at it.
     #[test]
-    fn analyze_breaks_paragraph_at_exempt_line() {
+    fn analyze_joins_paragraph_across_url_line() {
         let source = indoc! {"
             /// first part
-            /// see https://example.com
+            /// see https://example.com/x
             /// second part
         "};
         let doc = analyze(source, "rs");
-        assert_eq!(doc.paragraphs.len(), 2);
-        assert_eq!(paragraph_at(&doc, 1).unwrap().size, "first part".len());
-        assert_eq!(paragraph_at(&doc, 3).unwrap().size, "second part".len());
+        assert_eq!(doc.paragraphs.len(), 1);
+        assert_eq!(
+            paragraph_at(&doc, 1).unwrap().size,
+            "first part see https://example.com/x second part".len()
+        );
     }
 
-    // A mixed text + code-span line is exempt as a whole: the rest of
-    // the line costs no paragraph budget.
+    // A mixed text + code-span line is a paragraph member whose full text
+    // counts, spans included.
     #[test]
-    fn analyze_exempts_whole_line_with_inline_code_span() {
+    fn analyze_counts_mixed_line_including_code_span() {
         let doc = analyze("/// run `cargo test` to verify\n", "rs");
-        assert!(doc.paragraphs.is_empty());
-        assert_eq!(doc.lines.len(), 1);
+        assert_eq!(doc.paragraphs.len(), 1);
+        let para = paragraph_at(&doc, 1).unwrap();
+        assert_eq!(para.kind, ParagraphKind::Plain);
+        assert_eq!(para.size, "run `cargo test` to verify".len());
+    }
+
+    // A span-only line is a normal member: it counts in full and joins
+    // with single spaces.
+    #[test]
+    fn analyze_counts_span_only_line_in_paragraph() {
+        let source = indoc! {"
+            /// alpha
+            /// `cargo test`
+            /// omega
+        "};
+        let doc = analyze(source, "rs");
+        assert_eq!(doc.paragraphs.len(), 1);
+        assert_eq!(
+            paragraph_at(&doc, 1).unwrap().size,
+            "alpha `cargo test` omega".len()
+        );
+    }
+
+    // Link text and link targets both count toward the budget.
+    #[test]
+    fn analyze_counts_link_text_and_targets() {
+        let doc = analyze(
+            "/// see [docs](./docs/lints.md) and [guide][ref] here\n",
+            "rs",
+        );
+        assert_eq!(
+            paragraph_at(&doc, 1).unwrap().size,
+            "see [docs](./docs/lints.md) and [guide][ref] here".len()
+        );
     }
 }

@@ -83,6 +83,16 @@ exclude:
     rules:
       - links
       - fences
+  # The plaintext text-check tests embed doc-comment-shaped lines
+  # (`/// ... [text](url)`) and markdown table rows inside Rust string
+  # literals (indoc/formatdoc); `fix_links` and `fix_tables` would rewrite
+  # the literal contents and break the fixtures.
+  - paths:
+      - "src/rust-llm-tidy-lint/src/check/plaintext/paragraph_length.rs"
+      - "src/rust-llm-tidy-lint/src/check/plaintext/line_length.rs"
+    rules:
+      - links
+      - tables
   # .github holds plain markdown (workflows/templates) outside any Rust crate;
   # `vis` can't (and needn't) do crate-aware narrowing there.
   - paths:

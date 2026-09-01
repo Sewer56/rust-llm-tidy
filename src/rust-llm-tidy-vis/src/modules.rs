@@ -2,9 +2,10 @@
 //!
 //! Maps `mod foo;` file references to source files (edition path rules +
 //! `#[path]` overrides), distinguishes inline `mod foo {}` (no file), and
-//! propagates each file's effective floor visibility root -> leaf. Crate-root
-//! discovery uses `cargo metadata --no-deps` (the CLI narrows each file
-//! standalone when that fails - see `cli/src/main.rs`).
+//! propagates each file's effective floor visibility root -> leaf.
+//!
+//! Crate-root discovery uses `cargo metadata --no-deps` (the CLI narrows each
+//! file standalone when that fails - see `cli/src/main.rs`).
 
 use crate::{ParsedFile, child_of_kind, visibility_node};
 use ahash::AHashMap;
@@ -54,11 +55,14 @@ impl ModuleTree {
 }
 
 /// Build a module tree from pre-parsed files. The root is the file whose path
-/// equals `root`. Floors propagate root -> leaf: a `mod` with restricted
-/// visibility sets the floor for its (transitive) descendants; bare `pub` /
-/// private `mod` inherits the ancestor floor. Matches the inline `walk()`
-/// "innermost restricted ancestor wins" semantics so tree and inline paths
-/// share identical narrowing behavior.
+/// equals `root`.
+///
+/// Floors propagate root -> leaf: a `mod` with restricted visibility sets the
+/// floor for its (transitive) descendants; bare `pub` / private `mod`
+/// inherits the ancestor floor.
+///
+/// Matches the inline `walk()` "innermost restricted ancestor wins" semantics
+/// so tree and inline paths share identical narrowing behavior.
 ///
 /// # Arguments
 ///
@@ -68,10 +72,11 @@ impl ModuleTree {
 ///
 /// # Errors
 ///
-/// Returns `anyhow::Result<ModuleTree>`; always `Ok(ModuleTree)` here. Each
-/// file is already parsed into a [`ParsedFile`] (tree-sitter recovers from
-/// invalid Rust with `ERROR` nodes), so this does not fail on a bad source.
-/// The `Result` is retained for API continuity.
+/// Returns `anyhow::Result<ModuleTree>`; always `Ok(ModuleTree)` here.
+///
+/// Each file is already parsed into a [`ParsedFile`] (tree-sitter recovers
+/// from invalid Rust with `ERROR` nodes), so this does not fail on a bad
+/// source. The `Result` is retained for API continuity.
 pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<ModuleTree> {
     // 1. Index files by canonical path. Keep trees + sources for byte-exact
     //    visibility span slicing (mirrors walk()).
@@ -119,14 +124,18 @@ pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<Mo
 }
 
 /// Discover the crate root source file by walking up from `start` to the
-/// nearest `Cargo.toml` (the owning crate's manifest), then running
-/// `cargo metadata --no-deps` and returning that package's `lib` target's
-/// `src_path` (else the `bin` target whose path ends in `main.rs`). The owning
-/// crate is matched by manifest path rather than `root_package()`: under
-/// `--no-deps` `root_package()` resolves to the package at
+/// nearest `Cargo.toml` (the owning crate's manifest).
+///
+/// Then runs `cargo metadata --no-deps` and returns that package's `lib`
+/// target's `src_path` (else the `bin` target whose path ends in `main.rs`).
+///
+/// The owning crate is matched by manifest path rather than `root_package()`:
+/// under `--no-deps` `root_package()` resolves to the package at
 /// `workspace_root/Cargo.toml`, which does not exist for a *virtual*
-/// workspace, so member crates of a virtual workspace would otherwise degrade
-/// to standalone narrowing. The CLI maps failure to a warn + standalone
+/// workspace.
+///
+/// Member crates of a virtual workspace would otherwise degrade to
+/// standalone narrowing. The CLI maps failure to a warn + standalone
 /// narrowing.
 ///
 /// # Arguments
@@ -151,11 +160,14 @@ pub fn discover_crate_root(start: &Path) -> anyhow::Result<PathBuf> {
         .manifest_path(&manifest)
         .no_deps()
         .exec()?;
-    // Match the owning package by manifest path. `root_package()` only works
-    // for standalone packages and non-virtual workspaces: under `--no-deps` it
-    // resolves to the package at `workspace_root/Cargo.toml`, which does not
-    // exist for a *virtual* workspace, so member crates would otherwise
-    // degrade to standalone narrowing.
+    // Match the owning package by manifest path.
+    //
+    // `root_package()` only works for standalone packages and non-virtual
+    // workspaces: under `--no-deps` it resolves to the package at
+    // `workspace_root/Cargo.toml`, which does not exist for a *virtual*
+    // workspace.
+    //
+    // Member crates would otherwise degrade to standalone narrowing.
     let canon_manifest = std::fs::canonicalize(&manifest).unwrap_or_else(|_| manifest.clone());
     let pkg = meta
         .packages
@@ -198,15 +210,19 @@ fn find_cargo_toml(start: &Path) -> anyhow::Result<PathBuf> {
 
 /// Resolve top-level `mod` items of one file into children. Edition path rules:
 /// both editions prefer `foo.rs` over `foo/mod.rs` (mod.rs is the deprecated
-/// fallback). `#[path = "..."]` overrides normal resolution. `#[cfg]`-gated
-/// mods are treated as present. Unresolved `mod foo;` and missing `#[path]`
-/// targets append a warning rather than failing.
+/// fallback).
+///
+/// `#[path = "..."]` overrides normal resolution. `#[cfg]`-gated mods are
+/// treated as present. Unresolved `mod foo;` and missing `#[path]` targets
+/// append a warning rather than failing.
 ///
 /// In the tree-sitter CST, `#[...]` attributes are *preceding sibling*
-/// `attribute_item` nodes (not children of the item), so this walk tracks the
-/// pending attribute run and attaches it to the next `mod_item` (mirroring the
-/// sibling model crate's `PendingTrivia`). Comments are trivia and do not break
-/// the run.
+/// `attribute_item` nodes (not children of the item).
+///
+/// So this walk tracks the pending attribute run and attaches it to the next
+/// `mod_item` (mirroring the sibling model crate's `PendingTrivia`).
+///
+/// Comments are trivia and do not break the run.
 fn resolve_mod_children(
     root: Node,
     parent_dir: &Path,
@@ -237,10 +253,12 @@ fn resolve_mod_children(
                     .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                     .map(str::to_string);
                 let name_str = name.as_deref().unwrap_or("");
-                // A `#[path]` override was used: a missing target already emits
-                // the dedicated "target not found" warning below, so the generic
-                // "resolves to no ..." warning must be suppressed in that case
-                // (it is redundant and references nonexistent `foo.rs` paths).
+                // A `#[path]` override was used: a missing target already
+                // emits the dedicated "target not found" warning below.
+                //
+                // The generic "resolves to no ..." warning must be suppressed
+                // in that case (it is redundant and references nonexistent
+                // `foo.rs` paths).
                 let mut path_attr_used = false;
                 let resolved = match path_attr {
                     Some(p) => {
@@ -340,10 +358,12 @@ fn resolve_mod_file(
 
 /// Capture a `visibility_modifier` node's text verbatim from `source` when it
 /// is restricted (`pub(crate)`/`pub(super)`/`pub(in path)`). `None` for bare
-/// `pub` and private (no visibility). Uses byte-exact span slicing mirroring
-/// `walk()`. tree-sitter yields byte offsets directly, so no line/column
-/// conversion is needed (the prior `to_token_stream()`+strip would corrupt
-/// `pub(in crate::a)` -> `pub(incrate::a)`).
+/// `pub` and private (no visibility).
+///
+/// Uses byte-exact span slicing mirroring `walk()`. tree-sitter yields byte
+/// offsets directly, so no line/column conversion is needed (the prior
+/// `to_token_stream()`+strip would corrupt `pub(in crate::a)` ->
+/// `pub(incrate::a)`).
 fn vis_text_of(vis: Option<Node>, source: &str) -> Option<String> {
     let vis = vis?;
     if vis.named_child_count() >= 1 {

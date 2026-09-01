@@ -2,10 +2,11 @@
 //! exclusions of `rust-llm-tidy`.
 //!
 //! Mirrors the helper pattern from `fix.rs`/`doc_check.rs` (`run_command`,
-//! `manifest_dir`; `binary` lives in the shared `common` module). Each test
-//! writes a temp config and/or fixture and runs the built CLI binary with
-//! `--config <path>`. Existing tests use `--no-config` (see `fix.rs`), so the
-//! repo-root sample config never interferes here.
+//! `manifest_dir`; `binary` lives in the shared `common` module).
+//!
+//! Each test writes a temp config and/or fixture and runs the built CLI
+//! binary with `--config <path>`. Existing tests use `--no-config` (see
+//! `fix.rs`), so the repo-root sample config never interferes here.
 
 use common::binary;
 use std::fs;
@@ -624,6 +625,7 @@ fn post_process_not_run_on_check() {
         .expect("failed to spawn rust-llm-tidy");
     // `lints` is read-only and has no post-process pass, so `false` never runs
     // and the only possible failure is error-severity diagnostics.
+    //
     // We assert the binary did not fail *because of post_process* by checking
     // stderr has no "post_process" mention.
     let stderr = String::from_utf8_lossy(&output.stderr);

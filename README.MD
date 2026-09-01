@@ -1,7 +1,7 @@
 # rust-llm-tidy
 
-[![Crates.io](https://img.shields.io/crates/v/rust-llm-tidy-cli.svg)][Crates.io CLI]
-[![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
+[![Crates.io][crates-badge]][Crates.io CLI]
+[![CI][ci-badge]][CI]
 
 Opinionated linter for my Rust and Markdown preferences. Primarily for
 fixing LLM output, but useful for any code.
@@ -107,8 +107,8 @@ Fields:
 In JSON mode the per-line plaintext diagnostics are not printed to stderr.
 Change records and lint findings are folded into the same document.
 `--dry-run` previews the changes without writing them.
-See [change reporting] for the shared record
-format.
+
+See [change reporting] for the shared record format.
 
 #### Feature documentation
 
@@ -139,23 +139,28 @@ Additionally:
 
 - `post_process` - external commands run on processed files after tidying.
   Each entry has `command`, `args` (default empty), and `extensions`
-  (default empty = all). File path appended as last arg. Skipped under `--dry-run`
-  and for excluded files.
+  (default empty = all). File path appended as last arg.
+  - Skipped under `--dry-run` and for excluded files.
 
 Globs are relative to the config file's directory and use `literal_separator`
-semantics (`*` does not cross `/`; `**` recurses). Rule names are the nine
-lint codes (DOC001-DOC008, TEST001) plus the six ops: `tables`, `fences`,
-`links`, `reorder`, `vis`, `lints`.
+semantics (`*` does not cross `/`; `**` recurses).
+
+Rule names are the nine lint codes (DOC001-DOC008, TEST001) plus the six
+ops: `tables`, `fences`, `links`, `reorder`, `vis`, `lints`.
 
 The config is discovered automatically: `rust-llm-tidy` walks up from the
 current directory to the repo root (the first ancestor containing `.git`),
-checking each level for `.rust-llm-tidy.yml`; the first found wins. Override
-with `--config <PATH>`; disable all discovery and loading with `--no-config`.
+checking each level for `.rust-llm-tidy.yml`; the first found wins.
+
+Override with `--config <PATH>`; disable all discovery and loading with
+`--no-config`.
 
 Every config error - bad YAML, unknown rule name, bad glob syntax, or a pattern
-matching zero files - produces a non-zero exit on every command. This is so LLMs
-can immediately detect config errors. There is no "warn and continue" mode.
-Use `--validate` to check the config without processing files (useful in CI).
+matching zero files - produces a non-zero exit on every command.
+
+This is so LLMs can immediately detect config errors. There is no "warn and
+continue" mode. Use `--validate` to check the config without processing files
+(useful in CI).
 
 ```bash
 # Validate the config without processing files
@@ -207,8 +212,10 @@ git config core.hooksPath .githooks
 
 `pre-commit` is a dispatcher that runs every executable `*.sh` in
 `.githooks/pre-commit.d/` in lexicographic order - name files with a number
-prefix (`10-`, `20-`, ...) to fix the run order. Add hooks by dropping files
-there. Works on Linux, macOS, and Windows (Git for Windows).
+prefix (`10-`, `20-`, ...) to fix the run order.
+
+Add hooks by dropping files there. Works on Linux, macOS, and Windows
+(Git for Windows).
 
 Bundled hooks, in run order:
 
@@ -248,6 +255,8 @@ Licensed under [Apache 2.0].
 [Crates.io CLI]: https://crates.io/crates/rust-llm-tidy-cli
 [Docs.rs CLI]: https://docs.rs/rust-llm-tidy-cli
 [CI]: https://github.com/Sewer56/rust-llm-tidy/actions
+[crates-badge]: https://img.shields.io/crates/v/rust-llm-tidy-cli.svg
+[ci-badge]: https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg
 [rust-llm-tidy-model]: ./src/rust-llm-tidy-model/README.MD
 [rust-llm-tidy-reorder]: ./src/rust-llm-tidy-reorder/README.MD
 [rust-llm-tidy-vis]: ./src/rust-llm-tidy-vis/README.MD

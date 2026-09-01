@@ -186,8 +186,10 @@ fn cleanup(dir: &std::path::Path) {
 // -- Helpers (mirrors integration.rs) --------------------------------
 // Note: `temp_dir` and `TEST_COUNTER` are still duplicated from
 // integration.rs; `binary` now lives in the shared `tests/common/mod.rs`
-// module. In a future cleanup, extract the rest likewise so git_diff.rs
-// only owns `git`/`git_available`.
+// module.
+//
+// In a future cleanup, extract the rest likewise so git_diff.rs only owns
+// `git`/`git_available`.
 
 /// Spawn a fresh git repo in a temp dir, or return `None` when git is
 /// unavailable so the test skips (dev machines without git).

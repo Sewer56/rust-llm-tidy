@@ -18,19 +18,21 @@
 //!
 //! Each fixture is a real `.rs` file from an open-source project, embedded
 //! verbatim with [`include_str!`] (byte-exact copies, so the benchmarks
-//! reflect realistic parse characteristics). Provenance (repo, path, pinned
-//! permalink) is documented in the header comment of each fixture file. The
-//! reference-only `doc/noop` fixture is the exception: it is synthetic and
-//! says so in its header.
+//! reflect realistic parse characteristics).
+//!
+//! Provenance (repo, path, pinned permalink) is documented in the header
+//! comment of each fixture file. The reference-only `doc/noop` fixture is the
+//! exception: it is synthetic and says so in its header.
 
 use rust_llm_tidy_vis::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
 };
 
 /// Multi-file crate fixtures for the crate-aware vis bench: each entry is a
-/// small crate as `(name, root_relative_path, [(path, source)])`. The parent
-/// declares `pub(crate) mod foo;`; `foo.rs` holds bare-`pub` children that the
-/// crate-aware pass narrows cross-file.
+/// small crate as `(name, root_relative_path, [(path, source)])`.
+///
+/// The parent declares `pub(crate) mod foo;`; `foo.rs` holds bare-`pub`
+/// children that the crate-aware pass narrows cross-file.
 ///
 /// Sources are embedded inline (no filesystem I/O at bench time): the resolver
 /// API `build_module_tree(root, &[ParsedFile])` accepts in-memory parsed files.
@@ -73,7 +75,9 @@ pub const CRATE_FIXTURES: &[(&str, &[(&str, &str)])] = &[
 /// `clean` fixtures contain backtick/tilde runs but no nested same-marker
 /// fences, so [`fix_fences`] returns the input borrowed (a no-op). `dirty`
 /// fixtures contain nested same-marker fences that get rewritten to alternate
-/// markers. The `doc/*` variants are Rust source with `///` doc-comment fences,
+/// markers.
+///
+/// The `doc/*` variants are Rust source with `///` doc-comment fences,
 /// exercising the doc-prefix stripping path.
 ///
 /// [`fix_fences`]: rust_llm_tidy_fix::fix_fences
@@ -110,8 +114,10 @@ pub const FENCE_FIXTURES: &[(&str, &str)] = &[
 ///
 /// Under always-hoist, every eligible inline link (single-use and intra-doc
 /// included) becomes `[text]` plus a `[text]: url` definition - one trailing
-/// block in Markdown, duplicated per using doc comment in `doc/*`. `doc/noop`
-/// (reference-style only) is the borrowed no-op, still exercising the tally.
+/// block in Markdown, duplicated per using doc comment in `doc/*`.
+///
+/// `doc/noop` (reference-style only) is the borrowed no-op, still exercising
+/// the tally.
 ///
 /// [`fix_links`]: rust_llm_tidy_fix::fix_links
 #[allow(dead_code)] // each bench compiles `common` separately, using one set

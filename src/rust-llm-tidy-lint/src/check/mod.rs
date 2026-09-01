@@ -14,8 +14,8 @@
 //! | `DOC004`  | Warning  | A `pub fn` with parameters has no `# Arguments` section.               |
 //! | `DOC005`  | Warning  | A `# Arguments` section does not mention every parameter name.         |
 //! | `DOC006`  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).        |
-//! | `DOC007`  | Error    | A paragraph of stripped doc text measures over 240 chars.              |
-//! | `DOC008`  | Warning  | A stripped doc line measures over 80 chars.                            |
+//! | `DOC007`  | Error    | A doc paragraph over 240 chars of full text.                           |
+//! | `DOC008`  | Warning  | A doc line over 80 chars of full text.                                 |
 //! | `TEST001` | Warning  | A `#[test]` fn uses a `test_*` or `case_*` name, not a behavioral one. |
 
 use crate::diagnostic::Diagnostic;
@@ -181,10 +181,7 @@ mod tests {
             CODE_LINE_LENGTH,
             CODE_TEST_NAMING,
         ] {
-            assert!(
-                LINT_CODES.iter().any(|c| *c == code),
-                "LINT_CODES is missing {code}"
-            );
+            assert!(LINT_CODES.contains(&code), "LINT_CODES is missing {code}");
         }
     }
 }

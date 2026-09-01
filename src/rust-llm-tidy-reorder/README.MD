@@ -8,9 +8,9 @@
 >
 > Use at your own risk - or don't.
 
-[![Crates.io](https://img.shields.io/crates/v/rust-llm-tidy-reorder.svg)][Crates.io]
-[![Docs.rs](https://docs.rs/rust-llm-tidy-reorder/badge.svg)][Docs.rs]
-[![CI](https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg)][CI]
+[![Crates.io][crates-badge]][Crates.io]
+[![Docs.rs][docs-badge]][Docs.rs]
+[![CI][ci-badge]][CI]
 
 Library for automatically reordering Rust source code. Built for LLM workflows.
 
@@ -96,7 +96,8 @@ Below is an annotated example of the output order. The comments show which
 phase each item belongs to and why.
 
 ```rust,ignore
-// Phase 1: extern crate and uncategorized items (items not matching any other phase) stay in original order.
+// Phase 1: extern crate and uncategorized items (items not matching any other
+// phase) stay in original order.
 extern crate serde;
 
 // Phase 2: use declarations.
@@ -195,3 +196,6 @@ Licensed under Apache 2.0
 [Crates.io]: https://crates.io/crates/rust-llm-tidy-reorder
 [Docs.rs]: https://docs.rs/rust-llm-tidy-reorder
 [CI]: https://github.com/Sewer56/rust-llm-tidy/actions
+[crates-badge]: https://img.shields.io/crates/v/rust-llm-tidy-reorder.svg
+[docs-badge]: https://docs.rs/rust-llm-tidy-reorder/badge.svg
+[ci-badge]: https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg

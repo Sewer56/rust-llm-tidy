@@ -1,11 +1,17 @@
 # rust-llm-tidy-model
 
-Shared Rust source model used by the `rust-llm-tidy-reorder` and `rust-llm-tidy-lint`
-tooling. It parses a Rust source file with [`syn`] and exposes a flat list of
-top-level [`SourceItem`]s, each carrying its byte span, kind, name, visibility
-tier, leading doc comments, and (for functions) its parameter names, whether it
-returns `Result`, and whether it is a `#[test]` function. It also provides
-atomic file I/O and a line-multiset safety check.
+Shared Rust source model used by the `rust-llm-tidy-reorder` and
+`rust-llm-tidy-lint` tooling.
+
+It parses a Rust source file with [`syn`] and exposes a flat list of top-level
+[`SourceItem`]s, each carrying:
+
+- its byte span, kind, name, and visibility tier
+- leading doc comments
+- for functions: its parameter names, whether it returns `Result`, and
+  whether it is a `#[test]` function
+
+It also provides atomic file I/O and a line-multiset safety check.
 
 This crate contains no reordering or checking logic of its own; it holds only
 the shared parsing primitives.

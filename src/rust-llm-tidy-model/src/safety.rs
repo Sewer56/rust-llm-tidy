@@ -20,10 +20,13 @@ use anyhow::{Result, bail, ensure};
 /// # Algorithm
 ///
 /// Builds one frequency map of `original`'s non-blank lines, then makes a
-/// single pass over `output` decrementing counts. Any line absent from
-/// `original`, or whose count is already exhausted, is an error; any residual
-/// positive count afterwards is a dropped line. This is one map and two line
-/// scans instead of the prior two maps and four scans.
+/// single pass over `output` decrementing counts.
+///
+/// Any line absent from `original`, or whose count is already exhausted, is
+/// an error; any residual positive count afterwards is a dropped line.
+///
+/// This is one map and two line scans instead of the prior two maps and four
+/// scans.
 ///
 /// # Arguments
 ///

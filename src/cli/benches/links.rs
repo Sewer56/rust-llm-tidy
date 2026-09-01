@@ -2,8 +2,9 @@
 //!
 //! Measures [`fix_links`] over each fixture (the CLI's fix-file link step minus
 //! file I/O). Links hoist to `[text]` with per-comment definitions in `doc/*`,
-//! a trailing block in Markdown; `doc/noop` (reference-style only) is borrowed
-//! back unchanged.
+//! a trailing block in Markdown.
+//!
+//! `doc/noop` (reference-style only) is borrowed back unchanged.
 //!
 //! [`fix_links`]: rust_llm_tidy_fix::fix_links
 

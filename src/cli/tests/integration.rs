@@ -2,9 +2,9 @@
 //!
 //! Tests are split into two groups:
 //!
-//! 1. Synthetic fixture tests (`tests/fixtures/reorder/*_before.rs` → `*_after.rs`):
-//!    one test per ordering/spacing rule.  Each fixture's module header
-//!    documents the rule and the expected before/after state.
+//! 1. Synthetic fixture tests (`tests/fixtures/reorder/*_before.rs` →
+//!    `*_after.rs`): one test per ordering/spacing rule.  Each fixture's
+//!    module header documents the rule and the expected before/after state.
 //!
 //! 2. CLI behavior tests: dry-run, in-place writes, directory traversal,
 //!    error handling, and idempotency.
@@ -13,7 +13,8 @@ use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-/// Run `rust-llm-tidy --include reorder --dry-run` against `<name>_before.rs` in `tests/fixtures/reorder/`.
+/// Run `rust-llm-tidy --include reorder --dry-run` against `<name>_before.rs`
+/// in `tests/fixtures/reorder/`.
 ///
 /// Returns `(stdout, stderr, exit, before_path, expected_after_content)`.
 macro_rules! run_fixture {
@@ -684,7 +685,8 @@ fn manifest_dir() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// Run rust-llm-tidy on `content` (written to a tempfile) with optional `--dry-run`.
+/// Run rust-llm-tidy on `content` (written to a tempfile) with optional
+/// `--dry-run`.
 /// Returns (stdout, stderr, exit_code).
 fn run(content: &str, args: &[&str]) -> (String, String, i32) {
     let dir = std::env::temp_dir();

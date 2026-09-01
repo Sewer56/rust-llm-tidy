@@ -1,9 +1,13 @@
 //! `DOC002` - missing `# Errors` section, and `DOC003` - vague errors wording.
 //!
 //! [`missing_errors_section`] fires on public functions returning `Result` that
-//! have no `# Errors` header; [`vague_errors`] fires when an existing `# Errors`
-//! body names no concrete error variant. Both share [`is_pub_result_fn`],
-//! [`find_errors_section`], and [`section_names_variant`].
+//! have no `# Errors` header.
+//!
+//! [`vague_errors`] fires when an existing `# Errors` body names no concrete
+//! error variant.
+//!
+//! Both share [`is_pub_result_fn`], [`find_errors_section`], and
+//! [`section_names_variant`].
 
 use crate::check::section_body;
 use crate::check::{CODE_MISSING_ERRORS, CODE_VAGUE_ERRORS};
