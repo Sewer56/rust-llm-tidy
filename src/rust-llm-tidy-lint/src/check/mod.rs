@@ -17,6 +17,9 @@
 //! | `DOC007`  | Error    | A doc paragraph over 240 chars of full text.                           |
 //! | `DOC008`  | Warning  | A doc line over 80 chars of full text.                                 |
 //! | `TEST001` | Warning  | A `#[test]` fn uses a `test_*` or `case_*` name, not a behavioral one. |
+//!
+//! Each code also carries a short friendly title; [`Diagnostic::title`]
+//! exposes it for a finding.
 
 use crate::diagnostic::Diagnostic;
 pub use arguments::{missing_arguments_section, undocumented_param};
@@ -35,6 +38,22 @@ mod placeholder;
 mod plaintext;
 mod test_naming;
 
+/// Friendly title per lint code, paired `(code, title)` in [`LINT_CODES`]
+/// order.
+///
+/// Titles are the short human-readable names output consumers render next
+/// to the code; they are static so a lookup allocates nothing.
+pub(crate) const CODE_TITLES: &[(&str, &str)] = &[
+    (CODE_MISSING_DOCS, "missing documentation"),
+    (CODE_MISSING_ERRORS, "missing `# Errors` section"),
+    (CODE_VAGUE_ERRORS, "vague `# Errors` section"),
+    (CODE_MISSING_ARGUMENTS, "missing `# Arguments` section"),
+    (CODE_UNDOCUMENTED_PARAM, "undocumented parameter"),
+    (CODE_DOC_PLACEHOLDER, "placeholder text"),
+    (CODE_PARAGRAPH_SIZE, "oversized paragraph"),
+    (CODE_LINE_LENGTH, "long line"),
+    (CODE_TEST_NAMING, "non-behavioral test name"),
+];
 /// All lint codes accepted through `include.rules`, `exclude.rules`,
 /// `--include`, and `--exclude`, in the order they run. The CLI validates rule
 /// names against this slice plus
@@ -130,6 +149,14 @@ pub(crate) fn section_body(docs: &[String], start: usize) -> Vec<&str> {
         .collect()
 }
 
+/// Friendly title for `code`, or `None` when `code` is not a lint code.
+pub(crate) fn title_for_code(code: &str) -> Option<&'static str> {
+    CODE_TITLES
+        .iter()
+        .find(|(known, _)| *known == code)
+        .map(|(_, title)| *title)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -182,6 +209,22 @@ mod tests {
             CODE_TEST_NAMING,
         ] {
             assert!(LINT_CODES.contains(&code), "LINT_CODES is missing {code}");
+        }
+    }
+
+    /// The title table pairs every lint code with a non-empty title and
+    /// holds no extra codes.
+    #[test]
+    fn code_titles_cover_exactly_the_nine_lint_codes() {
+        assert_eq!(
+            CODE_TITLES.len(),
+            LINT_CODES.len(),
+            "CODE_TITLES must pair exactly the nine lint codes"
+        );
+        for code in LINT_CODES {
+            let title =
+                title_for_code(code).unwrap_or_else(|| panic!("no title defined for {code}"));
+            assert!(!title.is_empty(), "title for {code} must not be empty");
         }
     }
 }
