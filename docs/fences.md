@@ -7,9 +7,7 @@ fence uses the opposite delimiter (```` ``` ```` vs ```` ~~~ ````) so the
 outer block does not close early.
 
 Runs in markdown-family files and in `///` and `//!` doc comments.
-
-Other admitted code languages reach it only through an explicit
-`--include fences` or a config include; see the [language matrix].
+For other languages, must be explicit enabled, see [language matrix].
 
 ## Before
 
