@@ -62,18 +62,21 @@ AST ops.
 - `reorder`, `vis`, and the parser-driven lint checks need a registered
   language backend. Backends today: Rust and C#.
 
-## Adding extensions
+## Admission override and additions
 
-- `--extension <EXT>` (repeatable) and the config `extensions:` key
-  admit extra extensions additively; default extensions cannot be
-  removed.
+- The config `extensions:` key replaces the default admitted list when
+  non-empty: only the listed extensions run. An empty or absent list keeps
+  the defaults.
+- The config `extra_extensions:` key and `--extension <EXT>` (repeatable)
+  admit extensions in addition to the effective list
+  (`extensions:` when non-empty, else the defaults).
 - Values are written without the leading dot and matched
   case-insensitively. Malformed entries (leading or inner dot, path
   separator, whitespace) fail the run.
-- An added extension with no registry entry resolves to the unmapped
+- A listed extension with no registry entry resolves to the unmapped
   tier: tables only, no comment prefixes.
 - The data formats (`ini`, `json`, `toml`, `yaml`, `yml`) admit no ops
-  even when added explicitly.
+  even when listed explicitly.
 - `exclude_files` globs skip matched files entirely.
 
 ## Known effects

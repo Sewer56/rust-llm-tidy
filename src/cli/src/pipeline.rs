@@ -81,8 +81,9 @@ pub(crate) fn run_pipeline(
     cli_include: Option<&HashSet<String>>,
     cli_disabled: &HashSet<String>,
 ) -> anyhow::Result<()> {
-    // Admission is decided once per run: registry defaults plus the
-    // user-added extensions from config `extensions:` and `--extension`.
+    // Admission is decided once per run: the config `extensions:`
+    // replacement or the registry defaults, plus `extra_extensions:` and
+    // `--extension`.
     let admitted = crate::langs::admitted_extensions(config, cli);
     let paths = dedup_inputs(paths::resolve_inputs(cli, &admitted)?);
     // Empty input (empty git diff, or explicit dir with no matching files)

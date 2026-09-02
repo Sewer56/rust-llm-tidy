@@ -42,9 +42,12 @@
 //!
 //! # Admission and gating
 //!
-//! [`admitted_extensions`] builds the one extension list a run admits:
-//! [`DEFAULT_EXTENSIONS`] plus the user additions from the config
-//! `extensions:` key and the CLI `--extension` flag.
+//! [`admitted_extensions`] builds the one extension list a run admits: the
+//! config `extensions:` key when it replaces the defaults, else
+//! [`DEFAULT_EXTENSIONS`].
+//!
+//! The config `extra_extensions:` key and the CLI `--extension` flag add
+//! on top of that base.
 //!
 //! Explicit paths, directory walks, and git-diff selection all consume that
 //! single list.
@@ -271,22 +274,32 @@ impl Profile {
     }
 }
 
-/// The extensions one run admits: [`DEFAULT_EXTENSIONS`] plus the user-added
-/// extensions from the config `extensions:` key and the CLI `--extension`
-/// flag.
+/// The extensions one run admits.
+///
+/// The base is the config `extensions:` key when non-empty (replacing the
+/// registry defaults wholesale), else [`DEFAULT_EXTENSIONS`]; the config
+/// `extra_extensions:` key and the CLI `--extension` flag add on top.
 ///
 /// Built once per run; explicit paths, directory walks, and git-diff
 /// selection all consume this single list, so admission is identical across
 /// input modes.
 ///
-/// Appended entries may repeat defaults or each other - membership checks
+/// Appended entries may repeat the base or each other - membership checks
 /// are idempotent, and per-file op gating always re-resolves the profile
 /// from the file's own extension.
 pub(crate) fn admitted_extensions<'a>(
     config: Option<&'a crate::config::CompiledConfig>,
     cli: &'a crate::Cli,
 ) -> Vec<&'a str> {
-    let mut exts: Vec<&str> = DEFAULT_EXTENSIONS.to_vec();
+    // A non-empty `extensions:` list replaces the defaults wholesale.
+    let mut exts: Vec<&str> = match config.filter(|c| !c.extension_override().is_empty()) {
+        Some(config) => config
+            .extension_override()
+            .iter()
+            .map(String::as_str)
+            .collect(),
+        None => DEFAULT_EXTENSIONS.to_vec(),
+    };
     if let Some(config) = config {
         exts.extend(config.extra_extensions().iter().map(String::as_str));
     }
@@ -319,8 +332,8 @@ pub(crate) fn profile_for(ext: &str) -> &'static Profile {
     &UNMAPPED
 }
 
-/// Validate one user-supplied extension from the config `extensions:` key
-/// or the CLI `--extension` flag.
+/// Validate one user-supplied extension from the config `extensions:` or
+/// `extra_extensions:` key or the CLI `--extension` flag.
 ///
 /// # Arguments
 ///
@@ -696,32 +709,77 @@ mod tests {
 
     // ── Run-level admission ──
 
-    /// The admitted list carries every default extension plus the config
-    /// and CLI additions.
-    #[test]
-    fn admitted_extensions_merges_defaults_config_and_cli() {
-        let dir = std::env::temp_dir().join(format!("rlt-langs-admit-{}", std::process::id()));
+    /// Write `yaml` as a config and return the admitted list for it plus the
+    /// given CLI `--extension` values.
+    fn admitted_for(yaml: &str, cli_exts: &[&str]) -> Vec<String> {
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "rlt-langs-admit-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let cfg_path = dir.join(".rust-llm-tidy.yml");
-        std::fs::write(&cfg_path, "extensions: [\"log\"]\n").unwrap();
+        std::fs::write(&cfg_path, yaml).unwrap();
         let config = crate::config::load_and_compile(&cfg_path).unwrap();
-        let cli = <crate::Cli as clap::Parser>::parse_from([
-            "rust-llm-tidy",
-            "--extension",
-            "org",
-            "--extension",
-            "MD",
-        ]);
-
+        let mut args = vec!["rust-llm-tidy".to_string()];
+        for ext in cli_exts {
+            args.push("--extension".to_string());
+            args.push((*ext).to_string());
+        }
+        let cli = <crate::Cli as clap::Parser>::parse_from(args);
         let admitted = admitted_extensions(Some(&config), &cli);
+        let _ = std::fs::remove_dir_all(&dir);
+        admitted.into_iter().map(String::from).collect()
+    }
+
+    /// A non-empty `extensions:` list replaces the defaults wholesale.
+    #[test]
+    fn extensions_key_replaces_default_admission() {
+        let admitted = admitted_for("extensions: [\"log\"]\n", &[]);
+
+        assert!(
+            admitted.contains(&"log".to_string()),
+            "log must be admitted"
+        );
+        for ext in DEFAULT_EXTENSIONS {
+            assert!(
+                !admitted.contains(&ext.to_string()),
+                ".{ext} must be dropped by the replacement"
+            );
+        }
+    }
+
+    /// An empty or absent `extensions:` list keeps the defaults, and
+    /// `extra_extensions:` plus `--extension` add on top of them.
+    #[test]
+    fn extra_extensions_add_to_default_admission() {
+        let admitted = admitted_for(
+            "extensions: []\nextra_extensions: [\"log\"]\n",
+            &["org", "MD"],
+        );
 
         for ext in DEFAULT_EXTENSIONS {
-            assert!(admitted.contains(ext), ".{ext} missing from admission");
+            assert!(admitted.contains(&ext.to_string()), ".{ext} missing");
         }
         for ext in ["log", "org", "MD"] {
-            assert!(admitted.contains(&ext), "addition `{ext}` missing");
+            assert!(
+                admitted.contains(&ext.to_string()),
+                "addition {ext} missing"
+            );
         }
-        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `extra_extensions:` and `--extension` add on top of a replaced base.
+    #[test]
+    fn extra_extensions_add_on_top_of_replaced_base() {
+        let admitted = admitted_for(
+            "extensions: [\"rs\"]\nextra_extensions: [\"log\"]\n",
+            &["org"],
+        );
+
+        let expected = ["rs", "log", "org"];
+        assert_eq!(admitted, expected.to_vec());
     }
 
     /// Extension validation accepts well-formed values and rejects the

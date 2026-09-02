@@ -149,9 +149,13 @@ error). Omitting `paths` in an `include` or `exclude` group implies `["**"]`
 
 Additionally:
 
-- `extensions` - extra file extensions admitted in addition to the defaults.
-  Additive only (default extensions cannot be removed); written without the
-  leading dot and matched case-insensitively. Malformed entries fail the run.
+- `extensions` - the full admitted-extension list, replacing the defaults
+  when non-empty (an empty or absent list keeps the defaults). Written
+  without the leading dot and matched case-insensitively. Malformed entries
+  fail the run.
+- `extra_extensions` - extensions admitted in addition to the effective
+  list (`extensions:` when non-empty, else the defaults). Same entry rules
+  as `extensions`.
 - `post_process` - external commands run on processed files after tidying.
   Each entry has `command`, `args` (default empty), and `extensions`
   (default empty = all). File path appended as last arg.
@@ -171,8 +175,8 @@ Override with `--config <PATH>`; disable all discovery and loading with
 `--no-config`.
 
 Every config error - bad YAML, unknown rule name, bad glob syntax, a
-malformed `extensions` entry, or a pattern matching zero files - produces a
-non-zero exit on every command.
+malformed `extensions`/`extra_extensions` entry, or a pattern matching zero
+files - produces a non-zero exit on every command.
 
 This is so LLMs can immediately detect config errors. There is no "warn and
 continue" mode. Use `--validate` to check the config without processing files

@@ -242,103 +242,46 @@ fn excluded_file_not_post_processed() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-// ── `extensions:` key ──
+// ── `extensions:` and `extra_extensions:` keys ──
 
-/// The `extensions:` key admits extra extensions additively: the new
-/// extension is processed while the defaults keep working, and `--validate`
-/// accepts the key.
+/// Malformed entries in either extension key fail validation with a
+/// non-zero exit and an error naming the value.
 #[test]
-fn extensions_key_admits_extra_extension_additively() {
-    let dir = temp_dir();
-    fs::create_dir_all(&dir).unwrap();
-    let cfg = dir.join(".rust-llm-tidy.yml");
-    fs::write(&cfg, "extensions: [\"log\"]\n").unwrap();
-    let log = dir.join("notes.log");
-    fs::write(&log, "| a | b |\n| --- | --- |\n| 1 | 22 |\n").unwrap();
-    let md = dir.join("doc.md");
-    fs::write(&md, "| a | b |\n| --- | --- |\n| 1 | 22 |\n").unwrap();
+fn extension_keys_reject_malformed_entries() {
+    for yaml in [
+        "extensions: [\".log\"]\n",
+        "extensions: [\"\"]\n",
+        "extensions: [\"notes.log\"]\n",
+        "extensions: [\"dir/log\"]\n",
+        "extra_extensions: [\".log\"]\n",
+        "extra_extensions: [\"\"]\n",
+        "extra_extensions: [\"notes.log\"]\n",
+        "extra_extensions: [\"dir/log\"]\n",
+    ] {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let cfg = dir.join(".rust-llm-tidy.yml");
+        fs::write(&cfg, yaml).unwrap();
 
-    let validate = Command::new(binary())
-        .args(["--config", cfg.to_str().unwrap(), "--validate"])
-        .output()
-        .expect("failed to spawn rust-llm-tidy");
-    assert!(
-        validate.status.success(),
-        "--validate must accept the extensions key: {}",
-        String::from_utf8_lossy(&validate.stderr)
-    );
-
-    let output = Command::new(binary())
-        .args(["--config", cfg.to_str().unwrap()])
-        .arg(&dir)
-        .output()
-        .expect("failed to spawn rust-llm-tidy");
-    assert!(
-        output.status.success(),
-        "run with extensions key should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("notes.log"),
-        "the added .log file must be admitted and processed: {stderr}"
-    );
-    assert!(
-        stderr.contains("doc.md"),
-        "default admission must keep working: {stderr}"
-    );
-    assert_eq!(
-        stderr.matches("tables were aligned").count(),
-        2,
-        "both tables must be aligned: {stderr}"
-    );
-    let _ = fs::remove_dir_all(&dir);
+        let output = Command::new(binary())
+            .args(["--config", cfg.to_str().unwrap(), "--validate"])
+            .output()
+            .expect("failed to spawn rust-llm-tidy");
+        assert!(
+            !output.status.success(),
+            "malformed entry in `{yaml}` must fail validation"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("invalid extension"),
+            "stderr should name the invalid extension: {stderr}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
 
-/// `extensions:` composes with `exclude` groups: the admitted `.py` file
-/// whose path matches the group keeps its tables disabled while a sibling
-/// still gets the default table fix.
-#[test]
-fn extensions_key_composes_with_exclude_rules() {
-    let dir = temp_dir();
-    fs::create_dir_all(&dir).unwrap();
-    let cfg = dir.join(".rust-llm-tidy.yml");
-    fs::write(
-        &cfg,
-        "extensions: [\"py\"]\nexclude:\n  - paths: [\"x.py\"]\n    rules: [\"tables\"]\n",
-    )
-    .unwrap();
-    let excluded = dir.join("x.py");
-    let excluded_original = "# | a | b |\n# | --- | --- |\n# | 1 | 22 |\n";
-    fs::write(&excluded, excluded_original).unwrap();
-    let sibling = dir.join("y.py");
-    fs::write(&sibling, "# | a | b |\n# | --- | --- |\n# | 1 | 22 |\n").unwrap();
-
-    let output = Command::new(binary())
-        .args(["--config", cfg.to_str().unwrap()])
-        .arg(&dir)
-        .output()
-        .expect("failed to spawn rust-llm-tidy");
-    assert!(
-        output.status.success(),
-        "run with extensions + exclude should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        fs::read_to_string(&excluded).unwrap(),
-        excluded_original,
-        "tables must stay disabled for the excluded path"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("y.py") && stderr.contains("tables were aligned"),
-        "the sibling must still get its default table fix: {stderr}"
-    );
-    let _ = fs::remove_dir_all(&dir);
-}
-
-/// `extensions:` composes with `include` whitelist mode: the admitted `.py`
-/// file runs only the whitelisted op that its profile also admits.
+/// `extensions:` composes with `include` whitelist mode: the replaced-base
+/// `.py` file runs only the whitelisted op that its profile also admits.
 #[test]
 fn extensions_key_composes_with_include_whitelist() {
     let dir = temp_dir();
@@ -379,36 +322,136 @@ fn extensions_key_composes_with_include_whitelist() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Malformed `extensions:` entries fail validation with a non-zero exit and
-/// an error naming the value.
+/// A non-empty `extensions:` list replaces the default admission: only the
+/// listed extension is processed, and `--validate` accepts the key.
 #[test]
-fn extensions_key_rejects_malformed_entries() {
-    for yaml in [
-        "extensions: [\".log\"]\n",
-        "extensions: [\"\"]\n",
-        "extensions: [\"notes.log\"]\n",
-        "extensions: [\"dir/log\"]\n",
-    ] {
-        let dir = temp_dir();
-        fs::create_dir_all(&dir).unwrap();
-        let cfg = dir.join(".rust-llm-tidy.yml");
-        fs::write(&cfg, yaml).unwrap();
+fn extensions_key_replaces_default_admission() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(&cfg, "extensions: [\"log\"]\n").unwrap();
+    let log = dir.join("notes.log");
+    fs::write(&log, "| a | b |\n| --- | --- |\n| 1 | 22 |\n").unwrap();
+    let md = dir.join("doc.md");
+    fs::write(&md, "| a | b |\n| --- | --- |\n| 1 | 22 |\n").unwrap();
 
-        let output = Command::new(binary())
-            .args(["--config", cfg.to_str().unwrap(), "--validate"])
-            .output()
-            .expect("failed to spawn rust-llm-tidy");
-        assert!(
-            !output.status.success(),
-            "malformed entry in `{yaml}` must fail validation"
-        );
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            stderr.contains("invalid extension"),
-            "stderr should name the invalid extension: {stderr}"
-        );
-        let _ = fs::remove_dir_all(&dir);
-    }
+    let validate = Command::new(binary())
+        .args(["--config", cfg.to_str().unwrap(), "--validate"])
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        validate.status.success(),
+        "--validate must accept the extensions key: {}",
+        String::from_utf8_lossy(&validate.stderr)
+    );
+
+    let output = Command::new(binary())
+        .args(["--config", cfg.to_str().unwrap()])
+        .arg(&dir)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "run with extensions key should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("notes.log"),
+        "the listed .log file must be admitted and processed: {stderr}"
+    );
+    assert!(
+        !stderr.contains("doc.md"),
+        "the dropped default .md extension must not be processed: {stderr}"
+    );
+    assert_eq!(
+        stderr.matches("tables were aligned").count(),
+        1,
+        "only the .log table must be aligned: {stderr}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// `extra_extensions:` composes with `exclude` groups: the admitted `.py`
+/// file whose path matches the group keeps its tables disabled while a
+/// sibling still gets the default table fix.
+#[test]
+fn extra_extensions_compose_with_exclude_rules() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(
+        &cfg,
+        "extra_extensions: [\"py\"]\nexclude:\n  - paths: [\"x.py\"]\n    rules: [\"tables\"]\n",
+    )
+    .unwrap();
+    let excluded = dir.join("x.py");
+    let excluded_original = "# | a | b |\n# | --- | --- |\n# | 1 | 22 |\n";
+    fs::write(&excluded, excluded_original).unwrap();
+    let sibling = dir.join("y.py");
+    fs::write(&sibling, "# | a | b |\n# | --- | --- |\n# | 1 | 22 |\n").unwrap();
+
+    let output = Command::new(binary())
+        .args(["--config", cfg.to_str().unwrap()])
+        .arg(&dir)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "run with extensions + exclude should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(&excluded).unwrap(),
+        excluded_original,
+        "tables must stay disabled for the excluded path"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("y.py") && stderr.contains("tables were aligned"),
+        "the sibling must still get its default table fix: {stderr}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// The `extra_extensions:` key adds extensions while the defaults keep
+/// working.
+#[test]
+fn extra_extensions_key_adds_to_default_admission() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(&cfg, "extra_extensions: [\"log\"]\n").unwrap();
+    let log = dir.join("notes.log");
+    fs::write(&log, "| a | b |\n| --- | --- |\n| 1 | 22 |\n").unwrap();
+    let md = dir.join("doc.md");
+    fs::write(&md, "| a | b |\n| --- | --- |\n| 1 | 22 |\n").unwrap();
+
+    let output = Command::new(binary())
+        .args(["--config", cfg.to_str().unwrap()])
+        .arg(&dir)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "run with extra_extensions key should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("notes.log"),
+        "the added .log file must be admitted and processed: {stderr}"
+    );
+    assert!(
+        stderr.contains("doc.md"),
+        "default admission must keep working: {stderr}"
+    );
+    assert_eq!(
+        stderr.matches("tables were aligned").count(),
+        2,
+        "both tables must be aligned: {stderr}"
+    );
+    let _ = fs::remove_dir_all(&dir);
 }
 
 /// Default pipeline with `exclude_files` for the fixture leaves the file unchanged.

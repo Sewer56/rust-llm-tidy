@@ -10,12 +10,18 @@
 # the rust-llm-tidy version used by CI and upgrade it deliberately when you
 # want to review new or changed rules.
 #
-# Extra file extensions admitted beyond the defaults. Additive only:
-# default extensions cannot be removed. Written without the leading dot,
+# Admitted file extensions.
+#
+# `extensions` replaces the default list when non-empty: only these run.
+# An empty or absent list keeps the defaults. `extra_extensions` admits
+# more on top of the effective list. Written without the leading dot,
 # matched case-insensitively; malformed entries fail the run. Extensions
-# without a known profile get table fixes only. Uncomment to admit more.
+# without a known profile get table fixes only. Uncomment to use.
 #
 # extensions:
+#   - rs
+#   - md
+# extra_extensions:
 #   - rst
 #   - vim
 
