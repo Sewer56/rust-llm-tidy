@@ -15,57 +15,19 @@
 
 use ahash::{AHashMap, AHashSet};
 pub use collect::ReferenceCollector;
-pub use profile::{PhaseContext, PhaseStrategy, ReferenceWalk, ReorderProfile, RustProfile};
+pub use profile::{DeclNamePosition, PhaseContext, PhaseStrategy, ReferenceWalk, ReorderProfile};
 use rust_llm_tidy_model::parse::{ItemKind, ParseResult, TypeMember, VisibilityTier};
+pub use rust_profile::RustProfile;
 use std::collections::BTreeMap;
 use std::ops::Range;
 pub use toposort::{TieBreak, toposort};
 
 mod collect;
 mod profile;
+mod rust_profile;
+#[cfg(test)]
+pub(crate) mod test_profiles;
 mod toposort;
-
-/// A member-ordering profile shared by the graph and reorder-stage test
-/// suites: fields (Const) lead, methods (Fn) follow with caller-first
-/// edges and a stable tie-break.
-///
-/// `#[cfg(test)]` so production builds never see it.
-#[cfg(test)]
-pub(crate) struct MembersFirstProfile;
-
-#[cfg(test)]
-impl ReorderProfile for MembersFirstProfile {
-    fn phase(
-        &self,
-        _item: &rust_llm_tidy_model::parse::SourceItem,
-        _ctx: &PhaseContext<'_>,
-    ) -> u32 {
-        0
-    }
-
-    fn strategy(&self, _phase: u32) -> PhaseStrategy {
-        PhaseStrategy::Stable
-    }
-
-    fn member_phase(&self, kind: ItemKind) -> u32 {
-        match kind {
-            ItemKind::Const => 0,
-            ItemKind::Fn => 1,
-            _ => 2,
-        }
-    }
-
-    fn member_strategy(&self, phase: u32) -> PhaseStrategy {
-        match phase {
-            1 => PhaseStrategy::Dependency(TieBreak::Stable),
-            _ => PhaseStrategy::Stable,
-        }
-    }
-
-    fn reference_walk(&self) -> &'static ReferenceWalk {
-        RustProfile.reference_walk()
-    }
-}
 
 /// Compute the in-type member permutation for one type body.
 ///
@@ -441,25 +403,66 @@ fn dependency_order(
 
 /// Topologically sort `group` (item or member positions) by `edges`.
 ///
-/// `edges` hold `(referencer, referenced)` positions in the same numbering
-/// as `group`'s values; only edges with both endpoints inside the group
-/// constrain the sort.
+/// [`toposort`] speaks in positions local to one call (`0..group.len()`),
+/// while callers hold node ids from a wider numbering: item indices into
+/// `parsed.items` for top-level items, or member positions for one type
+/// body.
+///
+/// This adapter bridges the two:
+///
+/// 1. Map each `group` value to its 0-based position within the group.
+/// 2. Keep only `edges` whose `(referencer, referenced)` endpoints both
+///    lie in `group`, rewriting each pair to those positions; edges
+///    touching anything outside the group never constrain the sort.
+/// 3. Delegate to [`toposort`] with the group-local names and edges.
+///
+/// Returns a permutation where `order[i]` is the position in `group` of
+/// the i-th entry in reading order; callers map back with
+/// `group[order[i]]`.
+///
+/// # Arguments
+///
+/// - `names` - `names[i]` is the name of `group[i]`; `toposort` reads
+///   names only for tie-breaking and `main`-first seeding.
+/// - `group` - the nodes to sort, in source order.
+/// - `edges` - `(referencer, referenced)` pairs in the same numbering as
+///   `group`'s values; pairs may span the whole file or type body.
+/// - `tie_break` - ordering for unconstrained and cyclic nodes.
+///
+/// # Worked example
+///
+/// One fn phase bucket:
+///
+/// ```text
+/// names  = ["parse", "run", "emit"]
+/// group  = [0, 1, 5]                // item indices, source order
+/// edges  = [(1, 0), (0, 5), (2, 7)] // file-wide pairs
+/// ```
+///
+/// Edge `(1, 0)` says `run` references `parse`; `(0, 5)` says `parse`
+/// references `emit`. Item 7 is not in `group`, so `(2, 7)` drops.
+///
+/// Rewritten to group positions the edges become `[(1, 0), (0, 2)]` and
+/// the returned permutation is `[1, 0, 2]`: reading order run, parse,
+/// emit.
 fn toposort_positions(
     names: &[&str],
     group: &[usize],
     edges: &[(usize, usize)],
     tie_break: TieBreak,
 ) -> Vec<usize> {
-    // Position within this group for each member value.
-    let mut pos_by_idx: AHashMap<usize, usize> = AHashMap::with_capacity(group.len());
-    for (pos, &idx) in group.iter().enumerate() {
-        pos_by_idx.insert(idx, pos);
+    // Group-local position for each node id the group holds.
+    let mut pos_by_node: AHashMap<usize, usize> = AHashMap::with_capacity(group.len());
+    for (pos, &node) in group.iter().enumerate() {
+        pos_by_node.insert(node, pos);
     }
 
     let mut group_edges: Vec<(usize, usize)> = Vec::new();
-    for &(a, b) in edges {
-        if let (Some(&pa), Some(&pb)) = (pos_by_idx.get(&a), pos_by_idx.get(&b)) {
-            group_edges.push((pa, pb));
+    for &(referencer, referenced) in edges {
+        if let (Some(&from), Some(&to)) =
+            (pos_by_node.get(&referencer), pos_by_node.get(&referenced))
+        {
+            group_edges.push((from, to));
         }
     }
 
@@ -468,6 +471,7 @@ fn toposort_positions(
 
 #[cfg(test)]
 mod tests {
+    use super::test_profiles::MembersFirstProfile;
     use super::*;
 
     /// Independent `macro_rules!` definitions are sorted alphabetically.

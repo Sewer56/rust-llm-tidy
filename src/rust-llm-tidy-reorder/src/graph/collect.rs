@@ -255,7 +255,7 @@ fn first_segment_node(node: Node) -> Option<Node> {
 /// True when `node` (an `identifier`/`type_identifier`) is in a declaration
 /// position (an item name, a binding pattern, an alias) rather than a
 /// reference position. Declaration names are not recorded as references;
-/// the `(parent_kind, field)` pairs come from the walk data.
+/// the spots come from the walk data.
 fn is_decl_position(walk: &'static ReferenceWalk, node: Node) -> bool {
     let Some(parent) = node.parent() else {
         return false;
@@ -266,7 +266,7 @@ fn is_decl_position(walk: &'static ReferenceWalk, node: Node) -> bool {
     let parent_kind = parent.kind();
     walk.decl_name_positions
         .iter()
-        .any(|&(kind, name_field)| parent_kind == kind && field == name_field)
+        .any(|pos| parent_kind == pos.parent_kind && field == pos.field)
 }
 
 /// Field name of `node` within its parent, if any.
@@ -286,7 +286,7 @@ fn parent_field_name(node: Node) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{ReorderProfile, RustProfile};
+    use crate::graph::{DeclNamePosition, ReorderProfile, RustProfile};
     use rust_llm_tidy_model::parse::parse_source;
 
     /// Build a name-to-index map assigning each name a position index in the
@@ -395,7 +395,7 @@ mod tests {
 
         static MOD_WALK: ReferenceWalk = ReferenceWalk {
             declaration_kinds: &["mod_item"],
-            decl_name_positions: &[("mod_item", "name")],
+            decl_name_positions: &[DeclNamePosition::new("mod_item", "name")],
         };
 
         let parsed = parse_source(source).unwrap();

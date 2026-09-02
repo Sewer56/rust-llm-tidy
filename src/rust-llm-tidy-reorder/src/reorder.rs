@@ -378,7 +378,8 @@ fn spacing_group(kind: &ItemKind) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{MembersFirstProfile, RustProfile, compute_member_order};
+    use crate::graph::test_profiles::MembersFirstProfile;
+    use crate::graph::{RustProfile, compute_member_order};
     use rust_llm_tidy_model::parse::parse_source;
 
     /// Full reorder pipeline: parse, compute order, build permutation, emit.

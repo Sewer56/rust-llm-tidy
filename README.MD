@@ -152,10 +152,8 @@ Additionally:
 - `extensions` - replaces the default admitted extensions when non-empty;
   empty or absent keeps the defaults.
 - `extra_extensions` - added on top of the effective list (`extensions`
-  when non-empty, else the defaults).
-
-Both lists: dotless entries, case-insensitive match.
-
+  when non-empty, else the defaults). Both lists take dotless entries,
+  matched case-insensitively.
 - `post_process` - external commands run on processed files after tidying.
   Each entry has `command`, `args` (default empty), and `extensions`
   (default empty = all). File path appended as last arg.

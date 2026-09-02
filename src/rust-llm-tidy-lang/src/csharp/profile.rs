@@ -25,7 +25,7 @@
 
 use rust_llm_tidy_model::parse::{ItemKind, SourceItem, TypeMember};
 use rust_llm_tidy_reorder::graph::{
-    PhaseContext, PhaseStrategy, ReferenceWalk, ReorderProfile, TieBreak,
+    DeclNamePosition, PhaseContext, PhaseStrategy, ReferenceWalk, ReorderProfile, TieBreak,
 };
 use std::collections::HashMap;
 
@@ -46,23 +46,23 @@ static CSHARP_REFERENCE_WALK: ReferenceWalk = ReferenceWalk {
 const STABLE_PHASE: u32 = 2;
 /// The pinned phase of `using` directives.
 const USING_PHASE: u32 = 1;
-/// `(parent_kind, field)` pairs marking C# declaration-name positions that
-/// reference walks must not record as references.
-static DECL_NAME_POSITIONS: &[(&str, &str)] = &[
-    ("class_declaration", "name"),
-    ("struct_declaration", "name"),
-    ("interface_declaration", "name"),
-    ("record_declaration", "name"),
-    ("enum_declaration", "name"),
-    ("enum_member_declaration", "name"),
-    ("delegate_declaration", "name"),
-    ("namespace_declaration", "name"),
-    ("file_scoped_namespace_declaration", "name"),
-    ("method_declaration", "name"),
-    ("property_declaration", "name"),
-    ("event_declaration", "name"),
-    ("variable_declarator", "name"),
-    ("parameter", "name"),
+/// C# declaration-name positions that reference walks must not record as
+/// references.
+static DECL_NAME_POSITIONS: &[DeclNamePosition] = &[
+    DeclNamePosition::new("class_declaration", "name"),
+    DeclNamePosition::new("struct_declaration", "name"),
+    DeclNamePosition::new("interface_declaration", "name"),
+    DeclNamePosition::new("record_declaration", "name"),
+    DeclNamePosition::new("enum_declaration", "name"),
+    DeclNamePosition::new("enum_member_declaration", "name"),
+    DeclNamePosition::new("delegate_declaration", "name"),
+    DeclNamePosition::new("namespace_declaration", "name"),
+    DeclNamePosition::new("file_scoped_namespace_declaration", "name"),
+    DeclNamePosition::new("method_declaration", "name"),
+    DeclNamePosition::new("property_declaration", "name"),
+    DeclNamePosition::new("event_declaration", "name"),
+    DeclNamePosition::new("variable_declarator", "name"),
+    DeclNamePosition::new("parameter", "name"),
 ];
 
 /// The C# reorder profile: `using` directives pinned first, everything else
@@ -240,7 +240,7 @@ fn is_decl_name_position(node: tree_sitter::Node<'_>) -> bool {
     };
     DECL_NAME_POSITIONS
         .iter()
-        .any(|&(kind, name_field)| parent.kind() == kind && field == name_field)
+        .any(|pos| parent.kind() == pos.parent_kind && field == pos.field)
 }
 
 /// The field name of `node` within its parent, if any.
