@@ -5,6 +5,7 @@
 //! CLI pipeline does, with fixture sources under `tests/fixtures/csharp/`.
 
 use rust_llm_tidy_lang::LanguageBackend;
+use rust_llm_tidy_lint::Severity;
 use rust_llm_tidy_model::parse::ItemKind;
 use rust_llm_tidy_reorder::reorder::emit;
 
@@ -265,11 +266,11 @@ fn doc001_flags_undocumented_non_private_members() {
     );
 }
 
-/// DOC002 warns when a documented non-private member throws without an
+/// DOC002 errors when a documented non-private member throws without an
 /// `<exception>` tag; an `<exception>` presence silences it. Constructors
 /// with bodies scan like methods.
 #[test]
-fn doc002_warns_on_untagged_throwers() {
+fn doc002_errors_on_untagged_throwers() {
     let source = concat!(
         "/// <summary>Container.</summary>\n",
         "public class C\n",
@@ -298,6 +299,14 @@ fn doc002_warns_on_untagged_throwers() {
         found,
         vec!["4:Missing", "7:C"],
         "the untagged method and constructor only: {found:?}"
+    );
+    assert!(
+        backend()
+            .lint(&parsed)
+            .iter()
+            .filter(|d| d.code == "DOC002")
+            .all(|d| d.severity == Severity::Error),
+        "every DOC002 finding is error-severity"
     );
 }
 

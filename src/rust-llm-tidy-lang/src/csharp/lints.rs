@@ -11,8 +11,8 @@
 //! - DOC001: non-private documentable declarations (`public`, `internal`,
 //!   `protected`-family modifiers) need a `///` doc comment.
 //! - DOC002: a non-private method or constructor whose body holds a
-//!   `throw` needs an `<exception>` tag (warning severity; the body scan
-//!   can miss rethrows through helpers).
+//!   `throw` needs an `<exception>` tag (error severity; the heuristic
+//!   body scan can miss rethrows through helpers).
 //! - DOC003: throwing members whose `<exception>` tags all lack a
 //!   concrete `cref` type.
 //! - DOC004: non-private methods, constructors, and indexers with
@@ -136,7 +136,7 @@ fn check_declaration(node: tree_sitter::Node<'_>, source: &str, diagnostics: &mu
         let (tag_count, crefs) = exception_tags(&docs);
         if tag_count == 0 {
             push(
-                Severity::Warning,
+                Severity::Error,
                 CODE_MISSING_ERRORS,
                 "member that throws is missing an `<exception>` doc tag".to_string(),
             );

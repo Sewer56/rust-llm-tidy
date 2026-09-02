@@ -12,7 +12,7 @@ tags.
 | Code      | Severity | Fires when                                                                                       |
 | --------- | -------- | ------------------------------------------------------------------------------------------------ |
 | `DOC001`  | Error    | A non-private documentable member has no `///` comment.                                          |
-| `DOC002`  | Warning  | A non-private method or constructor whose body throws has no `<exception>` tag.                  |
+| `DOC002`  | Error    | A non-private method or constructor whose body throws has no `<exception>` tag.                  |
 | `DOC003`  | Warning  | A non-private throwing member's `<exception>` tags all lack a concrete `cref` type.              |
 | `DOC004`  | Warning  | A non-private member with parameters has no `<param>` tags.                                      |
 | `DOC005`  | Warning  | The `<param>` tags omit a declared parameter.                                                    |
@@ -26,9 +26,11 @@ tags.
   non-private. Explicit `private` and members without a modifier pass.
 - Documentable kinds: classes, structs, interfaces, records, enums,
   delegates, methods, properties, events, fields, and constructors.
-- DOC002 scans the member body for `throw` statements at warning
-  severity: the body scan can miss rethrows through helpers, so an error
-  would overfire. Documenting any `<exception>` tag satisfies it.
+- DOC002 scans the member body for `throw` statements at error
+  severity. The scan is a heuristic in both directions: it misses
+  rethrows performed by called helpers, and it fires on throws caught
+  in a local `try`/`catch`. Documenting any `<exception>` tag
+  satisfies it.
 - DOC004 and DOC005 check the real parameter list of methods,
   constructors, and indexers against the `<param name="...">` tags.
 - TEST001 matches the marker attributes with the customary `Attribute`
@@ -63,7 +65,7 @@ Findings:
 
 ```text
 Loader.cs:1: error[DOC001]: non-private item is missing a doc comment (class `Loader`)
-Loader.cs:3: warning[DOC002]: member that throws is missing an `<exception>` doc tag (fn `Load`)
+Loader.cs:3: error[DOC002]: member that throws is missing an `<exception>` doc tag (fn `Load`)
 Loader.cs:3: warning[DOC004]: member with parameters is missing `<param>` doc tags (fn `Load`)
 ```
 

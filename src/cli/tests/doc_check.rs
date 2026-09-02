@@ -198,14 +198,18 @@ fn csharp_doc001_flags_undocumented_non_private_members() {
     );
 }
 
-/// DOC002 warns on the documented non-private thrower without an
+/// DOC002 errors on the documented non-private thrower without an
 /// `<exception>` tag; the tagged and private throwers pass.
 #[test]
-fn csharp_doc002_warns_on_untagged_throwers() {
+fn csharp_doc002_errors_on_untagged_throwers() {
     let (stderr, exit) = run_csharp_fixture("doc002_missing_exception.cs");
 
-    assert_eq!(exit, 0, "DOC002 warnings must not fail the run");
+    assert_ne!(exit, 0, "DOC002 errors must fail the run:\n{stderr}");
     assert_has_diagnostic(&stderr, "DOC002", Some("Untagged"));
+    assert!(
+        stderr.contains("error[DOC002]"),
+        "DOC002 carries error severity:\n{stderr}"
+    );
     assert!(
         !stderr.contains("`Tagged`") && !stderr.contains("`Hidden`"),
         "tagged and private throwers pass:\n{stderr}"
