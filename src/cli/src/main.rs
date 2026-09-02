@@ -89,9 +89,9 @@ pub(crate) struct Cli {
     /// Skip these rules/lint-codes (repeatable). Additive to config `exclude`.
     #[arg(long, value_name = "RULE")]
     exclude: Vec<String>,
-    /// Admit files with this extension in addition to the admitted set from
-    /// the config (repeatable). Written without the leading dot and matched
-    /// case-insensitively.
+    /// Allow files with this extension in addition to the config or
+    /// default allowed set (repeatable). Written without the leading dot
+    /// and matched case-insensitively.
     #[arg(long, value_name = "EXT")]
     extension: Vec<String>,
     /// Path to a `.rust-llm-tidy.yml` config file. Overrides auto-discovery.
