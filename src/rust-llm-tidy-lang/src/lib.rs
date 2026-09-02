@@ -28,4 +28,5 @@ pub use backend::{LanguageBackend, backend_for};
 pub use rust_backend::RustBackend;
 
 mod backend;
+pub mod regions;
 mod rust_backend;

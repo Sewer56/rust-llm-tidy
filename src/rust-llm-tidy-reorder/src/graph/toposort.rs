@@ -3,6 +3,13 @@
 //! [`toposort`] returns a reading order where callers precede callees;
 //! [`TieBreak`] controls how zero-in-degree and cycle nodes are ordered.
 //! `main` is always seeded first regardless of in-degree.
+//!
+//! The per-phase sorts in [`compute_order`] call this
+//! with the tie-break their language profile selected via
+//! [`PhaseStrategy::Dependency`].
+//!
+//! [`compute_order`]: super::compute_order
+//! [`PhaseStrategy::Dependency`]: super::PhaseStrategy::Dependency
 
 /// Tie-breaking strategy for topological sort.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

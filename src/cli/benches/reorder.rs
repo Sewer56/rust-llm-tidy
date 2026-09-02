@@ -34,7 +34,8 @@ fn reorder_pass(c: &mut Criterion) {
         group.bench_function(*name, |bencher| {
             bencher.iter(|| {
                 let parsed = parse::parse_source(source).expect("fixture must parse");
-                let order = graph::compute_order(&parsed).expect("order must compute");
+                let order =
+                    graph::compute_order(&parsed, &graph::RustProfile).expect("order must compute");
                 let permutation =
                     Permutation::new(parsed.items.len(), order).expect("permutation must build");
                 let output = emit(&parsed, &permutation).expect("emit must succeed");

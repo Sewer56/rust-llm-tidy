@@ -43,7 +43,7 @@ Parse a source string, compute reorder, emit:
 
 ```rust
 use rust_llm_tidy_model::parse::parse_source;
-use rust_llm_tidy_reorder::graph::compute_order;
+use rust_llm_tidy_reorder::graph::{RustProfile, compute_order};
 use rust_llm_tidy_reorder::reorder::Permutation;
 
 let source = r#"
@@ -52,7 +52,7 @@ fn a() {}
 "#;
 
 let parsed = parse_source(source).unwrap();
-let order = compute_order(&parsed).unwrap();
+let order = compute_order(&parsed, &RustProfile).unwrap();
 let perm = Permutation::new(parsed.items.len(), order).unwrap();
 let output = rust_llm_tidy_reorder::reorder::emit(&parsed, &perm).unwrap();
 
@@ -66,7 +66,7 @@ Full pipeline with safety verification and atomic write:
 
 ```rust,no_run
 use rust_llm_tidy_model::parse::parse_source;
-use rust_llm_tidy_reorder::graph::compute_order;
+use rust_llm_tidy_reorder::graph::{RustProfile, compute_order};
 use rust_llm_tidy_reorder::reorder::Permutation;
 use rust_llm_tidy_model::safety::verify_line_preservation;
 use rust_llm_tidy_model::io::atomic_write;
@@ -75,7 +75,7 @@ use std::path::Path;
 let source = std::fs::read_to_string("src/main.rs")?;
 
 let parsed = parse_source(&source)?;
-let order = compute_order(&parsed)?;
+let order = compute_order(&parsed, &RustProfile)?;
 let perm = Permutation::new(parsed.items.len(), order)?;
 let output = rust_llm_tidy_reorder::reorder::emit(&parsed, &perm)?;
 
@@ -91,6 +91,18 @@ atomic_write(Path::new("src/main.rs"), &output)?;
 
 The algorithm orders top-level items across phases. Within most phases, an item
 comes before any item it references; alphabetical order breaks ties.
+
+The phases, their ordering strategies, and the reference walk's node-kind
+matching come from a per-language [`ReorderProfile`](
+crate::graph::ReorderProfile) supplied to
+[`compute_order`].
+[`RustProfile`] reproduces the
+Rust order documented here for every Rust source.
+
+Items only reorder within their preprocessor region (see `SourceItem::region`),
+and items carrying in-type members can additionally reorder those members
+through [`compute_member_order`](
+crate::graph::compute_member_order).
 
 Below is an annotated example of the output order. The comments show which
 phase each item belongs to and why.
@@ -199,3 +211,5 @@ Licensed under Apache 2.0
 [crates-badge]: https://img.shields.io/crates/v/rust-llm-tidy-reorder.svg
 [docs-badge]: https://docs.rs/rust-llm-tidy-reorder/badge.svg
 [ci-badge]: https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg
+[`compute_order`]: crate::graph::compute_order
+[`RustProfile`]: crate::graph::RustProfile

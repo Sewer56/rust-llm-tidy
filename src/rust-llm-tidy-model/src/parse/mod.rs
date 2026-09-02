@@ -10,10 +10,14 @@
 //! which yields byte offsets directly - no line/column conversion is needed.
 
 use crate::parse::classify::{PendingTrivia, classify_item, is_attachable, is_transparent_comment};
-pub use item::{ItemKind, ParseResult, SourceItem, VisibilityTier};
+pub use item::{ParseResult, SourceItem, VisibilityTier};
+pub use kind::ItemKind;
+pub use member::TypeMember;
 
 mod classify;
 mod item;
+mod kind;
+mod member;
 
 /// A raw top-level item entry: the item body node (or the wrapping
 /// `expression_statement` for a top-level macro invocation) plus its pending

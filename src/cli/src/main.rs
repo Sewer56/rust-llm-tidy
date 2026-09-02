@@ -277,8 +277,10 @@ pub(crate) fn reorder_file(
     let parsed = parse::parse_source(&source)
         .with_context(|| format!("failed to parse {}", path.display()))?;
 
-    // 3. Build reference graph and compute topological order
-    let order = graph::compute_order(&parsed).context("failed to compute item order")?;
+    // 3. Build reference graph and compute topological order (the Rust
+    //    profile reproduces the engine's Rust phase order)
+    let order = graph::compute_order(&parsed, &graph::RustProfile)
+        .context("failed to compute item order")?;
 
     // 4. Build permutation and emit reordered source
     let permutation =

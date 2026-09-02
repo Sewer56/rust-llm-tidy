@@ -5,7 +5,8 @@
 //! and (for functions) whether it returns `Result`. These classifications feed
 //! the parse orchestration that builds source items.
 
-use crate::parse::item::{ItemKind, VisibilityTier};
+use crate::parse::item::VisibilityTier;
+use crate::parse::kind::ItemKind;
 use tree_sitter::Node;
 
 /// Result of classifying a single top-level item.

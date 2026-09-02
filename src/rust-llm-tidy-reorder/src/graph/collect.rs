@@ -4,6 +4,9 @@
 //! `(item_index, referenced_item_index)` edges for every bare path reference
 //! whose first segment matches a known top-level item name.
 //!
+//! The node-kind matching comes from a [`ReferenceWalk`] supplied by the
+//! language's reorder profile, so the same walk serves any grammar's tree.
+//!
 //! Edges to local macros are reversed so a macro definition precedes its use
 //! sites.
 //!
@@ -17,9 +20,9 @@
 //!
 //! # Walk model
 //!
-//! Only NAMED top-level items push an index onto the item stack (functions,
-//! structs, enums, unions, type aliases, consts, statics, traits, and
-//! `macro_rules!` definitions).
+//! Only NAMED top-level items the walk data declares push an index onto the
+//! item stack (for the Rust grammar: functions, structs, enums, unions,
+//! type aliases, consts, statics, traits, and `macro_rules!` definitions).
 //!
 //! Impls, modules, uses, extern crates, and macro invocations are NOT
 //! pushed, so references inside them are ignored - mirroring the prior
@@ -32,6 +35,7 @@
 //! Macro calls (`ident!`) to a local macro record a reversed edge so the
 //! definition precedes its use.
 
+use super::profile::ReferenceWalk;
 use ahash::{AHashMap, AHashSet};
 use tree_sitter::{Node, Tree};
 
@@ -43,6 +47,7 @@ use tree_sitter::{Node, Tree};
 ///
 /// The `name_to_idx` map and `macro_names` set borrow `&str` slices from the
 /// parsed items (lifetime `'names`); they are only queried, never mutated.
+/// `walk` supplies the grammar's node-kind data.
 pub struct ReferenceCollector<'names> {
     /// Stack of current top-level item *indices* we are inside.
     item_stack: Vec<usize>,
@@ -51,6 +56,8 @@ pub struct ReferenceCollector<'names> {
     /// Set of top-level macro names; edges to macros are reversed so the
     /// macro definition precedes its use sites.
     macro_names: AHashSet<&'names str>,
+    /// The grammar's node-kind data, from the language's reorder profile.
+    walk: &'static ReferenceWalk,
     /// Edges: `(referencer_index, referenced_index)`.
     edges: Vec<(usize, usize)>,
     /// Reused buffer for ident -> `&str` conversion during probing. Writing an
@@ -60,17 +67,20 @@ pub struct ReferenceCollector<'names> {
 }
 
 impl<'names> ReferenceCollector<'names> {
-    /// Create a new collector seeded with a name-to-index map and the macro
-    /// name set. Both borrow `&str` slices that must outlive the collector
-    /// (typically the name fields of the parsed items).
+    /// Create a new collector seeded with a name-to-index map, the macro
+    /// name set, and the grammar's walk data. The map and set borrow `&str`
+    /// slices that must outlive the collector (typically the name fields of
+    /// the parsed items).
     pub fn new(
         name_to_idx: AHashMap<&'names str, usize>,
         macro_names: AHashSet<&'names str>,
+        walk: &'static ReferenceWalk,
     ) -> Self {
         Self {
             item_stack: Vec::new(),
             name_to_idx,
             macro_names,
+            walk,
             edges: Vec::new(),
             scratch: String::new(),
         }
@@ -93,19 +103,20 @@ impl<'names> ReferenceCollector<'names> {
     /// Recursive tree walk. Pushes named item indices, records reference edges
     /// for path/type identifiers, and recurses into compound nodes.
     fn walk(&mut self, node: Node, source: &[u8]) {
-        match node.kind() {
-            // Pushed item kinds: determine index by name, push, recurse, pop.
-            "function_item" | "struct_item" | "enum_item" | "union_item" | "type_item"
-            | "const_item" | "static_item" | "trait_item" | "macro_definition" => {
-                let pushed = self
-                    .name_index_of_decl(node, source)
-                    .inspect(|&idx| self.item_stack.push(idx));
-                self.recurse(node, source);
-                if pushed.is_some() {
-                    self.item_stack.pop();
-                }
+        // Pushed item kinds come from the walk data: determine index by
+        // name, push, recurse, pop.
+        if self.walk.declaration_kinds.contains(&node.kind()) {
+            let pushed = self
+                .name_index_of_decl(node, source)
+                .inspect(|&idx| self.item_stack.push(idx));
+            self.recurse(node, source);
+            if pushed.is_some() {
+                self.item_stack.pop();
             }
+            return;
+        }
 
+        match node.kind() {
             // `macro_invocation` is a reference site (its `macro` field is a
             // macro-call path). Record it once and do NOT recurse: the macro
             // path identifier is recorded here, and re-walking it would
@@ -138,7 +149,7 @@ impl<'names> ReferenceCollector<'names> {
 
             // A bare identifier / type_identifier in a reference position.
             "identifier" | "type_identifier" => {
-                if !is_decl_position(node) {
+                if !is_decl_position(self.walk, node) {
                     self.record_ref(node, source);
                 }
             }
@@ -243,33 +254,19 @@ fn first_segment_node(node: Node) -> Option<Node> {
 
 /// True when `node` (an `identifier`/`type_identifier`) is in a declaration
 /// position (an item name, a binding pattern, an alias) rather than a
-/// reference position. Declaration names are not recorded as references.
-fn is_decl_position(node: Node) -> bool {
+/// reference position. Declaration names are not recorded as references;
+/// the `(parent_kind, field)` pairs come from the walk data.
+fn is_decl_position(walk: &'static ReferenceWalk, node: Node) -> bool {
     let Some(parent) = node.parent() else {
         return false;
     };
-    let field = parent_field_name(node);
-    matches!(
-        (parent.kind(), field),
-        // Item declaration names.
-        ("function_item", Some("name"))
-            | ("struct_item", Some("name"))
-            | ("enum_item", Some("name"))
-            | ("union_item", Some("name"))
-            | ("trait_item", Some("name"))
-            | ("type_item", Some("name"))
-            | ("const_item", Some("name"))
-            | ("static_item", Some("name"))
-            | ("mod_item", Some("name"))
-            | ("macro_definition", Some("name"))
-            | ("enum_variant", Some("name"))
-            // Binding patterns and aliases.
-            | ("parameter", Some("pattern"))
-            | ("let_declaration", Some("pattern"))
-            | ("use_as_clause", Some("alias"))
-            | ("extern_crate_declaration", Some("alias"))
-            | ("for_expression", Some("pattern"))
-    )
+    let Some(field) = parent_field_name(node) else {
+        return false;
+    };
+    let parent_kind = parent.kind();
+    walk.decl_name_positions
+        .iter()
+        .any(|&(kind, name_field)| parent_kind == kind && field == name_field)
 }
 
 /// Field name of `node` within its parent, if any.
@@ -289,6 +286,7 @@ fn parent_field_name(node: Node) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::{ReorderProfile, RustProfile};
     use rust_llm_tidy_model::parse::parse_source;
 
     /// Build a name-to-index map assigning each name a position index in the
@@ -310,7 +308,8 @@ mod tests {
         let macro_names: AHashSet<&str> = ["a"].into_iter().collect();
 
         let tree = parsed.syntax_tree();
-        let mut collector = ReferenceCollector::new(name_to_idx, macro_names);
+        let mut collector =
+            ReferenceCollector::new(name_to_idx, macro_names, RustProfile.reference_walk());
         collector.collect(tree, source.as_bytes());
         let edges = collector.into_edges();
 
@@ -348,7 +347,8 @@ mod tests {
 
         let parsed = parse_source(source).unwrap();
         let tree = parsed.syntax_tree();
-        let mut collector = ReferenceCollector::new(name_to_idx, AHashSet::new());
+        let mut collector =
+            ReferenceCollector::new(name_to_idx, AHashSet::new(), RustProfile.reference_walk());
         collector.collect(tree, source.as_bytes());
         let edges = collector.into_edges();
 
@@ -374,12 +374,49 @@ mod tests {
 
         let parsed = parse_source(source).unwrap();
         let tree = parsed.syntax_tree();
-        let mut collector = ReferenceCollector::new(name_to_idx, AHashSet::new());
+        let mut collector =
+            ReferenceCollector::new(name_to_idx, AHashSet::new(), RustProfile.reference_walk());
         collector.collect(tree, source.as_bytes());
         let edges = collector.into_edges();
 
         // B(1) references A(0).
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0], (1, 0));
+    }
+
+    /// Walk data drives declaration matching: a walk declaring `mod_item`
+    /// as a declaration kind records references inside a mod body that the
+    /// Rust walk (which skips mods) ignores.
+    #[test]
+    fn walk_data_drives_declaration_matching() {
+        let source = "mod m { fn f() { g(); } }\nfn g() {}\n";
+        // Indices: m=0, g=1 (listed order).
+        let name_to_idx = idx_map(&["m", "g"]);
+
+        static MOD_WALK: ReferenceWalk = ReferenceWalk {
+            declaration_kinds: &["mod_item"],
+            decl_name_positions: &[("mod_item", "name")],
+        };
+
+        let parsed = parse_source(source).unwrap();
+        let tree = parsed.syntax_tree();
+
+        let mut rust_walk = ReferenceCollector::new(
+            name_to_idx.clone(),
+            AHashSet::new(),
+            RustProfile.reference_walk(),
+        );
+        rust_walk.collect(tree, source.as_bytes());
+        assert!(
+            rust_walk.into_edges().is_empty(),
+            "the Rust walk never pushes a mod body"
+        );
+
+        let mut mod_walk = ReferenceCollector::new(name_to_idx, AHashSet::new(), &MOD_WALK);
+        mod_walk.collect(tree, source.as_bytes());
+        let edges = mod_walk.into_edges();
+
+        // Inside mod m(0), fn f calls g(1): edge (0, 1).
+        assert_eq!(edges, vec![(0, 1)]);
     }
 }
