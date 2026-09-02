@@ -216,10 +216,9 @@ unexpected lint failures after a tool update.
 - [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/
   `# Arguments`, paragraph- and line-length, test-naming, etc.; see
   [docs/lints.md] for all codes
-- [rust-llm-tidy-fix]: Markdown/doc-comment tidying - realigns GFM tables
-  in the markdown family and comment-prefixed files, fixes nested fence
-  delimiters, and hoists inline links to reference style in `///` and
-  `//!` doc comments
+- [rust-llm-tidy-fix]: Markdown/doc-comment tidying - table realignment,
+  fence fixes, and link hoisting in markdown-family and comment-prefixed
+  files
 - [cli]: Unified command-line interface (fix, reorder, vis, lints)
 
 ## Git Hook (optional)
