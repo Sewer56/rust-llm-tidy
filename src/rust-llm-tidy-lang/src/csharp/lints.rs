@@ -324,6 +324,9 @@ fn attribute_value(tag: &str, attribute: &str) -> Option<String> {
 
 /// The opening-tag text of every `<name ...>` tag in `docs`, scanned one
 /// `///` line at a time; a tag split across lines does not match.
+///
+/// Tag names match whole: `<paramref ...>` is not a `<param>` tag, and
+/// likewise for any longer tag sharing the sought prefix.
 fn tag_slices<'a>(docs: &'a [String], tag: &str) -> impl Iterator<Item = &'a str> {
     docs.iter().flat_map(move |line| {
         let needle = format!("<{tag}");
@@ -331,10 +334,49 @@ fn tag_slices<'a>(docs: &'a [String], tag: &str) -> impl Iterator<Item = &'a str
         let mut out = Vec::new();
         while let Some(pos) = rest.find(&needle) {
             let after = &rest[pos..];
-            let end = after.find('>').map_or(rest.len(), |gt| pos + gt);
-            out.push(&rest[pos..end]);
+            // The byte after the tag name must end it: whitespace, `>`,
+            // or the self-closing `/` of `<param/>`.
+            let boundary = after[needle.len()..]
+                .chars()
+                .next()
+                .is_none_or(|c| c.is_whitespace() || c == '>' || c == '/');
+            if boundary {
+                let end = after.find('>').map_or(rest.len(), |gt| pos + gt);
+                out.push(&rest[pos..end]);
+            }
             rest = &rest[pos + needle.len()..];
         }
         out.into_iter()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tag_slices;
+
+    // ── whole-tag-name matching ──
+
+    /// `<paramref>` shares the `<param` prefix but is its own tag, so a
+    /// `param` scan must not count it.
+    #[test]
+    fn tag_slices_skips_tags_sharing_only_a_prefix() {
+        let docs = vec![" <paramref name=\"key\"/>".to_string()];
+
+        assert_eq!(tag_slices(&docs, "param").count(), 0);
+    }
+
+    /// A real `<param>` tag matches exactly once, whether it carries
+    /// attributes, closes, or self-closes.
+    #[test]
+    fn tag_slices_matches_whole_tag_names() {
+        let docs = vec![
+            " <param name=\"key\">The key.</param>".to_string(),
+            " <param>".to_string(),
+            " <param/>".to_string(),
+        ];
+
+        let slices: Vec<&str> = tag_slices(&docs, "param").collect();
+        assert_eq!(slices.len(), 3, "one slice per whole-name tag: {slices:?}");
+        assert!(slices[0].starts_with("<param name=\"key\""));
+    }
 }

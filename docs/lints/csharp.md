@@ -67,6 +67,9 @@ Loader.cs:3: warning[DOC002]: member that throws is missing an `<exception>` doc
 Loader.cs:3: warning[DOC004]: member with parameters is missing `<param>` doc tags (fn `Load`)
 ```
 
+The `Load` findings anchor at line 3, its `///` doc line: an item starts at
+its doc comment, so its start line is the doc run's first line.
+
 After:
 
 ```csharp

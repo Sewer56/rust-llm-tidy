@@ -76,14 +76,14 @@ alias for `--output-mode json`.
 
 #### Operations
 
-| Op        | Does                                    | Languages                                | Mutates | Default on?           |
-| --------- | --------------------------------------- | ---------------------------------------- | ------- | --------------------- |
-| `tables`  | align GFM tables                        | all admitted extensions                  | yes     | yes                   |
-| `fences`  | alternate nested fence delimiters       | markdown family, `rs`; others by include | yes     | markdown family, `rs` |
-| `links`   | hoist inline links to reference style   | markdown family, `rs`                    | yes     | markdown family, `rs` |
-| `reorder` | review-friendly item order              | `rs`, `cs`                               | yes     | `rs`, `cs`            |
-| `vis`     | narrow bare `pub` in restricted modules | `rs`                                     | yes     | `rs`                  |
-| `lints`   | run DOC001-DOC008 + TEST001 checks      | `rs`, `cs`, markdown family              | no      | yes                   |
+| Op        | Does                                    | Languages                                                                          | Mutates | Default on?           |
+| --------- | --------------------------------------- | ---------------------------------------------------------------------------------- | ------- | --------------------- |
+| `tables`  | align GFM tables                        | all admitted extensions except data formats (`ini`, `json`, `toml`, `yaml`, `yml`) | yes     | yes                   |
+| `fences`  | alternate nested fence delimiters       | markdown family, `rs`; others by include, except data formats                      | yes     | markdown family, `rs` |
+| `links`   | hoist inline links to reference style   | markdown family, `rs`                                                              | yes     | markdown family, `rs` |
+| `reorder` | review-friendly item order              | `rs`, `cs`                                                                         | yes     | `rs`, `cs`            |
+| `vis`     | narrow bare `pub` in restricted modules | `rs`                                                                               | yes     | `rs`                  |
+| `lints`   | run DOC001-DOC008 + TEST001 checks      | `rs`, `cs`, markdown family                                                        | no      | yes                   |
 
 #### JSON output
 

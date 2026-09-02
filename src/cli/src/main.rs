@@ -262,9 +262,10 @@ pub(crate) fn fix_file(
 /// A type whose member order changed gets one record of its own: member
 /// moves carry no top-level `ReorderMove`.
 ///
-/// Parses through the file's registered backend; a backend that declines
-/// the source (parse errors, unsupported preprocessor shapes) degrades to
-/// a no-op: zero change records, no write.
+/// Parses through the file's registered backend; a parse failure is an
+/// error and fails the file. A backend that parses the source but declines
+/// to order it (unsupported preprocessor shapes) degrades to a no-op:
+/// zero change records, no write.
 ///
 /// Writes the reordered source only when not in dry-run and the output
 /// differs from the original.

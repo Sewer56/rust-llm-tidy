@@ -412,8 +412,11 @@ fn emit_macro_definitions(
     for &def_idx in &def_order {
         out.push(def_idx);
         let def_name = parsed.items[def_idx].name().unwrap_or("");
-        if let Some(invocs) = invocations_by_def.get(def_name) {
-            out.extend(invocs.iter().copied());
+        // `remove` (not `get`): duplicate definition names - legal in
+        // Rust, a later `macro_rules!` shadows the earlier - would attach
+        // the shared invocations once per definition and repeat indices.
+        if let Some(invocs) = invocations_by_def.remove(def_name) {
+            out.extend(invocs);
         }
     }
     out.extend(&orphans);
@@ -550,6 +553,27 @@ mod tests {
 
         // def(2) first, then invocations in source order: a(0), b(1).
         assert_eq!(order, vec![2, 0, 1]);
+    }
+
+    /// Duplicate `macro_rules!` names (a later definition shadows the
+    /// earlier one) attach the shared invocation to exactly one definition,
+    /// so the order never repeats an index and the permutation validates.
+    #[test]
+    fn duplicate_macro_names_emit_the_invocation_once() {
+        // Source order: 0 = macro m, 1 = macro m (shadowing), 2 = m!().
+        let source = r#"
+            macro_rules! m { () => {}; }
+            macro_rules! m { () => {}; }
+            m!();
+        "#;
+
+        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let order = compute_order(&parsed, &RustProfile).unwrap();
+
+        // The invocation (2) follows the first definition (0) exactly once.
+        assert_eq!(order, vec![0, 2, 1]);
+        crate::reorder::Permutation::new(parsed.items.len(), order)
+            .expect("no index may repeat for duplicate definition names");
     }
 
     /// A `macro_rules!` body invoking another local macro records a reversed

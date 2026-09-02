@@ -31,6 +31,9 @@ for the C# dialect.
 | [`DOC008`]  | Warning  | A doc line over 80 chars of full text (code blocks, tables, link defs exempt).    |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
 
+Severities apply per language. Only DOC002 differs between languages:
+error for Rust, warning for C# ([lints for C#]).
+
 ## Examples
 
 Each example shows the smallest common fix for its lint.
@@ -423,8 +426,9 @@ Fields:
 
 - `severity` - `"error"` or `"warning"` for lint findings, `"success"` for
   change records (applied or would-be changes)
-- `line` - 1-based item start line; `null` when the record has no specific
-  line (e.g. link/table fixes)
+- `line` - 1-based item start line, which is the doc-comment start when the
+  item has one; `null` when the record has no specific line (e.g. link/table
+  fixes)
 - `item_name` - item name, `null` when unnamed
 - `title` - friendly per-code title for lint findings, `null` for change
   records

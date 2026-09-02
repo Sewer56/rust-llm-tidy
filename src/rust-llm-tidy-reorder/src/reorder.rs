@@ -267,8 +267,16 @@ pub fn compute_moves(
 /// # Errors
 ///
 /// Returns an [`anyhow::Error`] if the permutation is malformed for the
-/// parsed items (e.g. an index out of range, which surfaces as a
-/// slice-out-of-bounds failure).
+/// parsed items:
+/// - an item's member permutation length differs from that item's
+///   member count.
+///
+/// # Panics
+///
+/// Panics if `perm` contains an item index out of range for
+/// `parsed.items`, or a member index out of range for that item's
+/// parsed members; both are indexed here without a further bounds
+/// check.
 ///
 /// # Line endings
 ///
@@ -298,6 +306,16 @@ pub fn emit(parsed: &ParseResult, perm: &Permutation) -> Result<String> {
             // Member slices are verbatim, so carried whitespace travels
             // with each member.
             let members = item.members();
+            // The permutation validated the member count it was built
+            // with; re-check it against the parsed members so a divergent
+            // count errors instead of indexing out of bounds.
+            ensure!(
+                member_order.len() == members.len(),
+                "member permutation length {} does not match item {} member count {}",
+                member_order.len(),
+                idx,
+                members.len()
+            );
             let head = &source[item.start..members[0].start];
             let tail = &source[members[members.len() - 1].end..item.end];
             output.push_str(head.trim_start());
@@ -596,5 +614,38 @@ mod tests {
         };
 
         assert_eq!(with_identity, plain);
+    }
+
+    /// A member permutation whose length diverges from the item's parsed
+    /// member count errors at emit time instead of panicking on the first
+    /// member slice.
+    #[test]
+    fn emit_errors_on_divergent_member_order_length() {
+        // One item with no members, built through the real parser; the
+        // permutation then carries a two-member order for it (non-identity
+        // so the splice path runs).
+        let source = "struct S\n{\n    int F;\n}\n";
+        let parsed = parse_source(source).unwrap();
+        let item = parsed.items[0].clone().with_members(Vec::new());
+        let tree = parsed.syntax_tree().clone();
+        let membered = ParseResult::new(
+            vec![item],
+            source.to_string(),
+            tree,
+            parsed.preamble_end,
+            parsed.trailer_start,
+        );
+
+        let mut perm = Permutation::new(1, vec![0]).unwrap();
+        perm.set_member_order(0, 2, vec![1, 0]).unwrap();
+
+        let error =
+            emit(&membered, &perm).expect_err("a divergent member count must error, not panic");
+        assert!(
+            error
+                .to_string()
+                .contains("member permutation length 2 does not match item 0 member count 0"),
+            "unexpected error: {error}"
+        );
     }
 }
