@@ -445,6 +445,8 @@ fn dependency_order(
 /// Rewritten to group positions the edges become `[(1, 0), (0, 2)]` and
 /// the returned permutation is `[1, 0, 2]`: reading order run, parse,
 /// emit.
+///
+/// [`toposort`]: fn@toposort
 fn toposort_positions(
     names: &[&str],
     group: &[usize],

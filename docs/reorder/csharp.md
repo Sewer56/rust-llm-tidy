@@ -2,8 +2,8 @@
 
 C# files reorder through the same `reorder` op as Rust; shared behavior
 (config, change output, callers before callees) is in [reorder]. Members
-follow the Rider/ReSharper default type member order; method ties keep
-file order, not Rust's alphabetical.
+follow the Rider/ReSharper default order; ties keep file order, not
+Rust's alphabetical.
 
 ## Top-level order
 
