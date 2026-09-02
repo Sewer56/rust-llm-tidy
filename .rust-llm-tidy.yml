@@ -93,10 +93,8 @@ exclude:
     rules:
       - links
       - tables
-  # integration.rs embeds a multi-line before-state markdown sample (a
-  # misaligned table and nested fences) in a Rust string literal; `fix_tables`
-  # and `fix_fences` would rewrite the literal and destroy the before-state
-  # the markdown-family parity test compares against.
+  # integration.rs embeds before-state markdown fixtures in string literals;
+  # table/fence fixers would rewrite them and break the parity test.
   - paths:
       - "src/cli/tests/integration.rs"
     rules:
