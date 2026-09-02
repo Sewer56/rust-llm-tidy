@@ -312,6 +312,43 @@ fn csharp_member_reorder_matches_after_fixture() {
     );
 }
 
+/// A pure-CRLF `.cs` source still reorders - the accept side of the guard
+/// that declines lone-`\r` sources: the field hoists above the method with
+/// every newline still part of a `\r\n` pair, and a second run emits zero
+/// records.
+#[test]
+fn csharp_reorder_on_pure_crlf_source_preserves_the_endings() {
+    let source = "class C\r\n{\r\n    void M() {}\r\n    int F;\r\n}\r\n";
+    let tmp = temp_file_ext("cs");
+    fs::write(&tmp, source).unwrap();
+
+    let output = run_command(&["--include", "reorder"], &tmp);
+    assert!(
+        output.status.success(),
+        "CRLF C# reorder should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let after = fs::read_to_string(&tmp).unwrap();
+    assert!(
+        after.find("int F;").unwrap() < after.find("void M()").unwrap(),
+        "fields must precede methods under the C# profile: {after:?}"
+    );
+    assert_eq!(
+        after.matches('\n').count(),
+        after.matches("\r\n").count(),
+        "every newline must stay CRLF after the reorder: {after:?}"
+    );
+
+    let dry = run_command(&["--include", "reorder", "--dry-run"], &tmp);
+    let _ = fs::remove_file(&tmp);
+    assert!(dry.status.success(), "second run should succeed");
+    assert!(
+        String::from_utf8_lossy(&dry.stderr).is_empty(),
+        "second run on the CRLF rewrite must emit zero records"
+    );
+}
+
 /// A second run on the reordered fixture emits zero records: the C#
 /// reorder is idempotent.
 #[test]
@@ -882,6 +919,44 @@ pub fn build(name: &str) -> Option<Config> {\n\
     assert!(
         build_pos < validate_pos,
         "build (caller) before validate (callee)"
+    );
+}
+
+// ── Corpus gate ────────────────────────────────────────────────────
+
+/// The repository corpus gate: a `--dry-run` over this repository's root
+/// (repo config active, the same invocation CI's tidy job makes) exits 0
+/// and emits zero change records - every tracked file is already tidy.
+#[test]
+fn repo_corpus_dry_run_emits_zero_change_records() {
+    let root = manifest_dir()
+        .join("..")
+        .join("..")
+        .canonicalize()
+        .expect("repo root must resolve");
+    // Guard against a vacuous pass: only this repository's root holds both
+    // the workspace manifest and the tidy config, so the walk below covers
+    // real files.
+    assert!(root.join("src").join("Cargo.toml").is_file());
+    assert!(root.join(".rust-llm-tidy.yml").is_file());
+
+    let output = Command::new(binary())
+        .current_dir(&root)
+        .args(["--dry-run", "."])
+        .output()
+        .expect("failed to spawn rust-llm-tidy over the repo root");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "corpus dry-run must exit 0: {stderr}"
+    );
+    assert!(stdout.is_empty(), "dry-run prints nothing to stdout");
+    assert!(
+        !stderr.contains("success["),
+        "the whole repository must emit zero change records: {stderr}"
     );
 }
 

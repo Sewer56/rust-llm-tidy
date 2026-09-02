@@ -696,4 +696,20 @@ trailer
         assert_eq!(&*once, expected, "escaped pipe must stay one cell");
         assert_eq!(&*fix_tables_for(&once, &["#"]), &*once, "idempotent");
     }
+
+    #[test]
+    fn org_mode_tables_are_left_untouched() {
+        // Org-mode delimiters (`|---+---|`) carry a `+`, which GFM
+        // delimiter validation rejects: the block is not a table and
+        // comes back verbatim, as the empty (unmapped) prefix family
+        // would see it.
+        let input = "\
+| a | b |
+|---+---|
+| 1 | 22 |
+| longrow | 2222 |
+";
+        let out = fix_tables_for(input, &[]);
+        assert_eq!(&*out, input, "org-mode alignment must stay untouched");
+    }
 }
