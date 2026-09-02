@@ -9,6 +9,9 @@ Within most phases an item precedes anything it references;
 alphabetical order breaks ties. `fn main()` comes first in its tier;
 inline `#[cfg(test)] mod tests { ... }` definitions come last.
 
+C# files reorder through the same op with their own ordering profile;
+see [reorder for C#].
+
 ## Phases
 
 ```rust,ignore
@@ -114,3 +117,4 @@ In JSON mode the same record appears on stdout with `severity: "success"`:
 
 See [Change reporting] for the shared format.
 [Change reporting]: ./lints.md#change-reporting
+[reorder for C#]: ./reorder/csharp.md

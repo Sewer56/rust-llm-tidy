@@ -9,6 +9,15 @@
 # future rust-llm-tidy release stay disabled until added here. Otherwise, pin
 # the rust-llm-tidy version used by CI and upgrade it deliberately when you
 # want to review new or changed rules.
+#
+# Extra file extensions admitted beyond the defaults. Additive only:
+# default extensions cannot be removed. Written without the leading dot,
+# matched case-insensitively; malformed entries fail the run. Extensions
+# without a known profile get table fixes only. Uncomment to admit more.
+#
+# extensions:
+#   - rst
+#   - vim
 
 include:
   - paths: ["**"]

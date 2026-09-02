@@ -99,6 +99,10 @@ crate::graph::ReorderProfile) supplied to
 [`RustProfile`] reproduces the
 Rust order documented here for every Rust source.
 
+The repository's C# backend ships a second profile (`CSharpProfile` in
+the `rust-llm-tidy-lang` crate); its user-facing rules are documented in
+the repository's `docs/reorder/csharp.md`.
+
 Items only reorder within their preprocessor region (see `SourceItem::region`),
 and items carrying in-type members can additionally reorder those members
 through [`compute_member_order`](

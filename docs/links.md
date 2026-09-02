@@ -3,14 +3,19 @@
 ## What it does
 
 Every eligible inline link `[text](url)` is replaced with the reference form
-`[text]` plus a `[text]: url` definition, by default even when the link appears
-only once. Runs in `.rs` doc comments and `.md` files.
+`[text]` plus a `[text]: url` definition, by default even when the link
+appears only once.
 
-- In `.rs` doc comments, each `[text]: url` definition is duplicated inside
-  every doc comment that uses the label, so each comment is self-sufficient
-  and `cargo doc` stays clean.
-- In `.md` files, all definitions collect in one trailing block at the end of
-  the document.
+Runs in `///` and `//!` doc comments and markdown-family files, and
+nowhere else: appended `[text]: url` definitions are invalid syntax in
+other languages, and `[text](url)` collides with index-then-call syntax
+such as `a[i](x)`.
+
+- In `///` and `//!` doc comments, each `[text]: url` definition is
+  duplicated inside every doc comment that uses the label, so each
+  comment is self-sufficient and `cargo doc` stays clean.
+- In markdown-family files, all definitions collect in one trailing block at
+  the end of the document.
 
 Eligible link text is non-blank and free of `[`/`]` bytes, and the open `[`
 must be unescaped (`\[x](u)` is literal text). Other links stay inline, e.g. a

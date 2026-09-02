@@ -4,7 +4,12 @@
 
 When a fenced code block is nested inside another fenced block, the inner
 fence uses the opposite delimiter (```` ``` ```` vs ```` ~~~ ````) so the
-outer block does not close early. Runs in `.md` files and `.rs` doc comments.
+outer block does not close early.
+
+Runs in markdown-family files and in `///` and `//!` doc comments.
+
+Other admitted code languages reach it only through an explicit
+`--include fences` or a config include; see the [language matrix].
 
 ## Before
 
@@ -77,3 +82,4 @@ In JSON mode the same record appears on stdout with `severity: "success"`:
 See [Change reporting] for the shared format.
 
 [Change reporting]: ./lints.md#change-reporting
+[language matrix]: ./langs.md
