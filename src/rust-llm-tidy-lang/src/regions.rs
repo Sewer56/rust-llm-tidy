@@ -20,13 +20,16 @@
 //! file) and a file ending inside an unterminated block comment,
 //! verbatim string, or raw string.
 //!
-//! Interpolated raw strings (`$"""`-form) also reject the scan: their
-//! interpolation holes can hold nested literals with quote runs the raw
-//! scan cannot safely attribute.
+//! Interpolated raw strings (`$"""`-form) and multi-dollar runs (`$$"`)
+//! also reject the scan: their interpolation holes can hold nested
+//! literals with quote runs the raw scan cannot safely attribute.
 //!
-//! Known limitation: interpolation holes in classic `$"..."` strings
-//! that contain string literals can desync the scan into a phantom
-//! multi-line state.
+//! Interpolation holes in classic `$"..."` and `$@"..."` strings are
+//! scanned as expression content: `{`/`}` nest by depth.
+//!
+//! A hole holding a string or character literal, or reaching the end of
+//! a line without closing, rejects the scan: the hole's expression is
+//! then outside the modeled lexicon, so the whole scan fails closed.
 
 /// Lexical state carried across lines of the scan.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -46,6 +49,20 @@ enum LexState {
         /// The opening quote-run length; the literal closes on the next
         /// run of at least this many quotes.
         len: usize,
+    },
+    /// Inside the literal text of an interpolated `$"..."` string.
+    InterpString,
+    /// Inside the literal text of an interpolated verbatim `$@"..."` or
+    /// `@$"..."` string.
+    InterpVerbatim,
+    /// Inside an interpolation hole `{ ... }` of an interpolated string:
+    /// the hole's expression is walked by brace depth. `verbatim` records
+    /// which literal text the hole returns to.
+    InterpHole {
+        /// The literal text the hole returns to on its closing `}`.
+        verbatim: bool,
+        /// Open brace depth inside the hole; `}` at depth 1 closes it.
+        depth: u32,
     },
 }
 
@@ -206,13 +223,90 @@ fn lex_line(mut state: LexState, line: &str) -> Option<LexState> {
                     i += 1;
                 }
             }
+            // Classic interpolated text: `{{`/`}}` are escaped braces,
+            // `{` opens an interpolation hole, `"` closes the literal,
+            // and backslash escapes the next byte.
+            LexState::InterpString => match bytes[i] {
+                b'\\' if bytes.get(i + 1).is_some() => i += 2,
+                b'{' if bytes.get(i + 1) == Some(&b'{') => i += 2,
+                b'}' if bytes.get(i + 1) == Some(&b'}') => i += 2,
+                b'{' => {
+                    state = LexState::InterpHole {
+                        verbatim: false,
+                        depth: 1,
+                    };
+                    i += 1;
+                }
+                b'"' => {
+                    state = LexState::Code;
+                    i += 1;
+                }
+                _ => i += 1,
+            },
+            // Interpolated verbatim text: like the verbatim string
+            // (`""` escapes a quote, may span lines) plus interpolation
+            // braces.
+            LexState::InterpVerbatim => match bytes[i] {
+                b'"' if bytes.get(i + 1) == Some(&b'"') => i += 2,
+                b'{' if bytes.get(i + 1) == Some(&b'{') => i += 2,
+                b'}' if bytes.get(i + 1) == Some(&b'}') => i += 2,
+                b'{' => {
+                    state = LexState::InterpHole {
+                        verbatim: true,
+                        depth: 1,
+                    };
+                    i += 1;
+                }
+                b'"' => {
+                    state = LexState::Code;
+                    i += 1;
+                }
+                _ => i += 1,
+            },
+            // Hole content walks by brace depth. Any quote or char
+            // literal inside a hole is outside the modeled lexicon
+            // (nested literals would desync the scan), so the whole scan
+            // rejects.
+            LexState::InterpHole { verbatim, depth } => match bytes[i] {
+                b'"' | b'\'' => return None,
+                b'{' => {
+                    state = LexState::InterpHole {
+                        verbatim,
+                        depth: depth + 1,
+                    };
+                    i += 1;
+                }
+                b'}' => {
+                    if depth == 1 {
+                        state = if verbatim {
+                            LexState::InterpVerbatim
+                        } else {
+                            LexState::InterpString
+                        };
+                    } else {
+                        state = LexState::InterpHole {
+                            verbatim,
+                            depth: depth - 1,
+                        };
+                    }
+                    i += 1;
+                }
+                _ => i += 1,
+            },
         }
     }
-    // An unterminated regular string or char literal is invalid source;
-    // leaving its state would swallow following directive lines, so the
-    // line's end closes it (splitting conservatively).
+    // An unterminated regular string, char literal, or classic
+    // interpolated string is invalid source; leaving its state would
+    // swallow following directive lines, so the line's end closes it
+    // (splitting conservatively).
+    //
+    // An interpolation hole reaching the line's end rejects the scan
+    // instead: a hole spanning lines cannot be distinguished from an
+    // unterminated one, and carrying hole state across lines could
+    // swallow real directives (fail-open).
     Some(match state {
-        LexState::String | LexState::Char => LexState::Code,
+        LexState::String | LexState::Char | LexState::InterpString => LexState::Code,
+        LexState::InterpHole { .. } => return None,
         state => state,
     })
 }
@@ -238,13 +332,24 @@ fn code_step(bytes: &[u8], i: usize) -> Option<(LexState, usize)> {
         b'/' if bytes.get(i + 1) == Some(&b'/') => (LexState::Code, bytes.len() - i),
         b'/' if bytes.get(i + 1) == Some(&b'*') => (LexState::BlockComment, 2),
         b'@' if bytes.get(i + 1) == Some(&b'"') => (LexState::VerbatimString, 2),
+        // Interpolated verbatim openers in both prefix orders.
         b'$' if bytes.get(i + 1) == Some(&b'@') && bytes.get(i + 2) == Some(&b'"') => {
-            (LexState::VerbatimString, 3)
+            (LexState::InterpVerbatim, 3)
         }
         b'@' if bytes.get(i + 1) == Some(&b'$') && bytes.get(i + 2) == Some(&b'"') => {
-            (LexState::VerbatimString, 3)
+            (LexState::InterpVerbatim, 3)
         }
-        b'$' if bytes.get(i + 1) == Some(&b'"') => (LexState::String, 2),
+        b'$' if bytes.get(i + 1) == Some(&b'"') => (LexState::InterpString, 2),
+        // A second `$` in front of an opener (`$$"`) marks multi-dollar
+        // interpolation, whose brace escapes the hole model does not
+        // track: reject.
+        b'$' if bytes.get(i + 1) == Some(&b'$')
+            && (bytes.get(i + 2) == Some(&b'"')
+                || bytes.get(i + 2) == Some(&b'@')
+                || bytes.get(i + 2) == Some(&b'$')) =>
+        {
+            return None;
+        }
         b'"' => (LexState::String, 1),
         b'\'' => (LexState::Char, 1),
         _ => (LexState::Code, 1),
@@ -432,6 +537,99 @@ mod tests {
             Regions::scan(source).is_none(),
             "interpolated raw string must reject the scan"
         );
+    }
+
+    /// A quote inside a classic interpolated string's hole is a nested
+    /// literal the scan does not model: the scan rejects so callers
+    /// degrade reordering to a no-op.
+    ///
+    /// The directive pair after the string is balanced and sits at
+    /// column 0, so the fail-open alternative (mis-paired quotes
+    /// swallowing the directives into a phantom string) would return
+    /// `Some` with one merged region, not the expected `None`.
+    #[test]
+    fn scan_rejects_string_literals_inside_interpolation_holes() {
+        let cases = [
+            concat!(
+                "var a = $\"{f(\"inner\")}\";\n",
+                "#if DEBUG\n",
+                "int b;\n",
+                "#endif\n",
+            ),
+            concat!(
+                "var a = $\"{dict[\"key\"]}\";\n",
+                "#if DEBUG\n",
+                "int b;\n",
+                "#endif\n",
+            ),
+            concat!(
+                "var a = $@\"{f(\"inner\")}\";\n",
+                "#if DEBUG\n",
+                "int b;\n",
+                "#endif\n",
+            ),
+        ];
+        for source in cases {
+            assert!(
+                Regions::scan(source).is_none(),
+                "quoted hole must reject the scan: {source:?}"
+            );
+        }
+    }
+
+    /// A hole reaching the line's end rejects the scan: a multi-line hole
+    /// cannot be told apart from an unterminated one, and carrying hole
+    /// state across lines could swallow real directives.
+    #[test]
+    fn scan_rejects_interpolation_holes_reaching_line_end() {
+        let source = concat!(
+            "var a = $\"{foo\n",
+            ".Bar()}\";\n",
+            "#if DEBUG\n",
+            "#endif\n"
+        );
+        assert!(
+            Regions::scan(source).is_none(),
+            "unterminated hole must reject the scan"
+        );
+    }
+
+    /// Multi-dollar openers (`$$"`) reject the scan: their doubled brace
+    /// escapes are outside the single-brace hole model.
+    #[test]
+    fn scan_rejects_multi_dollar_interpolated_strings() {
+        let source = "var a = $$\"{{x}}\";\n";
+        assert!(
+            Regions::scan(source).is_none(),
+            "multi-dollar interpolated string must reject the scan"
+        );
+    }
+
+    /// Quote-free holes nest by brace depth and close on the matching
+    /// `}`, so the literal's text stays inert and later real directives
+    /// still split regions.
+    #[test]
+    fn scan_tracks_brace_depth_inside_interpolation_holes() {
+        let source = concat!(
+            "var a = $\"prefix {new { A = 1 }} suffix\";\n",
+            "#if DEBUG\n",
+            "int b;\n",
+            "#endif\n",
+        );
+        assert_eq!(scan_ids(source), vec![0, 1, 1, 2]);
+    }
+
+    /// A classic interpolated string with an escaped quote in its text
+    /// keeps the scan in-literal, so an embedded `#if` stays inert.
+    #[test]
+    fn scan_handles_escaped_quotes_in_interpolated_text() {
+        let source = concat!(
+            "var a = $\"he said \\\"#if DEBUG\\\" {x}\";\n",
+            "#if DEBUG\n",
+            "int b;\n",
+            "#endif\n",
+        );
+        assert_eq!(scan_ids(source), vec![0, 1, 1, 2]);
     }
 
     /// Escaped quotes and escapes inside strings and char literals keep the

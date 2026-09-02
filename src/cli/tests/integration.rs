@@ -253,6 +253,130 @@ fn code_language_default_run_aligns_tables_only() {
     let _ = fs::remove_file(&file);
 }
 
+/// A dry-run C# reorder reports exactly two records - the hoisted
+/// trailing `using` and the member-reordered class - never reconstructed
+/// source, and emits no JSON on stdout.
+#[test]
+fn csharp_member_reorder_dry_run_reports_the_using_hoist_and_member_records() {
+    let before = csharp_reorder_fixture_dir().join("reorder_cs_before.cs");
+    let (stdout, stderr, exit) = run_dry_run(&before);
+
+    assert_eq!(exit, 0, "C# reorder dry-run should succeed");
+    assert!(stdout.is_empty(), "dry-run must not print source to stdout");
+    let records: Vec<&str> = stderr.lines().collect();
+    assert_eq!(
+        records.len(),
+        2,
+        "expected the using hoist and the member reorder: {stderr}"
+    );
+    assert!(
+        records.iter().all(|r| r.contains("success[REORDER]")),
+        "every record must be a change record: {stderr}"
+    );
+    assert!(
+        records.iter().any(|r| r.contains("class `OrderService`")),
+        "one record names the reordered type: {stderr}"
+    );
+    assert!(
+        records
+            .iter()
+            .any(|r| r.contains("using at line 34 from pos 4 to pos 2")),
+        "one record names the hoisted using: {stderr}"
+    );
+}
+
+/// An in-place reorder of `reorder_cs_before.cs` writes the `_after`
+/// fixture byte-for-byte: members land in the profile order, the caller
+/// precedes its callee, and the trailing `using` hoists to the pinned
+/// using block.
+#[test]
+fn csharp_member_reorder_matches_after_fixture() {
+    let before = csharp_reorder_fixture_dir().join("reorder_cs_before.cs");
+    let expected_after =
+        fs::read_to_string(csharp_reorder_fixture_dir().join("reorder_cs_after.cs")).unwrap();
+    let tmp = temp_file_ext("cs");
+    fs::write(&tmp, fs::read_to_string(&before).unwrap()).unwrap();
+
+    let output = run_command(&["--include", "reorder"], &tmp);
+    assert!(
+        output.status.success(),
+        "C# reorder should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(&tmp).unwrap();
+    let _ = fs::remove_file(&tmp);
+    assert_eq!(
+        actual, expected_after,
+        "in-place C# reorder must match reorder_cs_after.cs"
+    );
+}
+
+/// A second run on the reordered fixture emits zero records: the C#
+/// reorder is idempotent.
+#[test]
+fn csharp_reorder_second_run_is_zero_records() {
+    let after = csharp_reorder_fixture_dir().join("reorder_cs_after.cs");
+    let (stdout, stderr, exit) = run_dry_run(&after);
+
+    assert_eq!(exit, 0, "second C# reorder dry-run should succeed");
+    assert!(stdout.is_empty());
+    assert!(
+        stderr.is_empty(),
+        "the reordered fixture is already tidy: zero records, got: {stderr}"
+    );
+}
+
+/// Unsupported constructs degrade to a no-op with zero records and no
+/// write: an interpolation hole holding a string literal (the region scan
+/// rejects it) and a parse-error file.
+#[test]
+fn csharp_unsupported_constructs_degrade_to_noop() {
+    let cases = [
+        (
+            "region scan reject",
+            concat!(
+                "class C\n",
+                "{\n",
+                "    string S { get; set; }\n",
+                "    void M() { var a = $\"{f(\"inner\")}\"; }\n",
+                "    int F { get; set; }\n",
+                "}\n",
+            ),
+        ),
+        ("parse error", "class Broken { void M( { ))) }\n"),
+    ];
+    for (label, source) in cases {
+        let tmp = temp_file_ext("cs");
+        fs::write(&tmp, source).unwrap();
+
+        let (stdout, stderr, exit) = run_dry_run(&tmp);
+        assert_eq!(exit, 0, "{label}: no-op run should succeed");
+        assert!(stdout.is_empty(), "{label}: no source on stdout");
+        assert!(
+            stderr.is_empty(),
+            "{label}: unsupported constructs must emit zero records: {stderr}"
+        );
+        assert_eq!(
+            fs::read_to_string(&tmp).unwrap(),
+            source,
+            "{label}: dry-run never writes"
+        );
+
+        let in_place = run_command(&["--include", "reorder"], &tmp);
+        assert!(
+            in_place.status.success(),
+            "{label}: in-place no-op should succeed"
+        );
+        assert_eq!(
+            fs::read_to_string(&tmp).unwrap(),
+            source,
+            "{label}: a declined source is never rewritten"
+        );
+        let _ = fs::remove_file(&tmp);
+    }
+}
+
 // ── CLI behavior tests ────────────────────────────────────────────
 
 /// `--dry-run` reports the would-be reorder move on stderr without printing
@@ -869,11 +993,15 @@ fn uppercase_rs_explicit_file_runs_reorder() {
     );
 }
 
-// ── Helpers ───────────────────────────────────────────────────────
+// ── C# reorder: member profile + pinned usings ────────────────────
 
-/// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.
-fn manifest_dir() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+/// The directory holding the C# reorder fixture pair.
+fn csharp_reorder_fixture_dir() -> std::path::PathBuf {
+    manifest_dir()
+        .join("tests")
+        .join("fixtures")
+        .join("reorder")
+        .join("csharp")
 }
 
 /// Run rust-llm-tidy on `content` (written to a tempfile) with optional
@@ -982,6 +1110,13 @@ fn temp_file_ext(ext: &str) -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-ext-{}-{}.{}", pid, seq, ext))
+}
+
+// ── Helpers ───────────────────────────────────────────────────────
+
+/// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.
+fn manifest_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.

@@ -771,8 +771,11 @@ name = "rust-llm-tidy-lang"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "rust-llm-tidy-lint",
  "rust-llm-tidy-model",
+ "rust-llm-tidy-reorder",
  "tree-sitter",
+ "tree-sitter-c-sharp",
 ]
 
 [[package]]
@@ -1020,6 +1023,16 @@ dependencies = [
  "regex-syntax",
  "serde_json",
  "streaming-iterator",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-c-sharp"
+version = "0.23.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1aac67f1ad71de1d6d39708d34811081c26dfa495658de6c14c34200849357c"
+dependencies = [
+ "cc",
  "tree-sitter-language",
 ]
 

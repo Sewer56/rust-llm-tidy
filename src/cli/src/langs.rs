@@ -181,7 +181,7 @@ const C_SHARP: Profile = Profile {
     ops: &["tables", "fences", "reorder", "lints"],
     prefixes: &["///", "//"],
     default_ops: &["tables", "reorder", "lints"],
-    backend: false,
+    backend: true,
 };
 /// Markdown family: every text op plus text-based lints.
 const MARKDOWN: Profile = Profile {
@@ -445,7 +445,7 @@ mod tests {
             ["tables", "reorder", "lints"].as_slice()
         );
         assert_eq!(C_SHARP.prefixes, ["///", "//"].as_slice());
-        assert!(!C_SHARP.backend);
+        assert!(C_SHARP.backend, "cs resolves a registered backend");
     }
 
     /// Every code language resolves tables-only by default with its own

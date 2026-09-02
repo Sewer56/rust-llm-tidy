@@ -42,11 +42,7 @@ use config::CompiledConfig;
 use rust_llm_tidy_fix as fix;
 use rust_llm_tidy_lint::check;
 use rust_llm_tidy_model::io;
-use rust_llm_tidy_model::parse as model_parse;
-use rust_llm_tidy_model::parse;
 use rust_llm_tidy_model::safety;
-use rust_llm_tidy_reorder::graph;
-use rust_llm_tidy_reorder::reorder::Permutation;
 use rust_llm_tidy_vis::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
     discover_crate_root, narrow_vis_in_tree,
@@ -143,8 +139,9 @@ impl Cli {
 /// plaintext lines to stderr (default output) or project them to JSON.
 ///
 /// The profile decides which passes run: parser-driven checks need a
-/// registered backend (Rust today), and the parser-free text checks run for
-/// the markdown family and Rust.
+/// registered backend (Rust and C# today) and run the backend's own lint
+/// composition, and the parser-free text checks run for the markdown family
+/// and Rust.
 pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
@@ -155,10 +152,13 @@ pub(crate) fn check_file(
     let profile = langs::profile_for(ext);
 
     let mut diagnostics = Vec::new();
-    if profile.backend {
-        let parsed = model_parse::parse_source(&source)
+    if profile.backend
+        && let Some(backend) = rust_llm_tidy_lang::backend_for(ext)
+    {
+        let parsed = backend
+            .parse(&source)
             .with_context(|| format!("failed to parse {}", path.display()))?;
-        diagnostics = check::run_all(&parsed);
+        diagnostics = backend.lint(&parsed);
     }
     if profile.runs_text_lints() {
         diagnostics.extend(check::run_text_checks(&source, ext));
@@ -255,12 +255,19 @@ pub(crate) fn fix_file(
 
 /// Reorder a single source file.
 ///
-/// Returns one per-file [`changes::Change`] record per moved item (derived from
-/// the reorder crate's `ReorderMove` producer) in both dry-run and in-place
-/// modes.
+/// Returns one per-file [`changes::Change`] record per moved item (derived
+/// from the reorder crate's `ReorderMove` producer) in both dry-run and
+/// in-place modes.
 ///
-/// Writes the reordered source only when not in dry-run and the output differs
-/// from the original.
+/// A type whose member order changed gets one record of its own: member
+/// moves carry no top-level `ReorderMove`.
+///
+/// Parses through the file's registered backend; a backend that declines
+/// the source (parse errors, unsupported preprocessor shapes) degrades to
+/// a no-op: zero change records, no write.
+///
+/// Writes the reordered source only when not in dry-run and the output
+/// differs from the original.
 pub(crate) fn reorder_file(
     path: &Path,
     dry_run: bool,
@@ -273,18 +280,25 @@ pub(crate) fn reorder_file(
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
 
-    // 2. Parse - extract items, spans, comments, preamble/trailer
-    let parsed = parse::parse_source(&source)
+    // 2. Parse through the registered backend - extract items, spans,
+    //    comments, members, preamble/trailer.
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let Some(backend) = rust_llm_tidy_lang::backend_for(ext) else {
+        return Ok(Vec::new());
+    };
+    let parsed = backend
+        .parse(&source)
         .with_context(|| format!("failed to parse {}", path.display()))?;
 
-    // 3. Build reference graph and compute topological order (the Rust
-    //    profile reproduces the engine's Rust phase order)
-    let order = graph::compute_order(&parsed, &graph::RustProfile)
-        .context("failed to compute item order")?;
+    // 3. Compute the item and member order; a declined source is a no-op.
+    let Some(permutation) = backend
+        .reorder_permutation(&parsed)
+        .context("failed to compute item order")?
+    else {
+        return Ok(Vec::new());
+    };
 
-    // 4. Build permutation and emit reordered source
-    let permutation =
-        Permutation::new(parsed.items.len(), order).context("failed to build permutation")?;
+    // 4. Emit the reordered source.
     let output = rust_llm_tidy_reorder::reorder::emit(&parsed, &permutation)
         .context("failed to emit reordered source")?;
 
@@ -296,19 +310,7 @@ pub(crate) fn reorder_file(
         )
     })?;
 
-    let mut change_records = Vec::new();
-    for mv in rust_llm_tidy_reorder::compute_moves(&parsed.items, &permutation) {
-        // `from` is the 1-based input sequence position; the anchor line is
-        // the moved item's first source line.
-        let item = &parsed.items[mv.from() - 1];
-        change_records.push(changes::Change {
-            line: std::num::NonZeroU32::new(item.start_line() as u32),
-            code: "REORDER",
-            message: mv.message().into_boxed_str(),
-            kind: changes::ChangeKind::Item(*mv.kind()),
-            name: mv.name().map(Box::from),
-        });
-    }
+    let change_records = changes::reorder_changes(&parsed, &permutation);
     if !dry_run && output != source {
         io::atomic_write(path, &output)
             .with_context(|| format!("failed to write {}", path.display()))?;

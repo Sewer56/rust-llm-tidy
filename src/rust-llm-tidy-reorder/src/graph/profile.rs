@@ -205,7 +205,10 @@ impl ReorderProfile for RustProfile {
             | ItemKind::Property
             | ItemKind::Event
             | ItemKind::Constructor
-            | ItemKind::Destructor => 1,
+            | ItemKind::Destructor
+            | ItemKind::Delegate
+            | ItemKind::Operator
+            | ItemKind::Record => 1,
         }
     }
 

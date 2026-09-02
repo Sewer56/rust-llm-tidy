@@ -1,14 +1,19 @@
 //! The [`LanguageBackend`] contract and the extension registry that resolves
 //! a backend per source-file extension.
 
+use crate::csharp::CSharpBackend;
 use crate::rust_backend::RustBackend;
+use rust_llm_tidy_lint::Diagnostic;
 use rust_llm_tidy_model::parse::ParseResult;
+use rust_llm_tidy_reorder::reorder::Permutation;
 use std::cmp::Ordering;
 
 /// Extensions with a registered backend, sorted by extension (ASCII) so
 /// binary search applies. The sortedness test guards this invariant.
-static BACKED_EXTENSIONS: &[(&str, &dyn LanguageBackend)] = &[("rs", &RUST)];
-/// The Rust backend - the one registered parser today.
+static BACKED_EXTENSIONS: &[(&str, &dyn LanguageBackend)] = &[("cs", &CSHARP), ("rs", &RUST)];
+/// The C# backend - the tree-sitter-c-sharp parse setup.
+static CSHARP: CSharpBackend = CSharpBackend;
+/// The Rust backend - the parser the pipeline has always used for `.rs`.
 static RUST: RustBackend = RustBackend;
 
 /// One language's AST parse setup, serving the pipeline's AST ops.
@@ -39,8 +44,11 @@ pub trait LanguageBackend: Sync {
     /// # Errors
     ///
     /// Returns an error when the language's grammar cannot be constructed or
-    /// tree-sitter fails to produce a syntax tree. The Rust grammar
-    /// error-recovers, so invalid syntax still parses.
+    /// tree-sitter fails to produce a syntax tree.
+    ///
+    /// Error-recovering grammars still parse invalid syntax; see
+    /// [`Self::lint`] and [`Self::reorder_permutation`] for how their
+    /// callers treat such trees.
     fn parse(&self, source: &str) -> anyhow::Result<ParseResult>;
 
     /// The AST pipeline ops this backend implements, as pipeline rule names
@@ -49,6 +57,28 @@ pub trait LanguageBackend: Sync {
     /// Consumers compose this with their admission profiles: an op runs only
     /// when both the profile and the backend's list carry it.
     fn ast_ops(&self) -> &'static [&'static str];
+
+    /// The lint diagnostics for a parse produced by [`Self::parse`].
+    ///
+    /// Backends whose grammar error-recovers may return no diagnostics for
+    /// trees with error nodes: findings against misread declarations would
+    /// be noise.
+    fn lint(&self, parsed: &ParseResult) -> Vec<Diagnostic>;
+
+    /// Compute the full reorder permutation for a parse produced by
+    /// [`Self::parse`]: the top-level item order plus any in-type member
+    /// permutations.
+    ///
+    /// Returns `Ok(None)` when the source holds constructs the engine
+    /// declines to reorder (parse-tree error nodes, unsupported
+    /// preprocessor shapes): callers degrade to a no-op with zero change
+    /// records instead of guessing a partial rewrite.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on internal engine failure (a malformed graph or
+    /// permutation over an already-parsed result).
+    fn reorder_permutation(&self, parsed: &ParseResult) -> anyhow::Result<Option<Permutation>>;
 }
 
 /// The registered backend for `ext`, ASCII case-insensitively (`.RS` resolves
@@ -90,12 +120,24 @@ mod tests {
         assert_eq!(backend.ast_ops(), ["reorder", "vis", "lints"].as_slice());
     }
 
+    /// `cs` resolves to a backend carrying reorder and lints, never `vis`
+    /// (visibility narrowing stays Rust-only).
+    #[test]
+    fn cs_resolves_with_reorder_and_lints() {
+        let backend = backend_for("cs").expect("cs must resolve to a backend");
+
+        assert_eq!(backend.ast_ops(), ["reorder", "lints"].as_slice());
+    }
+
     /// Uppercase and mixed-case extensions resolve identically to their
     /// lowercase forms.
     #[test]
     fn lookup_matches_extensions_ascii_case_insensitively() {
-        for ext in ["RS", "Rs", "rS"] {
-            assert!(backend_for(ext).is_some(), ".{ext} must resolve like .rs");
+        for (upper, lower) in [("RS", "rs"), ("Cs", "cs"), ("cS", "cs")] {
+            assert!(
+                backend_for(upper).is_some(),
+                ".{upper} must resolve like .{lower}"
+            );
         }
     }
 
@@ -104,7 +146,7 @@ mod tests {
     /// formats, unmapped extensions, and the empty extension.
     #[test]
     fn backendless_extensions_resolve_no_backend() {
-        for ext in ["cs", "py", "md", "json", "org", ""] {
+        for ext in ["py", "md", "json", "org", ""] {
             assert!(backend_for(ext).is_none(), ".{ext} must resolve no backend");
         }
     }

@@ -126,6 +126,16 @@ impl Permutation {
     pub fn into_inner(self) -> Vec<usize> {
         self.order
     }
+
+    /// The attached member permutation of the type item at `item_idx`, if
+    /// one was set; `None` for plain items and items whose members never
+    /// reordered.
+    ///
+    /// The slice indexes into the item's members; an identity permutation
+    /// means the item emits its original bytes.
+    pub fn member_order(&self, item_idx: usize) -> Option<&[usize]> {
+        self.member_orders.get(&item_idx).map(Vec::as_slice)
+    }
 }
 
 impl ReorderMove {
@@ -340,7 +350,7 @@ fn member_splice_order(perm: &Permutation, idx: usize) -> Option<&[usize]> {
 /// Returns `None` for all other items, which always get a blank line after them.
 fn spacing_group(kind: &ItemKind) -> Option<u8> {
     match kind {
-        ItemKind::Use => Some(0),
+        ItemKind::Use | ItemKind::Using => Some(0),
         ItemKind::Mod => Some(1),
         ItemKind::Const | ItemKind::Static | ItemKind::Extern => Some(2),
         _ => None,

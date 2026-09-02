@@ -148,6 +148,24 @@ pub enum ItemKind {
     /// ~Service() { }
     /// ```
     Destructor,
+    /// A delegate type declaration (C-family).
+    ///
+    /// ```csharp
+    /// public delegate void Handler(object sender);
+    /// ```
+    Delegate,
+    /// An operator or conversion operator member (C-family).
+    ///
+    /// ```csharp
+    /// public static Service operator +(Service a, Service b) => a;
+    /// ```
+    Operator,
+    /// A record declaration (C-family).
+    ///
+    /// ```csharp
+    /// public record Point(int X, int Y);
+    /// ```
+    Record,
     /// Any other top-level item not covered above (foreign modules, trait
     /// aliases, verbatim items).
     ///
@@ -187,6 +205,9 @@ impl ItemKind {
             ItemKind::Event => "event",
             ItemKind::Constructor => "constructor",
             ItemKind::Destructor => "destructor",
+            ItemKind::Delegate => "delegate",
+            ItemKind::Operator => "operator",
+            ItemKind::Record => "record",
             ItemKind::Other => "other",
         }
     }

@@ -2,13 +2,19 @@
 //! parse setup.
 
 use crate::backend::LanguageBackend;
+use rust_llm_tidy_lint::Diagnostic;
 use rust_llm_tidy_model::parse::{self, ParseResult};
+use rust_llm_tidy_reorder::graph::{self, RustProfile};
+use rust_llm_tidy_reorder::reorder::Permutation;
 
 /// The `rs` backend.
 ///
 /// Wraps the parse setup the pipeline has always used for Rust - the model
 /// crate's tree-sitter-rust grammar and [`parse::parse_source`] - adding no
 /// behavior of its own.
+///
+/// Its lint and reorder compositions call the exact functions the pipeline
+/// called before backends existed, so `.rs` runs stay byte-identical.
 pub struct RustBackend;
 
 impl LanguageBackend for RustBackend {
@@ -22,6 +28,16 @@ impl LanguageBackend for RustBackend {
 
     fn ast_ops(&self) -> &'static [&'static str] {
         &["reorder", "vis", "lints"]
+    }
+
+    fn lint(&self, parsed: &ParseResult) -> Vec<Diagnostic> {
+        rust_llm_tidy_lint::check::run_all(parsed)
+    }
+
+    fn reorder_permutation(&self, parsed: &ParseResult) -> anyhow::Result<Option<Permutation>> {
+        let order = graph::compute_order(parsed, &RustProfile)?;
+        let permutation = Permutation::new(parsed.items.len(), order)?;
+        Ok(Some(permutation))
     }
 }
 
