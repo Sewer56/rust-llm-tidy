@@ -2,20 +2,13 @@
 
 ## What it does
 
-Every eligible inline link `[text](url)` is replaced with the reference form
-`[text]` plus a `[text]: url` definition, by default even when the link
-appears only once.
+Replaces every eligible inline link `[text](url)` with the reference form
+`[text]` plus a `[text]: url` definition. Runs in `///` and `//!` doc
+comments and markdown-family files only.
 
-Runs in `///` and `//!` doc comments and markdown-family files, and
-nowhere else: appended `[text]: url` definitions are invalid syntax in
-other languages, and `[text](url)` collides with index-then-call syntax
-such as `a[i](x)`.
-
-- In `///` and `//!` doc comments, each `[text]: url` definition is
-  duplicated inside every doc comment that uses the label, so each
-  comment is self-sufficient and `cargo doc` stays clean.
-- In markdown-family files, all definitions collect in one trailing block at
-  the end of the document.
+- Doc comments: each definition is duplicated into every comment using
+  the label, so `cargo doc` stays clean.
+- Markdown: definitions collect in one trailing block.
 
 Eligible link text is non-blank and free of `[`/`]` bytes, and the open `[`
 must be unescaped (`\[x](u)` is literal text). Other links stay inline, e.g. a
