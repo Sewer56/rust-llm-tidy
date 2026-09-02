@@ -6,8 +6,6 @@ on:
       - "src/**"
       - "**/*.md"
       - ".rust-llm-tidy.yml"
-      # Shell scripts are admitted source files (table fixes inside `#`
-      # comments); the repo hook lives outside src/**.
       - ".githooks/**"
 
 jobs:
@@ -32,16 +30,6 @@ jobs:
           binary-source: git
           source-path: ${{ github.workspace }}
           # Apply tidy fixes in place; on a PR commit and push them to the branch.
-          # Whole-repo scope covers every admitted source file: Rust, the
-          # markdown family, C#, and the repo's shell scripts:
-          # src/.cargo/verify.sh and .githooks/pre-commit.d/10-tidy-rust.sh.
-          # No gate step runs here. On PRs the Rust CI also covers
-          # (src/** changes), the corpus integration test
-          # (repo_corpus_dry_run_emits_zero_change_records in
-          # src/cli/tests/integration.rs) fails whenever any tracked file
-          # would produce a change record. PRs outside src/** carry no
-          # corpus run; apply commits the fix directly instead, so the
-          # tree self-heals either way.
           mode: apply
           # Tidy the whole repository (no paths -> '.' under rust-project-path).
           changed-files: false
