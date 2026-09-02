@@ -3,9 +3,8 @@
 [![Crates.io][crates-badge]][Crates.io CLI]
 [![CI][ci-badge]][CI]
 
-Opinionated linter for my Rust, C#, and Markdown preferences, with table
-fixes for many more source languages. Primarily for fixing LLM output,
-but useful for any code.
+Opinionated linter for my Rust, C#, and Markdown preferences.
+Primarily for fixing LLM output, but useful for any code.
 
 > **⚠ Largely written by LLMs - personal tooling, not production software.**
 >
@@ -34,9 +33,7 @@ cargo install rust-llm-tidy-cli
 reorder, vis, lints) by default on every admitted source file.
 
 Admitted by default: `.rs`, the markdown family (`.md`, `.markdown`, `.txt`,
-`.text`, `.mdx`), and the code languages admitted for table fixes. Extra
-extensions can be added with `--extension` or the config `extensions:` key:
-
+`.text`, `.mdx`), and the code languages admitted for table fixes.
 ```bash
 # Tidy a file in place
 rust-llm-tidy src/main.rs
@@ -64,26 +61,25 @@ rust-llm-tidy --validate
 rust-llm-tidy --output-mode json src/main.rs
 ```
 
-The full admission matrix (tiers, default ops per tier, comment markers,
-overrides, known effects) is in [docs/langs.md].
+Which files are handled, and how, is documented in [docs/langs.md].
 
 Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
-`--include <OP>` (repeatable), and `--exclude <OP>` (repeatable).
-
-`--extension <EXT>` (repeatable) admits extra file extensions.
-`--output-mode <MODE>` selects `text` (default) or `json`; `--json` is an
-alias for `--output-mode json`.
+`--include <OP>`, `--exclude <OP>`, `--extension <EXT>` (all repeatable), and
+`--output-mode text|json` (`--json` for short).
 
 #### Operations
 
-| Op        | Does                                    | Languages                                                                          | Mutates | Default on?           |
-| --------- | --------------------------------------- | ---------------------------------------------------------------------------------- | ------- | --------------------- |
-| `tables`  | align GFM tables                        | all admitted extensions except data formats (`ini`, `json`, `toml`, `yaml`, `yml`) | yes     | yes                   |
-| `fences`  | alternate nested fence delimiters       | markdown family, `rs`; others by include, except data formats                      | yes     | markdown family, `rs` |
-| `links`   | hoist inline links to reference style   | markdown family, `rs`                                                              | yes     | markdown family, `rs` |
-| `reorder` | review-friendly item order              | `rs`, `cs`                                                                         | yes     | `rs`, `cs`            |
-| `vis`     | narrow bare `pub` in restricted modules | `rs`                                                                               | yes     | `rs`                  |
-| `lints`   | run DOC001-DOC008 + TEST001 checks      | `rs`, `cs`, markdown family                                                        | no      | yes                   |
+| Op        | Does                                    | Languages             | Mutates | Default on? |
+| --------- | --------------------------------------- | --------------------- | ------- | ----------- |
+| `tables`  | align GFM tables                        | all admitted          | yes     | yes         |
+| `fences`  | alternate nested fence delimiters       | markdown*             | yes     | markdown*   |
+| `links`   | hoist inline links to reference style   | markdown*             | yes     | markdown*   |
+| `reorder` | review-friendly item order              | `rs`, `cs`            | yes     | `rs`, `cs`  |
+| `vis`     | narrow bare `pub` in restricted modules | `rs`                  | yes     | `rs`        |
+| `lints`   | run DOC001-DOC008 + TEST001 checks      | `rs`, `cs`, markdown* | no      | yes         |
+
+\* markdown*: the markdown family (`.md`, `.markdown`, `.txt`, `.text`,
+`.mdx`), plus languages that use markdown for doc comments.
 
 #### JSON output
 
