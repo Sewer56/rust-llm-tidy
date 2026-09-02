@@ -1,28 +1,23 @@
 # `reorder` for C# - profile-ordered types and members
 
-C# files reorder through the same `reorder` op as Rust, with the C#
-ordering profile.
-
-At the top level, `using` directives pin first and everything else
-keeps its file order; members inside a type order by the
-Rider/ReSharper default buckets.
-
-The pinned and protected rules below cover what never moves and what
-declines outright.
+C# files reorder through the same `reorder` op as Rust; shared behavior
+(config, change output, callers before callees) is in [reorder]. Members
+follow the Rider/ReSharper default type member order; method ties keep
+file order, not Rust's alphabetical.
 
 ## Top-level order
 
-- `using` directives pin first, packed without blank lines, in their
-  original relative order (they never reorder among themselves). A
-  `using` that appears mid-file hoists up to the block.
-- Hoisting a using only widens the names it introduces to earlier lines.
-- Namespaces, type declarations, preprocessor directives, and top-level
-  statements keep their source order. Types never dependency-sort, so a
-  file's type layout is never reshuffled.
+- Namespaces keep source order: `namespace Demo.Services;`
+- Type declarations keep source order: `class Service { }`, `record Point(...)`
+- Preprocessor directives keep source order: `#if DEBUG ... #endif`
+- Top-level statements keep source order: `await Run();`
 
-## Member order inside a top-level type
+## Member order inside a type
 
 ```csharp
+using System;
+using System.IO;
+
 public class Service
 {
     // 1. Fields (const, static, and instance).
@@ -53,28 +48,18 @@ public class Service
 }
 ```
 
-Methods that reference a sibling method precede it; methods with no
-references between them keep their file order. Namespace bodies apply
-the same table, so nested `using` directives hoist above the namespace's
-types.
-
-A type nested inside another type moves as one member of the enclosing
-body: its own members keep their order.
-
-A type whose members do not each sit on their own lines (compact
-one-line bodies) also keeps its member order, since line-tiled spans
-cannot represent such a body.
+- Namespace bodies apply the same table.
+- A nested type moves as one member; its own members keep their order.
+- A type whose members do not each sit on their own lines (compact
+  one-line bodies) keeps its member order.
 
 ## Pinned and protected
 
 - A member's blank lines and `///` doc comments travel with it.
 - Nothing moves across a preprocessor conditional (`#if`/`#else`/
-  `#endif`): the parser groups each conditional run into one unit.
-- A type or namespace body holding any preprocessor directive stays
-  whole rather than permuting its members.
-- A source the engine cannot vouch for degrades to a no-op: zero
-  change records, no write. That includes files with parse errors and
-  files whose preprocessor-region scan rejects them.
+  `#endif`); a body holding any preprocessor directive stays whole.
+- Files with parse errors, or that the preprocessor-region scan rejects,
+  degrade to a no-op: zero change records, no write.
 - Reordering is idempotent: a second run emits zero change records.
 
 ## Before
@@ -117,11 +102,6 @@ public class OrderService
 }
 ```
 
-The trailing `using System.IO;` hoists into the pinned block, the field
-moves ahead of the property, and the caller `Run` stays before its
-callee `Apply`.
+Each member keeps the blank lines that preceded it in the source.
 
-Member slices are verbatim: each member keeps the blank lines that
-preceded it in the source. So `_id` opens the body with its blank line,
-and `Run` follows `Total` with none, since `Run` was the first member
-in the source.
+[reorder]: ../reorder.md
