@@ -149,13 +149,13 @@ error). Omitting `paths` in an `include` or `exclude` group implies `["**"]`
 
 Additionally:
 
-- `extensions` - the full admitted-extension list, replacing the defaults
-  when non-empty (an empty or absent list keeps the defaults). Written
-  without the leading dot and matched case-insensitively. Malformed entries
-  fail the run.
-- `extra_extensions` - extensions admitted in addition to the effective
-  list (`extensions:` when non-empty, else the defaults). Same entry rules
-  as `extensions`.
+- `extensions` - replaces the default admitted extensions when non-empty;
+  empty or absent keeps the defaults.
+- `extra_extensions` - added on top of the effective list (`extensions`
+  when non-empty, else the defaults).
+
+Both lists: dotless entries, case-insensitive match.
+
 - `post_process` - external commands run on processed files after tidying.
   Each entry has `command`, `args` (default empty), and `extensions`
   (default empty = all). File path appended as last arg.
