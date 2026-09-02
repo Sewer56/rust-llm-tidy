@@ -618,6 +618,30 @@ mod tests {
 
     // ── Per-file op gating ──
 
+    /// The `backend` column must agree with the lang-crate backend registry
+    /// per extension and per AST op: dispatch composes both tables, so a
+    /// language updated on only one side silently gains or loses AST ops.
+    #[test]
+    fn backend_column_matches_the_backend_registry() {
+        for (ext, profile) in LANG_ENTRIES {
+            let backend = rust_llm_tidy_lang::backend_for(ext);
+            assert_eq!(
+                profile.backend,
+                backend.is_some(),
+                ".{ext}: profile column and backend registry disagree"
+            );
+            if let Some(backend) = backend {
+                for op in ["reorder", "vis", "lints"] {
+                    assert_eq!(
+                        profile.admits(op),
+                        backend.ast_ops().contains(&op),
+                        ".{ext}: {op} availability disagrees"
+                    );
+                }
+            }
+        }
+    }
+
     /// Op gating intersects the rule selection with the profile: default
     /// mode runs the profile defaults minus disabled names, whitelist mode
     /// intersects the whitelist with the admitted ops.

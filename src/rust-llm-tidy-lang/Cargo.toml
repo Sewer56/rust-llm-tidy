@@ -1,0 +1,18 @@
+[package]
+name = "rust-llm-tidy-lang"
+version = "0.1.0"
+edition = "2024"
+description = "Per-language AST backends for rust-llm-tidy: the LanguageBackend contract, extension registry, and language parse setups."
+repository = "https://github.com/Sewer56/rust-llm-tidy"
+license = "Apache-2.0"
+include = ["src/**/*"]
+readme = "README.MD"
+# keywords (search terms): https://crates.io/keywords
+keywords = ["rust", "tree-sitter", "ast", "language", "backend"]
+# categories (fixed list): https://crates.io/categories
+categories = ["development-tools"]
+
+[dependencies]
+rust-llm-tidy-model = { path = "../rust-llm-tidy-model", version = "0.3.1" }
+anyhow = "1"
+tree-sitter = "0.26"

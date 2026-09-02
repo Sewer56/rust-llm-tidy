@@ -747,6 +747,7 @@ dependencies = [
  "ignore",
  "rayon",
  "rust-llm-tidy-fix",
+ "rust-llm-tidy-lang",
  "rust-llm-tidy-lint",
  "rust-llm-tidy-model",
  "rust-llm-tidy-reorder",
@@ -763,6 +764,15 @@ dependencies = [
  "criterion",
  "memchr",
  "smallvec",
+]
+
+[[package]]
+name = "rust-llm-tidy-lang"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rust-llm-tidy-model",
+ "tree-sitter",
 ]
 
 [[package]]

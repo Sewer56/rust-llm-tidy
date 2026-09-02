@@ -77,6 +77,21 @@ pub fn parse_source(source: &str) -> anyhow::Result<ParseResult> {
     })
 }
 
+/// The tree-sitter-rust grammar this crate parses with.
+///
+/// Exposed so language backends (the `rust-llm-tidy-lang` crate) reuse the
+/// same grammar [`parse_source`] parses with instead of constructing their
+/// own.
+///
+/// # Errors
+///
+/// Returns an error when the bundled tree-sitter-rust grammar cannot convert
+/// into a [`tree_sitter::Language`] (cannot happen with the pinned grammar
+/// version).
+pub fn rust_language() -> anyhow::Result<tree_sitter::Language> {
+    Ok(tree_sitter_rust::LANGUAGE.into())
+}
+
 /// Assign each item a span that carries the blank lines and `//` comments
 /// preceding it, so reordering preserves that whitespace.
 ///
@@ -208,11 +223,6 @@ fn line_start_offsets(source: &str) -> Vec<usize> {
         starts.push(from);
     }
     starts
-}
-
-/// The tree-sitter-rust language, constructed once.
-fn rust_language() -> anyhow::Result<tree_sitter::Language> {
-    Ok(tree_sitter_rust::LANGUAGE.into())
 }
 
 /// If `node` is a recognized top-level item, return the body node to classify.

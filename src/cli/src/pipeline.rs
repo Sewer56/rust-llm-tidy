@@ -393,15 +393,18 @@ fn process_one(
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let profile = crate::langs::profile_for(ext);
     // A fix op qualifies its file for post-processing whenever the profile
-    // admits it; the AST ops additionally need a registered backend, which
-    // only Rust has today.
+    // admits it; an AST op additionally needs the profile's `backend` tier
+    // and a backend registered in the language registry (Rust today).
+    let backend = rust_llm_tidy_lang::backend_for(ext);
+    let ast_op_on = |op: &str| {
+        profile.backend
+            && profile.op_enabled(op, enabled, disabled)
+            && backend.is_some_and(|b| b.ast_ops().contains(&op))
+    };
     let should_post_process = ["tables", "fences", "links"]
         .iter()
         .any(|op| profile.op_enabled(op, enabled, disabled))
-        || (profile.backend
-            && ["reorder", "vis"]
-                .iter()
-                .any(|op| profile.op_enabled(op, enabled, disabled)));
+        || ["reorder", "vis"].iter().any(|op| ast_op_on(op));
 
     // Fix auto-fixable formatting (tables, fences, links) via fix_file.
     if profile.op_enabled("tables", enabled, disabled)
@@ -423,26 +426,24 @@ fn process_one(
         }
     }
 
-    if profile.backend {
-        // Reorder next (fixes ordering).
-        if profile.op_enabled("reorder", enabled, disabled) {
-            match super::reorder_file(path, dry_run, disabled) {
-                Ok(found) => out.record_changes(path, found, json_mode),
-                Err(e) => {
-                    out.fail(path, &e);
-                    return out;
-                }
+    // Reorder next (fixes ordering).
+    if ast_op_on("reorder") {
+        match super::reorder_file(path, dry_run, disabled) {
+            Ok(found) => out.record_changes(path, found, json_mode),
+            Err(e) => {
+                out.fail(path, &e);
+                return out;
             }
         }
-        // Narrow visibility next (fixes misleading bare `pub` inside
-        // restricted-visibility inline modules).
-        if profile.op_enabled("vis", enabled, disabled) {
-            match super::vis_file(path, dry_run, ctx, disabled) {
-                Ok(found) => out.record_changes(path, found, json_mode),
-                Err(e) => {
-                    out.fail(path, &e);
-                    return out;
-                }
+    }
+    // Narrow visibility next (fixes misleading bare `pub` inside
+    // restricted-visibility inline modules).
+    if ast_op_on("vis") {
+        match super::vis_file(path, dry_run, ctx, disabled) {
+            Ok(found) => out.record_changes(path, found, json_mode),
+            Err(e) => {
+                out.fail(path, &e);
+                return out;
             }
         }
     }
