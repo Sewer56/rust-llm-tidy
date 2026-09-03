@@ -20,10 +20,11 @@ Extension matching is case-insensitive everywhere, so `.MD` resolves like
 
 Notes on the op columns:
 
-- `lints` splits by tier: Rust runs all nine codes (DOC001-DOC008,
+- `lints` splits by tier: Rust and C# run all nine codes (DOC001-DOC008,
   TEST001); the markdown family runs the two text checks (DOC007,
-  DOC008); C# runs DOC001-DOC006 and TEST001 against XML doc comments
-  (see [lints for C#]).
+  DOC008).
+- C# evaluates its codes against XML doc comments and measures their
+  prose with the XML doc dialect (see [lints for C#]).
 - Code languages and C# can additionally run `fences`, but only through
   an explicit `--include fences` or a config include. No other op turns
   on for them.

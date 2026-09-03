@@ -31,7 +31,15 @@ impl LanguageBackend for RustBackend {
     }
 
     fn lint(&self, parsed: &ParseResult) -> Vec<Diagnostic> {
-        rust_llm_tidy_lint::check::run_all(parsed)
+        // The Ast text-lint tier rides the backend lint composition:
+        // the line-marker producer measures the source's `///`, `//!`,
+        // and `//` comment regions.
+        let mut diags = rust_llm_tidy_lint::check::run_all(parsed);
+        diags.extend(rust_llm_tidy_lint::check::run_text_checks(
+            &parsed.source,
+            "rs",
+        ));
+        diags
     }
 
     fn reorder_permutation(&self, parsed: &ParseResult) -> anyhow::Result<Option<Permutation>> {

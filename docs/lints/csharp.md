@@ -17,6 +17,8 @@ tags.
 | `DOC004`  | Warning  | A non-private member with parameters has no `<param>` tags.                                      |
 | `DOC005`  | Warning  | The `<param>` tags omit a declared parameter.                                                    |
 | `DOC006`  | Warning  | A doc comment contains `TODO`, `FIXME`, or `TBD`.                                                |
+| `DOC007`  | Error    | An XML doc text paragraph over 240 chars of inner text.                                          |
+| `DOC008`  | Warning  | A doc line whose tag-stripped inner text exceeds 80 chars.                                       |
 | `TEST001` | Warning  | A `TestMethod`/`Test`/`Fact`/`Theory` method uses a `test_*`, `case_*`, or `test` + digits name. |
 
 ## Semantics
@@ -39,8 +41,16 @@ tags.
   PascalCase conventions.
 - A file with parse errors produces no findings: the whole pass degrades
   to silence instead of reporting against misread declarations.
-- The parser-free text checks (`DOC007`, `DOC008`) never run on `.cs`
-  files.
+- The text checks (`DOC007`, `DOC008`) measure `///` doc-comment prose
+  with the XML doc dialect, over the same parse as the other codes:
+  - only the inner text of text nodes counts: tags are stripped and
+    attribute values (`cref`, `name`, ...) are excluded;
+  - `<code>` and `<example>` subtrees are exempt like code fences;
+  - a paragraph is a contiguous text run within one tag: prose never
+    joins across a tag boundary, and blank `///` lines split paragraphs;
+  - string literals and code lines are never comment nodes, so their
+    content is never measured;
+  - findings carry original file lines.
 - JSON records reuse the Rust rule titles (DOC002 shows
   `missing \`# Errors\` section`, DOC004
   `missing \`# Arguments\` section`): codes, record shape, and titles are

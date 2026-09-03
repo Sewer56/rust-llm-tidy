@@ -6,8 +6,12 @@
 //! ordering policy; the lint [`run`] produces the XML
 //! doc-dialect diagnostics through the lint crate's existing codes.
 //!
+//! The DOC007/DOC008 text checks ride the same lint composition from
+//! [`text_regions`]' doc-region walk of the same parse.
+//!
 //! [`parse`]: parse::parse
 //! [`run`]: lints::run
+//! [`text_regions`]: text_regions
 //!
 //! # Reorder degradation
 //!
@@ -33,6 +37,7 @@ mod lines;
 mod lints;
 mod parse;
 mod profile;
+mod text_regions;
 
 /// The `cs` backend.
 pub(crate) struct CSharpBackend;

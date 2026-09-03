@@ -6,6 +6,9 @@
 //! code order the Rust [`run_all`] uses (DOC001, DOC002, DOC003, DOC004,
 //! DOC005, DOC006, TEST001).
 //!
+//! The text checks (DOC007, DOC008) follow from the same parse's doc
+//! regions.
+//!
 //! # Semantics
 //!
 //! - DOC001: non-private documentable declarations (`public`, `internal`,
@@ -21,11 +24,13 @@
 //! - DOC006: placeholder markers (`TODO`/`FIXME`/`TBD`) in doc comments.
 //! - TEST001: `TestMethod`/`Test`/`Fact`/`Theory`-marked methods with
 //!   discouraged (`test_*`, `case_*`, `test` + digits) names.
-//!
-//! The parser-free text checks (DOC007/DOC008) never run for `.cs`; the
-//! CLI admission registry keeps them markdown-family- and Rust-only.
+//! - DOC007/DOC008: `///` doc-comment prose measured with the XML doc
+//!   dialect; findings carry original file lines. The dialect rules live
+//!   with the lint crate's measuring core; see [`text_regions`] for the
+//!   producer.
 //!
 //! [`run_all`]: rust_llm_tidy_lint::check::run_all
+//! [`text_regions`]: super::text_regions
 
 use super::parse::{
     declaration_name, doc_comment_texts, has_test_marker, member_kind, parameter_names,
@@ -60,7 +65,8 @@ const PARAMETERIZED: &[ItemKind] = &[ItemKind::Fn, ItemKind::Constructor, ItemKi
 const THROWING: &[ItemKind] = &[ItemKind::Fn, ItemKind::Constructor];
 
 /// Run every C# check over `parsed` and return all diagnostics in document
-/// order.
+/// order: the declaration checks first, then the text checks (DOC007,
+/// DOC008) over the same parse's doc regions.
 ///
 /// Returns no diagnostics when the parse tree carries error nodes: a
 /// broken tree would report findings against misread declarations, so the
@@ -72,6 +78,7 @@ pub(super) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
     let source = parsed.source.as_str();
     let mut diagnostics = Vec::with_capacity(parsed.items.len());
     check_children(parsed.syntax_tree().root_node(), source, &mut diagnostics);
+    diagnostics.extend(super::text_regions::text_checks(parsed));
     diagnostics
 }
 

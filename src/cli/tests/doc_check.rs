@@ -421,6 +421,55 @@ fn csharp_test001_flags_discouraged_names() {
     );
 }
 
+/// C# text budgets fire with original file lines: DOC007 errors on an
+/// over-budget summary paragraph at its first prose line, and DOC008
+/// warns on a line whose tag-stripped inner text exceeds 80 chars.
+#[test]
+fn csharp_text_budgets_fire_with_original_lines() {
+    let (stderr, exit) = run_csharp_fixture("doc007_doc008_text_budgets.cs");
+
+    assert_ne!(exit, 0, "the DOC007 error must fail the run:\n{stderr}");
+    assert!(
+        stderr.contains(":10: error[DOC007]"),
+        "DOC007 must report at the summary's first prose line:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(":19: warning[DOC008]"),
+        "DOC008 must report at the over-long measured line:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC007").count(),
+        1,
+        "expected exactly 1 DOC007 finding:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC008").count(),
+        1,
+        "expected exactly 1 DOC008 finding:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains("DOC001") && !stderr.contains("DOC004"),
+        "the fixture is otherwise documented:\n{stderr}"
+    );
+}
+
+/// C# text checks stay quiet on the probe classes: idiomatic XML docs,
+/// long `cref`/`name` attribute values, `<code>`/`<example>` blocks, and
+/// verbatim string content produce no DOC007/DOC008 findings.
+#[test]
+fn csharp_text_probes_stay_quiet() {
+    let (stderr, exit) = run_csharp_fixture("doc_text_quiet_probes.cs");
+
+    assert_eq!(
+        exit, 0,
+        "the probe fixture must be clean across every C# lint"
+    );
+    assert!(
+        stderr.is_empty(),
+        "idiomatic docs and string content must stay unmeasured:\n{stderr}"
+    );
+}
+
 // ── Directory recursion ───────────────────────────────────────────
 
 /// The documented function in `doc001_missing_docs.rs` is not flagged.

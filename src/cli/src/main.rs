@@ -138,9 +138,9 @@ impl Cli {
 /// plaintext lines to stderr (default output) or project them to JSON.
 ///
 /// The profile decides which passes run: parser-driven checks need a
-/// registered backend (Rust and C# today) and run the backend's own lint
-/// composition, and the parser-free text checks run for the markdown family
-/// and Rust.
+/// registered backend and its lint composition; the text-lint tier
+/// sources DOC007/DOC008 - whole-file prose for the markdown family,
+/// backend composition for Ast.
 pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
@@ -159,7 +159,7 @@ pub(crate) fn check_file(
             .with_context(|| format!("failed to parse {}", path.display()))?;
         diagnostics = backend.lint(&parsed);
     }
-    if profile.runs_text_lints() {
+    if profile.text_lints == langs::TextLints::Prose {
         diagnostics.extend(check::run_text_checks(&source, ext));
     }
     diagnostics.retain(|d| !disabled.contains(d.code));

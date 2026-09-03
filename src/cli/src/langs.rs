@@ -8,6 +8,7 @@
 //! - `prefixes`: line-comment markers, longest first
 //! - `default_ops`: ops that run when no include list narrows the run
 //! - `backend`: whether an AST parser is registered for the extension
+//! - `text_lints`: how the DOC007/DOC008 text checks are sourced
 //!
 //! # Tiers
 //!
@@ -28,8 +29,21 @@
 //! addition to `ops` membership, so they stay dormant for extensions
 //! without a parser.
 //!
-//! The markdown family's `lints` are text checks that need no parser;
 //! `vis` appears only in the Rust profile.
+//!
+//! # Text-lint tiers
+//!
+//! [`Profile::text_lints`] decides how a file's DOC007/DOC008 text
+//! checks are sourced:
+//!
+//! - [`TextLints::Prose`]: the markdown family measures the whole file
+//!   as prose, no parser needed.
+//! - [`TextLints::Ast`]: the language's backend parses the file and its
+//!   lint composition emits the text checks (`rs` from line-comment
+//!   regions, `cs` from XML doc regions).
+//! - [`TextLints::None`]: no text checks; the tier's `lints` op stays
+//!   parser-driven or absent, and no extension outside the markdown
+//!   family falls through to whole-file measurement.
 //!
 //! # Lookup
 //!
@@ -67,6 +81,7 @@ const DATA: Profile = Profile {
     prefixes: &[],
     default_ops: &[],
     backend: false,
+    text_lints: TextLints::None,
 };
 /// Data formats excluded from default admission, sorted; they resolve to the
 /// no-op [`DATA`] profile and never appear in [`DEFAULT_EXTENSIONS`].
@@ -90,6 +105,7 @@ const UNMAPPED: Profile = Profile {
     prefixes: &[],
     default_ops: &["tables"],
     backend: false,
+    text_lints: TextLints::None,
 };
 /// Extension-to-profile table, sorted by extension (ASCII) so binary search
 /// applies. The sortedness test guards this invariant.
@@ -149,6 +165,7 @@ const CODE_DASH: Profile = Profile {
     prefixes: &["--"],
     default_ops: &["tables"],
     backend: false,
+    text_lints: TextLints::None,
 };
 /// Code tier for `#`-comment languages.
 const CODE_HASH: Profile = Profile {
@@ -156,6 +173,7 @@ const CODE_HASH: Profile = Profile {
     prefixes: &["#"],
     default_ops: &["tables"],
     backend: false,
+    text_lints: TextLints::None,
 };
 /// Code tier for `%`-comment languages.
 const CODE_PERCENT: Profile = Profile {
@@ -163,6 +181,7 @@ const CODE_PERCENT: Profile = Profile {
     prefixes: &["%"],
     default_ops: &["tables"],
     backend: false,
+    text_lints: TextLints::None,
 };
 /// Code tier for `;`-comment languages.
 const CODE_SEMI: Profile = Profile {
@@ -170,6 +189,7 @@ const CODE_SEMI: Profile = Profile {
     prefixes: &[";"],
     default_ops: &["tables"],
     backend: false,
+    text_lints: TextLints::None,
 };
 /// Code tier for `//`-comment languages other than C#.
 const CODE_SLASH: Profile = Profile {
@@ -177,6 +197,7 @@ const CODE_SLASH: Profile = Profile {
     prefixes: &["//"],
     default_ops: &["tables"],
     backend: false,
+    text_lints: TextLints::None,
 };
 /// C#: tables plus the backend-gated AST ops; no links - appended
 /// `[text]: url` definitions are invalid C#.
@@ -185,6 +206,7 @@ const C_SHARP: Profile = Profile {
     prefixes: &["///", "//"],
     default_ops: &["tables", "reorder", "lints"],
     backend: true,
+    text_lints: TextLints::Ast,
 };
 /// Markdown family: every text op plus text-based lints.
 const MARKDOWN: Profile = Profile {
@@ -192,6 +214,7 @@ const MARKDOWN: Profile = Profile {
     prefixes: DOC_LINE_PREFIXES,
     default_ops: &["tables", "fences", "links", "lints"],
     backend: false,
+    text_lints: TextLints::Prose,
 };
 /// Rust: every op, pinned to the pipeline's current behavior.
 const RUST: Profile = Profile {
@@ -199,6 +222,7 @@ const RUST: Profile = Profile {
     prefixes: DOC_LINE_PREFIXES,
     default_ops: &["tables", "fences", "links", "reorder", "vis", "lints"],
     backend: true,
+    text_lints: TextLints::Ast,
 };
 /// Rust doc-comment markers, longest first; shared by the Rust and markdown
 /// tiers so markdown files keep their current prefix-aware behavior.
@@ -225,11 +249,26 @@ pub(crate) struct Profile {
     /// literals are indistinguishable without a parser, so `fences` needs an
     /// explicit `--include fences` or config include.
     pub default_ops: &'static [&'static str],
-    /// Whether an AST parser is registered for the extension; `reorder` and
-    /// the parser-driven `lints` checks require this in addition to appearing
-    /// in `ops`. The markdown family's `lints` are text checks that need no
-    /// parser.
+    /// Whether an AST parser is registered for the extension; `reorder`
+    /// and the parser-driven `lints` checks require this in addition to
+    /// appearing in `ops`, as does the [`TextLints::Ast`] tier's doc-region
+    /// producer.
     pub backend: bool,
+    /// How the DOC007/DOC008 text checks are sourced for this profile.
+    pub text_lints: TextLints,
+}
+
+/// How a profile's DOC007/DOC008 text checks are sourced.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TextLints {
+    /// Whole-file prose measurement over the raw source: the markdown
+    /// family's producer, no parser needed.
+    Prose,
+    /// Text regions from the language's AST backend: the backend's parse
+    /// feeds its lint composition, which emits the text checks.
+    Ast,
+    /// No text checks: the tier's `lints` op is parser-driven or absent.
+    None,
 }
 
 impl Profile {
@@ -261,16 +300,6 @@ impl Profile {
             Some(set) => set.contains(op) && self.admits(op),
             None => self.default_ops.contains(&op) && !disabled.contains(op),
         }
-    }
-
-    /// Whether the parser-free text lint checks run for this profile: the
-    /// markdown family measures whole files and Rust measures its `///` doc
-    /// comments.
-    ///
-    /// Every other tier's `lints` op is parser-driven, so it stays dormant
-    /// until a backend registers; code languages get no text checks.
-    pub(crate) fn runs_text_lints(&self) -> bool {
-        *self == MARKDOWN || *self == RUST
     }
 }
 
@@ -689,21 +718,66 @@ mod tests {
         assert!(!profile_for("md").op_enabled("reorder", &Some(rules(&["reorder"])), &empty));
     }
 
-    /// Only the markdown family and Rust run the parser-free text lint
-    /// checks; every other tier's `lints` op is parser-driven and dormant.
+    /// Every admitted extension resolves to exactly one text-lint tier:
+    /// the markdown family measures whole-file prose, `rs` and `cs`
+    /// source their text regions from an AST backend, and every other
+    /// extension stays without text checks.
+    ///
+    /// Nothing outside the markdown family falls through to whole-file
+    /// measurement.
     #[test]
-    fn text_lints_run_only_for_markdown_family_and_rust() {
-        for ext in MD_FAMILY.iter().chain(["rs"].iter()) {
-            assert!(
-                profile_for(ext).runs_text_lints(),
-                ".{ext} must run the text lint checks"
+    fn text_lint_tiers_cover_every_extension_exactly_once() {
+        for ext in MD_FAMILY {
+            assert_eq!(
+                profile_for(ext).text_lints,
+                TextLints::Prose,
+                ".{ext} must measure whole-file prose"
             );
         }
-        for ext in ["cs", "py", "java", "org", "json"] {
-            assert!(
-                !profile_for(ext).runs_text_lints(),
-                ".{ext} must not run the text lint checks"
+        for ext in ["rs", "cs"] {
+            assert_eq!(
+                profile_for(ext).text_lints,
+                TextLints::Ast,
+                ".{ext} must source text regions from its backend"
             );
+        }
+        for (ext, profile) in LANG_ENTRIES {
+            match profile.text_lints {
+                TextLints::Prose => assert!(
+                    MD_FAMILY.contains(ext),
+                    ".{ext} is outside the markdown family and must not be Prose"
+                ),
+                TextLints::Ast => assert!(
+                    *ext == "rs" || *ext == "cs",
+                    ".{ext} has no registered doc-region producer"
+                ),
+                TextLints::None => {}
+            }
+        }
+        for ext in ["org", "", "json"] {
+            assert_eq!(
+                profile_for(ext).text_lints,
+                TextLints::None,
+                ".{ext} must run no text checks"
+            );
+        }
+    }
+
+    /// The Ast tier needs a registered backend on both sides of dispatch:
+    /// the profile's `backend` column and the lang crate's registry.
+    #[test]
+    fn ast_text_lint_tiers_carry_a_backend() {
+        for (ext, profile) in LANG_ENTRIES {
+            if profile.text_lints == TextLints::Ast {
+                assert!(
+                    profile.backend,
+                    ".{ext} must carry the backend column for its text regions"
+                );
+                assert!(
+                    rust_llm_tidy_lang::backend_for(ext).is_some(),
+                    ".{ext} must resolve a registered backend"
+                );
+            }
         }
     }
 

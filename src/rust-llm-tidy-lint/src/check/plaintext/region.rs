@@ -1,14 +1,16 @@
 //! The doc-region input shape the measuring core consumes.
 //!
 //! A [`DocRegion`] is a contiguous run of doc lines sharing one dialect.
-//! Producers (see [`line_markers`]) strip each line's comment marker and
-//! indent, keep its original line number, and group the lines into regions.
+//!
+//! Producers - the lint crate's own [`line_markers`] or an AST backend's
+//! doc-region walk - strip each line's comment marker and indent, keep
+//! its original line number, and group the lines into regions.
 //!
 //! [`line_markers`]: super::line_markers
 
 /// A contiguous run of doc lines sharing one dialect, in source order.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct DocRegion {
+pub struct DocRegion {
     /// The dialect the region's lines are measured with.
     pub dialect: Dialect,
     /// The region's doc lines in source order.
@@ -17,15 +19,19 @@ pub(crate) struct DocRegion {
 
 /// The dialect a [`DocRegion`] is measured with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Dialect {
+pub enum Dialect {
     /// Markdown prose: fences, indented code, exempt content, and bullet
     /// segmentation over the stripped text.
     Markdown,
+    /// XML doc comments: only the inner text of text nodes is measured,
+    /// tags and attribute values vanish, `<code>` and `<example>`
+    /// subtrees are exempt, and paragraphs never join across tags.
+    XmlDoc,
 }
 
 /// One doc line after the producer stripped its comment marker and indent.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct RegionLine {
+pub struct RegionLine {
     /// 1-based original file line number.
     pub number: usize,
     /// The stripped text: line ending, indent, and comment marker removed.

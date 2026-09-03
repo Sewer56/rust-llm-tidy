@@ -6,6 +6,9 @@
 //! stripped doc lines, paragraphs, and exemption classifications in one
 //! linear pass.
 //!
+//! Each region is measured with its dialect's rules, so markdown prose
+//! and XML doc comments feed the same budgets and codes.
+//!
 //! Both checks count the full line text, code spans, URLs, and link targets
 //! included; table rows, code blocks, and link reference definitions are
 //! exempt.
@@ -16,20 +19,25 @@
 //!   line numbers, and the dialect tag.
 //! - [`line_markers`] - the legacy producer: line-comment markers keyed by
 //!   file extension, one region per contiguous comment run.
+//! - [`xml_doc`] - the XML doc dialect: text-node measurement over
+//!   tag-carrying doc lines.
 //! - [`analyze`] - producer plus measuring core over one file.
 //! - [`measure`] - the measuring core over explicit region lists.
 //! - [`Paragraph`] - a measured paragraph: plain text or a bullet with its
 //!   wrapped continuations.
+//! - [`run_region_checks`] - DOC007/DOC008 over explicit doc regions
+//!   from an AST backend's doc-region walk.
 //! - [`run_text_checks`] - DOC007/DOC008 over the analysis result, delegated
 //!   to [`paragraph_length`] and [`line_length`].
 
 use crate::diagnostic::Diagnostic;
-use region::{Dialect, DocRegion};
+pub use region::{Dialect, DocRegion, RegionLine};
 
 mod line_length;
 mod line_markers;
 mod paragraph_length;
 mod region;
+mod xml_doc;
 
 /// Stripped lines and paragraphs extracted from one file.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -81,6 +89,22 @@ pub(crate) enum ParagraphKind {
     Bullet,
 }
 
+/// Runs DOC007 and DOC008 over explicit doc regions, as produced by an
+/// AST backend's doc-region walk instead of the extension's line-marker
+/// table. Each region is measured with its dialect's rules.
+///
+/// # Arguments
+///
+/// - `regions` - the file's doc regions, in source order.
+///
+/// # Returns
+///
+/// Diagnostics in source order: DOC007 per over-limit paragraph, then
+/// DOC008 per over-limit line.
+pub fn run_region_checks(regions: Vec<DocRegion>) -> Vec<Diagnostic> {
+    document_diagnostics(measure(regions))
+}
+
 /// Runs DOC007 and DOC008 over one file's raw text.
 ///
 /// DOC007 fires an Error when a plain paragraph's size exceeds 240 chars,
@@ -100,10 +124,7 @@ pub(crate) enum ParagraphKind {
 /// Diagnostics in source order: DOC007 per over-limit paragraph (bullet
 /// warnings after their paragraph position), then DOC008 per over-limit line.
 pub fn run_text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
-    let doc = analyze(source, ext);
-    let mut diags = paragraph_length::diagnostics(&doc);
-    diags.extend(line_length::diagnostics(&doc));
-    diags
+    document_diagnostics(analyze(source, ext))
 }
 
 /// Strips and segments `source` for the given file extension.
@@ -131,6 +152,9 @@ pub(crate) fn measure(regions: Vec<DocRegion>) -> Document {
             Dialect::Markdown => {
                 measure_markdown_region(region, &mut doc, &mut pending, &mut in_fence);
             }
+            Dialect::XmlDoc => {
+                xml_doc::measure_region(region, &mut doc, &mut pending);
+            }
         }
         // A region break is a gap of non-doc lines: paragraphs and fences
         // never span it.
@@ -143,6 +167,13 @@ pub(crate) fn measure(regions: Vec<DocRegion>) -> Document {
 /// A summary line plus one indented bullet per guidance sentence.
 fn bulleted(summary: &str, bullets: &[String]) -> String {
     format!("{summary}\n  - {}", bullets.join("\n  - "))
+}
+
+/// DOC007 then DOC008 diagnostics for one measured document.
+fn document_diagnostics(doc: Document) -> Vec<Diagnostic> {
+    let mut diags = paragraph_length::diagnostics(&doc);
+    diags.extend(line_length::diagnostics(&doc));
+    diags
 }
 
 /// Measures one markdown-prose region: fence tracking, indented-code and
