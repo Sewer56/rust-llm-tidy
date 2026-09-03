@@ -6,9 +6,8 @@ Pads GitHub-Flavored Markdown table columns to a consistent width so the
 pipe delimiters line up. Runs in markdown-family files and in the line
 comments and doc comments of admitted code languages.
 
-The tier's comment prefix is stripped and re-applied, so every row keeps
-its marker and indent. See the [language matrix] for which extensions
-run it.
+Comment prefixes are stripped and re-applied, so rows keep their marker
+and indent. See the [language matrix] for covered extensions.
 
 ## Before
 
