@@ -27,6 +27,11 @@ pub enum Dialect {
     /// tags and attribute values vanish, `<code>` and `<example>`
     /// subtrees are exempt, and paragraphs never join across tags.
     XmlDoc,
+    /// Block doc comments (`/** ... */` style): leading `*` continuation
+    /// markers vanish, `@tag` lines cost only their remaining prose,
+    /// blank lines split paragraphs, and fenced or indented example
+    /// blocks are exempt.
+    BlockDoc,
 }
 
 /// One doc line after the producer stripped its comment marker and indent.

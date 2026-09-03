@@ -25,6 +25,14 @@ Notes on the op columns:
   DOC008).
 - C# evaluates its codes against XML doc comments and measures their
   prose with the XML doc dialect (see [lints for C#]).
+- The `//` and `#` families (the first two marker rows below) can
+  additionally run `lints` - the two text checks - through an explicit
+  `--include lints` or a config include.
+- Their comment prose is measured by a fail-closed comment lexicon:
+  line and block comments count; string content, heredoc payload, and
+  code lines never do.
+- Files the lexicon cannot attribute safely produce no findings rather
+  than guesses.
 - Code languages and C# can additionally run `fences`, but only through
   an explicit `--include fences` or a config include. No other op turns
   on for them.

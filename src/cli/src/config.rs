@@ -511,8 +511,7 @@ mod tests {
         }
         let cfg_path = dir.join(".rust-llm-tidy.yml");
         std::fs::write(&cfg_path, yaml).unwrap();
-        let compiled = load_and_compile(&cfg_path).expect("config should compile");
-        compiled
+        load_and_compile(&cfg_path).expect("config should compile")
     }
 
     #[test]
@@ -651,10 +650,10 @@ mod tests {
         for code in [
             "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "TEST001",
         ] {
-            assert!(rules.iter().any(|r| *r == code), "missing lint code {code}");
+            assert!(rules.contains(&code), "missing lint code {code}");
         }
         for op in ["tables", "fences", "links", "reorder", "vis", "lints"] {
-            assert!(rules.iter().any(|r| *r == op), "missing fix/operation {op}");
+            assert!(rules.contains(&op), "missing fix/operation {op}");
         }
     }
 

@@ -21,6 +21,8 @@
 //!   file extension, one region per contiguous comment run.
 //! - [`xml_doc`] - the XML doc dialect: text-node measurement over
 //!   tag-carrying doc lines.
+//! - [`block_doc`] - the block doc dialect: `*`-continuation stripping and
+//!   `@tag` exemption over `/** */`-style doc lines.
 //! - [`analyze`] - producer plus measuring core over one file.
 //! - [`measure`] - the measuring core over explicit region lists.
 //! - [`Paragraph`] - a measured paragraph: plain text or a bullet with its
@@ -33,6 +35,7 @@
 use crate::diagnostic::Diagnostic;
 pub use region::{Dialect, DocRegion, RegionLine};
 
+mod block_doc;
 mod line_length;
 mod line_markers;
 mod paragraph_length;
@@ -155,6 +158,9 @@ pub(crate) fn measure(regions: Vec<DocRegion>) -> Document {
             Dialect::XmlDoc => {
                 xml_doc::measure_region(region, &mut doc, &mut pending);
             }
+            Dialect::BlockDoc => {
+                block_doc::measure_region(region, &mut doc, &mut pending, &mut in_fence);
+            }
         }
         // A region break is a gap of non-doc lines: paragraphs and fences
         // never span it.
@@ -176,9 +182,8 @@ fn document_diagnostics(doc: Document) -> Vec<Diagnostic> {
     diags
 }
 
-/// Measures one markdown-prose region: fence tracking, indented-code and
-/// exempt-content classification, and bullet segmentation over the stripped
-/// lines.
+/// Measures one markdown-prose region: the producer already stripped the
+/// comment markers, so each line goes through the shared prose classifier.
 ///
 /// `in_fence` carries the open-fence state in and out: a fence opened here
 /// stays open until its closing fence line or the region's end.
@@ -189,79 +194,106 @@ fn measure_markdown_region(
     in_fence: &mut bool,
 ) {
     for line in region.lines {
-        let trimmed = line.text.trim();
+        measure_prose_line(
+            line.text,
+            line.number,
+            line.indented,
+            doc,
+            pending,
+            in_fence,
+        );
+    }
+}
 
-        if trimmed.is_empty() {
-            flush(pending, doc);
-            doc.lines.push(StrippedLine {
-                number: line.number,
-                text: line.text,
-                in_code_block: false,
-            });
-            continue;
-        }
+/// Classifies and measures one prose line under the markdown rules: fence
+/// tracking, indented-code and exempt-content classification, and bullet
+/// segmentation.
+///
+/// Shared by the markdown dialect (marker-stripped doc lines) and the
+/// [`block_doc`] dialect (`*`-continuation-stripped block lines); `indented`
+/// is the caller's indented-code fact for the measured text.
+///
+/// [`block_doc`]: self::block_doc
+fn measure_prose_line(
+    text: String,
+    number: usize,
+    indented: bool,
+    doc: &mut Document,
+    pending: &mut Option<PendingParagraph>,
+    in_fence: &mut bool,
+) {
+    let trimmed = text.trim();
 
-        // Decide whether this line is exempt from paragraph measuring.
-        // A fence is a ``` or ~~~ line: it opens a code block, and the
-        // next fence line closes it.
-        //
-        // Fence lines and everything between them are exempt. Outside a
-        // block, indented code and lines like headings, tables, and
-        // signature-like lines (full list on `is_exempt_content`) are also
-        // exempt.
-        let fence = trimmed.starts_with("```") || trimmed.starts_with("~~~");
-        let in_code_block = *in_fence || fence || line.indented;
-        let exempt = if *in_fence {
-            if fence {
-                *in_fence = false;
-            }
-            true
-        } else if fence || line.indented || is_exempt_content(trimmed) {
-            if fence {
-                *in_fence = true;
-            }
-            true
-        } else {
-            false
-        };
-
-        // Count this line into the current paragraph (`pending`) or start
-        // a new one. A paragraph is a run of consecutive doc lines, ended
-        // by a blank line, an exempt line, or the start of a new bullet.
-        if exempt {
-            // Exempt lines are not paragraph text, so this is the end
-            // of the current paragraph.
-            flush(pending, doc);
-        } else if let Some(content) = bullet_content(trimmed) {
-            // A bullet ends the current paragraph and starts its own,
-            // measured from the text after the bullet marker.
-            flush(pending, doc);
-            *pending = Some(PendingParagraph {
-                kind: ParagraphKind::Bullet,
-                first_line: line.number,
-                len: content.chars().count(),
-                count: 1,
-            });
-        } else if let Some(open) = pending.as_mut() {
-            // Continuation lines (next plain line or wrapped bullet tail)
-            // join the current paragraph; only trimmed text counts.
-            open.len += trimmed.chars().count();
-            open.count += 1;
-        } else {
-            // Plain text with no paragraph open: start one at this line.
-            *pending = Some(PendingParagraph {
-                kind: ParagraphKind::Plain,
-                first_line: line.number,
-                len: trimmed.chars().count(),
-                count: 1,
-            });
-        }
+    if trimmed.is_empty() {
+        flush(pending, doc);
         doc.lines.push(StrippedLine {
-            number: line.number,
-            text: line.text,
-            in_code_block,
+            number,
+            text,
+            in_code_block: false,
+        });
+        return;
+    }
+
+    // Decide whether this line is exempt from paragraph measuring.
+    // A fence is a ``` or ~~~ line: it opens a code block, and the
+    // next fence line closes it.
+    //
+    // Fence lines and everything between them are exempt. Outside a
+    // block, indented code and lines like headings, tables, and
+    // signature-like lines (full list on `is_exempt_content`) are also
+    // exempt.
+    let fence = trimmed.starts_with("```") || trimmed.starts_with("~~~");
+    let in_code_block = *in_fence || fence || indented;
+    let exempt = if *in_fence {
+        if fence {
+            *in_fence = false;
+        }
+        true
+    } else if fence || indented || is_exempt_content(trimmed) {
+        if fence {
+            *in_fence = true;
+        }
+        true
+    } else {
+        false
+    };
+
+    // Count this line into the current paragraph (`pending`) or start
+    // a new one. A paragraph is a run of consecutive doc lines, ended
+    // by a blank line, an exempt line, or the start of a new bullet.
+    if exempt {
+        // Exempt lines are not paragraph text, so this is the end
+        // of the current paragraph.
+        flush(pending, doc);
+    } else if let Some(content) = bullet_content(trimmed) {
+        // A bullet ends the current paragraph and starts its own,
+        // measured from the text after the bullet marker.
+        flush(pending, doc);
+        *pending = Some(PendingParagraph {
+            kind: ParagraphKind::Bullet,
+            first_line: number,
+            len: content.chars().count(),
+            count: 1,
+        });
+    } else if let Some(open) = pending.as_mut() {
+        // Continuation lines (next plain line or wrapped bullet tail)
+        // join the current paragraph; only trimmed text counts.
+        open.len += trimmed.chars().count();
+        open.count += 1;
+    } else {
+        // Plain text with no paragraph open: start one at this line.
+        *pending = Some(PendingParagraph {
+            kind: ParagraphKind::Plain,
+            first_line: number,
+            len: trimmed.chars().count(),
+            count: 1,
         });
     }
+    doc.lines.push(StrippedLine {
+        number,
+        text,
+        in_code_block,
+    });
 }
 
 /// The paragraph text after the bullet marker, or `None` for non-bullets.

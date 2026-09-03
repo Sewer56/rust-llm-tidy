@@ -12,8 +12,10 @@ toggleable through the same rule namespace as the ops.
 So `exclude: [{rules: [DOC001]}]` turns off just missing-docs and
 `exclude: [{rules: [lints]}]` turns off all linting.
 
-Which codes run depends on the language: Rust and C# run all nine, and
-the markdown family runs the two text checks (DOC007, DOC008).
+Which codes run depends on the language: Rust and C# run all nine; the
+markdown family runs the two text checks (DOC007, DOC008); the `//` and
+`#` comment families run the two text checks through an explicit
+include.
 
 C# evaluates its codes against XML doc comments and measures their prose
 with the XML doc dialect; see [lints for C#] for the details.
@@ -263,10 +265,21 @@ A paragraph of doc text over 240 chars is an error. A bullet over
 chars. Nested bullets are separate paragraphs.
 
 Both checks strip leading whitespace, the comment marker (`//`, `///`, `//!`
-in Rust), and one following space.
+in Rust), and one following space. The comment lexicon strips the whole
+marker run (`///`, `##`) the same way.
 
 They run on `.rs` files, the markdown family, and `.cs` XML doc comments,
 where only text-node inner text counts ([lints for C#]).
+
+Through an explicit include they also run on `//`- and `#`-family
+comments, where line comment prose measures like markdown.
+
+`/** */` block docs measure with the block doc dialect: `*`
+continuations and `@tag` name tokens (`@param name`) never count.
+
+The comment lexicon behind those families fails closed: string content,
+heredoc payload, and code lines never measure, and files it cannot lex
+safely produce no findings rather than guesses.
 
 Code blocks, tables, headings, signature lines, and link definitions are
 exempt as whole lines and end a paragraph.

@@ -139,8 +139,8 @@ impl Cli {
 ///
 /// The profile decides which passes run: parser-driven checks need a
 /// registered backend and its lint composition; the text-lint tier
-/// sources DOC007/DOC008 - whole-file prose for the markdown family,
-/// backend composition for Ast.
+/// sources DOC007/DOC008 - whole-file prose, backend regions, or the
+/// comment lexicon, per tier.
 pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
@@ -159,8 +159,14 @@ pub(crate) fn check_file(
             .with_context(|| format!("failed to parse {}", path.display()))?;
         diagnostics = backend.lint(&parsed);
     }
-    if profile.text_lints == langs::TextLints::Prose {
-        diagnostics.extend(check::run_text_checks(&source, ext));
+    match profile.text_lints {
+        langs::TextLints::Prose => {
+            diagnostics.extend(check::run_text_checks(&source, ext));
+        }
+        langs::TextLints::Lexicon => {
+            diagnostics.extend(rust_llm_tidy_lang::lexicon::text_checks(&source, ext));
+        }
+        langs::TextLints::Ast | langs::TextLints::None => {}
     }
     diagnostics.retain(|d| !disabled.contains(d.code));
 

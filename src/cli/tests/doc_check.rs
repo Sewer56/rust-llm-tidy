@@ -722,6 +722,53 @@ fn doc006_placeholders() {
     );
 }
 
+// ── Lexicon text checks: `//` and `#` families ────────────────────
+
+/// JS template literal and string content produce no findings on a
+/// probe file whose mis-measured lines would overflow both budgets.
+#[test]
+fn js_lexicon_string_probes_stay_quiet() {
+    let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_probes.js");
+
+    assert_eq!(exit, 0, "the probe fixture must be clean:\n{stderr}");
+    assert!(
+        stderr.is_empty(),
+        "template literal and string content must stay unmeasured:\n{stderr}"
+    );
+}
+
+/// Explicit `--include lints` on a `.js` file emits DOC007 for
+/// over-budget `//` and `/** */` prose and DOC008 for an over-long
+/// comment line, all at original file lines.
+#[test]
+fn js_lexicon_text_budgets_fire_with_original_lines() {
+    let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.js");
+
+    assert_ne!(exit, 0, "the DOC007 errors must fail the run:\n{stderr}");
+    assert!(
+        stderr.contains(":1: error[DOC007]"),
+        "DOC007 must report at the comment paragraph's first line:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(":11: error[DOC007]"),
+        "DOC007 must report at the JSDoc paragraph's first line:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(":20: warning[DOC008]"),
+        "DOC008 must report at the over-long comment line:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC007").count(),
+        2,
+        "expected exactly 2 DOC007 findings:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC008").count(),
+        1,
+        "expected exactly 1 DOC008 finding:\n{stderr}"
+    );
+}
+
 /// The `--json` alias is equivalent to `--output-mode json`.
 #[test]
 fn json_alias_is_equivalent_to_output_mode() {
@@ -1182,6 +1229,53 @@ fn md_paragraph_over_limit_fails_with_doc007() {
     );
 }
 
+/// Python `#` comment prose fires DOC007 while triple-quoted string
+/// content and `<<` operators stay quiet.
+#[test]
+fn py_lexicon_measures_comments_not_strings() {
+    let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.py");
+
+    assert_ne!(exit, 0, "the DOC007 error must fail the run:\n{stderr}");
+    assert!(
+        stderr.contains(":1: error[DOC007]"),
+        "DOC007 must report at the comment paragraph's first line:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC007").count(),
+        1,
+        "exactly the comment paragraph, never the string content:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC008").count(),
+        0,
+        "no doc line in the fixture crosses the line budget:\n{stderr}"
+    );
+}
+
+/// Ruby `#` comments measure as prose - heading-shaped `##` lines
+/// included - while `<<` operators, heredoc payload, and code lines
+/// stay quiet.
+#[test]
+fn rb_lexicon_measures_comment_prose_only() {
+    let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.rb");
+
+    assert_ne!(exit, 0, "the DOC007 error must fail the run:\n{stderr}");
+    assert!(
+        stderr.contains(":1: error[DOC007]"),
+        "the comment paragraph must measure from its first line:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC007").count(),
+        1,
+        "exactly the comment paragraph, never payload or code:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC008").count(),
+        0,
+        "no doc line in the fixture crosses the line budget:\n{stderr}"
+    );
+}
+
 /// The CLI's rendered rs findings equal the direct composition of the
 /// tree-sitter checks (`run_all`) and the text checks (`run_text_checks`)
 /// over the same file: rs dispatch adds nothing and drops nothing.
@@ -1246,6 +1340,25 @@ fn rs_long_doc_comment_warns_doc008() {
     assert!(
         stderr.contains(":1: warning[DOC008]"),
         "expected a DOC008 warning for the over-limit comment, got:\n{stderr}"
+    );
+}
+
+/// Shell heredoc payload and `$#` parameter syntax stay quiet while the
+/// comment paragraph fires.
+#[test]
+fn sh_lexicon_ignores_heredoc_payload() {
+    let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.sh");
+
+    assert_ne!(exit, 0, "the DOC007 error must fail the run:\n{stderr}");
+    assert_eq!(
+        stderr.matches("DOC007").count(),
+        1,
+        "exactly the comment paragraph, never the heredoc payload:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC008").count(),
+        0,
+        "no doc line in the fixture crosses the line budget:\n{stderr}"
     );
 }
 
@@ -1331,6 +1444,17 @@ fn run_check_fixture(name: &str) -> (String, i32) {
 /// (stderr, exit_code).
 fn run_csharp_fixture(name: &str) -> (String, i32) {
     let path = csharp_fixture_dir().join(name);
+    let output = run_command(&["--include", "lints"], &path);
+    (
+        String::from_utf8_lossy(&output.stderr).to_string(),
+        output.status.code().unwrap_or(-1),
+    )
+}
+
+/// Run `rust-llm-tidy --include lints` on a lexicon-family fixture (the
+/// `js`, `py`, `sh`, `rb` probes) and return its (stderr, exit_code).
+fn run_lexicon_fixture(name: &str) -> (String, i32) {
+    let path = fixture_dir().join(name);
     let output = run_command(&["--include", "lints"], &path);
     (
         String::from_utf8_lossy(&output.stderr).to_string(),

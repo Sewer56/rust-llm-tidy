@@ -26,6 +26,12 @@
 //! An extension without a registered backend resolves no AST ops - every
 //! language except the two above.
 //!
+//! The [`lexicon`] module sources the DOC007/DOC008 text checks for the
+//! `//` and `#` comment families with no backend at all: a fail-closed
+//! scan of comments and the family's string forms.
+//!
+//! [`lexicon`]: self::lexicon
+//!
 //! # Lookup
 //!
 //! [`backend_for`] matches extensions ASCII case-insensitively (`.RS`
@@ -37,5 +43,6 @@ pub use rust_backend::RustBackend;
 
 mod backend;
 mod csharp;
+pub mod lexicon;
 pub mod regions;
 mod rust_backend;
