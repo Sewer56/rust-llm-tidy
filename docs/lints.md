@@ -271,11 +271,21 @@ marker run (`///`, `##`) the same way.
 They run on `.rs` files, the markdown family, and `.cs` XML doc comments,
 where only text-node inner text counts ([lints for C#]).
 
+On `.rs`, two more doc sources also measure: outer `/** */` block docs
+and `#[doc = "..."]` attribute values. An attribute value's lines
+measure as if the text followed `///`.
+
+Each source keeps its own paragraphs; prose never pools across them.
+
+Plain `/* */` comments, `/*! */` inner block docs, and `#![doc = "..."]`
+inner attributes stay unmeasured.
+
 Through an explicit include they also run on `//`- and `#`-family
 comments, where line comment prose measures like markdown.
 
-`/** */` block docs measure with the block doc dialect: `*`
-continuations and `@tag` name tokens (`@param name`) never count.
+Rust and lexicon-family `/** */` block docs measure with the block doc
+dialect: `*` continuations and `@tag` name tokens (`@param name`) never
+count.
 
 The comment lexicon behind those families fails closed: string content,
 heredoc payload, and code lines never measure, and files it cannot lex
@@ -329,6 +339,9 @@ A doc line over 80 chars is a warning. Lines count in full: code spans,
 URLs, and link targets included.
 
 Code blocks, table rows, and link reference definitions are exempt.
+
+On `.rs`, block doc lines count without the `*` continuation, and
+`#[doc = "..."]` lines count without the quote and its following space.
 
 Before:
 

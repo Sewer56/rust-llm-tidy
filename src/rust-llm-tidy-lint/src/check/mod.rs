@@ -26,7 +26,9 @@ pub use arguments::{missing_arguments_section, undocumented_param};
 pub use docs::missing_docs;
 pub use errors::{missing_errors_section, vague_errors};
 pub use placeholder::doc_placeholder;
-pub use plaintext::{Dialect, DocRegion, RegionLine, run_region_checks, run_text_checks};
+pub use plaintext::{
+    Dialect, DocRegion, RegionLine, line_marker_regions, run_region_checks, run_text_checks,
+};
 use rust_llm_tidy_model::parse::ItemKind;
 use rust_llm_tidy_model::parse::ParseResult;
 pub use test_naming::test_naming;

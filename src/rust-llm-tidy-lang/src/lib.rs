@@ -30,7 +30,12 @@
 //! `//` and `#` comment families with no backend at all: a fail-closed
 //! scan of comments and the family's string forms.
 //!
+//! The [`rust_text_regions`] module sources the same checks for `rs`
+//! from the parse the backend already requires: the line-comment
+//! regions plus `/** */` block docs and `#[doc = "..."]` attribute docs.
+//!
 //! [`lexicon`]: self::lexicon
+//! [`rust_text_regions`]: self::rust_text_regions
 //!
 //! # Lookup
 //!
@@ -46,3 +51,4 @@ mod csharp;
 pub mod lexicon;
 pub mod regions;
 mod rust_backend;
+pub mod rust_text_regions;

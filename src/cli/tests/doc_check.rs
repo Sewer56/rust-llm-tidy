@@ -1276,50 +1276,102 @@ fn rb_lexicon_measures_comment_prose_only() {
     );
 }
 
+/// Rust block and attribute doc prose fires the text budgets with
+/// original file lines: DOC007 errors on the over-budget `/** */` and
+/// `#[doc = "..."]` paragraphs, and DOC008 warns on the 81-char block
+/// and attribute lines.
+#[test]
+fn rs_block_and_attribute_docs_fire_text_budgets() {
+    let (stderr, exit) = run_check_fixture("doc007_doc008_block_attr_budgets.rs");
+
+    assert_ne!(exit, 0, "the DOC007 errors must fail the run:\n{stderr}");
+    assert!(
+        stderr.contains(":1: error[DOC007]"),
+        "DOC007 must report at the block doc's first prose line:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(":25: error[DOC007]"),
+        "DOC007 must report at the attribute paragraph's first line:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(":8: warning[DOC008]"),
+        "DOC008 must report at the over-long attribute line:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(":12: warning[DOC008]"),
+        "DOC008 must report at the over-long block doc line:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC007").count(),
+        2,
+        "exactly the block and attribute paragraphs, never the plain block:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC008").count(),
+        2,
+        "exactly the block and attribute lines, never the plain block:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains("DOC001"),
+        "the fixture's private fns stay out of DOC001:\n{stderr}"
+    );
+}
+
 /// The CLI's rendered rs findings equal the direct composition of the
-/// tree-sitter checks (`run_all`) and the text checks (`run_text_checks`)
-/// over the same file: rs dispatch adds nothing and drops nothing.
+/// tree-sitter checks (`run_all`) and the rs text checks
+/// (`rust_text_regions::text_checks`) over the same file: rs dispatch
+/// adds nothing and drops nothing.
+///
+/// The rs text checks cover line comments plus `/** */` and
+/// `#[doc = "..."]` docs.
 #[test]
 fn rs_diagnostics_match_direct_check_composition() {
-    let path = fixture_dir().join("doc001_missing_docs.rs");
-    let source = fs::read_to_string(&path).unwrap();
+    for name in [
+        "doc001_missing_docs.rs",
+        "doc007_doc008_block_attr_budgets.rs",
+    ] {
+        let path = fixture_dir().join(name);
+        let source = fs::read_to_string(&path).unwrap();
 
-    // Path A: the CLI pipeline's rendered JSON findings.
-    let output = run_command(&["--include", "lints", "--output-mode", "json"], &path);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let rendered: Vec<(usize, String, String)> = serde_json::from_str::<serde_json::Value>(&stdout)
-        .expect("JSON diagnostics must parse")
-        .as_array()
-        .expect("diagnostics must be an array")
-        .iter()
-        .map(|f| {
-            (
-                f["line"].as_u64().expect("line must be a number") as usize,
-                f["severity"].as_str().expect("severity").to_string(),
-                f["code"].as_str().expect("code").to_string(),
-            )
-        })
-        .collect();
+        // Path A: the CLI pipeline's rendered JSON findings.
+        let output = run_command(&["--include", "lints", "--output-mode", "json"], &path);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let rendered: Vec<(usize, String, String)> =
+            serde_json::from_str::<serde_json::Value>(&stdout)
+                .expect("JSON diagnostics must parse")
+                .as_array()
+                .expect("diagnostics must be an array")
+                .iter()
+                .map(|f| {
+                    (
+                        f["line"].as_u64().expect("line must be a number") as usize,
+                        f["severity"].as_str().expect("severity").to_string(),
+                        f["code"].as_str().expect("code").to_string(),
+                    )
+                })
+                .collect();
 
-    // Path B: the two check sources composed directly over the same source.
-    let parsed = rust_llm_tidy_model::parse::parse_source(&source).unwrap();
-    let mut expected = rust_llm_tidy_lint::check::run_all(&parsed);
-    expected.extend(rust_llm_tidy_lint::check::run_text_checks(&source, "rs"));
-    let expected: Vec<(usize, String, String)> = expected
-        .iter()
-        .map(|d| {
-            let sev = match d.severity {
-                rust_llm_tidy_lint::Severity::Error => "error",
-                rust_llm_tidy_lint::Severity::Warning => "warning",
-            };
-            (d.line, sev.to_string(), d.code.to_string())
-        })
-        .collect();
+        // Path B: the two check sources composed directly over the same
+        // source.
+        let parsed = rust_llm_tidy_model::parse::parse_source(&source).unwrap();
+        let mut expected = rust_llm_tidy_lint::check::run_all(&parsed);
+        expected.extend(rust_llm_tidy_lang::rust_text_regions::text_checks(&parsed));
+        let expected: Vec<(usize, String, String)> = expected
+            .iter()
+            .map(|d| {
+                let sev = match d.severity {
+                    rust_llm_tidy_lint::Severity::Error => "error",
+                    rust_llm_tidy_lint::Severity::Warning => "warning",
+                };
+                (d.line, sev.to_string(), d.code.to_string())
+            })
+            .collect();
 
-    assert_eq!(
-        rendered, expected,
-        "CLI rs dispatch must render exactly run_all + run_text_checks"
-    );
+        assert_eq!(
+            rendered, expected,
+            "{name}: CLI rs dispatch must render exactly run_all + text_checks"
+        );
+    }
 }
 
 /// Rust comments flow through the same text checks: an 81-char `///` line

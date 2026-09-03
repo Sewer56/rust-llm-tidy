@@ -53,6 +53,56 @@ impl<'a> PendingTrivia<'a> {
     }
 }
 
+/// Extract the `string_content` node of a `#[doc = "..."]` attribute
+/// item: the literal's text between its quotes, positioned where the
+/// text starts in the file.
+///
+/// Shared by doc-comment extraction here and the lang crate's Rust
+/// doc-region producer, which reads the value's lines from the node's
+/// text and start row.
+///
+/// Returns `None` when `item` is not a doc attribute with a single
+/// string value:
+///
+/// - a list form (`#[doc(hidden)]`) or any attribute named other than
+///   `doc`,
+/// - a scoped path (`#[path::doc = "..."]`),
+/// - a value that is not one string literal.
+///
+/// # Arguments
+///
+/// - `item` - the `attribute_item` node to read.
+/// - `source` - the full source text for text extraction.
+pub fn doc_attribute_content<'a>(item: Node<'a>, source: &str) -> Option<Node<'a>> {
+    let attr = child_of_kind(item, "attribute")?;
+    // The attribute path must be exactly `doc` (a plain identifier, not scoped).
+    let path = attr_path(attr)?;
+    if path.kind() != "identifier" || path.utf8_text(source.as_bytes()).ok()? != "doc" {
+        return None;
+    }
+    // `#[doc = "..."]` carries the literal in the `value` field; list forms
+    // like `#[doc(hidden)]` instead have an `arguments` `token_tree` and are
+    // not doc-comment lines.
+    let value = attr.child_by_field_name("value")?;
+    if value.kind() != "string_literal" {
+        return None;
+    }
+    child_of_kind(value, "string_content")
+}
+
+/// True when a `line_comment`/`block_comment` node is an OUTER doc comment
+/// (`///` or `/** */`), i.e. it has an `outer` field.
+///
+/// Shared by attachment classification here and the lang crate's Rust
+/// doc-region producer.
+///
+/// # Arguments
+///
+/// - `node` - the `line_comment` or `block_comment` node to test.
+pub fn is_outer_doc(node: Node) -> bool {
+    has_field(node, "outer")
+}
+
 /// Classify a top-level item node into a [`Classification`].
 ///
 /// `body` is the item node itself (e.g. `function_item`).
@@ -378,10 +428,10 @@ fn extract_doc_comments(trivia: &[Node], source: &str) -> Vec<String> {
                 }
             }
             "attribute_item" => {
-                if let Some(attr) = child_of_kind(*node, "attribute")
-                    && let Some(text) = doc_attribute_value(attr, source)
+                if let Some(content) = doc_attribute_content(*node, source)
+                    && let Ok(text) = content.utf8_text(source.as_bytes())
                 {
-                    docs.push(text);
+                    docs.push(text.to_string());
                 }
             }
             _ => {}
@@ -442,6 +492,11 @@ fn find_macro_invocation(node: Node<'_>) -> Option<Node<'_>> {
 /// `generic_type`, `scoped_type_identifier`, and `scoped_identifier`.
 fn first_ident_of_type(node: Node<'_>, source: &str) -> Option<String> {
     first_segment(node, source).map(str::to_string)
+}
+
+/// True when `node` has a child with field name `field`.
+fn has_field(node: Node, field: &str) -> bool {
+    node.child_by_field_name(field).is_some()
 }
 
 /// True when the attrs contain a `#[test]` or `#[...::test]` attribute.
@@ -522,40 +577,13 @@ fn attr_last_segment<'a>(attr: Node<'a>, source: &'a str) -> Option<&'a str> {
     }
 }
 
-/// Extract the literal value of a `#[doc = "..."]` attribute node.
-///
-/// Returns the `string_literal`'s `string_content` (sans surrounding quotes),
-/// mirroring syn's `#[doc = "..."]` value (so `#[doc = " foo"]` yields ` foo`,
-/// matching `/// foo`).
-///
-/// Returns `None` when `attr` is not an outer-doc attribute - a list form
-/// (`#[doc(hidden)]`), a scoped path (`#[path::doc = "..."]`), an attribute
-/// named something other than `doc`, or an attribute whose value is not a
-/// single string literal.
-fn doc_attribute_value(attr: Node<'_>, source: &str) -> Option<String> {
-    // The attribute path must be exactly `doc` (a plain identifier, not scoped).
-    let path = attr_path(attr)?;
-    if path.kind() != "identifier" || path.utf8_text(source.as_bytes()).ok()? != "doc" {
-        return None;
-    }
-    // `#[doc = "..."]` carries the literal in the `value` field; list forms
-    // like `#[doc(hidden)]` instead have an `arguments` `token_tree` and are
-    // not doc-comment lines.
-    let value = attr.child_by_field_name("value")?;
-    if value.kind() != "string_literal" {
-        return None;
-    }
-    let content = child_of_kind(value, "string_content")?;
-    content
-        .utf8_text(source.as_bytes())
-        .ok()
-        .map(str::to_string)
-}
-
-/// True when a `line_comment`/`block_comment` node is an OUTER doc comment
-/// (`///` or `/** */`), i.e. it has an `outer` field.
-fn is_outer_doc(node: Node) -> bool {
-    has_field(node, "outer")
+/// First named child of `node` whose kind equals `kind`.
+fn child_of_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
+    let count = node.named_child_count() as u32;
+    (0..count).find_map(|i| {
+        let c = node.named_child(i)?;
+        (c.kind() == kind).then_some(c)
+    })
 }
 
 /// Last path-segment identifier of a type node, or `None` for non-path types
@@ -597,15 +625,6 @@ fn attr_path(attr: Node<'_>) -> Option<Node<'_>> {
     })
 }
 
-/// First named child of `node` whose kind equals `kind`.
-fn child_of_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
-    let count = node.named_child_count() as u32;
-    (0..count).find_map(|i| {
-        let c = node.named_child(i)?;
-        (c.kind() == kind).then_some(c)
-    })
-}
-
 /// Leftmost identifier `&str` of a path/type node.
 fn first_segment<'a>(node: Node<'a>, source: &'a str) -> Option<&'a str> {
     match node.kind() {
@@ -618,9 +637,4 @@ fn first_segment<'a>(node: Node<'a>, source: &'a str) -> Option<&'a str> {
             .and_then(|t| first_segment(t, source)),
         _ => None,
     }
-}
-
-/// True when `node` has a child with field name `field`.
-fn has_field(node: Node, field: &str) -> bool {
-    node.child_by_field_name(field).is_some()
 }

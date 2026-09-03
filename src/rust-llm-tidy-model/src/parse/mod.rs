@@ -10,6 +10,7 @@
 //! which yields byte offsets directly - no line/column conversion is needed.
 
 use crate::parse::classify::{PendingTrivia, classify_item, is_attachable, is_transparent_comment};
+pub use classify::{doc_attribute_content, is_outer_doc};
 pub use item::{ParseResult, SourceItem, VisibilityTier};
 pub use kind::ItemKind;
 pub use member::TypeMember;

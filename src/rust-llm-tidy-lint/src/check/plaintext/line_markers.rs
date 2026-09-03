@@ -6,6 +6,9 @@
 //!
 //! Non-comment lines emit nothing and end the current region, so the
 //! measuring core breaks paragraphs and fences at the gap.
+//!
+//! The Rust AST producer merges this producer's `rs` regions with the
+//! parse tree's block and attribute doc regions.
 
 use super::region::{Dialect, DocRegion, RegionLine};
 
@@ -13,7 +16,14 @@ use super::region::{Dialect, DocRegion, RegionLine};
 /// comment lines, in source order.
 ///
 /// Marker-less extensions yield a single region holding every line.
-pub(super) fn doc_regions(source: &str, ext: &str) -> Vec<DocRegion> {
+/// The Rust doc-region producer also consumes these regions, merging
+/// them with its parse-tree doc regions.
+///
+/// # Arguments
+///
+/// - `source` - the raw file text.
+/// - `ext` - the file extension, selecting the comment marker table.
+pub fn doc_regions(source: &str, ext: &str) -> Vec<DocRegion> {
     let markers = markers_for(ext);
     let mut regions: Vec<DocRegion> = Vec::new();
     let mut in_region = false;

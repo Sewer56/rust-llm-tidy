@@ -18,7 +18,8 @@
 //! - [`region`] - the doc-region input shape: stripped lines, original
 //!   line numbers, and the dialect tag.
 //! - [`line_markers`] - the legacy producer: line-comment markers keyed by
-//!   file extension, one region per contiguous comment run.
+//!   file extension, one region per contiguous comment run; the Rust AST
+//!   producer reuses its `rs` regions through [`line_marker_regions`].
 //! - [`xml_doc`] - the XML doc dialect: text-node measurement over
 //!   tag-carrying doc lines.
 //! - [`block_doc`] - the block doc dialect: `*`-continuation stripping and
@@ -33,6 +34,7 @@
 //!   to [`paragraph_length`] and [`line_length`].
 
 use crate::diagnostic::Diagnostic;
+pub use line_markers::doc_regions as line_marker_regions;
 pub use region::{Dialect, DocRegion, RegionLine};
 
 mod block_doc;
