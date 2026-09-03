@@ -1,10 +1,10 @@
 //! Plaintext extraction, segmentation, and the paragraph and line-length
 //! checks built on them.
 //!
-//! Converts raw file text into numbered stripped doc lines, paragraphs, and
-//! exemption classifications in one linear pass. Comment prefixes and indents
-//! are stripped before measurement so any line-comment language works through
-//! the marker table.
+//! Doc-region producers strip a file's comment markers into
+//! [`region::DocRegion`]s; the measuring core folds them into numbered
+//! stripped doc lines, paragraphs, and exemption classifications in one
+//! linear pass.
 //!
 //! Both checks count the full line text, code spans, URLs, and link targets
 //! included; table rows, code blocks, and link reference definitions are
@@ -12,17 +12,24 @@
 //!
 //! # Layers
 //!
-//! - [`markers_for`] - data-driven comment markers keyed by file extension.
-//! - [`analyze`] - strips, numbers, and segments the file.
+//! - [`region`] - the doc-region input shape: stripped lines, original
+//!   line numbers, and the dialect tag.
+//! - [`line_markers`] - the legacy producer: line-comment markers keyed by
+//!   file extension, one region per contiguous comment run.
+//! - [`analyze`] - producer plus measuring core over one file.
+//! - [`measure`] - the measuring core over explicit region lists.
 //! - [`Paragraph`] - a measured paragraph: plain text or a bullet with its
 //!   wrapped continuations.
 //! - [`run_text_checks`] - DOC007/DOC008 over the analysis result, delegated
 //!   to [`paragraph_length`] and [`line_length`].
 
 use crate::diagnostic::Diagnostic;
+use region::{Dialect, DocRegion};
 
 mod line_length;
+mod line_markers;
 mod paragraph_length;
+mod region;
 
 /// Stripped lines and paragraphs extracted from one file.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -99,35 +106,65 @@ pub fn run_text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
     diags
 }
 
-/// Strips and segments `source` for the given file extension in one linear
-/// pass. Lines without a matching comment marker are skipped entirely for
-/// marker languages; for marker-less extensions every line is kept.
+/// Strips and segments `source` for the given file extension.
+///
+/// The [`line_markers`] producer builds the file's doc regions and
+/// [`measure`] folds them into the document. Lines without a matching
+/// comment marker are skipped entirely for marker languages; for
+/// marker-less extensions every line is kept.
 pub(crate) fn analyze(source: &str, ext: &str) -> Document {
-    let markers = markers_for(ext);
+    measure(line_markers::doc_regions(source, ext))
+}
+
+/// Folds `regions` into one [`Document`] in a single linear pass.
+///
+/// Each region is measured with its dialect's rules. The gap between two
+/// regions ends any open paragraph and closes any open fence, so prose and
+/// code blocks never span regions.
+pub(crate) fn measure(regions: Vec<DocRegion>) -> Document {
     let mut doc = Document::default();
     let mut pending: Option<PendingParagraph> = None;
     let mut in_fence = false;
 
-    for (idx, raw) in source.split_inclusive('\n').enumerate() {
-        let raw = raw.strip_suffix('\n').unwrap_or(raw);
-        let raw = raw.strip_suffix('\r').unwrap_or(raw);
+    for region in regions {
+        match region.dialect {
+            Dialect::Markdown => {
+                measure_markdown_region(region, &mut doc, &mut pending, &mut in_fence);
+            }
+        }
+        // A region break is a gap of non-doc lines: paragraphs and fences
+        // never span it.
+        flush(&mut pending, &mut doc);
+        in_fence = false;
+    }
+    doc
+}
 
-        // One linear pass: strip, classify, and fold each line exactly once.
-        let Some((text, raw_indent)) = strip_comment_prefix(raw, markers) else {
-            // A non-doc line breaks paragraph consecutiveness and closes any
-            // open fence: a doc fence cannot span source code.
-            flush(&mut pending, &mut doc);
-            in_fence = false;
-            continue;
-        };
-        let number = idx + 1;
-        let trimmed = text.trim();
+/// A summary line plus one indented bullet per guidance sentence.
+fn bulleted(summary: &str, bullets: &[String]) -> String {
+    format!("{summary}\n  - {}", bullets.join("\n  - "))
+}
+
+/// Measures one markdown-prose region: fence tracking, indented-code and
+/// exempt-content classification, and bullet segmentation over the stripped
+/// lines.
+///
+/// `in_fence` carries the open-fence state in and out: a fence opened here
+/// stays open until its closing fence line or the region's end.
+fn measure_markdown_region(
+    region: DocRegion,
+    doc: &mut Document,
+    pending: &mut Option<PendingParagraph>,
+    in_fence: &mut bool,
+) {
+    for line in region.lines {
+        let trimmed = line.text.trim();
 
         if trimmed.is_empty() {
-            flush(&mut pending, &mut doc);
+            flush(pending, doc);
             doc.lines.push(StrippedLine {
-                number,
-                text: text.to_string(),
+                number: line.number,
+                text: line.text,
                 in_code_block: false,
             });
             continue;
@@ -138,34 +175,24 @@ pub(crate) fn analyze(source: &str, ext: &str) -> Document {
         // next fence line closes it.
         //
         // Fence lines and everything between them are exempt. Outside a
-        // block, indented code (a tab or 4 spaces) and lines like
-        // headings, tables, and signature-like lines (full list on
-        // `is_exempt_content`) are also exempt.
+        // block, indented code and lines like headings, tables, and
+        // signature-like lines (full list on `is_exempt_content`) are also
+        // exempt.
         let fence = trimmed.starts_with("```") || trimmed.starts_with("~~~");
-        // Indented code: the stripped text starts with a tab or 4 spaces, or
-        // the raw line was indented 4+ spaces in a marker-less file.
-        let indented_code = text.starts_with('\t')
-            || text.starts_with("    ")
-            || (markers.is_empty() && raw_indent >= 4);
-        let in_code_block = in_fence || fence || indented_code;
-        let exempt = if in_fence {
+        let in_code_block = *in_fence || fence || line.indented;
+        let exempt = if *in_fence {
             if fence {
-                in_fence = false;
+                *in_fence = false;
             }
             true
-        } else if fence || indented_code || is_exempt_content(trimmed) {
+        } else if fence || line.indented || is_exempt_content(trimmed) {
             if fence {
-                in_fence = true;
+                *in_fence = true;
             }
             true
         } else {
             false
         };
-        doc.lines.push(StrippedLine {
-            number,
-            text: text.to_string(),
-            in_code_block,
-        });
 
         // Count this line into the current paragraph (`pending`) or start
         // a new one. A paragraph is a run of consecutive doc lines, ended
@@ -173,14 +200,14 @@ pub(crate) fn analyze(source: &str, ext: &str) -> Document {
         if exempt {
             // Exempt lines are not paragraph text, so this is the end
             // of the current paragraph.
-            flush(&mut pending, &mut doc);
+            flush(pending, doc);
         } else if let Some(content) = bullet_content(trimmed) {
             // A bullet ends the current paragraph and starts its own,
             // measured from the text after the bullet marker.
-            flush(&mut pending, &mut doc);
-            pending = Some(PendingParagraph {
+            flush(pending, doc);
+            *pending = Some(PendingParagraph {
                 kind: ParagraphKind::Bullet,
-                first_line: number,
+                first_line: line.number,
                 len: content.chars().count(),
                 count: 1,
             });
@@ -191,29 +218,18 @@ pub(crate) fn analyze(source: &str, ext: &str) -> Document {
             open.count += 1;
         } else {
             // Plain text with no paragraph open: start one at this line.
-            pending = Some(PendingParagraph {
+            *pending = Some(PendingParagraph {
                 kind: ParagraphKind::Plain,
-                first_line: number,
+                first_line: line.number,
                 len: trimmed.chars().count(),
                 count: 1,
             });
         }
-    }
-    flush(&mut pending, &mut doc);
-    doc
-}
-
-/// Line-comment markers stripped before measurement, keyed by file extension,
-/// longest marker first. Extensions outside the marker table use no marker, so
-/// the whole file counts as paragraph text.
-pub(crate) fn markers_for(ext: &str) -> &'static [&'static str] {
-    match ext {
-        "rs" => &["///", "//!", "//"],
-        "md" => &[],
-        // Non-pipeline languages, proven by unit tests only.
-        "cs" | "java" | "js" | "ts" => &["//"],
-        "py" | "sh" => &["#"],
-        _ => &[],
+        doc.lines.push(StrippedLine {
+            number: line.number,
+            text: line.text,
+            in_code_block,
+        });
     }
 }
 
@@ -245,11 +261,6 @@ fn bullet_content(trimmed: &str) -> Option<&str> {
     }
 }
 
-/// A summary line plus one indented bullet per guidance sentence.
-fn bulleted(summary: &str, bullets: &[String]) -> String {
-    format!("{summary}\n  - {}", bullets.join("\n  - "))
-}
-
 /// Folds the accumulated member lengths into a finished paragraph, if any.
 fn flush(pending: &mut Option<PendingParagraph>, doc: &mut Document) {
     if let Some(open) = pending.take() {
@@ -273,39 +284,6 @@ fn is_exempt_content(trimmed: &str) -> bool {
         || trimmed.starts_with('|')
         || is_signature_line(trimmed)
         || is_link_reference_definition(trimmed)
-}
-
-/// Strips leading whitespace, the first matching comment marker, and at most
-/// one following space. Returns the stripped text plus the raw line's leading
-/// whitespace count, or `None` when no marker matches in a marker language.
-///
-/// Marker languages (Rust markers shown):
-///
-/// ```text
-/// raw line            -> stripped text       raw indent
-/// "  /// let x = 1;"  -> "let x = 1;"        2
-/// "//  space kept"    -> " space kept"       0
-/// "let x = 1;"        -> None                -
-/// ```
-///
-/// Without markers (Markdown), every line matches; only indent goes:
-///
-/// ```text
-/// "    text"          -> "text"              4
-/// ```
-fn strip_comment_prefix<'a>(raw: &'a str, markers: &[&str]) -> Option<(&'a str, usize)> {
-    let without_indent = raw.trim_start();
-    let raw_indent = raw.len() - without_indent.len();
-    if markers.is_empty() {
-        return Some((without_indent, raw_indent));
-    }
-    for marker in markers {
-        if let Some(after) = without_indent.strip_prefix(marker) {
-            let after = after.strip_prefix(' ').unwrap_or(after);
-            return Some((after, raw_indent));
-        }
-    }
-    None
 }
 
 /// True for markdown link reference definitions such as `[docs]: ./docs/x.md`.
@@ -469,6 +447,21 @@ mod tests {
         assert_eq!(first.kind, ParagraphKind::Plain);
         assert_eq!(first.size, "one two three".len());
         assert_eq!(paragraph_at(&doc, 4).unwrap().size, "four".len());
+    }
+
+    // A non-doc source line between doc lines ends the open paragraph: prose
+    // never joins across the code gap.
+    #[test]
+    fn analyze_splits_paragraphs_at_non_doc_lines() {
+        let source = indoc! {"
+            /// one two
+            let x = 1;
+            /// three
+        "};
+        let doc = analyze(source, "rs");
+        assert_eq!(doc.paragraphs.len(), 2);
+        assert_eq!(paragraph_at(&doc, 1).unwrap().size, "one two".len());
+        assert_eq!(paragraph_at(&doc, 3).unwrap().size, "three".len());
     }
 
     // ── Bullets ──
