@@ -281,7 +281,7 @@ fn extension_keys_reject_malformed_entries() {
 }
 
 /// `extensions:` composes with `include` whitelist mode: the replaced-base
-/// `.py` file runs only the whitelisted op that its profile also admits.
+/// `.py` file runs only the whitelisted op that its profile also allows.
 #[test]
 fn extensions_key_composes_with_include_whitelist() {
     let dir = temp_dir();
@@ -322,10 +322,10 @@ fn extensions_key_composes_with_include_whitelist() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// A non-empty `extensions:` list replaces the default admission: only the
+/// A non-empty `extensions:` list replaces the default list: only the
 /// listed extension is processed, and `--validate` accepts the key.
 #[test]
-fn extensions_key_replaces_default_admission() {
+fn extensions_key_replaces_default_extensions() {
     let dir = temp_dir();
     fs::create_dir_all(&dir).unwrap();
     let cfg = dir.join(".rust-llm-tidy.yml");
@@ -358,7 +358,7 @@ fn extensions_key_replaces_default_admission() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("notes.log"),
-        "the listed .log file must be admitted and processed: {stderr}"
+        "the listed .log file must be allowed and processed: {stderr}"
     );
     assert!(
         !stderr.contains("doc.md"),
@@ -372,7 +372,7 @@ fn extensions_key_replaces_default_admission() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// `extra_extensions:` composes with `exclude` groups: the admitted `.py`
+/// `extra_extensions:` composes with `exclude` groups: the allowed `.py`
 /// file whose path matches the group keeps its tables disabled while a
 /// sibling still gets the default table fix.
 #[test]
@@ -417,7 +417,7 @@ fn extra_extensions_compose_with_exclude_rules() {
 /// The `extra_extensions:` key adds extensions while the defaults keep
 /// working.
 #[test]
-fn extra_extensions_key_adds_to_default_admission() {
+fn extra_extensions_key_adds_to_default_extensions() {
     let dir = temp_dir();
     fs::create_dir_all(&dir).unwrap();
     let cfg = dir.join(".rust-llm-tidy.yml");
@@ -440,11 +440,11 @@ fn extra_extensions_key_adds_to_default_admission() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("notes.log"),
-        "the added .log file must be admitted and processed: {stderr}"
+        "the added .log file must be allowed and processed: {stderr}"
     );
     assert!(
         stderr.contains("doc.md"),
-        "default admission must keep working: {stderr}"
+        "the default extensions must keep working: {stderr}"
     );
     assert_eq!(
         stderr.matches("tables were aligned").count(),

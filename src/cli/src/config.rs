@@ -52,10 +52,9 @@ pub struct CompiledConfig {
     post_process: Vec<PostProcessStep>,
     /// Link-hoist threshold settings (`None` = always hoist at threshold 1).
     links: Option<LinkConfig>,
-    /// Replacement list from the `extensions:` key; empty = the registry
-    /// defaults stay admitted.
+    /// Replacement list from the `extensions:` key; empty = keep the defaults.
     extensions: Vec<String>,
-    /// Additions from the `extra_extensions:` key, admitted on top of the
+    /// Additions from the `extra_extensions:` key, allowed on top of the
     /// effective base list.
     extra_extensions: Vec<String>,
 }
@@ -83,14 +82,12 @@ pub struct Config {
     /// Link-hoist threshold settings. Absent = always hoist (threshold 1).
     #[serde(default)]
     pub links: Option<LinkConfig>,
-    /// The full admitted-extension list, replacing the registry defaults when
-    /// non-empty (an empty or absent list keeps the defaults). Entries are
-    /// written without the leading dot and matched case-insensitively.
+    /// Full allowed-extension list, replacing the defaults when non-empty
+    /// (empty keeps the defaults). No leading dot; case-insensitive.
     #[serde(default)]
     pub extensions: Vec<String>,
-    /// Extra file extensions admitted in addition to the effective base
-    /// (`extensions:` when non-empty, else the defaults). Entries follow the
-    /// same rules as `extensions`.
+    /// Extra extensions allowed in addition to the effective base
+    /// (`extensions` when non-empty, else the defaults).
     #[serde(default)]
     pub extra_extensions: Vec<String>,
 }
@@ -168,13 +165,13 @@ impl CompiledConfig {
         &self.post_process
     }
 
-    /// The replacement extension list from the `extensions:` key. Empty means
-    /// the registry defaults stay admitted.
+    /// The replacement extension list from the `extensions:` key; empty =
+    /// keep the defaults.
     pub fn extension_override(&self) -> &[String] {
         &self.extensions
     }
 
-    /// The user-added extensions from the `extra_extensions:` key, admitted
+    /// The user-added extensions from the `extra_extensions:` key, allowed
     /// in addition to the effective base list.
     pub fn extra_extensions(&self) -> &[String] {
         &self.extra_extensions

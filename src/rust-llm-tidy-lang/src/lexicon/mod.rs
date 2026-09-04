@@ -81,7 +81,7 @@ mod scan;
 /// Whether `ext` has a lexicon entry: the `//`, `#`, `--`, `;`, and `%`
 /// comment families.
 ///
-/// The admission registry's `Lexicon` tier and this table must agree per
+/// The language registry's `Lexicon` tier and this table must agree per
 /// extension; consumers use this to pin the two in lockstep.
 ///
 /// # Arguments
@@ -125,7 +125,7 @@ fn lexicon_for(ext: &str) -> Option<&'static Lexicon> {
     Some(LEXED_EXTENSIONS[idx].1)
 }
 
-/// ASCII case-insensitive ordering, matching the CLI admission registry's
+/// ASCII case-insensitive ordering, matching the CLI language registry's
 /// extension comparisons.
 fn cmp_ext(a: &str, b: &str) -> Ordering {
     a.bytes()

@@ -84,8 +84,8 @@ pub(crate) fn run_pipeline(
     // Admission is decided once per run: the config `extensions:`
     // replacement or the registry defaults, plus `extra_extensions:` and
     // `--extension`.
-    let admitted = crate::langs::admitted_extensions(config, cli);
-    let paths = dedup_inputs(paths::resolve_inputs(cli, &admitted)?);
+    let allowed = crate::langs::allowed_extensions(config, cli);
+    let paths = dedup_inputs(paths::resolve_inputs(cli, &allowed)?);
     // Empty input (empty git diff, or explicit dir with no matching files)
     // is a success: config was already validated up front, and 0 files were
     // processed. post_process runs over 0 files.
@@ -394,7 +394,7 @@ fn process_one(
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let profile = crate::langs::profile_for(ext);
     // A fix op qualifies its file for post-processing whenever the profile
-    // admits it; an AST op additionally needs the profile's `backend` tier
+    // allows it; an AST op additionally needs the profile's `backend` tier
     // and a backend registered in the language registry (Rust today).
     let backend = rust_llm_tidy_lang::backend_for(ext);
     let ast_op_on = |op: &str| {
@@ -448,13 +448,13 @@ fn process_one(
             }
         }
     }
-    // Then lints (reports remaining doc gaps); a profile that admits no
+    // Then lints (reports remaining doc gaps); a profile that allows no
     // `lints` op skips the pass entirely.
     let lints_on = !disabled.contains("lints")
         && match enabled {
             Some(set) => {
                 (set.contains("lints") || check::LINT_CODES.iter().any(|c| set.contains(*c)))
-                    && profile.admits("lints")
+                    && profile.allows("lints")
             }
             None => profile.op_enabled("lints", enabled, disabled),
         };

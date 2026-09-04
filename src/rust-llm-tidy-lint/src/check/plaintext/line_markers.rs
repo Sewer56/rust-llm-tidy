@@ -72,7 +72,7 @@ fn markers_for(ext: &str) -> &'static [&'static str] {
         "md" => &[],
         // Rows kept for this producer's own unit tests; pipeline dispatch
         // routes `cs` text checks through its AST doc-region producer and
-        // admits no other row's tier yet.
+        // runs no other row's tier yet.
         "cs" | "java" | "js" | "ts" => &["//"],
         "py" | "sh" => &["#"],
         _ => &[],

@@ -1,14 +1,14 @@
-//! `rust-llm-tidy` - fix, reorder, narrow visibility, and lint admitted
+//! `rust-llm-tidy` - fix, reorder, narrow visibility, and lint allowed
 //! source files.
 //!
 //! A single default command that runs the full pipeline (fix -> reorder -> vis
-//! -> lints) on every admitted source file.
+//! -> lints) on every allowed source file.
 //!
-//! Admitted by default: `.rs`, the markdown family (`.md`, `.markdown`,
+//! Allowed by default: `.rs`, the markdown family (`.md`, `.markdown`,
 //! `.txt`, `.text`, `.mdx`), and the default registry's code languages.
 //!
 //! When no paths are given, the changed files from the current git diff are
-//! used, filtered to the same admitted extensions.
+//! used, filtered to the same allowed extensions.
 //!
 //! # Pipeline
 //!
@@ -54,7 +54,7 @@ use std::path::{Path, PathBuf};
 mod changes;
 mod config;
 mod diff;
-// Language admission registry: authority for extension admission and op gates.
+// Language registry: authority for allowed extensions and op gates.
 mod langs;
 mod output;
 mod paths;
@@ -63,17 +63,17 @@ mod pipeline;
 /// Command-line arguments for `rust-llm-tidy`, parsed via `clap`.
 ///
 /// Collects the input paths plus flags controlling dry-run, validation, rule
-/// selection, extension admission, and config discovery. See the `# Flags`
+/// selection, allowed extensions, and config discovery. See the `# Flags`
 /// table in the crate docs.
 #[derive(Parser)]
 #[command(
     name = "rust-llm-tidy",
-    about = "Fix, reorder, narrow visibility, and lint admitted source files"
+    about = "Fix, reorder, narrow visibility, and lint allowed source files"
 )]
 pub(crate) struct Cli {
     /// Path(s) to the Rust source file(s) or directory(s) to process. Each
     /// directory is expanded recursively. When omitted, the changed files in
-    /// the current git diff are used, filtered to the admitted extensions.
+    /// the current git diff are used, filtered to the allowed extensions.
     paths: Vec<PathBuf>,
     /// Print the changes that would be made instead of modifying files.
     #[arg(long)]
@@ -178,7 +178,7 @@ pub(crate) fn check_file(
 /// `links_min_occurrences` exceeds 1).
 ///
 /// Each pass is gated by the file's [`langs::Profile`] against the active
-/// rule selection: an op the profile never admits never runs, and the table
+/// rule selection: an op the profile never allows never runs, and the table
 /// and fence passes strip and re-apply the profile's comment prefixes.
 ///
 /// Writes the result back via [`io::atomic_write`] unless `--dry-run` is

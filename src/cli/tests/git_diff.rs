@@ -131,11 +131,11 @@ fn no_args_processes_git_diff() {
     cleanup(&repo);
 }
 
-/// No-args git-diff mode selects changed files of newly admitted extensions
+/// No-args git-diff mode selects changed files of newly allowed extensions
 /// (`.py`, `.cs`, `.markdown`), case-insensitively, through the same
-/// admitted list; a follow-up run finds nothing left to change.
+/// allowed list; a follow-up run finds nothing left to change.
 #[test]
-fn no_args_selects_newly_admitted_extensions() {
+fn no_args_selects_newly_allowed_extensions() {
     let Some(repo) = init_repo() else {
         return;
     };
@@ -150,7 +150,7 @@ fn no_args_selects_newly_admitted_extensions() {
     let out = run(&repo, &["--no-config", "--include", "tables"]);
     assert!(
         out.status.success(),
-        "git-diff must admit .py/.CS/.MARKDOWN: {}",
+        "git-diff must allow .py/.CS/.MARKDOWN: {}",
         String::from_utf8_lossy(&out.stderr)
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -181,7 +181,7 @@ fn no_args_selects_newly_admitted_extensions() {
 }
 
 /// A staged `.MD`/`.RS` change is selected by the no-args git-diff path,
-/// so extension admission is case-insensitive there too.
+/// so the allowed-extension match is case-insensitive there too.
 #[test]
 fn no_args_selects_uppercase_extension_variants() {
     let Some(repo) = init_repo() else {
@@ -212,7 +212,7 @@ fn no_args_selects_uppercase_extension_variants() {
     );
     assert!(
         out.status.success(),
-        "git-diff must admit .RS/.MD variants: {}",
+        "git-diff must allow .RS/.MD variants: {}",
         String::from_utf8_lossy(&out.stderr)
     );
     let stderr = String::from_utf8_lossy(&out.stderr);

@@ -462,11 +462,11 @@ fn empty_directory_should_run_cleanly() {
     assert!(stderr.is_empty(), "stderr should be empty on success");
 }
 
-/// `--extension` admits an otherwise-unadmitted extension additively: the
-/// file runs the tables-only unmapped profile, and without the flag the
+/// `--extension` allows an extra extension additively: the file runs the
+/// tables-only unmapped profile, and without the flag the
 /// same file is a silent skip.
 #[test]
-fn extension_flag_admits_unmapped_extension_tables_only() {
+fn extension_flag_allows_unmapped_extension_tables_only() {
     let source = "| a | b |\n| --- | --- |\n| 1 | 22 |\n";
 
     // Without the flag the explicit file is a silent skip.
@@ -478,13 +478,13 @@ fn extension_flag_admits_unmapped_extension_tables_only() {
     assert_eq!(fs::read_to_string(&file).unwrap(), source);
     let _ = fs::remove_file(&file);
 
-    // With the flag the file is admitted and its GFM table aligns.
+    // With the flag the file is allowed and its GFM table aligns.
     let file = temp_file_ext("org");
     fs::write(&file, source).unwrap();
     let out = run_command(&["--extension", "org"], &file);
     assert!(
         out.status.success(),
-        "--extension org should admit the file: {}",
+        "--extension org should allow the file: {}",
         String::from_utf8_lossy(&out.stderr)
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -658,7 +658,7 @@ fn nonexistent_path_should_fail_with_error() {
 }
 
 /// Directory recursion collects `README.MD`/`lib.RS` case variants and
-/// excludes extensions outside the default admission (like `notes.org`).
+/// excludes extensions outside the default set (like `notes.org`).
 #[test]
 fn recursive_dir_collects_uppercase_variants_excludes_others() {
     let dir = temp_dir();
@@ -670,7 +670,7 @@ fn recursive_dir_collects_uppercase_variants_excludes_others() {
         "| Name | Value | Description |\n| --- | --- | --- |\n| a | 1 | first |\n| longname | 200 | second item |\n",
     )
     .unwrap();
-    fs::write(dir.join("notes.org"), "not admitted by default\n").unwrap();
+    fs::write(dir.join("notes.org"), "not allowed by default\n").unwrap();
 
     // Rust-only reorder runs on the nested `.RS` and reports it by path.
     let (_stdout, stderr, exit) = run_dir(&dir, &["--dry-run"]);
@@ -992,7 +992,7 @@ fn helper() {}\n";
     assert!(b_pos < helper_pos, "b before helper (original order)");
 }
 
-/// An explicit `Note.MD` file is admitted, runs markdown fix ops, and
+/// An explicit `Note.MD` file is allowed, runs markdown fix ops, and
 /// never runs the Rust-only reorder op.
 #[test]
 fn uppercase_md_explicit_file_runs_fix_not_rust_ops() {
@@ -1007,7 +1007,7 @@ fn uppercase_md_explicit_file_runs_fix_not_rust_ops() {
     let output = run_command(&["--include", "tables"], &file);
     assert!(
         output.status.success(),
-        ".MD file should be admitted: {}",
+        ".MD file should be allowed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1031,19 +1031,19 @@ fn uppercase_md_explicit_file_runs_fix_not_rust_ops() {
     let _ = fs::remove_file(&file);
 }
 
-/// An explicit `.ORG` file (outside the default admission) is a silent
+/// An explicit `.ORG` file (outside the default set) is a silent
 /// skip: exit 0 and `[]` in JSON mode.
 #[test]
 fn uppercase_org_explicit_file_is_silently_skipped() {
     let file = temp_file_ext("ORG");
-    fs::write(&file, "not an admitted extension\n").unwrap();
+    fs::write(&file, "not an allowed extension\n").unwrap();
 
     let output = run_command(&["--json"], &file);
     let _ = fs::remove_file(&file);
 
     assert!(
         output.status.success(),
-        "unadmitted .ORG file must succeed silently: {}",
+        ".ORG file outside the allowed set must succeed silently: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(
@@ -1053,9 +1053,9 @@ fn uppercase_org_explicit_file_is_silently_skipped() {
     );
 }
 
-// ── Case-insensitive extension admission ───────
+// ── Case-insensitive allowed extensions ───────
 
-/// An explicit `Foo.RS` file is admitted and runs the Rust reorder op,
+/// An explicit `Foo.RS` file is allowed and runs the Rust reorder op,
 /// matching the lowercase `.rs` behavior.
 #[test]
 fn uppercase_rs_explicit_file_runs_reorder() {
@@ -1067,7 +1067,7 @@ fn uppercase_rs_explicit_file_runs_reorder() {
 
     assert!(
         output.status.success(),
-        ".RS file should be admitted: {}",
+        ".RS file should be allowed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);

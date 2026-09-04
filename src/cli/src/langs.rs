@@ -1,8 +1,8 @@
-//! Language admission registry: the single authority deciding which pipeline
+//! Language registry: the single authority deciding which pipeline
 //! ops may run for a source-file extension, and which line-comment prefixes
 //! the fix passes strip around tables and fences.
 //!
-//! Every admitted extension is governed by a [`Profile`]:
+//! Every allowed extension is governed by a [`Profile`]:
 //!
 //! - `ops`: ops the extension may ever run
 //! - `prefixes`: line-comment markers, longest first
@@ -64,9 +64,9 @@
 //! Lookups allocate nothing and never run per line or per item - at most
 //! once per file.
 //!
-//! # Admission and gating
+//! # Allowed extensions and gating
 //!
-//! [`admitted_extensions`] builds the one extension list a run admits: the
+//! [`allowed_extensions`] builds the one extension list a run allows: the
 //! config `extensions:` key when it replaces the defaults, else
 //! [`DEFAULT_EXTENSIONS`].
 //!
@@ -77,7 +77,7 @@
 //! single list.
 //!
 //! [`Profile::op_enabled`] then gates each op per file against the profile,
-//! intersecting the user's rule selection with what the profile admits.
+//! intersecting the user's rule selection with what the profile allows.
 //! [`validate_extension`] is the shared shape check every user-supplied
 //! extension must pass.
 
@@ -93,10 +93,10 @@ const DATA: Profile = Profile {
     backend: false,
     text_lints: TextLints::None,
 };
-/// Data formats excluded from default admission, sorted; they resolve to the
+/// Data formats excluded by default, sorted; they resolve to the
 /// no-op [`DATA`] profile and never appear in [`DEFAULT_EXTENSIONS`].
 const DATA_EXTENSIONS: &[&str] = &["ini", "json", "toml", "yaml", "yml"];
-/// Extensions admitted by default: every language-table extension, sorted.
+/// Extensions allowed by default: every language-table extension, sorted.
 ///
 /// Derived from [`LANG_ENTRIES`], so it stays in lockstep with the registry;
 /// the op-less data formats are absent by construction.
@@ -248,7 +248,7 @@ const RUST: Profile = Profile {
 /// tiers so markdown files keep their current prefix-aware behavior.
 const DOC_LINE_PREFIXES: &[&str] = &["///", "//!"];
 
-/// One extension's admission data: the ops it may run and the comment
+/// One extension's profile data: the ops it may run and the comment
 /// prefixes its fix passes use.
 ///
 /// All members are static: profiles are compile-time table rows, never built
@@ -301,9 +301,9 @@ pub(crate) enum TextLints {
 }
 
 impl Profile {
-    /// Whether `op` is in the profile's admitted `ops` list.
+    /// Whether `op` is in the profile's `ops` list.
     #[inline]
-    pub(crate) fn admits(&self, op: &str) -> bool {
+    pub(crate) fn allows(&self, op: &str) -> bool {
         self.ops.contains(&op)
     }
 
@@ -313,7 +313,7 @@ impl Profile {
     ///
     /// Whitelist mode intersects the whitelist with the profile's `ops`;
     /// default mode runs the profile's `default_ops` minus the disabled
-    /// names. Either way an op the profile never admits stays refused -
+    /// names. Either way an op the profile never allows stays refused -
     /// `links` outside the markdown family and Rust, or a default-run
     /// `fences` on a code language.
     ///
@@ -326,26 +326,26 @@ impl Profile {
         disabled: &HashSet<String>,
     ) -> bool {
         match enabled {
-            Some(set) => set.contains(op) && self.admits(op),
+            Some(set) => set.contains(op) && self.allows(op),
             None => self.default_ops.contains(&op) && !disabled.contains(op),
         }
     }
 }
 
-/// The extensions one run admits.
+/// The extensions one run allows.
 ///
 /// The base is the config `extensions:` key when non-empty (replacing the
 /// registry defaults wholesale), else [`DEFAULT_EXTENSIONS`]; the config
 /// `extra_extensions:` key and the CLI `--extension` flag add on top.
 ///
 /// Built once per run; explicit paths, directory walks, and git-diff
-/// selection all consume this single list, so admission is identical across
-/// input modes.
+/// selection all consume this single list, so the allowed set is identical
+/// across input modes.
 ///
 /// Appended entries may repeat the base or each other - membership checks
 /// are idempotent, and per-file op gating always re-resolves the profile
 /// from the file's own extension.
-pub(crate) fn admitted_extensions<'a>(
+pub(crate) fn allowed_extensions<'a>(
     config: Option<&'a crate::config::CompiledConfig>,
     cli: &'a crate::Cli,
 ) -> Vec<&'a str> {
@@ -574,15 +574,14 @@ mod tests {
         }
     }
 
-    /// Data formats admit no ops and never appear in the default admitted
-    /// list.
+    /// Data formats allow no ops and never appear in the default list.
     #[test]
-    fn data_formats_admit_no_ops_and_are_not_default_admitted() {
+    fn data_formats_allow_no_ops_and_are_excluded_by_default() {
         for ext in DATA_EXTENSIONS {
-            assert!(profile_for(ext).ops.is_empty(), ".{ext} must admit no ops");
+            assert!(profile_for(ext).ops.is_empty(), ".{ext} must allow no ops");
             assert!(
                 !DEFAULT_EXTENSIONS.contains(ext),
-                ".{ext} must not be admitted by default"
+                ".{ext} must not be allowed by default"
             );
         }
     }
@@ -600,13 +599,13 @@ mod tests {
         const { assert!(!UNMAPPED.backend) };
     }
 
-    /// The default admitted list covers every language-table extension.
+    /// The default list covers every language-table extension.
     #[test]
     fn default_extensions_covers_every_language_entry() {
         for (ext, _) in LANG_ENTRIES {
             assert!(
                 DEFAULT_EXTENSIONS.contains(ext),
-                ".{ext} missing from default admission"
+                ".{ext} missing from the default list"
             );
         }
 
@@ -656,7 +655,7 @@ mod tests {
     }
 
     /// Every profile's ops are known rule names, and its defaults stay a
-    /// subset of its admitted ops.
+    /// subset of its allowed ops.
     #[test]
     fn ops_are_known_rules_with_defaults_a_subset() {
         let mut all = vec![&UNMAPPED, &DATA];
@@ -672,7 +671,7 @@ mod tests {
             for op in profile.default_ops {
                 assert!(
                     profile.ops.contains(op),
-                    "default op `{op}` must also be admitted"
+                    "default op `{op}` must also be allowed"
                 );
             }
         }
@@ -709,11 +708,11 @@ mod tests {
     /// per extension and per AST op: dispatch composes both tables, so a
     /// language updated on only one side silently gains or loses AST ops.
     ///
-    /// `lints` admits both the parser-driven codes and the text checks, so
-    /// a backend implementing parser-driven codes implies admission: never
-    /// dead backend work.
+    /// `lints` allows both the parser-driven codes and the text checks, so
+    /// a backend implementing parser-driven codes implies `lints` is
+    /// allowed: never dead backend work.
     ///
-    /// Admission without parser-driven codes is legitimate exactly for the
+    /// `lints` without parser-driven codes is legitimate exactly for the
     /// doc-regions-only backends (`py`/`pyi`), whose `lints` op is the
     /// text tier alone.
     #[test]
@@ -728,14 +727,14 @@ mod tests {
             if let Some(backend) = backend {
                 for op in ["reorder", "vis"] {
                     assert_eq!(
-                        profile.admits(op),
+                        profile.allows(op),
                         backend.ast_ops().contains(&op),
                         ".{ext}: {op} availability disagrees"
                     );
                 }
                 assert!(
-                    !backend.ast_ops().contains(&"lints") || profile.admits("lints"),
-                    ".{ext}: the backend's parser-driven lints must be admitted"
+                    !backend.ast_ops().contains(&"lints") || profile.allows("lints"),
+                    ".{ext}: the backend's parser-driven lints must be allowed"
                 );
             }
         }
@@ -743,7 +742,7 @@ mod tests {
 
     /// Op gating intersects the rule selection with the profile: default
     /// mode runs the profile defaults minus disabled names, whitelist mode
-    /// intersects the whitelist with the admitted ops.
+    /// intersects the whitelist with the allowed ops.
     #[test]
     fn op_enabled_combines_rule_selection_with_profile_ops() {
         let none = None;
@@ -763,7 +762,7 @@ mod tests {
             }
         }
 
-        // Default mode minus a disabled op, and data formats admit nothing.
+        // Default mode minus a disabled op, and data formats allow nothing.
         assert!(!profile_for("md").op_enabled("tables", &none, &rules(&["tables"])));
         assert!(profile_for("md").op_enabled("fences", &none, &rules(&["tables"])));
         assert!(!profile_for("json").op_enabled("tables", &none, &empty));
@@ -790,7 +789,7 @@ mod tests {
         }
     }
 
-    /// Every one of the 48 admitted extensions resolves to exactly one
+    /// Every one of the 48 allowed extensions resolves to exactly one
     /// text-lint tier: markdown prose for the markdown family only,
     /// `rs`/`cs`/`py`/`pyi` AST regions, and the lexicon tier for every
     /// comment-marker code family.
@@ -800,11 +799,7 @@ mod tests {
     /// measurement.
     #[test]
     fn text_lint_tiers_cover_every_extension_exactly_once() {
-        assert_eq!(
-            LANG_ENTRIES.len(),
-            48,
-            "the admission matrix pins 48 extensions"
-        );
+        assert_eq!(LANG_ENTRIES.len(), 48, "the registry pins 48 extensions");
 
         for ext in MD_FAMILY {
             assert_eq!(
@@ -900,14 +895,14 @@ mod tests {
         }
     }
 
-    // ── Run-level admission ──
+    // ── Run-level allowed extensions ──
 
-    /// Write `yaml` as a config and return the admitted list for it plus the
+    /// Write `yaml` as a config and return the allowed list for it plus the
     /// given CLI `--extension` values.
-    fn admitted_for(yaml: &str, cli_exts: &[&str]) -> Vec<String> {
+    fn allowed_for(yaml: &str, cli_exts: &[&str]) -> Vec<String> {
         static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "rlt-langs-admit-{}-{}",
+            "rlt-langs-allow-{}-{}",
             std::process::id(),
             SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
@@ -921,23 +916,20 @@ mod tests {
             args.push((*ext).to_string());
         }
         let cli = <crate::Cli as clap::Parser>::parse_from(args);
-        let admitted = admitted_extensions(Some(&config), &cli);
+        let allowed = allowed_extensions(Some(&config), &cli);
         let _ = std::fs::remove_dir_all(&dir);
-        admitted.into_iter().map(String::from).collect()
+        allowed.into_iter().map(String::from).collect()
     }
 
     /// A non-empty `extensions:` list replaces the defaults wholesale.
     #[test]
-    fn extensions_key_replaces_default_admission() {
-        let admitted = admitted_for("extensions: [\"log\"]\n", &[]);
+    fn extensions_key_replaces_default_extensions() {
+        let allowed = allowed_for("extensions: [\"log\"]\n", &[]);
 
-        assert!(
-            admitted.contains(&"log".to_string()),
-            "log must be admitted"
-        );
+        assert!(allowed.contains(&"log".to_string()), "log must be allowed");
         for ext in DEFAULT_EXTENSIONS {
             assert!(
-                !admitted.contains(&ext.to_string()),
+                !allowed.contains(&ext.to_string()),
                 ".{ext} must be dropped by the replacement"
             );
         }
@@ -946,33 +938,30 @@ mod tests {
     /// An empty or absent `extensions:` list keeps the defaults, and
     /// `extra_extensions:` plus `--extension` add on top of them.
     #[test]
-    fn extra_extensions_add_to_default_admission() {
-        let admitted = admitted_for(
+    fn extra_extensions_add_to_default_extensions() {
+        let allowed = allowed_for(
             "extensions: []\nextra_extensions: [\"log\"]\n",
             &["org", "MD"],
         );
 
         for ext in DEFAULT_EXTENSIONS {
-            assert!(admitted.contains(&ext.to_string()), ".{ext} missing");
+            assert!(allowed.contains(&ext.to_string()), ".{ext} missing");
         }
         for ext in ["log", "org", "MD"] {
-            assert!(
-                admitted.contains(&ext.to_string()),
-                "addition {ext} missing"
-            );
+            assert!(allowed.contains(&ext.to_string()), "addition {ext} missing");
         }
     }
 
     /// `extra_extensions:` and `--extension` add on top of a replaced base.
     #[test]
     fn extra_extensions_add_on_top_of_replaced_base() {
-        let admitted = admitted_for(
+        let allowed = allowed_for(
             "extensions: [\"rs\"]\nextra_extensions: [\"log\"]\n",
             &["org"],
         );
 
         let expected = ["rs", "log", "org"];
-        assert_eq!(admitted, expected.to_vec());
+        assert_eq!(allowed, expected.to_vec());
     }
 
     /// Extension validation accepts well-formed values and rejects the

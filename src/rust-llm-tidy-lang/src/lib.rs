@@ -21,7 +21,7 @@
 //!
 //! # Dispatch composition
 //!
-//! The CLI's admission registry decides which ops a file may run. The AST
+//! The CLI's language registry decides which ops a file may run. The AST
 //! ops (`reorder`, `vis`, parser-driven `lints`) dispatch only when this
 //! crate's registry also provides a backend for the extension.
 //!

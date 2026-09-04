@@ -30,10 +30,10 @@ cargo install rust-llm-tidy-cli
 ```
 
 `rust-llm-tidy` is a single command that runs the full pipeline (fix,
-reorder, vis, lints) by default on every admitted source file.
+reorder, vis, lints) by default on every allowed source file.
 
-Admitted by default: `.rs`, the markdown family (`.md`, `.markdown`, `.txt`,
-`.text`, `.mdx`), and the code languages admitted for table fixes and
+Allowed by default: `.rs`, the markdown family (`.md`, `.markdown`, `.txt`,
+`.text`, `.mdx`), and the code languages allowed for table fixes and
 text lints.
 ```bash
 # Tidy a file in place
@@ -42,7 +42,7 @@ rust-llm-tidy src/main.rs
 # Preview the changes that would be made without writing them
 rust-llm-tidy --dry-run src/main.rs
 
-# Tidy every admitted source file under a directory recursively
+# Tidy every allowed source file under a directory recursively
 rust-llm-tidy src
 
 # No paths given -> process the changed files in the current git diff
@@ -68,20 +68,20 @@ Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
 
 #### Operations
 
-| Op        | Does                                    | Languages    | Mutates | Default on? |
-| --------- | --------------------------------------- | ------------ | ------- | ----------- |
-| `tables`  | align GFM tables                        | all admitted | yes     | yes         |
-| `fences`  | alternate nested fence delimiters       | markdown*    | yes     | markdown*   |
-| `links`   | hoist inline links to reference style   | markdown*    | yes     | markdown*   |
-| `reorder` | review-friendly item order              | `rs`, `cs`   | yes     | `rs`, `cs`  |
-| `vis`     | narrow bare `pub` in restricted modules | `rs`         | yes     | `rs`        |
-| `lints`   | run DOCXXX, TEXTXXX, TESTXXX checks     | all admitted | no      | yes         |
+| Op        | Does                                    | Languages   | Mutates | Default on? |
+| --------- | --------------------------------------- | ----------- | ------- | ----------- |
+| `tables`  | align GFM tables                        | all allowed | yes     | yes         |
+| `fences`  | alternate nested fence delimiters       | markdown*   | yes     | markdown*   |
+| `links`   | hoist inline links to reference style   | markdown*   | yes     | markdown*   |
+| `reorder` | review-friendly item order              | `rs`, `cs`  | yes     | `rs`, `cs`  |
+| `vis`     | narrow bare `pub` in restricted modules | `rs`        | yes     | `rs`        |
+| `lints`   | run DOCXXX, TEXTXXX, TESTXXX checks     | all allowed | no      | yes         |
 
 \* markdown*: the markdown family (`.md`, `.markdown`, `.txt`, `.text`,
 `.mdx`), plus languages that use markdown for doc comments.
 
 `lints` splits by language: `rs` and `cs` run every code; every other
-admitted language runs the text lints only.
+allowed language runs the text lints only.
 
 #### JSON output
 
@@ -151,7 +151,7 @@ error). Omitting `paths` in an `include` or `exclude` group implies `["**"]`
 
 Additionally:
 
-- `extensions` - replaces the default admitted extensions when non-empty;
+- `extensions` - replaces the default allowed extensions when non-empty;
   empty or absent keeps the defaults.
 - `extra_extensions` - added on top of the effective list (`extensions`
   when non-empty, else the defaults). Both lists take dotless entries,
@@ -245,7 +245,7 @@ Bundled hooks, in run order:
 
 ## GitHub Action
 
-[`rust-llm-tidy-action`] runs `rust-llm-tidy` in CI on every admitted
+[`rust-llm-tidy-action`] runs `rust-llm-tidy` in CI on every allowed
 source file to gate pull requests. Full input reference in the [action
 README].
 

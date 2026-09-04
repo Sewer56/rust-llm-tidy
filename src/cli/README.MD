@@ -26,7 +26,7 @@ cargo build --release -p rust-llm-tidy-cli
 ## Usage
 
 `rust-llm-tidy` is a single command that runs the full pipeline (fix,
-reorder, vis, lints) by default on every admitted source file:
+reorder, vis, lints) by default on every allowed source file:
 
 ```bash
 # Tidy a file in place
@@ -35,7 +35,7 @@ rust-llm-tidy src/main.rs
 # Report the changes that would be made instead of modifying the file
 rust-llm-tidy --dry-run src/main.rs
 
-# Tidy every admitted source file under a directory recursively
+# Tidy every allowed source file under a directory recursively
 rust-llm-tidy src
 
 # No paths given -> process the changed files in the current git diff

@@ -63,7 +63,7 @@ pub trait LanguageBackend: Sync {
     /// The AST pipeline ops this backend implements, as pipeline rule names
     /// (`reorder`, `vis`, `lints`).
     ///
-    /// Consumers compose this with their admission profiles: an op runs only
+    /// Consumers compose this with their extension profiles: an op runs only
     /// when both the profile and the backend's list carry it.
     fn ast_ops(&self) -> &'static [&'static str];
 
@@ -108,7 +108,7 @@ pub fn backend_for(ext: &str) -> Option<&'static dyn LanguageBackend> {
         .map(|i| BACKED_EXTENSIONS[i].1)
 }
 
-/// ASCII case-insensitive ordering, matching the CLI admission registry's
+/// ASCII case-insensitive ordering, matching the CLI language registry's
 /// extension comparisons.
 #[inline]
 fn cmp_ext(a: &str, b: &str) -> Ordering {
