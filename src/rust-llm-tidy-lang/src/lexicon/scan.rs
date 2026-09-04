@@ -6,7 +6,7 @@
 //!
 //! [`DocRegion`]: rust_llm_tidy_lint::check::DocRegion
 
-use super::families::{Heredoc, Lexicon};
+use super::families::{Heredoc, Lexicon, comment_starts_word, ident_byte, ident_start};
 use rust_llm_tidy_lint::check::{Dialect, DocRegion, RegionLine};
 
 /// Lexical state carried across the lines of one scan.
@@ -64,6 +64,53 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
         'chars: while i < bytes.len() {
             match state {
                 State::Code => {
+                    // Literal forms the family does not model reject the
+                    // scan before any marker claims the rest of the line
+                    // (SQL `$tag$`, Haskell `[q|`, TeX `\verb`).
+                    if lex.rejects.iter().any(|reject| reject.opens(bytes, i)) {
+                        return None;
+                    }
+                    // TeX: an odd-length backslash run before the marker
+                    // escapes it, so the marker prints literally; an
+                    // even-length run is `\\` commands and the marker
+                    // still comments.
+                    if lex.escaped_marker && bytes[i] == b'\\' {
+                        let mut run = 1;
+                        while bytes.get(i + run) == Some(&b'\\') {
+                            run += 1;
+                        }
+                        if bytes.get(i + run) == Some(&lex.line.as_bytes()[0]) {
+                            i += if run % 2 == 1 { run + 1 } else { run };
+                            continue 'chars;
+                        }
+                        // Mid-line and no marker: only the run's last
+                        // backslash can open a `\verb`-style reject, so
+                        // skip straight to it. Line-leading runs keep
+                        // the byte-wise walk so the `\\` line-string
+                        // rule still sees them.
+                        if run > 1 && !raw[..i].trim().is_empty() {
+                            i += run - 1;
+                            continue 'chars;
+                        }
+                    }
+                    // Block comment opener, ahead of the line marker:
+                    // `--[[` and `%{` extend their family's marker.
+                    //
+                    // Alone-marker families (MATLAB) open only when the
+                    // marker is the line's whole content; elsewhere the
+                    // line marker comments, as the language reads it.
+                    if let Some((open, _)) = lex.block
+                        && bytes[i..].starts_with(open.as_bytes())
+                        && (!lex.block_markers_alone
+                            || (raw[..i].trim().is_empty()
+                                && raw[i + open.len()..].trim().is_empty()))
+                    {
+                        state = State::Block;
+                        block_opener = true;
+                        seg_start = i + open.len();
+                        i = seg_start;
+                        continue 'chars;
+                    }
                     // Line comment: consumes the rest of the line.
                     // Word-start families (POSIX `#` rules, Ruby after a
                     // token) never open a comment mid-word, so regex
@@ -109,16 +156,6 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
                         }
                         break 'chars;
                     }
-                    // Block comment opener.
-                    if let Some((open, _)) = lex.block
-                        && bytes[i..].starts_with(open.as_bytes())
-                    {
-                        state = State::Block;
-                        block_opener = true;
-                        seg_start = i + open.len();
-                        i = seg_start;
-                        continue 'chars;
-                    }
                     // Multi-line triple-quoted strings before the
                     // single-quote forms.
                     if lex.triple {
@@ -141,7 +178,7 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
                             };
                             i += 1;
                         }
-                        b'\'' => {
+                        b'\'' if lex.single_quotes => {
                             state = State::Quote {
                                 double: false,
                                 carried: false,
@@ -173,7 +210,13 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
                 }
                 State::Block => {
                     let (open, close) = lex.block.expect("block state implies a pair");
-                    if bytes[i..].starts_with(close.as_bytes()) {
+                    // Alone-marker families close only on a lone closer
+                    // line (MATLAB); a mid-line `%}` is block content.
+                    if bytes[i..].starts_with(close.as_bytes())
+                        && (!lex.block_markers_alone
+                            || (raw[..i].trim().is_empty()
+                                && raw[i + close.len()..].trim().is_empty()))
+                    {
                         push_block_line(&raw[seg_start..i], block_opener, number, &mut block_lines);
                         block_opener = false;
                         close_run(&mut run, &mut regions);
@@ -185,8 +228,9 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
                         seg_start = i + close.len();
                         i = seg_start;
                     } else if bytes[i..].starts_with(open.as_bytes()) {
-                        // A nested opener is ambiguous (Swift nests, C
-                        // does not): fail closed.
+                        // A nested opener is ambiguous (Swift, Haskell,
+                        // Elm, and Scheme nest; C, Lua, SQL, and MATLAB
+                        // do not): fail closed.
                         return None;
                     } else {
                         i += 1;
@@ -333,36 +377,8 @@ fn code_step(bytes: &[u8], i: usize, lex: &Lexicon, heredocs: &mut Vec<String>) 
         {
             None
         }
-        b'%' if lex.reject_percent && percent_literal(bytes, i) => None,
         _ => Some(1),
     }
-}
-
-/// Whether the comment marker at `bytes[i]` starts a word: line start,
-/// whitespace, or a statement delimiter precedes it.
-fn comment_starts_word(bytes: &[u8], i: usize) -> bool {
-    i == 0
-        || matches!(
-            bytes[i - 1],
-            b' ' | b'\t'
-                | b';'
-                | b','
-                | b'('
-                | b')'
-                | b'['
-                | b']'
-                | b'{'
-                | b'}'
-                | b'|'
-                | b'&'
-                | b'<'
-                | b'>'
-        )
-}
-
-/// Whether `b` may start a heredoc delimiter or identifier.
-fn ident_start(b: u8) -> bool {
-    b.is_ascii_alphabetic() || b == b'_'
 }
 
 /// Adds one block-comment content segment to the open block's lines.
@@ -430,21 +446,4 @@ fn heredoc_open(
     }
     heredocs.push(word.to_string());
     Some(j - i)
-}
-
-/// Whether `b` may continue an identifier.
-fn ident_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
-}
-
-/// Whether `%` at `bytes[i]` opens a Ruby percent literal: a typed form
-/// (`%w[`) or any non-alphanumeric, non-space delimiter (`%(`).
-fn percent_literal(bytes: &[u8], i: usize) -> bool {
-    match bytes.get(i + 1) {
-        Some(&b) if b"qQiIwWrsx".contains(&b) => {
-            matches!(bytes.get(i + 2), Some(&d) if !d.is_ascii_alphanumeric())
-        }
-        Some(&b) => !b.is_ascii_alphanumeric() && !b.is_ascii_whitespace(),
-        None => false,
-    }
 }

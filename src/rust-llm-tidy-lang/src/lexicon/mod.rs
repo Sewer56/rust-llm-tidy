@@ -1,5 +1,5 @@
 //! Fail-closed comment lexicon: doc regions for the DOC007/DOC008 text
-//! checks of the `//` and `#` comment families.
+//! checks of the `//`, `#`, `--`, `;`, and `%` comment families.
 //!
 //! [`text_checks`] walks the raw source once, tracking line-comment
 //! markers, block-comment pairs, and the family's multi-line string
@@ -7,8 +7,10 @@
 //! measuring core:
 //!
 //! - contiguous runs of standalone line comments, measured as markdown
-//!   prose with the full marker run (`///`, `##`) and one space stripped;
-//! - every block comment, measured with the block doc dialect
+//!   prose with the full marker run (`///`, `##`, `;;;`) and one space
+//!   stripped;
+//! - every block comment (`/* */`, `--[[ ]]`, `{- -}`, `#| |#`, and
+//!   MATLAB's line-alone `%{ %}`), measured with the block doc dialect
 //!   (`*` continuations stripped, `@tag` names exempt).
 //!
 //! String content, heredoc payload, and code lines never measure: they
@@ -24,11 +26,17 @@
 //!
 //! - nested literals inside a template `${...}` hole, or a hole reaching
 //!   the line's end;
-//! - a nested `/*` inside an open block comment (Swift nests, C does
-//!   not);
+//! - a nested block opener inside an open block comment (Swift,
+//!   Haskell, Elm, and Scheme nest; C, Lua, SQL, and MATLAB do not);
 //! - a bare Ruby `<<word` heredoc opener (ambiguous with `arr << item`),
 //!   a Ruby percent literal, a PHP `<<<` heredoc, a C++ `R"` raw string,
 //!   or a Swift `#"""` raw text block;
+//! - a PostgreSQL dollar-quoted string (`$$`, `$tag$`), a Lua long
+//!   bracket (`[[`, `[=[`), a Haskell quasiquote (`[name|`, `[|`), or
+//!   an Erlang `$%`/`$\%` character literal;
+//! - a Lisp datum comment (`#;`) or semicolon character literal
+//!   (`#\;`, `?;`, `?\;`, `\;`), or TeX verbatim material (`\verb`,
+//!   verbatim-like environments);
 //! - a file ending inside an open block comment, backtick literal,
 //!   triple-quoted string, carried quote, or heredoc.
 //!
@@ -47,13 +55,19 @@
 //! Regex literals are otherwise unmodeled: a `//`-family pattern
 //! carrying comment-looking text can misattribute its tail.
 //!
+//! The `--` marker follows PostgreSQL and always comments in SQL;
+//! MySQL `#` comments and `a--b` double negation are not modeled. An
+//! unbalanced `'` in the single-quote families (SQL, Lua, MATLAB,
+//! Erlang) hides its own line's trailing comment: silence, never
+//! measurement.
+//!
 //! [`DocRegion`]: rust_llm_tidy_lint::check::DocRegion
 
 //!
 //! # Layout
 //!
-//! - `families` - the per-family lexical tables and the extension
-//!   lookup.
+//! - `families` - the per-family lexical tables, the fail-closed
+//!   reject predicates, and the extension lookup.
 //! - `scan` - the fail-closed scanner.
 
 use families::{LEXED_EXTENSIONS, Lexicon};
@@ -64,7 +78,8 @@ use std::cmp::Ordering;
 mod families;
 mod scan;
 
-/// Whether `ext` has a lexicon entry: the `//` and `#` comment families.
+/// Whether `ext` has a lexicon entry: the `//`, `#`, `--`, `;`, and `%`
+/// comment families.
 ///
 /// The admission registry's `Lexicon` tier and this table must agree per
 /// extension; consumers use this to pin the two in lockstep.
@@ -137,21 +152,23 @@ mod tests {
 
     /// Block-doc lines whose joined prose (stars stripped) exceeds the
     /// 240 budget while each raw line stays under 80.
-    fn long_block(open: &str) -> String {
+    fn long_block(open: &str, close: &str) -> String {
         let line = "* filler words pad the paragraph past the two hundred forty limit";
         let mut out = format!("{open}\n");
         for _ in 0..5 {
             out.push_str(line);
             out.push('\n');
         }
-        out.push_str(" */\n");
+        out.push_str(close);
+        out.push('\n');
         out
     }
 
     // ── True positives ──
 
-    /// Standalone `//` and `#` comment prose measures as paragraphs at
-    /// the paragraph's first line, for every family extension.
+    /// Standalone `//`, `#`, `--`, `;`, and `%` comment prose measures
+    /// as one paragraph at the paragraph's first line, for every family
+    /// extension.
     #[test]
     fn line_comment_prose_measures_per_family() {
         for (marker, ext) in [
@@ -161,6 +178,16 @@ mod tests {
             ("#", "py"),
             ("#", "pyi"),
             ("#", "bash"),
+            ("--", "sql"),
+            ("--", "lua"),
+            ("--", "hs"),
+            ("--", "elm"),
+            ("--", "ada"),
+            (";", "el"),
+            (";", "clj"),
+            ("%", "tex"),
+            ("%", "erl"),
+            ("%", "m"),
         ] {
             let diags = text_checks(&long_comment(marker), ext);
             let found = codes(&diags, CODE_PARAGRAPH_SIZE);
@@ -174,12 +201,74 @@ mod tests {
     #[test]
     fn block_comments_measure_with_the_block_dialect() {
         for open in ["/**", "/*"] {
-            let source = format!("{}\nlet quiet = 1;\n", long_block(open));
+            let source = format!("{}\nlet quiet = 1;\n", long_block(open, "*/"));
             let diags = text_checks(&source, "js");
             let found = codes(&diags, CODE_PARAGRAPH_SIZE);
             assert_eq!(found.len(), 1, "{open}: the block paragraph fires");
             assert_eq!(found[0].line, 2, "{open}: the first prose line");
         }
+    }
+
+    /// The dash, semicolon, and percent families' block forms measure
+    /// with the block doc dialect:
+    /// SQL `/* */`, Lua `--[[ ]]`, Haskell and Elm `{- -}`, Lisp `#| |#`,
+    /// and MATLAB `%{ %}`.
+    #[test]
+    fn dash_semi_percent_block_forms_measure_with_the_block_dialect() {
+        for (ext, open, close) in [
+            ("sql", "/*", "*/"),
+            ("lua", "--[[", "]]"),
+            ("hs", "{-", "-}"),
+            ("elm", "{-", "-}"),
+            ("scm", "#|", "|#"),
+            ("m", "%{", "%}"),
+        ] {
+            let source = format!("{}\nquiet = 1;\n", long_block(open, close));
+            let diags = text_checks(&source, ext);
+            let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+            assert_eq!(found.len(), 1, ".{ext}: the block paragraph fires");
+            assert_eq!(found[0].line, 2, ".{ext}: the first prose line");
+        }
+    }
+
+    /// Marker runs (`----`, `;;`, `%%`) open one comment whose prose
+    /// measures, not a nested or escaped form.
+    #[test]
+    fn doubled_markers_stay_one_comment() {
+        for (marker, ext) in [("----", "ada"), (";;", "el"), ("%%", "erl")] {
+            let diags = text_checks(&long_comment(marker), ext);
+            let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+            assert_eq!(found.len(), 1, ".{ext}: exactly the comment paragraph");
+            assert_eq!(found[0].line, 1, ".{ext}: the first comment line");
+        }
+    }
+
+    /// MATLAB block markers comment only alone on their lines: a
+    /// mid-line or non-alone `%{` is an ordinary `%` comment (the code
+    /// lines after it never measure), and a mid-line `%}` does not
+    /// close a real block.
+    #[test]
+    fn matlab_block_markers_comment_only_alone() {
+        let tail = "m".repeat(85);
+        let midline = format!("x = 1; %{{ opener note\ny = 2 + {tail};\n%}}\n");
+        let nonalone = format!("%{{ header note text\ny = 2 + {tail};\n%}}\n");
+        for source in [midline, nonalone] {
+            assert!(
+                text_checks(&source, "m").is_empty(),
+                "code after a non-alone `%{{` must never measure"
+            );
+        }
+
+        // An alone `%{` opens the block, and only an alone `%}` closes.
+        let block = format!("%{{\n* note with a %}} that must not close\n* {tail}\n%}}\n");
+        let diags = text_checks(&block, "m");
+        let found = codes(&diags, CODE_LINE_LENGTH);
+        assert_eq!(
+            found.len(),
+            1,
+            "the block measures and runs to the alone closer"
+        );
+        assert_eq!(found[0].line, 3, "the over-long prose line keeps its line");
     }
 
     /// A long line comment warns on DOC008 at its own line.
@@ -237,6 +326,33 @@ mod tests {
         }
     }
 
+    /// Comment-marker text inside the dash, semicolon, and percent
+    /// families' string literals and atoms never measures.
+    #[test]
+    fn marker_text_in_dash_semi_percent_strings_stays_quiet() {
+        let tail = "s".repeat(85);
+        let cases = [
+            (
+                "sql",
+                format!("SELECT '-- not a comment: {tail}' FROM t;\n"),
+            ),
+            ("lua", format!("local s = \"-- not a comment: {tail}\"\n")),
+            ("hs", format!("s = \"-- not a comment: {tail}\"\n")),
+            ("elm", format!("s = \"-- not a comment: {tail}\"\n")),
+            ("m", format!("s = '-- not a comment: {tail}';\n")),
+            ("erl", format!("S = \"% not a comment: {tail}\".\n")),
+            ("erl", format!("A = '% not a comment: {tail}'.\n")),
+            ("clj", format!("(def s \"; not a comment: {tail}\")\n")),
+            ("el", format!("(setq s \"; not a comment: {tail}\")\n")),
+        ];
+        for (ext, source) in cases {
+            assert!(
+                text_checks(&source, ext).is_empty(),
+                ".{ext}: string content must stay quiet"
+            );
+        }
+    }
+
     /// Quoted strings that legally span lines stay string content: native
     /// spans in the script families, backslash-newline continuations, and
     /// Zig line strings.
@@ -266,6 +382,33 @@ mod tests {
                     "const s =\n",
                     "    \\\\ see the // marker plus a long tail of line string padding that runs past the eighty char limit\n",
                     "    \\\\ past the eighty char limit for the whole line budget of the check\n",
+                )
+                .to_string(),
+            ),
+        ];
+        for (ext, source) in cases {
+            assert!(
+                text_checks(&source, ext).is_empty(),
+                ".{ext}: spanned string content must stay quiet"
+            );
+        }
+    }
+
+    /// Strings that legally span lines stay string content in the
+    /// dash and semicolon families too: Elm and Lisp native spans,
+    /// and a Haskell string gap (a `\` at the line's end).
+    #[test]
+    fn spanned_dash_and_semi_strings_stay_quiet() {
+        let payload: &str = "-- payload-looking span line padding far past both the line and paragraph budget limits\n";
+        let cases = [
+            ("elm", format!("s = \"\"\"starts here\n{payload}  ends here\"\"\"\n")),
+            ("clj", format!("(def s \"starts here\n{payload}  ends here\")\n")),
+            (
+                "hs",
+                concat!(
+                    "s = \"starts here \\\n",
+                    "-- continued string payload padding far past both the line and paragraph budgets\n",
+                    "  ends here\"\n",
                 )
                 .to_string(),
             ),
@@ -320,6 +463,28 @@ mod tests {
             1,
             "a word-start comment still measures"
         );
+    }
+
+    /// Apostrophes and Lisp `?`-suffixed names are punctuation, not
+    /// string opens or character literals, so the trailing comment
+    /// stays measurable.
+    #[test]
+    fn punctuation_apostrophes_keep_trailing_comments_measurable() {
+        let tail = "t".repeat(85);
+        let cases = [
+            ("ada", format!("Y := X'First; -- trailing note {tail}\n")),
+            ("hs", format!("x' = x' + 1 -- trailing note {tail}\n")),
+            ("clj", format!("(def y '(1 2 3)) ; trailing note {tail}\n")),
+            ("clj", format!("(odd?; trailing note {tail})\n")),
+        ];
+        for (ext, source) in cases {
+            let diags = text_checks(&source, ext);
+            assert_eq!(
+                codes(&diags, CODE_LINE_LENGTH).len(),
+                1,
+                ".{ext}: the trailing comment must still measure"
+            );
+        }
     }
 
     /// A `\\` pair mid-line is not a Zig line string: the trailing
@@ -494,6 +659,64 @@ mod tests {
         }
     }
 
+    /// The dash, semicolon, and percent families' unmodeled forms
+    /// reject the scan: SQL dollar quotes, Lua long brackets, Haskell
+    /// quasiquotes, nested block comments, Lisp reader semicolons,
+    /// TeX verbatim material, and the Erlang percent character.
+    #[test]
+    fn dash_semi_percent_ambiguities_fail_closed() {
+        let cases = [
+            ("sql", "SELECT $$\npayload\n$$;\n"),
+            ("sql", "SELECT $tag$\npayload\n$tag$;\n"),
+            ("lua", "local s = [[payload]]\n"),
+            ("hs", "v = [q|payload|]\n"),
+            ("hs", "{- outer {- inner -} -}\n"),
+            ("elm", "{- outer {- inner -} -}\n"),
+            ("scm", "#;(payload)\n"),
+            ("el", "(char-upcase #\\;)\n"),
+            ("el", "(setq sep ?\\;) tail\n"),
+            ("el", "(setq sep ?;) tail\n"),
+            ("el", "(setq q '?;) tail\n"),
+            ("clj", "(def c \\;) tail\n"),
+            ("el", "#| outer #| inner |# |#\n"),
+            ("tex", "\\begin{verbatim}\npayload\n\\end{verbatim}\n"),
+            ("tex", "x = \\verb|%| y\n"),
+            ("erl", "C = $%,\n"),
+            ("erl", "C = $\\%, tail\n"),
+        ];
+        for (ext, probe) in cases {
+            let marker = match ext {
+                "sql" | "lua" | "hs" | "elm" | "ada" => "--",
+                "tex" | "erl" | "m" => "%",
+                _ => ";",
+            };
+            let source = format!("{probe}{}", long_comment(marker));
+            assert!(
+                text_checks(&source, ext).is_empty(),
+                ".{ext}: ambiguous source must fail closed: {probe:?}"
+            );
+        }
+    }
+
+    /// TeX: an odd-length backslash run escapes the marker (it prints
+    /// literally), while an even-length run is `\\` commands and the
+    /// marker still comments.
+    #[test]
+    fn backslash_runs_escape_the_tex_marker() {
+        let tail = "e".repeat(85);
+        let escaped = format!("The rate is 100\\% of {tail}\n");
+        assert!(
+            text_checks(&escaped, "tex").is_empty(),
+            "an escaped marker must not open a comment"
+        );
+        let commented = format!("x \\\\ % trailing note {tail}\n");
+        assert_eq!(
+            codes(&text_checks(&commented, "tex"), CODE_LINE_LENGTH).len(),
+            1,
+            "an even backslash run must still comment"
+        );
+    }
+
     /// Ruby's push operator and bit shifts are not heredocs: the scan
     /// survives them and comments still measure.
     #[test]
@@ -510,7 +733,7 @@ mod tests {
 
     // ── Table coverage ──
 
-    /// The table covers the two comment families case-insensitively and
+    /// The table covers the five comment families case-insensitively and
     /// nothing else.
     #[test]
     fn covers_matches_the_extension_table() {
@@ -518,7 +741,8 @@ mod tests {
             assert!(covers(ext), ".{ext} must be covered");
         }
         assert!(covers("JS"), "lookup is case-insensitive");
-        for ext in ["rs", "cs", "md", "lua", "el", "tex", ""] {
+        assert!(covers("SQL"), "dash-family lookup is case-insensitive");
+        for ext in ["rs", "cs", "md", "org", ""] {
             assert!(!covers(ext), ".{ext} must not be covered");
         }
     }

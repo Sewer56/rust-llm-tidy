@@ -27,8 +27,9 @@
 //! language except the two above.
 //!
 //! The [`lexicon`] module sources the DOC007/DOC008 text checks for the
-//! `//` and `#` comment families with no backend at all: a fail-closed
-//! scan of comments and the family's string forms.
+//! five comment-marker code families (`//`, `#`, `--`, `;`, `%`) with
+//! no backend at all: a fail-closed scan of comments and the family's
+//! string forms.
 //!
 //! The [`rust_text_regions`] module sources the same checks for `rs`
 //! from the parse the backend already requires: the line-comment

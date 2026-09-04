@@ -13,9 +13,10 @@ So `exclude: [{rules: [DOC001]}]` turns off just missing-docs and
 `exclude: [{rules: [lints]}]` turns off all linting.
 
 Which codes run depends on the language: Rust and C# run all nine; the
-markdown family runs the two text checks (DOC007, DOC008); the `//` and
-`#` comment families run the two text checks through an explicit
-include.
+markdown family runs the two text checks (DOC007, DOC008).
+
+The five comment-marker families (`//`, `#`, `--`, `;`, `%`) run the
+two text checks through an explicit include.
 
 C# evaluates its codes against XML doc comments and measures their prose
 with the XML doc dialect; see [lints for C#] for the details.
@@ -280,12 +281,14 @@ Each source keeps its own paragraphs; prose never pools across them.
 Plain `/* */` comments, `/*! */` inner block docs, and `#![doc = "..."]`
 inner attributes stay unmeasured.
 
-Through an explicit include they also run on `//`- and `#`-family
-comments, where line comment prose measures like markdown.
+Through an explicit include they also run on the comment-marker code
+families (`//`, `#`, `--`, `;`, `%`), where line comment prose measures
+like markdown.
 
-Rust and lexicon-family `/** */` block docs measure with the block doc
-dialect: `*` continuations and `@tag` name tokens (`@param name`) never
-count.
+Rust block docs and the lexicon families' block comments (`/** */`,
+`/* */`, `--[[ ]]`, `{- -}`, `#| |#`, `%{ %}`) measure with the block
+doc dialect: `*` continuations and `@tag` name tokens (`@param name`)
+never count.
 
 The comment lexicon behind those families fails closed: string content,
 heredoc payload, and code lines never measure, and files it cannot lex

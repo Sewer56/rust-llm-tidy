@@ -18,10 +18,9 @@
 //!   `lints` - with the `///`/`//!` doc prefixes
 //! - C# (`cs`): `tables` plus the AST ops `reorder`/`lints`; `fences` only
 //!   through an explicit include; no `links`
-//! - Code languages: `tables` by default; `fences` and, for the `//`
-//!   and `#` families, `lints` only through an explicit include; no
-//!   `links`, no AST ops; tables inside comments realign with the
-//!   language's marker re-applied
+//! - Code languages: `tables` by default; `fences` and `lints` only
+//!   through an explicit include; no `links`, no AST ops; tables
+//!   inside comments realign with the language's marker re-applied
 //! - Unmapped extensions: `tables` only, no prefixes
 //! - Data formats (`ini`, `json`, `toml`, `yaml`, `yml`): no ops; never in
 //!   [`DEFAULT_EXTENSIONS`]
@@ -46,11 +45,12 @@
 //!   lexicon scans the raw source: line and block comments measure,
 //!   string content and code lines never do, and ambiguous sources
 //!   produce no findings.
-//! - The `//` and `#` families carry the Lexicon tier; their `lints` op
-//!   is explicit-include only.
-//! - [`TextLints::None`]: no text checks; the tier's `lints` op stays
-//!   parser-driven or absent, and no extension outside the markdown
-//!   family falls through to whole-file measurement.
+//! - Every comment-marker code family (`//`, `#`, `--`, `;`, `%`)
+//!   carries the Lexicon tier; its `lints` op is explicit-include
+//!   only.
+//! - [`TextLints::None`]: no text checks; data formats and unmapped
+//!   extensions never produce text findings, and no extension outside
+//!   the markdown family falls through to whole-file measurement.
 //!
 //! # Lookup
 //!
@@ -168,11 +168,11 @@ const LANG_ENTRIES: &[(&str, Profile)] = &[
 ];
 /// Code tier for `--`-comment languages.
 const CODE_DASH: Profile = Profile {
-    ops: &["tables", "fences"],
+    ops: &["tables", "fences", "lints"],
     prefixes: &["--"],
     default_ops: &["tables"],
     backend: false,
-    text_lints: TextLints::None,
+    text_lints: TextLints::Lexicon,
 };
 /// Code tier for `#`-comment languages.
 const CODE_HASH: Profile = Profile {
@@ -184,19 +184,19 @@ const CODE_HASH: Profile = Profile {
 };
 /// Code tier for `%`-comment languages.
 const CODE_PERCENT: Profile = Profile {
-    ops: &["tables", "fences"],
+    ops: &["tables", "fences", "lints"],
     prefixes: &["%"],
     default_ops: &["tables"],
     backend: false,
-    text_lints: TextLints::None,
+    text_lints: TextLints::Lexicon,
 };
 /// Code tier for `;`-comment languages.
 const CODE_SEMI: Profile = Profile {
-    ops: &["tables", "fences"],
+    ops: &["tables", "fences", "lints"],
     prefixes: &[";"],
     default_ops: &["tables"],
     backend: false,
-    text_lints: TextLints::None,
+    text_lints: TextLints::Lexicon,
 };
 /// Code tier for `//`-comment languages other than C#.
 const CODE_SLASH: Profile = Profile {
@@ -279,7 +279,8 @@ pub(crate) enum TextLints {
     /// code lines never measure, and ambiguous sources produce no
     /// findings.
     Lexicon,
-    /// No text checks: the tier's `lints` op is parser-driven or absent.
+    /// No text checks: data formats and unmapped extensions produce no
+    /// text findings.
     None,
 }
 
@@ -503,9 +504,8 @@ mod tests {
     }
 
     /// Every code language resolves tables-only defaults with its own
-    /// comment marker; `fences` stays reachable through an explicit
-    /// include, and the lexicon families (`//`, `#`) additionally admit
-    /// `lints` without defaulting it.
+    /// comment marker, the lexicon text tier, and `fences` plus `lints`
+    /// reachable only through an explicit include.
     #[test]
     fn code_families_resolve_tables_only_with_their_comment_marker() {
         for (exts, profile, marker) in CODE_FAMILIES {
@@ -513,15 +513,11 @@ mod tests {
                 assert_profile(ext, profile);
             }
 
-            let expected_ops: &[&str] = if profile.text_lints == TextLints::Lexicon {
-                &["tables", "fences", "lints"]
-            } else {
-                &["tables", "fences"]
-            };
-            assert_eq!(profile.ops, expected_ops);
+            assert_eq!(profile.ops, ["tables", "fences", "lints"].as_slice());
             assert_eq!(profile.default_ops, ["tables"].as_slice());
             assert_eq!(profile.prefixes, [*marker].as_slice());
             assert!(!profile.backend);
+            assert_eq!(profile.text_lints, TextLints::Lexicon);
         }
     }
 
@@ -730,13 +726,13 @@ mod tests {
         assert!(!profile_for("json").op_enabled("tables", &none, &empty));
 
         // Whitelist mode: an explicit include reaches a code language's
-        // fences and the lexicon families' text checks; links outside the
-        // markdown family and Rust stay refused, and so does an op the
-        // profile never carries.
+        // fences and every lexicon family's text checks; links outside
+        // the markdown family and Rust stay refused, and so does an op
+        // the profile never carries.
         assert!(profile_for("py").op_enabled("fences", &Some(rules(&["fences"])), &empty));
         assert!(!profile_for("py").op_enabled("links", &Some(rules(&["links"])), &empty));
         assert!(!profile_for("md").op_enabled("reorder", &Some(rules(&["reorder"])), &empty));
-        for ext in ["js", "py"] {
+        for ext in ["js", "py", "sql", "el", "tex"] {
             assert!(
                 profile_for(ext).op_enabled("lints", &Some(rules(&["lints"])), &empty),
                 ".{ext}: an explicit include must reach the lexicon text checks"
@@ -748,14 +744,22 @@ mod tests {
         }
     }
 
-    /// Every admitted extension resolves to exactly one text-lint tier:
-    /// markdown prose, `rs`/`cs` AST regions, lexicon families for `//`
-    /// and `#`, and no text checks otherwise.
+    /// Every one of the 48 admitted extensions resolves to exactly one
+    /// text-lint tier: markdown prose for the markdown family only,
+    /// `rs`/`cs` AST regions, and the lexicon tier for every
+    /// comment-marker code family.
     ///
-    /// Nothing outside the markdown family falls through to whole-file
+    /// No registry extension is left without a producer, and nothing
+    /// outside the markdown family falls through to whole-file
     /// measurement.
     #[test]
     fn text_lint_tiers_cover_every_extension_exactly_once() {
+        assert_eq!(
+            LANG_ENTRIES.len(),
+            48,
+            "the admission matrix pins 48 extensions"
+        );
+
         for ext in MD_FAMILY {
             assert_eq!(
                 profile_for(ext).text_lints,
@@ -770,11 +774,7 @@ mod tests {
                 ".{ext} must source text regions from its backend"
             );
         }
-        let lexicon_exts: Vec<&[&str]> = CODE_FAMILIES
-            .iter()
-            .filter(|(_, profile, _)| profile.text_lints == TextLints::Lexicon)
-            .map(|(exts, _, _)| *exts)
-            .collect();
+        let lexicon_exts: Vec<&[&str]> = CODE_FAMILIES.iter().map(|(exts, _, _)| *exts).collect();
         for exts in &lexicon_exts {
             for ext in *exts {
                 assert_eq!(
@@ -798,7 +798,13 @@ mod tests {
                     lexicon_exts.iter().any(|exts| exts.contains(ext)),
                     ".{ext} is outside the lexicon families"
                 ),
-                TextLints::None => {}
+                // All 48 registry extensions carry a producer tier; the
+                // None tier belongs to data formats and unmapped
+                // extensions only, both outside the registry.
+                TextLints::None => panic!(
+                    ".{ext} resolves to no producer tier; every registry \
+                     extension must carry exactly one"
+                ),
             }
         }
         for ext in ["org", "", "json"] {

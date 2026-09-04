@@ -722,7 +722,65 @@ fn doc006_placeholders() {
     );
 }
 
-// ── Lexicon text checks: `//` and `#` families ────────────────────
+// ── Lexicon text checks: comment-marker families ──────────────────
+
+/// Lisp `;` and `#| |#` comment prose fires the text budgets at
+/// original file lines while `"..."` string content stays quiet.
+#[test]
+fn el_lexicon_measures_comments_not_strings() {
+    let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.el");
+
+    assert_ne!(exit, 0, "the DOC007 errors must fail the run:\n{stderr}");
+    assert!(
+        stderr.contains(":1: error[DOC007]"),
+        "DOC007 must report at the comment paragraph's first line:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(":9: error[DOC007]"),
+        "DOC007 must report at the block comment's first prose line:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(":15: warning[DOC008]"),
+        "DOC008 must report at the over-long comment line:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC007").count(),
+        2,
+        "exactly the line and block comment paragraphs, never the string:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC008").count(),
+        1,
+        "exactly the over-long comment line, never the string:\n{stderr}"
+    );
+}
+
+/// Erlang `%` comment prose fires the text budgets while `<<"...">>`
+/// binary content stays quiet.
+#[test]
+fn erl_lexicon_measures_comments_not_strings() {
+    let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.erl");
+
+    assert_ne!(exit, 0, "the DOC007 error must fail the run:\n{stderr}");
+    assert!(
+        stderr.contains(":1: error[DOC007]"),
+        "DOC007 must report at the comment paragraph's first line:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(":9: warning[DOC008]"),
+        "DOC008 must report at the over-long comment line:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC007").count(),
+        1,
+        "exactly the comment paragraph, never the binary literal:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC008").count(),
+        1,
+        "exactly the over-long comment line, never the binary literal:\n{stderr}"
+    );
+}
 
 /// JS template literal and string content produce no findings on a
 /// probe file whose mis-measured lines would overflow both budgets.
@@ -1414,6 +1472,37 @@ fn sh_lexicon_ignores_heredoc_payload() {
     );
 }
 
+/// SQL `--` and `/* */` comment prose fires the text budgets at
+/// original file lines while `'...'` string content stays quiet.
+#[test]
+fn sql_lexicon_measures_comments_not_strings() {
+    let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.sql");
+
+    assert_ne!(exit, 0, "the DOC007 errors must fail the run:\n{stderr}");
+    assert!(
+        stderr.contains(":1: error[DOC007]"),
+        "DOC007 must report at the comment paragraph's first line:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(":8: error[DOC007]"),
+        "DOC007 must report at the block comment's first prose line:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(":13: warning[DOC008]"),
+        "DOC008 must report at the over-long comment line:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC007").count(),
+        2,
+        "exactly the line and block comment paragraphs, never the string:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC008").count(),
+        1,
+        "exactly the over-long comment line, never the string:\n{stderr}"
+    );
+}
+
 /// `should_pass_when_valid` is a behavioral name and is not flagged.
 #[test]
 fn test001_behavioral_not_flagged() {
@@ -1503,8 +1592,8 @@ fn run_csharp_fixture(name: &str) -> (String, i32) {
     )
 }
 
-/// Run `rust-llm-tidy --include lints` on a lexicon-family fixture (the
-/// `js`, `py`, `sh`, `rb` probes) and return its (stderr, exit_code).
+/// Run `rust-llm-tidy --include lints` on a lexicon-family fixture and
+/// return its (stderr, exit_code).
 fn run_lexicon_fixture(name: &str) -> (String, i32) {
     let path = fixture_dir().join(name);
     let output = run_command(&["--include", "lints"], &path);
