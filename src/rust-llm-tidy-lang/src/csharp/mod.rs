@@ -6,7 +6,7 @@
 //! ordering policy; the lint [`run`] produces the XML
 //! doc-dialect diagnostics through the lint crate's existing codes.
 //!
-//! The DOC007/DOC008 text checks ride the same lint composition from
+//! The TEXT001/TEXT002 text checks ride the same lint composition from
 //! [`text_regions`]' doc-region walk of the same parse.
 //!
 //! [`parse`]: parse::parse

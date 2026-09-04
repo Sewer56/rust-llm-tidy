@@ -110,14 +110,14 @@ the shared record format.
 
 ### Operations
 
-| Op        | Does                                    | Mutates | Default on? |
-| --------- | --------------------------------------- | ------- | ----------- |
-| `tables`  | align GFM tables                        | yes     | yes         |
-| `fences`  | alternate nested fence delimiters       | yes     | yes         |
-| `links`   | hoist inline links to reference style   | yes     | yes         |
-| `reorder` | review-friendly item order              | yes     | yes         |
-| `vis`     | narrow bare `pub` in restricted modules | yes     | yes         |
-| `lints`   | run DOC001-DOC008 + TEST001 checks      | no      | yes         |
+| Op        | Does                                               | Mutates | Default on? |
+| --------- | -------------------------------------------------- | ------- | ----------- |
+| `tables`  | align GFM tables                                   | yes     | yes         |
+| `fences`  | alternate nested fence delimiters                  | yes     | yes         |
+| `links`   | hoist inline links to reference style              | yes     | yes         |
+| `reorder` | review-friendly item order                         | yes     | yes         |
+| `vis`     | narrow bare `pub` in restricted modules            | yes     | yes         |
+| `lints`   | run DOC001-DOC006, TEXT001-TEXT002, TEST001 checks | no      | yes         |
 
 An optional YAML config file (`.rust-llm-tidy.yml`) may exclude files from
 processing, whitelist or blacklist specific rules per path, and run external

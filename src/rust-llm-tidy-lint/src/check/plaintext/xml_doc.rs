@@ -110,7 +110,7 @@ fn scan_line(
     }
 
     // A line whose only content sits inside an exempt subtree is a code
-    // line: recorded raw and exempt from DOC008, like fence content.
+    // line: recorded raw and exempt from TEXT002, like fence content.
     let in_code = saw_code_text && measured.trim().is_empty();
     doc.lines.push(StrippedLine {
         number,
@@ -227,7 +227,7 @@ mod tests {
 
     // ── Tag and attribute stripping ──
 
-    // DOC008 measures the inner text only: tags and attribute values
+    // TEXT002 measures the inner text only: tags and attribute values
     // vanish from the measured line.
     #[test]
     fn xml_line_length_counts_inner_text_only() {

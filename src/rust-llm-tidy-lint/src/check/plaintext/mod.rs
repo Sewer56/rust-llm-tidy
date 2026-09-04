@@ -30,9 +30,9 @@
 //! - [`measure`] - the measuring core over explicit region lists.
 //! - [`Paragraph`] - a measured paragraph: plain text or a bullet with its
 //!   wrapped continuations.
-//! - [`run_region_checks`] - DOC007/DOC008 over explicit doc regions
+//! - [`run_region_checks`] - TEXT001/TEXT002 over explicit doc regions
 //!   from an AST backend's doc-region walk.
-//! - [`run_text_checks`] - DOC007/DOC008 over the analysis result, delegated
+//! - [`run_text_checks`] - TEXT001/TEXT002 over the analysis result, delegated
 //!   to [`paragraph_length`] and [`line_length`].
 
 use crate::diagnostic::Diagnostic;
@@ -97,7 +97,7 @@ pub(crate) enum ParagraphKind {
     Bullet,
 }
 
-/// Runs DOC007 and DOC008 over explicit doc regions, as produced by an
+/// Runs TEXT001 and TEXT002 over explicit doc regions, as produced by an
 /// AST backend's doc-region walk instead of the extension's line-marker
 /// table. Each region is measured with its dialect's rules.
 ///
@@ -107,16 +107,16 @@ pub(crate) enum ParagraphKind {
 ///
 /// # Returns
 ///
-/// Diagnostics in source order: DOC007 per over-limit paragraph, then
-/// DOC008 per over-limit line.
+/// Diagnostics in source order: TEXT001 per over-limit paragraph, then
+/// TEXT002 per over-limit line.
 pub fn run_region_checks(regions: Vec<DocRegion>) -> Vec<Diagnostic> {
     document_diagnostics(measure(regions))
 }
 
-/// Runs DOC007 and DOC008 over one file's raw text.
+/// Runs TEXT001 and TEXT002 over one file's raw text.
 ///
-/// DOC007 fires an Error when a plain paragraph's size exceeds 240 chars,
-/// and a Warning when a bullet's does; DOC008 fires a Warning for every
+/// TEXT001 fires an Error when a plain paragraph's size exceeds 240 chars,
+/// and a Warning when a bullet's does; TEXT002 fires a Warning for every
 /// line over 80 chars.
 ///
 /// Both count the full line text; table rows, code blocks, and link
@@ -129,8 +129,8 @@ pub fn run_region_checks(regions: Vec<DocRegion>) -> Vec<Diagnostic> {
 ///
 /// # Returns
 ///
-/// Diagnostics in source order: DOC007 per over-limit paragraph (bullet
-/// warnings after their paragraph position), then DOC008 per over-limit line.
+/// Diagnostics in source order: TEXT001 per over-limit paragraph (bullet
+/// warnings after their paragraph position), then TEXT002 per over-limit line.
 pub fn run_text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
     document_diagnostics(analyze(source, ext))
 }
@@ -183,7 +183,7 @@ fn bulleted(summary: &str, bullets: &[String]) -> String {
     format!("{summary}\n  - {}", bullets.join("\n  - "))
 }
 
-/// DOC007 then DOC008 diagnostics for one measured document.
+/// TEXT001 then TEXT002 diagnostics for one measured document.
 fn document_diagnostics(doc: Document) -> Vec<Diagnostic> {
     let mut diags = paragraph_length::diagnostics(&doc);
     diags.extend(line_length::diagnostics(&doc));

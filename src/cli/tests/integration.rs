@@ -198,7 +198,7 @@ fn all_after_fixtures_should_be_idempotent_on_rerun() {
 fn code_language_default_run_aligns_tables_only_among_fix_ops() {
     let table = "# | Name | Value |\n# | --- | --- |\n# | a | 1 |\n# | longname | 200 |\n";
     let fence = "# ```text\n# ```rust\n# inner\n# ```\n# ```\n";
-    // Over 80 chars so the default-run text checks emit a DOC008 warning
+    // Over 80 chars so the default-run text checks emit a TEXT002 warning
     // here without failing the run.
     let links = "# see [A](http://x) and [A](http://x) padded past eighty chars so the default text checks warn here\n";
     let source = format!("{table}\n{fence}\n{links}");
@@ -213,7 +213,7 @@ fn code_language_default_run_aligns_tables_only_among_fix_ops() {
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("warning[DOC008]"),
+        stderr.contains("warning[TEXT002]"),
         "the default run must run the text checks on a code language: {stderr}"
     );
     let after = fs::read_to_string(&file).unwrap();
@@ -230,7 +230,7 @@ fn code_language_default_run_aligns_tables_only_among_fix_ops() {
         "links must not hoist on a code language: {after}"
     );
 
-    // Second run: idempotent, zero change records; the DOC008 warning
+    // Second run: idempotent, zero change records; the TEXT002 warning
     // still prints.
     let dry = run_command(&["--dry-run"], &file);
     assert!(dry.status.success());
@@ -603,7 +603,7 @@ this line is deliberately made far longer than eighty characters so the line-len
         "md baseline: {md_stderr}"
     );
     assert!(
-        md_stderr.contains("DOC008"),
+        md_stderr.contains("TEXT002"),
         "md baseline lints: {md_stderr}"
     );
     assert_ne!(md_bytes, source, "md baseline must change the file");

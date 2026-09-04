@@ -29,7 +29,7 @@
 //! language except the three above - and the Python backend itself
 //! carries none, so `py`/`pyi` never gain an AST op.
 //!
-//! The [`lexicon`] module sources the DOC007/DOC008 text checks for the
+//! The [`lexicon`] module sources the TEXT001/TEXT002 text checks for the
 //! five comment-marker code families (`//`, `#`, `--`, `;`, `%`) with
 //! no backend at all: a fail-closed scan of comments and the family's
 //! string forms.

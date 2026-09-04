@@ -18,7 +18,7 @@
 #
 # Rule names (used in include.rules, exclude.rules, --include, --exclude):
 # ops tables, fences, links, reorder, vis, lints - plus lint codes
-# DOC001-DOC008 and TEST001. The `lints` op groups all nine lint codes.
+# (`DOCXXX`, `TEXTXXX`, `TESTXXX`). The `lints` op groups them all.
 #
 # The `links` op hoists inline links `[text](url)` to `[text]` + a definition
 # (threshold 1 by default) in `.rs` doc comments and `.md`. Tune it per file:
@@ -108,7 +108,7 @@ exclude:
       - vis
   # DOC006 self-reference: these docs spell the markers (e.g. `` `TODO` ``) as
   # examples of what DOC006 detects; whole-word match flags the literal ref.
-  # Only DOC006 disabled here; DOC001-005 + TEST001 still run.
+  # Only DOC006 disabled here; DOC001-DOC005 + TEST001 still run.
   - paths:
       - "src/rust-llm-tidy-lint/src/check/placeholder.rs"
       - "src/cli/tests/doc_check.rs"

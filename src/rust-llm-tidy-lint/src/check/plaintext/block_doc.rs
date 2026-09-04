@@ -155,7 +155,7 @@ mod tests {
     // ── `*` continuation stripping ──
 
     // Prose joins across `*`-continued lines into one paragraph measured
-    // without the markers; DOC008 counts the stripped text only.
+    // without the markers; TEXT002 counts the stripped text only.
     #[test]
     fn star_continuations_strip_and_join_prose() {
         let filler = "word ".repeat(26);

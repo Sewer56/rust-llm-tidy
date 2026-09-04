@@ -1,4 +1,4 @@
-//! DOC007: paragraph and bullet size limits over the plaintext analysis.
+//! TEXT001: paragraph and bullet size limits over the plaintext analysis.
 
 use super::{Document, Paragraph, ParagraphKind, bulleted};
 use crate::check::CODE_PARAGRAPH_SIZE;
@@ -6,10 +6,10 @@ use crate::diagnostic::{Diagnostic, Severity};
 
 /// Recommended maximum bullet length, stated in the shortening guidance.
 const BULLET_RECOMMENDED: usize = 160;
-/// Maximum measured paragraph size before DOC007 fires.
+/// Maximum measured paragraph size before TEXT001 fires.
 const PARAGRAPH_LIMIT: usize = 240;
 
-/// DOC007 diagnostics for `doc`: one per paragraph whose measured size exceeds
+/// TEXT001 diagnostics for `doc`: one per paragraph whose measured size exceeds
 /// the limit, in source order.
 pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -25,7 +25,7 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     diags
 }
 
-/// DOC007 Warning for an over-limit bullet, with shortening guidance.
+/// TEXT001 Warning for an over-limit bullet, with shortening guidance.
 fn bullet_diagnostic(para: &Paragraph) -> Diagnostic {
     let bullets = [
         format!("Bullets over {PARAGRAPH_LIMIT} chars outlast a short attention span."),
@@ -45,7 +45,7 @@ fn bullet_diagnostic(para: &Paragraph) -> Diagnostic {
     }
 }
 
-/// DOC007 Error for an over-limit plain paragraph, reported at its first line.
+/// TEXT001 Error for an over-limit plain paragraph, reported at its first line.
 fn paragraph_diagnostic(para: &Paragraph) -> Diagnostic {
     let bullets = [
         format!("Paragraphs over {PARAGRAPH_LIMIT} chars outlast a short attention span."),
@@ -85,9 +85,9 @@ mod tests {
             + "\n"
     }
 
-    // ── DOC007: paragraph and bullet budgets ──
+    // ── TEXT001: paragraph and bullet budgets ──
 
-    // Over-limit plain paragraph -> DOC007 Error at the first line, with a
+    // Over-limit plain paragraph -> TEXT001 Error at the first line, with a
     // measurement summary plus rationale and fix bullets.
     #[test]
     fn text_checks_error_on_oversized_plain_paragraph() {
@@ -152,7 +152,7 @@ mod tests {
         assert_eq!(found[0].line, 3);
     }
 
-    // Over-limit bullet -> DOC007 Warning only, with shortening guidance and
+    // Over-limit bullet -> TEXT001 Warning only, with shortening guidance and
     // the 160-char recommendation.
     #[test]
     fn text_checks_warn_on_oversized_bullet() {
@@ -192,7 +192,7 @@ mod tests {
     }
 
     // Code-span chars count toward the paragraph budget: a span whose chars
-    // push the total over the limit fires DOC007.
+    // push the total over the limit fires TEXT001.
     #[test]
     fn text_checks_count_code_span_chars_in_paragraph_budget() {
         let prose = "x".repeat(200);

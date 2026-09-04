@@ -1,5 +1,5 @@
 //! The Python doc-region producer: docstring and `#`-comment regions for
-//! the DOC007/DOC008 text checks of `py` and `pyi` sources.
+//! the TEXT001/TEXT002 text checks of `py` and `pyi` sources.
 //!
 //! [`text_checks`] walks one tree-sitter-python parse in document order
 //! and emits two kinds of [`DocRegion`] for the lint crate's measuring
@@ -61,7 +61,7 @@ pub fn parse(source: &str) -> anyhow::Result<ParseResult> {
     ))
 }
 
-/// Runs the DOC007/DOC008 text checks over `parsed`'s docstrings and `#`
+/// Runs the TEXT001/TEXT002 text checks over `parsed`'s docstrings and `#`
 /// comments.
 ///
 /// The findings carry original 1-based file lines and ride the same lint

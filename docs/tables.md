@@ -7,7 +7,7 @@ pipe delimiters line up. Runs in markdown-family files and in the line
 comments and doc comments of admitted code languages.
 
 Comment prefixes are stripped and re-applied, so rows keep their marker
-and indent. See the [language matrix] for covered extensions.
+and indent.
 
 ## Before
 
@@ -69,4 +69,3 @@ In JSON mode the same record appears on stdout with `severity: "success"`
 
 See [Change reporting] for the shared format.
 [Change reporting]: ./lints.md#change-reporting
-[language matrix]: ./langs.md

@@ -33,8 +33,8 @@ cargo install rust-llm-tidy-cli
 reorder, vis, lints) by default on every admitted source file.
 
 Admitted by default: `.rs`, the markdown family (`.md`, `.markdown`, `.txt`,
-`.text`, `.mdx`), and the code languages admitted for table fixes and text
-checks.
+`.text`, `.mdx`), and the code languages admitted for table fixes and
+text lints.
 ```bash
 # Tidy a file in place
 rust-llm-tidy src/main.rs
@@ -62,8 +62,6 @@ rust-llm-tidy --validate
 rust-llm-tidy --output-mode json src/main.rs
 ```
 
-Which files are handled, and how, is documented in [docs/langs.md].
-
 Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
 `--include <OP>`, `--exclude <OP>`, `--extension <EXT>` (all repeatable), and
 `--output-mode text|json` (`--json` for short).
@@ -77,17 +75,13 @@ Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
 | `links`   | hoist inline links to reference style   | markdown*    | yes     | markdown*   |
 | `reorder` | review-friendly item order              | `rs`, `cs`   | yes     | `rs`, `cs`  |
 | `vis`     | narrow bare `pub` in restricted modules | `rs`         | yes     | `rs`        |
-| `lints`   | run DOC001-DOC008 + TEST001 checks      | all admitted | no      | yes         |
+| `lints`   | run DOCXXX, TEXTXXX, TESTXXX checks     | all admitted | no      | yes         |
 
 \* markdown*: the markdown family (`.md`, `.markdown`, `.txt`, `.text`,
 `.mdx`), plus languages that use markdown for doc comments.
 
-`lints` runs every code the language supports: `rs` and `cs` run all nine
-(DOC001-DOC008, TEST001); every other admitted language runs the two text
-checks (DOC007, DOC008).
-
-The markdown family measures whole-file prose; the comment-marker
-families measure comment prose.
+`lints` splits by language: `rs` and `cs` run every code; every other
+admitted language runs the text lints only.
 
 #### JSON output
 
@@ -129,17 +123,17 @@ See [change reporting] for the shared record format.
 
 #### Feature documentation
 
-| Feature                        | Page                     |
-| ------------------------------ | ------------------------ |
-| Language matrix                | [docs/langs.md]          |
-| Reorder                        | [docs/reorder.md]        |
-| Reorder for C#                 | [docs/reorder/csharp.md] |
-| Visibility narrowing           | [docs/vis.md]            |
-| Table alignment                | [docs/tables.md]         |
-| Fence delimiters               | [docs/fences.md]         |
-| Link hoisting                  | [docs/links.md]          |
-| Lints (DOC001-DOC008, TEST001) | [docs/lints.md]          |
-| Lints for C#                   | [docs/lints/csharp.md]   |
+| Feature              | Page                             |
+| -------------------- | -------------------------------- |
+| Reorder              | [docs/reorder.md]                |
+| Reorder for C#       | [docs/reorder/csharp.md]         |
+| Visibility narrowing | [docs/vis.md]                    |
+| Table alignment      | [docs/tables.md]                 |
+| Fence delimiters     | [docs/fences.md]                 |
+| Link hoisting        | [docs/links.md]                  |
+| Lints                | [docs/lints.md]                  |
+| Text lints           | [docs/text-lints.md]             |
+| Lints for C#         | [docs/languages/lints/csharp.md] |
 
 ### Configuration
 
@@ -170,7 +164,7 @@ Additionally:
 Globs are relative to the config file's directory and use `literal_separator`
 semantics (`*` does not cross `/`; `**` recurses).
 
-Rule names are the nine lint codes (DOC001-DOC008, TEST001) plus the six
+Rule names are the lint codes (`DOCXXX`, `TEXTXXX`, `TESTXXX`) plus the six
 ops: `tables`, `fences`, `links`, `reorder`, `vis`, `lints`.
 
 The config is discovered automatically: `rust-llm-tidy` walks up from the
@@ -303,6 +297,6 @@ Licensed under [Apache 2.0].
 [docs/fences.md]: ./docs/fences.md
 [docs/links.md]: ./docs/links.md
 [docs/lints.md]: ./docs/lints.md
-[docs/lints/csharp.md]: ./docs/lints/csharp.md
-[docs/langs.md]: ./docs/langs.md
+[docs/text-lints.md]: ./docs/text-lints.md
+[docs/languages/lints/csharp.md]: ./docs/languages/lints/csharp.md
 [`.rust-llm-tidy.example.yml`]: ./.rust-llm-tidy.example.yml

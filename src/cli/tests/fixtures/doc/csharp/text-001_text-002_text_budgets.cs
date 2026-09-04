@@ -1,5 +1,5 @@
-// C# text checks fire on over-budget doc prose: DOC007 errors on a
-// summary paragraph over 240 measured chars, DOC008 warns on a line
+// C# text checks fire on over-budget doc prose: TEXT001 errors on a
+// summary paragraph over 240 measured chars, TEXT002 warns on a line
 // whose tag-stripped inner text exceeds 80 chars.
 namespace Fixtures;
 

@@ -8,7 +8,7 @@
 //! - `prefixes`: line-comment markers, longest first
 //! - `default_ops`: ops that run when no include list narrows the run
 //! - `backend`: whether an AST parser is registered for the extension
-//! - `text_lints`: how the DOC007/DOC008 text checks are sourced
+//! - `text_lints`: how the TEXT001/TEXT002 text checks are sourced
 //!
 //! # Tiers
 //!
@@ -36,7 +36,7 @@
 //!
 //! # Text-lint tiers
 //!
-//! [`Profile::text_lints`] decides how a file's DOC007/DOC008 text
+//! [`Profile::text_lints`] decides how a file's TEXT001/TEXT002 text
 //! checks are sourced:
 //!
 //! - [`TextLints::Prose`]: the markdown family measures the whole file
@@ -277,11 +277,11 @@ pub(crate) struct Profile {
     /// appearing in `ops`, as does the [`TextLints::Ast`] tier's doc-region
     /// producer.
     pub backend: bool,
-    /// How the DOC007/DOC008 text checks are sourced for this profile.
+    /// How the TEXT001/TEXT002 text checks are sourced for this profile.
     pub text_lints: TextLints,
 }
 
-/// How a profile's DOC007/DOC008 text checks are sourced.
+/// How a profile's TEXT001/TEXT002 text checks are sourced.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TextLints {
     /// Whole-file prose measurement over the raw source: the markdown

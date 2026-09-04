@@ -10,4 +10,4 @@ SELECT 'not a comment: this string literal tail runs far past the eighty char bu
    the normalized records back into the one summary table consumers
    query for every single run of the tool and its nightly schedule. */
 
--- this trailing note line deliberately runs past the eighty character budget limit for doc008 warnings to fire on it
+-- this trailing note line deliberately runs past the eighty character budget limit for text002 warnings to fire on it

@@ -12,4 +12,4 @@ folds the normalized records back into the summary table that
 downstream consumers query for every single run of the tool.
 |#
 
-;; this trailing note line deliberately runs past the eighty character budget limit for doc008 warnings to fire on it
+;; this trailing note line deliberately runs past the eighty character budget limit for text002 warnings to fire on it

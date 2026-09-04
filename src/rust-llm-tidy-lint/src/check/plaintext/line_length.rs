@@ -1,13 +1,13 @@
-//! DOC008: line length limit over the plaintext analysis.
+//! TEXT002: line length limit over the plaintext analysis.
 
 use super::{Document, StrippedLine, bulleted};
 use crate::check::CODE_LINE_LENGTH;
 use crate::diagnostic::{Diagnostic, Severity};
 
-/// Maximum line length before DOC008 fires.
+/// Maximum line length before TEXT002 fires.
 const LINE_LIMIT: usize = 80;
 
-/// DOC008 diagnostics for `doc`: one Warning per line over the limit, in
+/// TEXT002 diagnostics for `doc`: one Warning per line over the limit, in
 /// source order.
 ///
 /// Measurement per line kind:
@@ -34,7 +34,7 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     diags
 }
 
-/// DOC008 Warning for one over-limit line; `len` is the full line length.
+/// TEXT002 Warning for one over-limit line; `len` is the full line length.
 fn line_length_diagnostic(line: &StrippedLine, len: usize) -> Diagnostic {
     let bullets = [
         format!(
@@ -62,9 +62,9 @@ mod tests {
     use crate::check::plaintext::tests::codes;
     use indoc::formatdoc;
 
-    // ── DOC008: line length ──
+    // ── TEXT002: line length ──
 
-    // Over-limit stripped line -> DOC008 Warning with a measurement summary
+    // Over-limit stripped line -> TEXT002 Warning with a measurement summary
     // plus rationale and fix bullets. Indent and comment marker are not
     // measured.
     #[test]

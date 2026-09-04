@@ -6,4 +6,4 @@
 quiet() ->
     <<"not a comment: this binary literal tail runs far past the eighty char budget">>.
 
-%% this trailing note line deliberately runs past the eighty character budget limit for doc008 warnings to fire on it
+%% this trailing note line deliberately runs past the eighty character budget limit for text002 warnings to fire on it

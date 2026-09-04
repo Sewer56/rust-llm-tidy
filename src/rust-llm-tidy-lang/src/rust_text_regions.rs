@@ -1,4 +1,4 @@
-//! The Rust doc-region producer: DOC007/DOC008 regions for `rs` sources.
+//! The Rust doc-region producer: TEXT001/TEXT002 regions for `rs` sources.
 //!
 //! [`text_checks`] measures three doc sources through one region list:
 //!
@@ -40,7 +40,7 @@ enum DocNode<'a> {
     },
 }
 
-/// Runs the DOC007/DOC008 text checks over `parsed`'s doc prose: the
+/// Runs the TEXT001/TEXT002 text checks over `parsed`'s doc prose: the
 /// line-comment regions plus the parse tree's block and attribute doc
 /// regions, in source order.
 ///
@@ -50,8 +50,8 @@ enum DocNode<'a> {
 ///
 /// # Returns
 ///
-/// Diagnostics in source order: DOC007 per over-limit paragraph, then
-/// DOC008 per over-limit line.
+/// Diagnostics in source order: TEXT001 per over-limit paragraph, then
+/// TEXT002 per over-limit line.
 pub fn text_checks(parsed: &ParseResult) -> Vec<Diagnostic> {
     run_region_checks(doc_regions(parsed))
 }
@@ -323,7 +323,7 @@ mod tests {
         let producer = text_checks(&parsed);
         assert!(
             !producer.is_empty(),
-            "the parity source must fire DOC007 and DOC008"
+            "the parity source must fire TEXT001 and TEXT002"
         );
         assert_eq!(
             producer,
@@ -351,7 +351,7 @@ mod tests {
 
     // ── Block docs ──
 
-    /// Over-budget `/** */` prose errors with DOC007 at the block's
+    /// Over-budget `/** */` prose errors with TEXT001 at the block's
     /// first prose line, `*` continuations stripped from the count.
     #[test]
     fn outer_block_doc_prose_errors_at_its_first_line() {
@@ -365,10 +365,10 @@ mod tests {
         assert_eq!(found[0].line, 2, "the first prose line, not the opener");
     }
 
-    /// An 81-char block doc line warns with DOC008 on the measured
+    /// An 81-char block doc line warns with TEXT002 on the measured
     /// length: the `*` continuation never counts.
     #[test]
-    fn over_long_block_doc_line_warns_doc008() {
+    fn over_long_block_doc_line_warns_text002() {
         let long = "b".repeat(81);
         let source = format!("/** prose\n * {long}\n */\nfn f() {{}}\n");
 
@@ -401,7 +401,7 @@ mod tests {
     // ── Attribute docs ──
 
     /// Consecutive `#[doc = "..."]` attributes form one paragraph:
-    /// over-budget joined prose errors with DOC007 at the first
+    /// over-budget joined prose errors with TEXT001 at the first
     /// attribute line.
     #[test]
     fn doc_attribute_prose_errors_at_the_first_attribute_line() {
@@ -417,10 +417,10 @@ mod tests {
         assert_eq!(found[0].line, 1);
     }
 
-    /// An 81-char attribute value warns with DOC008 on the measured
+    /// An 81-char attribute value warns with TEXT002 on the measured
     /// length: the quote and its following space never count.
     #[test]
-    fn long_doc_attribute_value_warns_doc008() {
+    fn long_doc_attribute_value_warns_text002() {
         let long = "a".repeat(81);
         let source = format!("#[doc = \" {long}\"]\nfn f() {{}}\n");
 
@@ -438,7 +438,7 @@ mod tests {
 
     /// A 4-space-prefixed attribute value is prose, not indented code:
     /// the one-space strip leaves a 3-space lead, so an over-long value
-    /// still fires DOC008.
+    /// still fires TEXT002.
     #[test]
     fn four_space_attribute_values_measure_as_prose_not_code() {
         let long = "d".repeat(81);
@@ -493,10 +493,10 @@ mod tests {
         assert_eq!(found[0].line, 2, "the value's second line");
     }
 
-    /// An over-long tail after an escape sequence still fires DOC008:
+    /// An over-long tail after an escape sequence still fires TEXT002:
     /// the value's later string-content fragments measure too.
     #[test]
-    fn over_long_tail_after_an_escape_warns_doc008() {
+    fn over_long_tail_after_an_escape_warns_text002() {
         let long = "z".repeat(81);
         let source = format!("#[doc = \" head\\n {long}\"]\nfn f() {{}}\n");
 
@@ -512,7 +512,7 @@ mod tests {
     }
 
     /// Fragments around escape sequences join into one paragraph: four
-    /// under-80 chunks separated by escapes overflow DOC007 only when
+    /// under-80 chunks separated by escapes overflow TEXT001 only when
     /// every fragment measures.
     #[test]
     fn escape_split_fragments_join_into_one_paragraph() {

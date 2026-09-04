@@ -17,7 +17,7 @@
 //! | fix     | align tables, fix fences, hoist links              | yes     |
 //! | reorder | review-friendly item order                         | yes     |
 //! | vis     | narrow bare `pub` in restricted-visibility modules | yes     |
-//! | lints   | DOC001-DOC008 + TEST001 checks                     | no      |
+//! | lints   | DOCXXX, TEXTXXX, TESTXXX checks                    | no      |
 //!
 //! # Flags
 //!
@@ -136,7 +136,7 @@ impl Cli {
 /// plaintext lines to stderr (default output) or project them to JSON.
 ///
 /// The profile decides which passes run: parser-driven checks need a
-/// registered backend; text lints source DOC007/DOC008 per tier.
+/// registered backend; text lints source TEXT001/TEXT002 per tier.
 pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,

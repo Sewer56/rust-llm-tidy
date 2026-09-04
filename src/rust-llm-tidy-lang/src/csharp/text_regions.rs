@@ -1,5 +1,5 @@
 //! The C# doc-region producer: `///` comment runs as XML-doc regions for
-//! the DOC007/DOC008 text checks.
+//! the TEXT001/TEXT002 text checks.
 //!
 //! One depth-first walk collects every `///` comment node of the parse
 //! tree; consecutive comment rows group into one [`DocRegion`] per doc
@@ -14,7 +14,7 @@ use rust_llm_tidy_lint::Diagnostic;
 use rust_llm_tidy_lint::check::{Dialect, DocRegion, RegionLine, run_region_checks};
 use rust_llm_tidy_model::parse::ParseResult;
 
-/// Runs the DOC007/DOC008 text checks over `parsed`'s `///` doc runs,
+/// Runs the TEXT001/TEXT002 text checks over `parsed`'s `///` doc runs,
 /// measured with the XML doc dialect.
 ///
 /// The findings carry original 1-based file lines and ride the same lint
@@ -262,7 +262,7 @@ Last line.\";
 
     // ── True positives ──
 
-    /// Over-budget summary prose errors with DOC007 at the paragraph's
+    /// Over-budget summary prose errors with TEXT001 at the paragraph's
     /// first line, keeping original file line numbers.
     #[test]
     fn oversized_summary_prose_errors_at_its_first_line() {
@@ -282,7 +282,7 @@ Last line.\";
         assert_eq!(found[0].line, 4, "the first prose line, not the tag line");
     }
 
-    /// DOC008 warns on the measured line only: a long attribute-heavy line
+    /// TEXT002 warns on the measured line only: a long attribute-heavy line
     /// with short inner text stays quiet, a long inner text warns.
     #[test]
     fn long_param_inner_text_warns_on_the_measured_line() {

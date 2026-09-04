@@ -7,7 +7,7 @@ fence uses the opposite delimiter (```` ``` ```` vs ```` ~~~ ````) so the
 outer block does not close early.
 
 Runs in markdown-family files and in `///` and `//!` doc comments.
-For other languages, must be explicit enabled, see [language matrix].
+For other languages, it must be enabled explicitly.
 
 ## Before
 
@@ -80,4 +80,3 @@ In JSON mode the same record appears on stdout with `severity: "success"`:
 See [Change reporting] for the shared format.
 
 [Change reporting]: ./lints.md#change-reporting
-[language matrix]: ./langs.md

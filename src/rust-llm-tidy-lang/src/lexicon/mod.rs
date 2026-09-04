@@ -1,4 +1,4 @@
-//! Fail-closed comment lexicon: doc regions for the DOC007/DOC008 text
+//! Fail-closed comment lexicon: doc regions for the TEXT001/TEXT002 text
 //! checks of the `//`, `#`, `--`, `;`, and `%` comment families.
 //!
 //! [`text_checks`] walks the raw source once, tracking line-comment
@@ -93,7 +93,7 @@ pub fn covers(ext: &str) -> bool {
     lexicon_for(ext).is_some()
 }
 
-/// Runs the DOC007/DOC008 text checks over `source`'s comments, as lexed
+/// Runs the TEXT001/TEXT002 text checks over `source`'s comments, as lexed
 /// for `ext`'s comment family.
 ///
 /// Extensions without a lexicon entry and ambiguous sources (see the
@@ -107,8 +107,8 @@ pub fn covers(ext: &str) -> bool {
 ///
 /// # Returns
 ///
-/// Diagnostics in source order: DOC007 per over-limit paragraph, then
-/// DOC008 per over-limit line.
+/// Diagnostics in source order: TEXT001 per over-limit paragraph, then
+/// TEXT002 per over-limit line.
 pub fn text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
     match lexicon_for(ext).and_then(|lex| scan::scan(source, lex)) {
         Some(regions) => run_region_checks(regions),
@@ -269,9 +269,9 @@ mod tests {
         assert_eq!(found[0].line, 3, "the over-long prose line keeps its line");
     }
 
-    /// A long line comment warns on DOC008 at its own line.
+    /// A long line comment warns on TEXT002 at its own line.
     #[test]
-    fn long_comment_line_warns_doc008() {
+    fn long_comment_line_warns_text002() {
         let source = format!("// {}\n", "x".repeat(81));
         let diags = text_checks(&source, "go");
         let found = codes(&diags, CODE_LINE_LENGTH);

@@ -421,31 +421,31 @@ fn csharp_test001_flags_discouraged_names() {
     );
 }
 
-/// C# text budgets fire with original file lines: DOC007 errors on an
-/// over-budget summary paragraph at its first prose line, and DOC008
+/// C# text budgets fire with original file lines: TEXT001 errors on an
+/// over-budget summary paragraph at its first prose line, and TEXT002
 /// warns on a line whose tag-stripped inner text exceeds 80 chars.
 #[test]
 fn csharp_text_budgets_fire_with_original_lines() {
-    let (stderr, exit) = run_csharp_fixture("doc007_doc008_text_budgets.cs");
+    let (stderr, exit) = run_csharp_fixture("text-001_text-002_text_budgets.cs");
 
-    assert_ne!(exit, 0, "the DOC007 error must fail the run:\n{stderr}");
+    assert_ne!(exit, 0, "the TEXT001 error must fail the run:\n{stderr}");
     assert!(
-        stderr.contains(":10: error[DOC007]"),
-        "DOC007 must report at the summary's first prose line:\n{stderr}"
+        stderr.contains(":10: error[TEXT001]"),
+        "TEXT001 must report at the summary's first prose line:\n{stderr}"
     );
     assert!(
-        stderr.contains(":19: warning[DOC008]"),
-        "DOC008 must report at the over-long measured line:\n{stderr}"
+        stderr.contains(":19: warning[TEXT002]"),
+        "TEXT002 must report at the over-long measured line:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC007").count(),
+        stderr.matches("TEXT001").count(),
         1,
-        "expected exactly 1 DOC007 finding:\n{stderr}"
+        "expected exactly 1 TEXT001 finding:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC008").count(),
+        stderr.matches("TEXT002").count(),
         1,
-        "expected exactly 1 DOC008 finding:\n{stderr}"
+        "expected exactly 1 TEXT002 finding:\n{stderr}"
     );
     assert!(
         !stderr.contains("DOC001") && !stderr.contains("DOC004"),
@@ -455,7 +455,7 @@ fn csharp_text_budgets_fire_with_original_lines() {
 
 /// C# text checks stay quiet on the probe classes: idiomatic XML docs,
 /// long `cref`/`name` attribute values, `<code>`/`<example>` blocks, and
-/// verbatim string content produce no DOC007/DOC008 findings.
+/// verbatim string content produce no TEXT001/TEXT002 findings.
 #[test]
 fn csharp_text_probes_stay_quiet() {
     let (stderr, exit) = run_csharp_fixture("doc_text_quiet_probes.cs");
@@ -496,21 +496,21 @@ fn default_run_lints_comment_prose_in_every_comment_family() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         !output.status.success(),
-        "the DOC007 errors must fail the default run:\n{stderr}"
+        "the TEXT001 errors must fail the default run:\n{stderr}"
     );
     for name in names {
         assert!(
-            stderr.contains(&format!("{name}:1: error[DOC007]")),
+            stderr.contains(&format!("{name}:1: error[TEXT001]")),
             "{name}: the comment paragraph must fire in the default run:\n{stderr}"
         );
     }
     assert_eq!(
-        stderr.matches("DOC007").count(),
+        stderr.matches("TEXT001").count(),
         names.len(),
         "exactly one comment paragraph per family, never the string content:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC008").count(),
+        stderr.matches("TEXT002").count(),
         0,
         "no doc line in the fixtures crosses the line budget:\n{stderr}"
     );
@@ -778,26 +778,26 @@ fn doc006_placeholders() {
 fn el_lexicon_measures_comments_not_strings() {
     let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.el");
 
-    assert_ne!(exit, 0, "the DOC007 errors must fail the run:\n{stderr}");
+    assert_ne!(exit, 0, "the TEXT001 errors must fail the run:\n{stderr}");
     assert!(
-        stderr.contains(":1: error[DOC007]"),
-        "DOC007 must report at the comment paragraph's first line:\n{stderr}"
+        stderr.contains(":1: error[TEXT001]"),
+        "TEXT001 must report at the comment paragraph's first line:\n{stderr}"
     );
     assert!(
-        stderr.contains(":9: error[DOC007]"),
-        "DOC007 must report at the block comment's first prose line:\n{stderr}"
+        stderr.contains(":9: error[TEXT001]"),
+        "TEXT001 must report at the block comment's first prose line:\n{stderr}"
     );
     assert!(
-        stderr.contains(":15: warning[DOC008]"),
-        "DOC008 must report at the over-long comment line:\n{stderr}"
+        stderr.contains(":15: warning[TEXT002]"),
+        "TEXT002 must report at the over-long comment line:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC007").count(),
+        stderr.matches("TEXT001").count(),
         2,
         "exactly the line and block comment paragraphs, never the string:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC008").count(),
+        stderr.matches("TEXT002").count(),
         1,
         "exactly the over-long comment line, never the string:\n{stderr}"
     );
@@ -809,22 +809,22 @@ fn el_lexicon_measures_comments_not_strings() {
 fn erl_lexicon_measures_comments_not_strings() {
     let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.erl");
 
-    assert_ne!(exit, 0, "the DOC007 error must fail the run:\n{stderr}");
+    assert_ne!(exit, 0, "the TEXT001 error must fail the run:\n{stderr}");
     assert!(
-        stderr.contains(":1: error[DOC007]"),
-        "DOC007 must report at the comment paragraph's first line:\n{stderr}"
+        stderr.contains(":1: error[TEXT001]"),
+        "TEXT001 must report at the comment paragraph's first line:\n{stderr}"
     );
     assert!(
-        stderr.contains(":9: warning[DOC008]"),
-        "DOC008 must report at the over-long comment line:\n{stderr}"
+        stderr.contains(":9: warning[TEXT002]"),
+        "TEXT002 must report at the over-long comment line:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC007").count(),
+        stderr.matches("TEXT001").count(),
         1,
         "exactly the comment paragraph, never the binary literal:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC008").count(),
+        stderr.matches("TEXT002").count(),
         1,
         "exactly the over-long comment line, never the binary literal:\n{stderr}"
     );
@@ -843,35 +843,35 @@ fn js_lexicon_string_probes_stay_quiet() {
     );
 }
 
-/// Explicit `--include lints` on a `.js` file emits DOC007 for
-/// over-budget `//` and `/** */` prose and DOC008 for an over-long
+/// Explicit `--include lints` on a `.js` file emits TEXT001 for
+/// over-budget `//` and `/** */` prose and TEXT002 for an over-long
 /// comment line, all at original file lines.
 #[test]
 fn js_lexicon_text_budgets_fire_with_original_lines() {
     let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.js");
 
-    assert_ne!(exit, 0, "the DOC007 errors must fail the run:\n{stderr}");
+    assert_ne!(exit, 0, "the TEXT001 errors must fail the run:\n{stderr}");
     assert!(
-        stderr.contains(":1: error[DOC007]"),
-        "DOC007 must report at the comment paragraph's first line:\n{stderr}"
+        stderr.contains(":1: error[TEXT001]"),
+        "TEXT001 must report at the comment paragraph's first line:\n{stderr}"
     );
     assert!(
-        stderr.contains(":11: error[DOC007]"),
-        "DOC007 must report at the JSDoc paragraph's first line:\n{stderr}"
+        stderr.contains(":11: error[TEXT001]"),
+        "TEXT001 must report at the JSDoc paragraph's first line:\n{stderr}"
     );
     assert!(
-        stderr.contains(":20: warning[DOC008]"),
-        "DOC008 must report at the over-long comment line:\n{stderr}"
+        stderr.contains(":20: warning[TEXT002]"),
+        "TEXT002 must report at the over-long comment line:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC007").count(),
+        stderr.matches("TEXT001").count(),
         2,
-        "expected exactly 2 DOC007 findings:\n{stderr}"
+        "expected exactly 2 TEXT001 findings:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC008").count(),
+        stderr.matches("TEXT002").count(),
         1,
-        "expected exactly 1 DOC008 finding:\n{stderr}"
+        "expected exactly 1 TEXT002 finding:\n{stderr}"
     );
 }
 
@@ -1264,24 +1264,6 @@ fn md_clean_file_no_diagnostics() {
     );
 }
 
-/// `--exclude DOC007` suppresses the markdown paragraph error; the run then
-/// succeeds with no findings.
-#[test]
-fn md_doc007_suppressed_by_exclude() {
-    let path = temp_md(&oversized_paragraph_md());
-    let output = run_command(&["--include", "lints", "--exclude", "DOC007"], &path);
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        output.status.success(),
-        "excluding DOC007 must clear the markdown error: {stderr}"
-    );
-    assert!(
-        !stderr.contains("DOC007"),
-        "excluded code must not be reported, got:\n{stderr}"
-    );
-}
-
 /// A whitelist without `lints` (or any lint code) skips linting entirely,
 /// including the markdown text checks.
 #[test]
@@ -1295,49 +1277,67 @@ fn md_lints_skipped_when_whitelist_omits_lints() {
         "tables-only whitelist must not lint markdown: {stderr}"
     );
     assert!(
-        !stderr.contains("DOC007") && !stderr.contains("DOC008"),
+        !stderr.contains("TEXT001") && !stderr.contains("TEXT002"),
         "lint findings must be suppressed without `lints` in the whitelist:\n{stderr}"
     );
 }
 
-/// A markdown line over 80 chars yields a DOC008 warning without failing.
+/// A markdown line over 80 chars yields a TEXT002 warning without failing.
 #[test]
-fn md_long_line_warns_doc008_without_failing() {
+fn md_long_line_warns_text002_without_failing() {
     let path = temp_md(&format!("{}\n", "x".repeat(81)));
     let output = run_command(&["--include", "lints"], &path);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "DOC008 warnings must not fail the run: {stderr}"
+        "TEXT002 warnings must not fail the run: {stderr}"
     );
     assert!(
-        stderr.contains(":1: warning[DOC008]"),
-        "expected a DOC008 warning at line 1, got:\n{stderr}"
+        stderr.contains(":1: warning[TEXT002]"),
+        "expected a TEXT002 warning at line 1, got:\n{stderr}"
     );
 }
 
-/// An over-limit markdown paragraph fails the run with a DOC007 error; the
+/// An over-limit markdown paragraph fails the run with a TEXT001 error; the
 /// file is no longer skipped before linting.
 #[test]
-fn md_paragraph_over_limit_fails_with_doc007() {
+fn md_paragraph_over_limit_fails_with_text001() {
     let path = temp_md(&oversized_paragraph_md());
     let output = run_command(&["--include", "lints"], &path);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         !output.status.success(),
-        "DOC007 errors on markdown must fail the run: {stderr}"
+        "TEXT001 errors on markdown must fail the run: {stderr}"
     );
     assert!(
-        stderr.contains(":3: error[DOC007]"),
-        "expected a DOC007 error at the paragraph's first line, got:\n{stderr}"
+        stderr.contains(":3: error[TEXT001]"),
+        "expected a TEXT001 error at the paragraph's first line, got:\n{stderr}"
+    );
+}
+
+/// `--exclude TEXT001` suppresses the markdown paragraph error; the run then
+/// succeeds with no findings.
+#[test]
+fn md_text001_suppressed_by_exclude() {
+    let path = temp_md(&oversized_paragraph_md());
+    let output = run_command(&["--include", "lints", "--exclude", "TEXT001"], &path);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "excluding TEXT001 must clear the markdown error: {stderr}"
+    );
+    assert!(
+        !stderr.contains("TEXT001"),
+        "excluded code must not be reported, got:\n{stderr}"
     );
 }
 
 /// Python docstring prose fires the text budgets with original file
-/// lines: DOC007 errors on the module docstring's over-budget paragraph
-/// and DOC008 warns on a function docstring's over-long line.
+/// lines: TEXT001 errors on the module docstring's over-budget paragraph
+/// and TEXT002 warns on a function docstring's over-long line.
 ///
 /// The non-docstring triple-quoted payload and the `>>>` doctest example
 /// stay quiet.
@@ -1345,45 +1345,45 @@ fn md_paragraph_over_limit_fails_with_doc007() {
 fn py_docstring_budgets_fire_with_original_lines() {
     let (stderr, exit) = run_check_fixture("docstring_text_budgets.py");
 
-    assert_ne!(exit, 0, "the DOC007 error must fail the run:\n{stderr}");
+    assert_ne!(exit, 0, "the TEXT001 error must fail the run:\n{stderr}");
     assert!(
-        stderr.contains(":2: error[DOC007]"),
-        "DOC007 must report at the docstring's first prose line:\n{stderr}"
+        stderr.contains(":2: error[TEXT001]"),
+        "TEXT001 must report at the docstring's first prose line:\n{stderr}"
     );
     assert!(
-        stderr.contains(":27: warning[DOC008]"),
-        "DOC008 must report at the over-long docstring line:\n{stderr}"
+        stderr.contains(":27: warning[TEXT002]"),
+        "TEXT002 must report at the over-long docstring line:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC007").count(),
+        stderr.matches("TEXT001").count(),
         1,
         "the docstring paragraph only, never the payload:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC008").count(),
+        stderr.matches("TEXT002").count(),
         1,
         "the wide docstring line only, never the doctest:\n{stderr}"
     );
 }
 
-/// Python `#` comment prose fires DOC007 while triple-quoted string
+/// Python `#` comment prose fires TEXT001 while triple-quoted string
 /// content and `<<` operators stay quiet.
 #[test]
 fn py_text_checks_measure_comments_not_strings() {
     let (stderr, exit) = run_check_fixture("doc_text_lexicon_budgets.py");
 
-    assert_ne!(exit, 0, "the DOC007 error must fail the run:\n{stderr}");
+    assert_ne!(exit, 0, "the TEXT001 error must fail the run:\n{stderr}");
     assert!(
-        stderr.contains(":1: error[DOC007]"),
-        "DOC007 must report at the comment paragraph's first line:\n{stderr}"
+        stderr.contains(":1: error[TEXT001]"),
+        "TEXT001 must report at the comment paragraph's first line:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC007").count(),
+        stderr.matches("TEXT001").count(),
         1,
         "exactly the comment paragraph, never the string content:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC008").count(),
+        stderr.matches("TEXT002").count(),
         0,
         "no doc line in the fixture crosses the line budget:\n{stderr}"
     );
@@ -1396,55 +1396,55 @@ fn py_text_checks_measure_comments_not_strings() {
 fn rb_lexicon_measures_comment_prose_only() {
     let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.rb");
 
-    assert_ne!(exit, 0, "the DOC007 error must fail the run:\n{stderr}");
+    assert_ne!(exit, 0, "the TEXT001 error must fail the run:\n{stderr}");
     assert!(
-        stderr.contains(":1: error[DOC007]"),
+        stderr.contains(":1: error[TEXT001]"),
         "the comment paragraph must measure from its first line:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC007").count(),
+        stderr.matches("TEXT001").count(),
         1,
         "exactly the comment paragraph, never payload or code:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC008").count(),
+        stderr.matches("TEXT002").count(),
         0,
         "no doc line in the fixture crosses the line budget:\n{stderr}"
     );
 }
 
 /// Rust block and attribute doc prose fires the text budgets with
-/// original file lines: DOC007 errors on the over-budget `/** */` and
-/// `#[doc = "..."]` paragraphs, and DOC008 warns on the 81-char block
+/// original file lines: TEXT001 errors on the over-budget `/** */` and
+/// `#[doc = "..."]` paragraphs, and TEXT002 warns on the 81-char block
 /// and attribute lines.
 #[test]
 fn rs_block_and_attribute_docs_fire_text_budgets() {
-    let (stderr, exit) = run_check_fixture("doc007_doc008_block_attr_budgets.rs");
+    let (stderr, exit) = run_check_fixture("text-001_text-002_block_attr_budgets.rs");
 
-    assert_ne!(exit, 0, "the DOC007 errors must fail the run:\n{stderr}");
+    assert_ne!(exit, 0, "the TEXT001 errors must fail the run:\n{stderr}");
     assert!(
-        stderr.contains(":1: error[DOC007]"),
-        "DOC007 must report at the block doc's first prose line:\n{stderr}"
+        stderr.contains(":1: error[TEXT001]"),
+        "TEXT001 must report at the block doc's first prose line:\n{stderr}"
     );
     assert!(
-        stderr.contains(":25: error[DOC007]"),
-        "DOC007 must report at the attribute paragraph's first line:\n{stderr}"
+        stderr.contains(":25: error[TEXT001]"),
+        "TEXT001 must report at the attribute paragraph's first line:\n{stderr}"
     );
     assert!(
-        stderr.contains(":8: warning[DOC008]"),
-        "DOC008 must report at the over-long attribute line:\n{stderr}"
+        stderr.contains(":8: warning[TEXT002]"),
+        "TEXT002 must report at the over-long attribute line:\n{stderr}"
     );
     assert!(
-        stderr.contains(":12: warning[DOC008]"),
-        "DOC008 must report at the over-long block doc line:\n{stderr}"
+        stderr.contains(":12: warning[TEXT002]"),
+        "TEXT002 must report at the over-long block doc line:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC007").count(),
+        stderr.matches("TEXT001").count(),
         2,
         "exactly the block and attribute paragraphs, never the plain block:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC008").count(),
+        stderr.matches("TEXT002").count(),
         2,
         "exactly the block and attribute lines, never the plain block:\n{stderr}"
     );
@@ -1465,7 +1465,7 @@ fn rs_block_and_attribute_docs_fire_text_budgets() {
 fn rs_diagnostics_match_direct_check_composition() {
     for name in [
         "doc001_missing_docs.rs",
-        "doc007_doc008_block_attr_budgets.rs",
+        "text-001_text-002_block_attr_budgets.rs",
     ] {
         let path = fixture_dir().join(name);
         let source = fs::read_to_string(&path).unwrap();
@@ -1512,9 +1512,9 @@ fn rs_diagnostics_match_direct_check_composition() {
 }
 
 /// Rust comments flow through the same text checks: an 81-char `///` line
-/// warns with DOC008 while tree-sitter checks stay quiet on a private fn.
+/// warns with TEXT002 while tree-sitter checks stay quiet on a private fn.
 #[test]
-fn rs_long_doc_comment_warns_doc008() {
+fn rs_long_doc_comment_warns_text002() {
     let path = temp_file("rs");
     fs::write(&path, format!("/// {}\nfn hidden() {{}}\n", "w".repeat(81))).unwrap();
 
@@ -1524,11 +1524,11 @@ fn rs_long_doc_comment_warns_doc008() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "DOC008 warnings must not fail the run: {stderr}"
+        "TEXT002 warnings must not fail the run: {stderr}"
     );
     assert!(
-        stderr.contains(":1: warning[DOC008]"),
-        "expected a DOC008 warning for the over-limit comment, got:\n{stderr}"
+        stderr.contains(":1: warning[TEXT002]"),
+        "expected a TEXT002 warning for the over-limit comment, got:\n{stderr}"
     );
 }
 
@@ -1538,14 +1538,14 @@ fn rs_long_doc_comment_warns_doc008() {
 fn sh_lexicon_ignores_heredoc_payload() {
     let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.sh");
 
-    assert_ne!(exit, 0, "the DOC007 error must fail the run:\n{stderr}");
+    assert_ne!(exit, 0, "the TEXT001 error must fail the run:\n{stderr}");
     assert_eq!(
-        stderr.matches("DOC007").count(),
+        stderr.matches("TEXT001").count(),
         1,
         "exactly the comment paragraph, never the heredoc payload:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC008").count(),
+        stderr.matches("TEXT002").count(),
         0,
         "no doc line in the fixture crosses the line budget:\n{stderr}"
     );
@@ -1557,26 +1557,26 @@ fn sh_lexicon_ignores_heredoc_payload() {
 fn sql_lexicon_measures_comments_not_strings() {
     let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.sql");
 
-    assert_ne!(exit, 0, "the DOC007 errors must fail the run:\n{stderr}");
+    assert_ne!(exit, 0, "the TEXT001 errors must fail the run:\n{stderr}");
     assert!(
-        stderr.contains(":1: error[DOC007]"),
-        "DOC007 must report at the comment paragraph's first line:\n{stderr}"
+        stderr.contains(":1: error[TEXT001]"),
+        "TEXT001 must report at the comment paragraph's first line:\n{stderr}"
     );
     assert!(
-        stderr.contains(":8: error[DOC007]"),
-        "DOC007 must report at the block comment's first prose line:\n{stderr}"
+        stderr.contains(":8: error[TEXT001]"),
+        "TEXT001 must report at the block comment's first prose line:\n{stderr}"
     );
     assert!(
-        stderr.contains(":13: warning[DOC008]"),
-        "DOC008 must report at the over-long comment line:\n{stderr}"
+        stderr.contains(":13: warning[TEXT002]"),
+        "TEXT002 must report at the over-long comment line:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC007").count(),
+        stderr.matches("TEXT001").count(),
         2,
         "exactly the line and block comment paragraphs, never the string:\n{stderr}"
     );
     assert_eq!(
-        stderr.matches("DOC008").count(),
+        stderr.matches("TEXT002").count(),
         1,
         "exactly the over-long comment line, never the string:\n{stderr}"
     );
@@ -1639,7 +1639,7 @@ fn fix_fixture_dir() -> std::path::PathBuf {
 }
 
 /// A markdown paragraph over 240 chars built from short (under-80) lines, so
-/// only DOC007 fires on it.
+/// only TEXT001 fires on it.
 fn oversized_paragraph_md() -> String {
     let lines: String = (0..10)
         .map(|i| format!("sentence number {i} carries some filler text\n"))
