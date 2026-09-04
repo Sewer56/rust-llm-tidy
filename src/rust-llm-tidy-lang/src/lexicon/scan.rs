@@ -9,6 +9,17 @@
 use super::families::{Heredoc, Lexicon, comment_starts_word, ident_byte, ident_start};
 use rust_llm_tidy_lint::check::{Dialect, DocRegion, RegionLine};
 
+/// One queued heredoc: its delimiter and whether the terminator line
+/// may carry a lead (`<<~`, `<<-`).
+struct PendingHeredoc {
+    /// The delimiter word the terminator line must equal (after its
+    /// permitted lead).
+    word: String,
+    /// Whether the terminator lead is permitted: `\t` in the shell
+    /// family, any whitespace in Ruby.
+    indented: bool,
+}
+
 /// Lexical state carried across the lines of one scan.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum State {
@@ -42,16 +53,26 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
     let mut block_lines: Vec<RegionLine> = Vec::new();
     let mut block_opener = false;
     let mut state = State::Code;
-    let mut heredocs: Vec<String> = Vec::new();
+    let mut heredocs: Vec<PendingHeredoc> = Vec::new();
 
     for (idx, raw) in source.lines().enumerate() {
         let number = idx + 1;
 
-        // Heredoc payload: string content until a line equals the
-        // leading delimiter exactly (indentation is not allowed, so a
-        // terminator that never matches fails the scan at the end).
-        if let Some(delim) = heredocs.first() {
-            if raw == delim.as_str() {
+        // Heredoc payload: string content until the closing delimiter
+        // line: exact for strict heredocs; after the lead its family
+        // permits (`\t` shells, any whitespace Ruby) for `<<~`/`<<-`.
+        // A missing terminator fails the scan at the end.
+        if let Some(pending) = heredocs.first() {
+            let terminator = if pending.indented {
+                match lex.heredoc {
+                    Heredoc::Shell => raw.trim_start_matches('\t'),
+                    Heredoc::Ruby => raw.trim_start(),
+                    Heredoc::None => raw,
+                }
+            } else {
+                raw
+            };
+            if terminator == pending.word.as_str() {
                 heredocs.remove(0);
             }
             continue;
@@ -343,7 +364,12 @@ fn close_run(run: &mut Option<DocRegion>, regions: &mut Vec<DocRegion>) {
 /// pattern rejects, or a single-byte advance.
 ///
 /// Returns the consumed width, or `None` to reject the scan.
-fn code_step(bytes: &[u8], i: usize, lex: &Lexicon, heredocs: &mut Vec<String>) -> Option<usize> {
+fn code_step(
+    bytes: &[u8],
+    i: usize,
+    lex: &Lexicon,
+    heredocs: &mut Vec<PendingHeredoc>,
+) -> Option<usize> {
     match bytes[i] {
         b'<' => {
             // PHP heredocs/nowdocs.
@@ -399,14 +425,14 @@ fn push_block_line(seg: &str, opener: bool, number: usize, lines: &mut Vec<Regio
     });
 }
 
-/// Recognizes a heredoc opener at `bytes[i]` (a `<<` lead) and queues its
-/// delimiter. Returns the consumed width, or `None` when the bytes do not
-/// open a heredoc.
+/// Recognizes a heredoc opener at `bytes[i]` (a `<<` lead) and queues
+/// its delimiter with whether the terminator may be indented. Returns
+/// the consumed width, or `None` when the bytes do not open a heredoc.
 fn heredoc_open(
     bytes: &[u8],
     i: usize,
     style: Heredoc,
-    heredocs: &mut Vec<String>,
+    heredocs: &mut Vec<PendingHeredoc>,
 ) -> Option<usize> {
     let mut j = i + 2;
     // Shells allow the delimiter as the next word (`cat << EOF`).
@@ -415,7 +441,10 @@ fn heredoc_open(
             j += 1;
         }
     }
+    // `<<-` and `<<~` permit an indented terminator line.
+    let mut indented = false;
     if matches!(bytes.get(j), Some(b'-') | Some(b'~')) {
+        indented = true;
         j += 1;
         if style == Heredoc::Shell {
             while matches!(bytes.get(j), Some(b' ') | Some(b'\t')) {
@@ -444,6 +473,9 @@ fn heredoc_open(
         }
         j += 1;
     }
-    heredocs.push(word.to_string());
+    heredocs.push(PendingHeredoc {
+        word: word.to_string(),
+        indented,
+    });
     Some(j - i)
 }

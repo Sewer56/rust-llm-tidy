@@ -519,7 +519,8 @@ mod tests {
     }
 
     /// Heredoc payload is immune across the marked shell and Ruby forms,
-    /// while real comments in the same file still measure.
+    /// including their indented terminators, while real comments in the
+    /// same file still measure.
     #[test]
     fn heredoc_payload_stays_quiet() {
         let cases = [
@@ -548,12 +549,58 @@ mod tests {
                     "MSG\n",
                 ),
             ),
+            // `<<-` closes on a tab-indented terminator, as shells read
+            // it inside an indented block; a space-indented
+            // delimiter-shaped line stays payload (only tabs strip).
+            (
+                "sh",
+                concat!(
+                    "run() {\n",
+                    "\tcat <<-EOF\n",
+                    "\t\t# filler words pad the payload far past the budget limit here\n",
+                    "\tEOF\n",
+                    "}\n",
+                ),
+            ),
+            (
+                "sh",
+                concat!(
+                    "cat <<-EOF\n",
+                    " EOF\n",
+                    "# filler words pad the payload far past the budget limit here\n",
+                    "\tEOF\n",
+                ),
+            ),
+            // A strict quoted heredoc keeps an indented
+            // delimiter-shaped line as payload.
+            (
+                "sh",
+                concat!(
+                    "cat <<'EOF'\n",
+                    " EOF\n",
+                    "# filler words pad the payload far past the budget limit here\n",
+                    "EOF\n",
+                ),
+            ),
             (
                 "rb",
                 concat!(
                     "text = <<~PAYLOAD\n",
                     "# filler words pad the payload far past the budget limit here\n",
                     "PAYLOAD\n",
+                ),
+            ),
+            // Ruby's marked forms accept any whitespace on the
+            // terminator, so nested heredocs still close and later
+            // comments still measure.
+            (
+                "rb",
+                concat!(
+                    "def render\n",
+                    "  text = <<~PAYLOAD\n",
+                    "    # filler words pad the payload far past the budget limit here\n",
+                    "  PAYLOAD\n",
+                    "end\n",
                 ),
             ),
         ];

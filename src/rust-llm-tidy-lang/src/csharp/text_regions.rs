@@ -62,6 +62,8 @@ fn doc_regions(parsed: &ParseResult) -> Vec<DocRegion> {
 
 /// Collects `(row, start_byte, end_byte)` of every `///` comment node in
 /// document order, walking the subtree depth-first on one reused cursor.
+/// A fourth slash keeps the node an ordinary comment, so `////` runs
+/// never join a doc region.
 fn collect_doc_comments(
     root: tree_sitter::Node<'_>,
     source: &str,
@@ -72,6 +74,7 @@ fn collect_doc_comments(
         let node = cursor.node();
         if node.kind() == "comment"
             && source.get(node.start_byte()..node.start_byte() + 3) == Some("///")
+            && source.as_bytes().get(node.start_byte() + 3) != Some(&b'/')
         {
             out.push((
                 node.start_position().row,
@@ -180,6 +183,18 @@ public void Sample() { }
 ";
 
         assert!(checks(source).is_empty());
+    }
+
+    /// `////` rulers are ordinary comments, not XML docs: an over-80
+    /// ruler adjacent to a real doc run produces no warning.
+    #[test]
+    fn four_slash_rulers_stay_quiet() {
+        let ruler = "-".repeat(85);
+        let source = format!(
+            "//// {ruler}\n/// <summary>Loads the value.</summary>\npublic int Load() => 1;\n"
+        );
+
+        assert!(checks(&source).is_empty());
     }
 
     /// Verbatim string content is never a comment node: `///`-looking and
