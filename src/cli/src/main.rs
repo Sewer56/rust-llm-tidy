@@ -5,8 +5,7 @@
 //! -> lints) on every admitted source file.
 //!
 //! Admitted by default: `.rs`, the markdown family (`.md`, `.markdown`,
-//! `.txt`, `.text`, `.mdx`), and the code languages the default registry
-//! admits for table fixes and text checks.
+//! `.txt`, `.text`, `.mdx`), and the default registry's code languages.
 //!
 //! When no paths are given, the changed files from the current git diff are
 //! used, filtered to the same admitted extensions.
@@ -55,8 +54,7 @@ use std::path::{Path, PathBuf};
 mod changes;
 mod config;
 mod diff;
-// Language admission registry: the single authority behind every extension
-// admission and per-file op gate.
+// Language admission registry: authority for extension admission and op gates.
 mod langs;
 mod output;
 mod paths;
@@ -138,9 +136,7 @@ impl Cli {
 /// plaintext lines to stderr (default output) or project them to JSON.
 ///
 /// The profile decides which passes run: parser-driven checks need a
-/// registered backend and its lint composition; the text-lint tier
-/// sources DOC007/DOC008 - whole-file prose, backend regions, or the
-/// comment lexicon, per tier.
+/// registered backend; text lints source DOC007/DOC008 per tier.
 pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
@@ -160,9 +156,7 @@ pub(crate) fn check_file(
         diagnostics = backend.lint(&parsed);
     }
     match profile.text_lints {
-        langs::TextLints::Prose => {
-            diagnostics.extend(check::run_text_checks(&source, ext));
-        }
+        langs::TextLints::Prose => diagnostics.extend(check::run_text_checks(&source, ext)),
         langs::TextLints::Lexicon => {
             diagnostics.extend(rust_llm_tidy_lang::lexicon::text_checks(&source, ext));
         }
