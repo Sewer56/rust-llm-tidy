@@ -187,17 +187,20 @@ fn all_after_fixtures_should_be_idempotent_on_rerun() {
     }
 }
 
-/// A code-language file runs exactly `tables` by default: the table in `#`
-/// comments aligns while the nested fence and repeated link stay untouched;
+/// A code-language file runs only `tables` among the fix ops by default:
+/// the table in `#` comments aligns while the fence and link stay
+/// untouched; the default text checks warn on the over-80 line without
+/// failing the run.
+///
 /// `--include fences` reaches the fence, and a second run emits zero
-/// records.
+/// change records.
 #[test]
-fn code_language_default_run_aligns_tables_only() {
+fn code_language_default_run_aligns_tables_only_among_fix_ops() {
     let table = "# | Name | Value |\n# | --- | --- |\n# | a | 1 |\n# | longname | 200 |\n";
     let fence = "# ```text\n# ```rust\n# inner\n# ```\n# ```\n";
-    // Over 80 chars so a wrongly-enabled text lint would fire DOC008 here
-    // and break the second-run zero-record assertion below.
-    let links = "# see [A](http://x) and [A](http://x) padded past eighty chars to prove no text lint fires\n";
+    // Over 80 chars so the default-run text checks emit a DOC008 warning
+    // here without failing the run.
+    let links = "# see [A](http://x) and [A](http://x) padded past eighty chars so the default text checks warn here\n";
     let source = format!("{table}\n{fence}\n{links}");
 
     let file = temp_file_ext("py");
@@ -205,8 +208,13 @@ fn code_language_default_run_aligns_tables_only() {
     let out = run_command(&[], &file);
     assert!(
         out.status.success(),
-        "default run on .py should succeed: {}",
+        "default run on .py should succeed despite the warning: {}",
         String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("warning[DOC008]"),
+        "the default run must run the text checks on a code language: {stderr}"
     );
     let after = fs::read_to_string(&file).unwrap();
     assert_ne!(
@@ -222,12 +230,13 @@ fn code_language_default_run_aligns_tables_only() {
         "links must not hoist on a code language: {after}"
     );
 
-    // Second run: idempotent, zero change records.
+    // Second run: idempotent, zero change records; the DOC008 warning
+    // still prints.
     let dry = run_command(&["--dry-run"], &file);
     assert!(dry.status.success());
     assert!(
-        String::from_utf8_lossy(&dry.stderr).is_empty(),
-        "second run must emit zero records: {}",
+        !String::from_utf8_lossy(&dry.stderr).contains("success["),
+        "second run must emit zero change records: {}",
         String::from_utf8_lossy(&dry.stderr)
     );
     let _ = fs::remove_file(&file);

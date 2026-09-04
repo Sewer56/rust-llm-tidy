@@ -12,11 +12,10 @@ toggleable through the same rule namespace as the ops.
 So `exclude: [{rules: [DOC001]}]` turns off just missing-docs and
 `exclude: [{rules: [lints]}]` turns off all linting.
 
-Which codes run depends on the language: Rust and C# run all nine; the
-markdown family runs the two text checks (DOC007, DOC008).
-
-The five comment-marker families (`//`, `#`, `--`, `;`, `%`) run the
-two text checks through an explicit include.
+Which codes run depends on the language: Rust and C# run all nine; every
+other admitted language - the markdown family and the five comment-marker
+families (`//`, `#`, `--`, `;`, `%`) - runs the two text checks
+(DOC007, DOC008).
 
 C# evaluates its codes against XML doc comments and measures their prose
 with the XML doc dialect; see [lints for C#] for the details.
@@ -281,9 +280,8 @@ Each source keeps its own paragraphs; prose never pools across them.
 Plain `/* */` comments, `/*! */` inner block docs, and `#![doc = "..."]`
 inner attributes stay unmeasured.
 
-Through an explicit include they also run on the comment-marker code
-families (`//`, `#`, `--`, `;`, `%`), where line comment prose measures
-like markdown.
+They also run on the comment-marker code families (`//`, `#`, `--`, `;`,
+`%`), where line comment prose measures like markdown.
 
 Rust block docs and the lexicon families' block comments (`/** */`,
 `/* */`, `--[[ ]]`, `{- -}`, `#| |#`, `%{ %}`) measure with the block

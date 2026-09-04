@@ -6,7 +6,7 @@
 //!
 //! Admitted by default: `.rs`, the markdown family (`.md`, `.markdown`,
 //! `.txt`, `.text`, `.mdx`), and the code languages the default registry
-//! admits for table fixes.
+//! admits for table fixes and text checks.
 //!
 //! When no paths are given, the changed files from the current git diff are
 //! used, filtered to the same admitted extensions.
@@ -18,7 +18,7 @@
 //! | fix     | align tables, fix fences, hoist links              | yes     |
 //! | reorder | review-friendly item order                         | yes     |
 //! | vis     | narrow bare `pub` in restricted-visibility modules | yes     |
-//! | lints   | DOC001-DOC006 + TEST001 checks                     | no      |
+//! | lints   | DOC001-DOC008 + TEST001 checks                     | no      |
 //!
 //! # Flags
 //!

@@ -470,6 +470,54 @@ fn csharp_text_probes_stay_quiet() {
     );
 }
 
+// ── Default-run text checks: every comment-marker family ─────────
+
+/// A default run (no rule selection) over a mixed-language fixture
+/// tree reports the over-budget comment paragraph in every
+/// comment-marker family at its original line; the string content in
+/// each fixture stays unmeasured.
+#[test]
+fn default_run_lints_comment_prose_in_every_comment_family() {
+    let names = [
+        "default_budgets.go",
+        "default_budgets.rb",
+        "default_budgets.sql",
+        "default_budgets.el",
+        "default_budgets.erl",
+    ];
+    let dir = temp_dir();
+    std::fs::create_dir_all(&dir).unwrap();
+    for name in names {
+        fs::copy(defaults_fixture_dir().join(name), dir.join(name)).unwrap();
+    }
+
+    let output = run_command(&["--dry-run"], &dir);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "the DOC007 errors must fail the default run:\n{stderr}"
+    );
+    for name in names {
+        assert!(
+            stderr.contains(&format!("{name}:1: error[DOC007]")),
+            "{name}: the comment paragraph must fire in the default run:\n{stderr}"
+        );
+    }
+    assert_eq!(
+        stderr.matches("DOC007").count(),
+        names.len(),
+        "exactly one comment paragraph per family, never the string content:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC008").count(),
+        0,
+        "no doc line in the fixtures crosses the line budget:\n{stderr}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 // ── Directory recursion ───────────────────────────────────────────
 
 /// The documented function in `doc001_missing_docs.rs` is not flagged.
@@ -1545,6 +1593,11 @@ fn assert_has_diagnostic(stderr: &str, code: &str, item_name: Option<&str>) {
             "stderr should mention `{name}`, got:\n{stderr}"
         );
     }
+}
+
+/// The directory holding the default-run mixed-language fixtures.
+fn defaults_fixture_dir() -> std::path::PathBuf {
+    fixture_dir().join("defaults")
 }
 
 // ── DOC001: missing doc comments ──────────────────────────────────

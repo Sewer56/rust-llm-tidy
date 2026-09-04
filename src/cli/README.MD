@@ -26,7 +26,7 @@ cargo build --release -p rust-llm-tidy-cli
 ## Usage
 
 `rust-llm-tidy` is a single command that runs the full pipeline (fix,
-reorder, vis, lints) by default on `.rs` and `.md` files:
+reorder, vis, lints) by default on every admitted source file:
 
 ```bash
 # Tidy a file in place
@@ -35,7 +35,7 @@ rust-llm-tidy src/main.rs
 # Report the changes that would be made instead of modifying the file
 rust-llm-tidy --dry-run src/main.rs
 
-# Tidy every .rs/.md file under a directory recursively
+# Tidy every admitted source file under a directory recursively
 rust-llm-tidy src
 
 # No paths given -> process the changed files in the current git diff
@@ -117,7 +117,7 @@ the shared record format.
 | `links`   | hoist inline links to reference style   | yes     | yes         |
 | `reorder` | review-friendly item order              | yes     | yes         |
 | `vis`     | narrow bare `pub` in restricted modules | yes     | yes         |
-| `lints`   | run DOC001-DOC006 + TEST001 checks      | no      | yes         |
+| `lints`   | run DOC001-DOC008 + TEST001 checks      | no      | yes         |
 
 An optional YAML config file (`.rust-llm-tidy.yml`) may exclude files from
 processing, whitelist or blacklist specific rules per path, and run external

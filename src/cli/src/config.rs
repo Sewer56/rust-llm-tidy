@@ -646,9 +646,10 @@ mod tests {
     #[test]
     fn known_rules_lists_every_code_and_op() {
         let rules = known_rules();
-        // The seven lint codes plus the six fix/operation names (including lints).
+        // The nine lint codes plus the six fix/operation names (including lints).
         for code in [
-            "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "TEST001",
+            "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "DOC007", "DOC008",
+            "TEST001",
         ] {
             assert!(rules.contains(&code), "missing lint code {code}");
         }

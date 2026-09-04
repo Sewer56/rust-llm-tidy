@@ -18,7 +18,7 @@
 //!   `lints` - with the `///`/`//!` doc prefixes
 //! - C# (`cs`): `tables` plus the AST ops `reorder`/`lints`; `fences` only
 //!   through an explicit include; no `links`
-//! - Code languages: `tables` by default; `fences` and `lints` only
+//! - Code languages: `tables` and `lints` by default; `fences` only
 //!   through an explicit include; no `links`, no AST ops; tables
 //!   inside comments realign with the language's marker re-applied
 //! - Unmapped extensions: `tables` only, no prefixes
@@ -46,8 +46,7 @@
 //!   string content and code lines never do, and ambiguous sources
 //!   produce no findings.
 //! - Every comment-marker code family (`//`, `#`, `--`, `;`, `%`)
-//!   carries the Lexicon tier; its `lints` op is explicit-include
-//!   only.
+//!   carries the Lexicon tier; its `lints` op runs by default.
 //! - [`TextLints::None`]: no text checks; data formats and unmapped
 //!   extensions never produce text findings, and no extension outside
 //!   the markdown family falls through to whole-file measurement.
@@ -170,7 +169,7 @@ const LANG_ENTRIES: &[(&str, Profile)] = &[
 const CODE_DASH: Profile = Profile {
     ops: &["tables", "fences", "lints"],
     prefixes: &["--"],
-    default_ops: &["tables"],
+    default_ops: &["tables", "lints"],
     backend: false,
     text_lints: TextLints::Lexicon,
 };
@@ -178,7 +177,7 @@ const CODE_DASH: Profile = Profile {
 const CODE_HASH: Profile = Profile {
     ops: &["tables", "fences", "lints"],
     prefixes: &["#"],
-    default_ops: &["tables"],
+    default_ops: &["tables", "lints"],
     backend: false,
     text_lints: TextLints::Lexicon,
 };
@@ -186,7 +185,7 @@ const CODE_HASH: Profile = Profile {
 const CODE_PERCENT: Profile = Profile {
     ops: &["tables", "fences", "lints"],
     prefixes: &["%"],
-    default_ops: &["tables"],
+    default_ops: &["tables", "lints"],
     backend: false,
     text_lints: TextLints::Lexicon,
 };
@@ -194,7 +193,7 @@ const CODE_PERCENT: Profile = Profile {
 const CODE_SEMI: Profile = Profile {
     ops: &["tables", "fences", "lints"],
     prefixes: &[";"],
-    default_ops: &["tables"],
+    default_ops: &["tables", "lints"],
     backend: false,
     text_lints: TextLints::Lexicon,
 };
@@ -202,7 +201,7 @@ const CODE_SEMI: Profile = Profile {
 const CODE_SLASH: Profile = Profile {
     ops: &["tables", "fences", "lints"],
     prefixes: &["//"],
-    default_ops: &["tables"],
+    default_ops: &["tables", "lints"],
     backend: false,
     text_lints: TextLints::Lexicon,
 };
@@ -255,6 +254,9 @@ pub(crate) struct Profile {
     /// Code languages keep `fences` out of the defaults: comment and string
     /// literals are indistinguishable without a parser, so `fences` needs an
     /// explicit `--include fences` or config include.
+    ///
+    /// Their `lints` op runs by default through the fail-closed lexicon,
+    /// which never measures string content or code lines.
     pub default_ops: &'static [&'static str],
     /// Whether an AST parser is registered for the extension; `reorder`
     /// and the parser-driven `lints` checks require this in addition to
@@ -503,18 +505,18 @@ mod tests {
         const { assert!(C_SHARP.backend) };
     }
 
-    /// Every code language resolves tables-only defaults with its own
-    /// comment marker, the lexicon text tier, and `fences` plus `lints`
-    /// reachable only through an explicit include.
+    /// Every code language resolves tables-and-lints defaults with its own
+    /// comment marker and the lexicon text tier; `fences` stays reachable
+    /// only through an explicit include.
     #[test]
-    fn code_families_resolve_tables_only_with_their_comment_marker() {
+    fn code_families_default_to_tables_and_lints_with_their_comment_marker() {
         for (exts, profile, marker) in CODE_FAMILIES {
             for ext in *exts {
                 assert_profile(ext, profile);
             }
 
             assert_eq!(profile.ops, ["tables", "fences", "lints"].as_slice());
-            assert_eq!(profile.default_ops, ["tables"].as_slice());
+            assert_eq!(profile.default_ops, ["tables", "lints"].as_slice());
             assert_eq!(profile.prefixes, [*marker].as_slice());
             assert!(!profile.backend);
             assert_eq!(profile.text_lints, TextLints::Lexicon);
@@ -707,9 +709,10 @@ mod tests {
         let none = None;
         let empty = rules(&[]);
 
-        // Default mode: code languages run tables but never fences; the
-        // markdown family and Rust run every fix op.
+        // Default mode: code languages run tables and lints but never
+        // fences; the markdown family and Rust run every fix op.
         assert!(profile_for("py").op_enabled("tables", &none, &empty));
+        assert!(profile_for("py").op_enabled("lints", &none, &empty));
         assert!(!profile_for("py").op_enabled("fences", &none, &empty));
         for ext in MD_FAMILY.iter().chain(["rs"].iter()) {
             for op in ["tables", "fences", "links"] {
@@ -729,6 +732,9 @@ mod tests {
         // fences and every lexicon family's text checks; links outside
         // the markdown family and Rust stay refused, and so does an op
         // the profile never carries.
+        //
+        // The loop's second assertion is default mode: every lexicon
+        // family's `lints` runs with no include list.
         assert!(profile_for("py").op_enabled("fences", &Some(rules(&["fences"])), &empty));
         assert!(!profile_for("py").op_enabled("links", &Some(rules(&["links"])), &empty));
         assert!(!profile_for("md").op_enabled("reorder", &Some(rules(&["reorder"])), &empty));
@@ -738,8 +744,8 @@ mod tests {
                 ".{ext}: an explicit include must reach the lexicon text checks"
             );
             assert!(
-                !profile_for(ext).op_enabled("lints", &none, &empty),
-                ".{ext}: lints must stay out of the default run"
+                profile_for(ext).op_enabled("lints", &none, &empty),
+                ".{ext}: lints must run in the default run"
             );
         }
     }

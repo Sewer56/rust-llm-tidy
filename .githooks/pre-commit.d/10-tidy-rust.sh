@@ -9,9 +9,10 @@ repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
 # Collect staged .rs files (added/copied/modified/renamed); skip deletions.
-# Skip deletions only. Hand-curated test fixtures are excluded by the
-# repo-root `.rust-llm-tidy.yml` (auto-discovered when this hook runs
-# `rust-llm-tidy` from repo root), so no shell filtering is needed here.
+#
+# Test fixtures are excluded by the repo-root `.rust-llm-tidy.yml`
+# (auto-discovered when this hook runs `rust-llm-tidy` from repo root),
+# so no shell filtering is needed here.
 files=()
 while IFS= read -r f; do
   [ -f "$f" ] || continue

@@ -14,20 +14,19 @@ Extension matching is case-insensitive everywhere, so `.MD` resolves like
 | Markdown family | `md`, `markdown`, `txt`, `text`, `mdx`  | `///`, `//!` | tables, fences, links, lints    |
 | Rust            | `rs`                                    | `///`, `//!` | every op                        |
 | C#              | `cs`                                    | `///`, `//`  | tables, reorder, lints          |
-| Code languages  | the 41 extensions in the families below | per family   | tables                          |
+| Code languages  | the 41 extensions in the families below | per family   | tables, lints                   |
 | Unmapped        | any other extension                     | none         | tables                          |
 | Data formats    | `ini`, `json`, `toml`, `yaml`, `yml`    | none         | none; never admitted by default |
 
 Notes on the op columns:
 
 - `lints` splits by tier: Rust and C# run all nine codes (DOC001-DOC008,
-  TEST001); the markdown family runs the two text checks (DOC007,
-  DOC008).
+  TEST001); the markdown family and every comment-marker family below run
+  the two text checks (DOC007, DOC008).
 - C# evaluates its codes against XML doc comments and measures their
   prose with the XML doc dialect (see [lints for C#]).
-- Every comment-marker family below can additionally run `lints` - the
-  two text checks - through an explicit `--include lints` or a config
-  include.
+- Every comment-marker family below runs `lints` - the two text checks -
+  by default.
 - Their comment prose is measured by a fail-closed comment lexicon:
   line and block comments count; string content, heredoc payload, and
   code lines never do.
@@ -58,7 +57,7 @@ stripped and re-applied, so every row keeps its marker and indent.
 C# also uses `//` comments but sits in its own tier because it carries
 AST ops.
 
-## Why code languages stop at tables
+## Why code languages stop at tables and text checks
 
 - `links` never runs outside the markdown family and Rust. An appended
   definition line is invalid syntax in other languages, and the inline
@@ -72,7 +71,9 @@ AST ops.
   comment and string literals are indistinguishable, so a fence-looking
   line inside a string could be flipped.
 - `reorder`, `vis`, and the parser-driven lint checks need a registered
-  language backend. Backends today: Rust and C#.
+  language backend. Backends today: Rust and C#. The text checks
+  (DOC007, DOC008) need no backend: the comment lexicon reads the raw
+  source.
 
 ## Admission override and additions
 

@@ -33,7 +33,8 @@ cargo install rust-llm-tidy-cli
 reorder, vis, lints) by default on every admitted source file.
 
 Admitted by default: `.rs`, the markdown family (`.md`, `.markdown`, `.txt`,
-`.text`, `.mdx`), and the code languages admitted for table fixes.
+`.text`, `.mdx`), and the code languages admitted for table fixes and text
+checks.
 ```bash
 # Tidy a file in place
 rust-llm-tidy src/main.rs
@@ -69,17 +70,24 @@ Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
 
 #### Operations
 
-| Op        | Does                                    | Languages             | Mutates | Default on? |
-| --------- | --------------------------------------- | --------------------- | ------- | ----------- |
-| `tables`  | align GFM tables                        | all admitted          | yes     | yes         |
-| `fences`  | alternate nested fence delimiters       | markdown*             | yes     | markdown*   |
-| `links`   | hoist inline links to reference style   | markdown*             | yes     | markdown*   |
-| `reorder` | review-friendly item order              | `rs`, `cs`            | yes     | `rs`, `cs`  |
-| `vis`     | narrow bare `pub` in restricted modules | `rs`                  | yes     | `rs`        |
-| `lints`   | run DOC001-DOC008 + TEST001 checks      | `rs`, `cs`, markdown* | no      | yes         |
+| Op        | Does                                    | Languages    | Mutates | Default on? |
+| --------- | --------------------------------------- | ------------ | ------- | ----------- |
+| `tables`  | align GFM tables                        | all admitted | yes     | yes         |
+| `fences`  | alternate nested fence delimiters       | markdown*    | yes     | markdown*   |
+| `links`   | hoist inline links to reference style   | markdown*    | yes     | markdown*   |
+| `reorder` | review-friendly item order              | `rs`, `cs`   | yes     | `rs`, `cs`  |
+| `vis`     | narrow bare `pub` in restricted modules | `rs`         | yes     | `rs`        |
+| `lints`   | run DOC001-DOC008 + TEST001 checks      | all admitted | no      | yes         |
 
 \* markdown*: the markdown family (`.md`, `.markdown`, `.txt`, `.text`,
 `.mdx`), plus languages that use markdown for doc comments.
+
+`lints` runs every code the language supports: `rs` and `cs` run all nine
+(DOC001-DOC008, TEST001); every other admitted language runs the two text
+checks (DOC007, DOC008).
+
+The markdown family measures whole-file prose; the comment-marker
+families measure comment prose.
 
 #### JSON output
 
