@@ -13,12 +13,15 @@ So `exclude: [{rules: [DOC001]}]` turns off just missing-docs and
 `exclude: [{rules: [lints]}]` turns off all linting.
 
 Which codes run depends on the language: Rust and C# run all nine; every
-other admitted language - the markdown family and the five comment-marker
-families (`//`, `#`, `--`, `;`, `%`) - runs the two text checks
-(DOC007, DOC008).
+other admitted language - the markdown family, Python, and the five
+comment-marker families (`//`, `#`, `--`, `;`, `%`) - runs the two text
+checks (DOC007, DOC008).
 
 C# evaluates its codes against XML doc comments and measures their prose
 with the XML doc dialect; see [lints for C#] for the details.
+
+Python measures docstrings with the docstring dialect (see [`DOC007`]) and
+`#` comments like the comment-marker families.
 
 ## Codes
 
@@ -287,6 +290,17 @@ Rust block docs and the lexicon families' block comments (`/** */`,
 `/* */`, `--[[ ]]`, `{- -}`, `#| |#`, `%{ %}`) measure with the block
 doc dialect: `*` continuations and `@tag` name tokens (`@param name`)
 never count.
+
+On `.py`/`.pyi`, docstrings measure with the docstring dialect: a
+triple-quoted string that is the first statement of a module, class, or
+function is a doc region, and its common indentation strips.
+
+`>>>` doctest examples are exempt: their source lines, `...`
+continuations, and expected output, until the blank line ending the
+example.
+
+Python `#` comments measure like the lexicon families, and every other
+triple-quoted string is string content: never measured.
 
 The comment lexicon behind those families fails closed: string content,
 heredoc payload, and code lines never measure, and files it cannot lex

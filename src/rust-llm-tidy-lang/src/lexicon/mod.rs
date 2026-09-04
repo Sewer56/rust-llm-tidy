@@ -175,8 +175,6 @@ mod tests {
             ("//", "js"),
             ("//", "mjs"),
             ("//", "tsx"),
-            ("#", "py"),
-            ("#", "pyi"),
             ("#", "bash"),
             ("--", "sql"),
             ("--", "lua"),
@@ -567,21 +565,16 @@ mod tests {
         }
     }
 
-    /// Triple-quoted string content is immune and `<<` stays an operator,
-    /// while real comments in the same file still measure.
+    /// Triple-quoted string content is immune, while real comments in
+    /// the same file still measure.
+    ///
+    /// The in-string payload crosses the paragraph budget, so a scanner
+    /// that measured it would fire and fail the count.
     #[test]
     fn triple_quoted_strings_stay_quiet() {
-        let payload = concat!(
-            "s = \"\"\"\n",
-            "# filler words pad the payload far past the budget limit\n",
-            "\"\"\"\n",
-            "t = '''\n",
-            "# filler words pad the payload far past the budget limit\n",
-            "'''\n",
-            "mask = 1 << n\n",
-        );
-        let source = format!("{payload}{}", long_comment("#"));
-        let diags = text_checks(&source, "py");
+        let payload = long_comment("#");
+        let source = format!("s = \"\"\"\n{payload}\"\"\"\n{}", long_comment("#"));
+        let diags = text_checks(&source, "nim");
         let found = codes(&diags, CODE_PARAGRAPH_SIZE);
         assert_eq!(found.len(), 1, "only the real comment paragraph");
         assert_eq!(found[0].line, 8);
@@ -617,7 +610,7 @@ mod tests {
             // Unterminated multi-line literals and heredocs.
             ("c", "/* never closed\n"),
             ("js", "const t = `never closed\n"),
-            ("py", "s = \"\"\"\n"),
+            ("nim", "s = \"\"\"\n"),
             ("sh", "cat <<EOF\npayload\n"),
             // Unterminated quotes whose literal spans lines.
             ("sh", "MSG=\"never closed\n"),

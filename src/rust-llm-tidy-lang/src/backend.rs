@@ -2,6 +2,7 @@
 //! a backend per source-file extension.
 
 use crate::csharp::CSharpBackend;
+use crate::python_backend::PythonBackend;
 use crate::rust_backend::RustBackend;
 use rust_llm_tidy_lint::Diagnostic;
 use rust_llm_tidy_model::parse::ParseResult;
@@ -10,9 +11,17 @@ use std::cmp::Ordering;
 
 /// Extensions with a registered backend, sorted by extension (ASCII) so
 /// binary search applies. The sortedness test guards this invariant.
-static BACKED_EXTENSIONS: &[(&str, &dyn LanguageBackend)] = &[("cs", &CSHARP), ("rs", &RUST)];
+static BACKED_EXTENSIONS: &[(&str, &dyn LanguageBackend)] = &[
+    ("cs", &CSHARP),
+    ("py", &PYTHON),
+    ("pyi", &PYTHON),
+    ("rs", &RUST),
+];
 /// The C# backend - the tree-sitter-c-sharp parse setup.
 static CSHARP: CSharpBackend = CSharpBackend;
+/// The Python backend - the tree-sitter-python parse setup, doc regions
+/// only.
+static PYTHON: PythonBackend = PythonBackend;
 /// The Rust backend - the parser the pipeline has always used for `.rs`.
 static RUST: RustBackend = RustBackend;
 
@@ -129,6 +138,18 @@ mod tests {
         assert_eq!(backend.ast_ops(), ["reorder", "lints"].as_slice());
     }
 
+    /// `py`/`pyi` resolve to the Python backend, which carries no AST
+    /// ops: its parse serves the docstring text checks only.
+    #[test]
+    fn py_resolves_with_no_ast_ops() {
+        for ext in ["py", "pyi", "PY"] {
+            let backend = backend_for(ext).expect("py must resolve to a backend");
+
+            let no_ops: [&str; 0] = [];
+            assert_eq!(backend.ast_ops(), no_ops, ".{ext}: no AST ops");
+        }
+    }
+
     /// Uppercase and mixed-case extensions resolve identically to their
     /// lowercase forms.
     #[test]
@@ -146,7 +167,7 @@ mod tests {
     /// formats, unmapped extensions, and the empty extension.
     #[test]
     fn backendless_extensions_resolve_no_backend() {
-        for ext in ["py", "md", "json", "org", ""] {
+        for ext in ["js", "md", "json", "org", ""] {
             assert!(backend_for(ext).is_none(), ".{ext} must resolve no backend");
         }
     }

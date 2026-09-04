@@ -18,6 +18,9 @@
 //!   `lints` - with the `///`/`//!` doc prefixes
 //! - C# (`cs`): `tables` plus the AST ops `reorder`/`lints`; `fences` only
 //!   through an explicit include; no `links`
+//! - Python (`py`, `pyi`): like a code language (`tables` and `lints` by
+//!   default, `#` prefixes) but with its text checks sourced from the
+//!   tree-sitter-python backend's docstring walk
 //! - Code languages: `tables` and `lints` by default; `fences` only
 //!   through an explicit include; no `links`, no AST ops; tables
 //!   inside comments realign with the language's marker re-applied
@@ -40,7 +43,8 @@
 //!   as prose, no parser needed.
 //! - [`TextLints::Ast`]: the language's backend parses the file and its
 //!   lint composition emits the text checks (`rs` from line-comment
-//!   regions, `cs` from XML doc regions).
+//!   regions, `cs` from XML doc regions, `py`/`pyi` from docstring and
+//!   `#`-comment regions).
 //! - [`TextLints::Lexicon`]: the lang crate's fail-closed comment
 //!   lexicon scans the raw source: line and block comments measure,
 //!   string content and code lines never do, and ambiguous sources
@@ -147,8 +151,8 @@ const LANG_ENTRIES: &[(&str, Profile)] = &[
     ("nim", CODE_HASH),
     ("php", CODE_SLASH),
     ("pl", CODE_HASH),
-    ("py", CODE_HASH),
-    ("pyi", CODE_HASH),
+    ("py", PYTHON),
+    ("pyi", PYTHON),
     ("r", CODE_HASH),
     ("rb", CODE_HASH),
     ("rs", RUST),
@@ -221,6 +225,16 @@ const MARKDOWN: Profile = Profile {
     default_ops: &["tables", "fences", "links", "lints"],
     backend: false,
     text_lints: TextLints::Prose,
+};
+/// Python: `#` comments for the fix passes plus the tree-sitter-python
+/// backend's docstring-dialect text checks (docstrings and `#`
+/// comments); no AST ops.
+const PYTHON: Profile = Profile {
+    ops: &["tables", "fences", "lints"],
+    prefixes: &["#"],
+    default_ops: &["tables", "lints"],
+    backend: true,
+    text_lints: TextLints::Ast,
 };
 /// Rust: every op, pinned to the pipeline's current behavior.
 const RUST: Profile = Profile {
@@ -439,9 +453,7 @@ mod tests {
             "//",
         ),
         (
-            &[
-                "py", "pyi", "rb", "sh", "bash", "zsh", "r", "pl", "jl", "nim", "conf",
-            ],
+            &["rb", "sh", "bash", "zsh", "r", "pl", "jl", "nim", "conf"],
             &CODE_HASH,
             "#",
         ),
@@ -503,6 +515,22 @@ mod tests {
         );
         assert_eq!(C_SHARP.prefixes, ["///", "//"].as_slice());
         const { assert!(C_SHARP.backend) };
+    }
+
+    /// `py`/`pyi` keep the `#`-marker fix behavior of a code language but
+    /// source their text checks from the Python backend's docstring walk
+    /// instead of the comment lexicon; no AST ops ride the backend.
+    #[test]
+    fn python_profiles_measure_docstrings_through_the_backend() {
+        for ext in ["py", "pyi"] {
+            assert_profile(ext, &PYTHON);
+        }
+
+        assert_eq!(PYTHON.ops, ["tables", "fences", "lints"].as_slice());
+        assert_eq!(PYTHON.default_ops, ["tables", "lints"].as_slice());
+        assert_eq!(PYTHON.prefixes, ["#"].as_slice());
+        const { assert!(PYTHON.backend) };
+        assert_eq!(PYTHON.text_lints, TextLints::Ast);
     }
 
     /// Every code language resolves tables-and-lints defaults with its own
@@ -590,7 +618,7 @@ mod tests {
     #[test]
     fn registry_lists_exactly_the_approved_matrix() {
         let mut expected: BTreeSet<&str> = MD_FAMILY.iter().copied().collect();
-        expected.extend(["rs", "cs"]);
+        expected.extend(["rs", "cs", "py", "pyi"]);
         for (exts, _, _) in CODE_FAMILIES {
             expected.extend(exts.iter().copied());
         }
@@ -680,6 +708,14 @@ mod tests {
     /// The `backend` column must agree with the lang-crate backend registry
     /// per extension and per AST op: dispatch composes both tables, so a
     /// language updated on only one side silently gains or loses AST ops.
+    ///
+    /// `lints` admits both the parser-driven codes and the text checks, so
+    /// a backend implementing parser-driven codes implies admission: never
+    /// dead backend work.
+    ///
+    /// Admission without parser-driven codes is legitimate exactly for the
+    /// doc-regions-only backends (`py`/`pyi`), whose `lints` op is the
+    /// text tier alone.
     #[test]
     fn backend_column_matches_the_backend_registry() {
         for (ext, profile) in LANG_ENTRIES {
@@ -690,13 +726,17 @@ mod tests {
                 ".{ext}: profile column and backend registry disagree"
             );
             if let Some(backend) = backend {
-                for op in ["reorder", "vis", "lints"] {
+                for op in ["reorder", "vis"] {
                     assert_eq!(
                         profile.admits(op),
                         backend.ast_ops().contains(&op),
                         ".{ext}: {op} availability disagrees"
                     );
                 }
+                assert!(
+                    !backend.ast_ops().contains(&"lints") || profile.admits("lints"),
+                    ".{ext}: the backend's parser-driven lints must be admitted"
+                );
             }
         }
     }
@@ -729,19 +769,19 @@ mod tests {
         assert!(!profile_for("json").op_enabled("tables", &none, &empty));
 
         // Whitelist mode: an explicit include reaches a code language's
-        // fences and every lexicon family's text checks; links outside
+        // fences and every code family's text checks; links outside
         // the markdown family and Rust stay refused, and so does an op
         // the profile never carries.
         //
-        // The loop's second assertion is default mode: every lexicon
+        // The loop's second assertion is default mode: every code
         // family's `lints` runs with no include list.
         assert!(profile_for("py").op_enabled("fences", &Some(rules(&["fences"])), &empty));
         assert!(!profile_for("py").op_enabled("links", &Some(rules(&["links"])), &empty));
         assert!(!profile_for("md").op_enabled("reorder", &Some(rules(&["reorder"])), &empty));
-        for ext in ["js", "py", "sql", "el", "tex"] {
+        for ext in ["js", "rb", "py", "sql", "el", "tex"] {
             assert!(
                 profile_for(ext).op_enabled("lints", &Some(rules(&["lints"])), &empty),
-                ".{ext}: an explicit include must reach the lexicon text checks"
+                ".{ext}: an explicit include must reach the text checks"
             );
             assert!(
                 profile_for(ext).op_enabled("lints", &none, &empty),
@@ -752,7 +792,7 @@ mod tests {
 
     /// Every one of the 48 admitted extensions resolves to exactly one
     /// text-lint tier: markdown prose for the markdown family only,
-    /// `rs`/`cs` AST regions, and the lexicon tier for every
+    /// `rs`/`cs`/`py`/`pyi` AST regions, and the lexicon tier for every
     /// comment-marker code family.
     ///
     /// No registry extension is left without a producer, and nothing
@@ -773,7 +813,7 @@ mod tests {
                 ".{ext} must measure whole-file prose"
             );
         }
-        for ext in ["rs", "cs"] {
+        for ext in ["rs", "cs", "py", "pyi"] {
             assert_eq!(
                 profile_for(ext).text_lints,
                 TextLints::Ast,
@@ -797,7 +837,7 @@ mod tests {
                     ".{ext} is outside the markdown family and must not be Prose"
                 ),
                 TextLints::Ast => assert!(
-                    *ext == "rs" || *ext == "cs",
+                    *ext == "rs" || *ext == "cs" || *ext == "py" || *ext == "pyi",
                     ".{ext} has no registered doc-region producer"
                 ),
                 TextLints::Lexicon => assert!(

@@ -14,17 +14,24 @@ Extension matching is case-insensitive everywhere, so `.MD` resolves like
 | Markdown family | `md`, `markdown`, `txt`, `text`, `mdx`  | `///`, `//!` | tables, fences, links, lints    |
 | Rust            | `rs`                                    | `///`, `//!` | every op                        |
 | C#              | `cs`                                    | `///`, `//`  | tables, reorder, lints          |
-| Code languages  | the 41 extensions in the families below | per family   | tables, lints                   |
+| Python          | `py`, `pyi`                             | `#`          | tables, lints                   |
+| Code languages  | the 39 extensions in the families below | per family   | tables, lints                   |
 | Unmapped        | any other extension                     | none         | tables                          |
 | Data formats    | `ini`, `json`, `toml`, `yaml`, `yml`    | none         | none; never admitted by default |
 
 Notes on the op columns:
 
 - `lints` splits by tier: Rust and C# run all nine codes (DOC001-DOC008,
-  TEST001); the markdown family and every comment-marker family below run
-  the two text checks (DOC007, DOC008).
+  TEST001); the markdown family, Python, and every comment-marker family
+  below run the two text checks (DOC007, DOC008).
 - C# evaluates its codes against XML doc comments and measures their
   prose with the XML doc dialect (see [lints for C#]).
+- Python runs the two text checks through a tree-sitter-python parse.
+- Module, class, and function docstrings measure with the docstring
+  dialect (`>>>` doctest examples exempt); `#` comments measure like the
+  comment-marker families.
+- Python's backend serves those text checks only; no other AST op turns
+  on for it.
 - Every comment-marker family below runs `lints` - the two text checks -
   by default.
 - Their comment prose is measured by a fail-closed comment lexicon:
@@ -49,13 +56,15 @@ stripped and re-applied, so every row keeps its marker and indent.
 | Marker | Extensions                                                                                                         |
 | ------ | ------------------------------------------------------------------------------------------------------------------ |
 | `//`   | `c`, `cc`, `cpp`, `h`, `hpp`, `java`, `js`, `mjs`, `ts`, `tsx`, `go`, `swift`, `kt`, `php`, `dart`, `scala`, `zig` |
-| `#`    | `bash`, `conf`, `jl`, `nim`, `pl`, `py`, `pyi`, `r`, `rb`, `sh`, `zsh`                                             |
+| `#`    | `bash`, `conf`, `jl`, `nim`, `pl`, `r`, `rb`, `sh`, `zsh`                                                          |
 | `--`   | `ada`, `elm`, `hs`, `lua`, `sql`                                                                                   |
 | `;`    | `clj`, `cljc`, `el`, `lisp`, `scm`                                                                                 |
 | `%`    | `erl`, `m`, `tex`                                                                                                  |
 
 C# also uses `//` comments but sits in its own tier because it carries
-AST ops.
+AST ops. Python also uses `#` comments but sits in its own tier because
+its text checks come from a tree-sitter-python parse instead of the
+lexicon.
 
 ## Why code languages stop at tables and text checks
 
@@ -71,9 +80,10 @@ AST ops.
   comment and string literals are indistinguishable, so a fence-looking
   line inside a string could be flipped.
 - `reorder`, `vis`, and the parser-driven lint checks need a registered
-  language backend. Backends today: Rust and C#. The text checks
-  (DOC007, DOC008) need no backend: the comment lexicon reads the raw
-  source.
+  language backend. Backends today: Rust, C#, and Python - Python's
+  backend serves the docstring text checks only and carries no AST ops.
+- The comment-marker families' text checks (DOC007, DOC008) need no
+  backend: the comment lexicon reads the raw source.
 
 ## Admission override and additions
 

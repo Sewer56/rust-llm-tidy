@@ -32,6 +32,11 @@ pub enum Dialect {
     /// blank lines split paragraphs, and fenced or indented example
     /// blocks are exempt.
     BlockDoc,
+    /// Python docstrings: a `>>>` doctest example - its source line,
+    /// `...` continuations, and expected output, until the blank line
+    /// that ends the example - is exempt, and the remaining prose
+    /// measures with the markdown rules.
+    Docstring,
 }
 
 /// One doc line after the producer stripped its comment marker and indent.

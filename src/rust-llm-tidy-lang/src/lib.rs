@@ -16,6 +16,8 @@
 //!   tree-sitter-rust parse.
 //! - `cs`: reorder and lints, via tree-sitter-c-sharp with the C# ordering
 //!   profile and XML doc-dialect checks.
+//! - `py`/`pyi`: no AST ops, via tree-sitter-python; the parse serves the
+//!   docstring dialect's text checks only.
 //!
 //! # Dispatch composition
 //!
@@ -24,7 +26,8 @@
 //! crate's registry also provides a backend for the extension.
 //!
 //! An extension without a registered backend resolves no AST ops - every
-//! language except the two above.
+//! language except the three above - and the Python backend itself
+//! carries none, so `py`/`pyi` never gain an AST op.
 //!
 //! The [`lexicon`] module sources the DOC007/DOC008 text checks for the
 //! five comment-marker code families (`//`, `#`, `--`, `;`, `%`) with
@@ -35,8 +38,13 @@
 //! from the parse the backend already requires: the line-comment
 //! regions plus `/** */` block docs and `#[doc = "..."]` attribute docs.
 //!
+//! The [`python_text_regions`] module sources them for `py`/`pyi` from
+//! the Python backend's parse: first-statement triple-quoted docstrings
+//! plus `#` comments.
+//!
 //! [`lexicon`]: self::lexicon
 //! [`rust_text_regions`]: self::rust_text_regions
+//! [`python_text_regions`]: self::python_text_regions
 //!
 //! # Lookup
 //!
@@ -50,6 +58,8 @@ pub use rust_backend::RustBackend;
 mod backend;
 mod csharp;
 pub mod lexicon;
+mod python_backend;
+pub mod python_text_regions;
 pub mod regions;
 mod rust_backend;
 pub mod rust_text_regions;

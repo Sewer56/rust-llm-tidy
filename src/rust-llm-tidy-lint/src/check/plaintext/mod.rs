@@ -24,6 +24,8 @@
 //!   tag-carrying doc lines.
 //! - [`block_doc`] - the block doc dialect: `*`-continuation stripping and
 //!   `@tag` exemption over `/** */`-style doc lines.
+//! - [`docstring`] - the docstring dialect: markdown prose over Python
+//!   docstring lines with `>>>` doctest examples exempt.
 //! - [`analyze`] - producer plus measuring core over one file.
 //! - [`measure`] - the measuring core over explicit region lists.
 //! - [`Paragraph`] - a measured paragraph: plain text or a bullet with its
@@ -38,6 +40,7 @@ pub use line_markers::doc_regions as line_marker_regions;
 pub use region::{Dialect, DocRegion, RegionLine};
 
 mod block_doc;
+mod docstring;
 mod line_length;
 mod line_markers;
 mod paragraph_length;
@@ -162,6 +165,9 @@ pub(crate) fn measure(regions: Vec<DocRegion>) -> Document {
             }
             Dialect::BlockDoc => {
                 block_doc::measure_region(region, &mut doc, &mut pending, &mut in_fence);
+            }
+            Dialect::Docstring => {
+                docstring::measure_region(region, &mut doc, &mut pending, &mut in_fence);
             }
         }
         // A region break is a gap of non-doc lines: paragraphs and fences

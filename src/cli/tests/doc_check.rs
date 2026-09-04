@@ -1335,11 +1335,42 @@ fn md_paragraph_over_limit_fails_with_doc007() {
     );
 }
 
+/// Python docstring prose fires the text budgets with original file
+/// lines: DOC007 errors on the module docstring's over-budget paragraph
+/// and DOC008 warns on a function docstring's over-long line.
+///
+/// The non-docstring triple-quoted payload and the `>>>` doctest example
+/// stay quiet.
+#[test]
+fn py_docstring_budgets_fire_with_original_lines() {
+    let (stderr, exit) = run_check_fixture("docstring_text_budgets.py");
+
+    assert_ne!(exit, 0, "the DOC007 error must fail the run:\n{stderr}");
+    assert!(
+        stderr.contains(":2: error[DOC007]"),
+        "DOC007 must report at the docstring's first prose line:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(":27: warning[DOC008]"),
+        "DOC008 must report at the over-long docstring line:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC007").count(),
+        1,
+        "the docstring paragraph only, never the payload:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC008").count(),
+        1,
+        "the wide docstring line only, never the doctest:\n{stderr}"
+    );
+}
+
 /// Python `#` comment prose fires DOC007 while triple-quoted string
 /// content and `<<` operators stay quiet.
 #[test]
-fn py_lexicon_measures_comments_not_strings() {
-    let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.py");
+fn py_text_checks_measure_comments_not_strings() {
+    let (stderr, exit) = run_check_fixture("doc_text_lexicon_budgets.py");
 
     assert_ne!(exit, 0, "the DOC007 error must fail the run:\n{stderr}");
     assert!(

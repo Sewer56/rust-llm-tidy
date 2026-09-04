@@ -32,8 +32,6 @@ pub(super) const LEXED_EXTENSIONS: &[(&str, &Lexicon)] = &[
     ("nim", &HASH_TRIPLE),
     ("php", &SLASH),
     ("pl", &HASH_SCRIPT),
-    ("py", &HASH_TRIPLE),
-    ("pyi", &HASH_TRIPLE),
     ("r", &HASH_PLAIN),
     ("rb", &HASH_RUBY),
     ("scala", &SLASH),
@@ -170,7 +168,7 @@ const HASH_SCRIPT: Lexicon = Lexicon {
     word_start_comments: true,
     block_markers_alone: false,
 };
-/// Python, Julia, Nim: triple-quoted multi-line strings.
+/// Julia, Nim: triple-quoted multi-line strings.
 const HASH_TRIPLE: Lexicon = Lexicon {
     line: "#",
     block: None,
