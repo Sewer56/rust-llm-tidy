@@ -1,8 +1,20 @@
-//! Documentation checks that run over a parsed source file.
+//! Documentation checks that run over a parsed source file or measured
+//! text.
 //!
-//! Each check is a pure function over a
+//! Each item rule is a pure function over a
 //! [`rust_llm_tidy_model::parse::SourceItem`] that returns a
-//! [`Vec<Diagnostic>`]. [`run_all`] runs every check and concatenates results.
+//! [`Vec<Diagnostic>`]; [`run_all`] runs every Rust item rule and
+//! concatenates results.
+//!
+//! [`run_text_checks`] and [`run_region_checks`] measure text through
+//! the `plaintext` pipeline and run the text rules over the result.
+//!
+//! # Structure
+//!
+//! - `plaintext` - measures text or doc regions into a `Document`.
+//! - `rules` - every rule that constructs diagnostics:
+//!   - `rules::text` - TEXT001/TEXT002 over a measured document.
+//!   - `rules::rust` - DOC001-DOC006 and TEST001 over parsed Rust items.
 //!
 //! # Checks
 //!
@@ -22,23 +34,15 @@
 //! exposes it for a finding.
 
 use crate::diagnostic::Diagnostic;
-pub use arguments::{missing_arguments_section, undocumented_param};
-pub use docs::missing_docs;
-pub use errors::{missing_errors_section, vague_errors};
-pub use placeholder::doc_placeholder;
-pub use plaintext::{
-    Dialect, DocRegion, RegionLine, line_marker_regions, run_region_checks, run_text_checks,
+pub use plaintext::{Dialect, DocRegion, RegionLine, line_marker_regions};
+pub use rules::rust::{
+    doc_placeholder, missing_arguments_section, missing_docs, missing_errors_section, test_naming,
+    undocumented_param, vague_errors,
 };
-use rust_llm_tidy_model::parse::ItemKind;
 use rust_llm_tidy_model::parse::ParseResult;
-pub use test_naming::test_naming;
 
-mod arguments;
-mod docs;
-mod errors;
-mod placeholder;
 mod plaintext;
-mod test_naming;
+mod rules;
 
 /// Friendly title per lint code, paired `(code, title)` in [`LINT_CODES`]
 /// order.
@@ -114,41 +118,42 @@ pub fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
     diags
 }
 
-/// Items that should be documented (everything except modules, imports,
-/// impls, macros, macro invocations, uncategorized items, and extern crate).
+/// Runs TEXT001 and TEXT002 over explicit doc regions, as produced by an
+/// AST backend's doc-region walk instead of the extension's line-marker
+/// table. Each region is measured with its dialect's rules.
 ///
-/// `Mod` is excluded: modules are documented via `//!` inner docs that often
-/// live in a separate file this single-file checker does not parse, so flagging
-/// a bare `pub mod foo;` declaration would be a false positive.
+/// # Arguments
 ///
-/// Used by DOC001 ([`missing_docs`]) and DOC006 ([`doc_placeholder`]).
-pub(crate) fn is_documentable(kind: &ItemKind) -> bool {
-    matches!(
-        kind,
-        ItemKind::Fn
-            | ItemKind::Struct
-            | ItemKind::Enum
-            | ItemKind::Union
-            | ItemKind::Type
-            | ItemKind::Trait
-            | ItemKind::Const
-            | ItemKind::Static
-    )
+/// - `regions` - the file's doc regions, in source order.
+///
+/// # Returns
+///
+/// Diagnostics in source order: TEXT001 per over-limit paragraph, then
+/// TEXT002 per over-limit line.
+pub fn run_region_checks(regions: Vec<DocRegion>) -> Vec<Diagnostic> {
+    rules::text::diagnostics(&plaintext::measure(regions))
 }
 
-/// Lines belonging to a doc section body: everything after the header at
-/// `start` up to the next `# ` section header or end of docs.
+/// Runs TEXT001 and TEXT002 over one file's raw text.
 ///
-/// A section ends at any trimmed line starting with `# `; empty lines and
-/// content lines within the section are retained.
+/// TEXT001 fires an Error when a plain paragraph's size exceeds 240 chars,
+/// and a Warning when a bullet's does; TEXT002 fires a Warning for every
+/// line over 80 chars.
 ///
-/// Used by DOC003 ([`vague_errors`]) and DOC005 ([`undocumented_param`]).
-pub(crate) fn section_body(docs: &[String], start: usize) -> Vec<&str> {
-    docs[start + 1..]
-        .iter()
-        .map(String::as_str)
-        .take_while(|s| !s.trim().starts_with("# "))
-        .collect()
+/// Both count the full line text; table rows, code blocks, and link
+/// reference definitions are exempt.
+///
+/// # Arguments
+///
+/// - `source` - the raw file text.
+/// - `ext` - the file extension, selecting the comment marker table.
+///
+/// # Returns
+///
+/// Diagnostics in source order: TEXT001 per over-limit paragraph (bullet
+/// warnings after their paragraph position), then TEXT002 per over-limit line.
+pub fn run_text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
+    rules::text::diagnostics(&plaintext::analyze(source, ext))
 }
 
 /// Friendly title for `code`, or `None` when `code` is not a lint code.
@@ -176,6 +181,13 @@ mod tests {
             .into_iter()
             .next()
             .expect("expected at least one item")
+    }
+
+    /// Returns only the diagnostics with the given code.
+    ///
+    /// Shared by the rule-family and dialect submodule tests.
+    pub(crate) fn codes<'a>(diags: &'a [Diagnostic], code: &str) -> Vec<&'a Diagnostic> {
+        diags.iter().filter(|d| d.code == code).collect()
     }
 
     // ── start_line propagation ──

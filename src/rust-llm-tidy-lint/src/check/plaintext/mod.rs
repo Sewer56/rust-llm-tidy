@@ -1,5 +1,5 @@
-//! Plaintext extraction, segmentation, and the paragraph and line-length
-//! checks built on them.
+//! Plaintext extraction and measurement: doc regions fold into the
+//! stripped lines and paragraphs the text rules measure.
 //!
 //! Doc-region producers strip a file's comment markers into
 //! [`region::DocRegion`]s; the measuring core folds them into numbered
@@ -7,11 +7,11 @@
 //! linear pass.
 //!
 //! Each region is measured with its dialect's rules, so markdown prose
-//! and XML doc comments feed the same budgets and codes.
+//! and XML doc comments feed the same measurement.
 //!
-//! Both checks count the full line text, code spans, URLs, and link targets
-//! included; table rows, code blocks, and link reference definitions are
-//! exempt.
+//! Both budgets count the full line text, code spans, URLs, and link
+//! targets included; table rows, code blocks, and link reference
+//! definitions are exempt.
 //!
 //! # Layers
 //!
@@ -30,20 +30,13 @@
 //! - [`measure`] - the measuring core over explicit region lists.
 //! - [`Paragraph`] - a measured paragraph: plain text or a bullet with its
 //!   wrapped continuations.
-//! - [`run_region_checks`] - TEXT001/TEXT002 over explicit doc regions
-//!   from an AST backend's doc-region walk.
-//! - [`run_text_checks`] - TEXT001/TEXT002 over the analysis result, delegated
-//!   to [`paragraph_length`] and [`line_length`].
 
-use crate::diagnostic::Diagnostic;
 pub use line_markers::doc_regions as line_marker_regions;
 pub use region::{Dialect, DocRegion, RegionLine};
 
 mod block_doc;
 mod docstring;
-mod line_length;
 mod line_markers;
-mod paragraph_length;
 mod region;
 mod xml_doc;
 
@@ -97,44 +90,6 @@ pub(crate) enum ParagraphKind {
     Bullet,
 }
 
-/// Runs TEXT001 and TEXT002 over explicit doc regions, as produced by an
-/// AST backend's doc-region walk instead of the extension's line-marker
-/// table. Each region is measured with its dialect's rules.
-///
-/// # Arguments
-///
-/// - `regions` - the file's doc regions, in source order.
-///
-/// # Returns
-///
-/// Diagnostics in source order: TEXT001 per over-limit paragraph, then
-/// TEXT002 per over-limit line.
-pub fn run_region_checks(regions: Vec<DocRegion>) -> Vec<Diagnostic> {
-    document_diagnostics(measure(regions))
-}
-
-/// Runs TEXT001 and TEXT002 over one file's raw text.
-///
-/// TEXT001 fires an Error when a plain paragraph's size exceeds 240 chars,
-/// and a Warning when a bullet's does; TEXT002 fires a Warning for every
-/// line over 80 chars.
-///
-/// Both count the full line text; table rows, code blocks, and link
-/// reference definitions are exempt.
-///
-/// # Arguments
-///
-/// - `source` - the raw file text.
-/// - `ext` - the file extension, selecting the comment marker table.
-///
-/// # Returns
-///
-/// Diagnostics in source order: TEXT001 per over-limit paragraph (bullet
-/// warnings after their paragraph position), then TEXT002 per over-limit line.
-pub fn run_text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
-    document_diagnostics(analyze(source, ext))
-}
-
 /// Strips and segments `source` for the given file extension.
 ///
 /// The [`line_markers`] producer builds the file's doc regions and
@@ -143,6 +98,14 @@ pub fn run_text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
 /// marker-less extensions every line is kept.
 pub(crate) fn analyze(source: &str, ext: &str) -> Document {
     measure(line_markers::doc_regions(source, ext))
+}
+
+/// True for markdown link reference definitions such as `[docs]: ./docs/x.md`.
+///
+/// Used by the exempt-content classifier here and by the TEXT002 line
+/// length rule in `crate::check::rules::text`.
+pub(super) fn is_link_reference_definition(trimmed: &str) -> bool {
+    trimmed.starts_with('[') && trimmed.contains("]:")
 }
 
 /// Folds `regions` into one [`Document`] in a single linear pass.
@@ -176,18 +139,6 @@ pub(crate) fn measure(regions: Vec<DocRegion>) -> Document {
         in_fence = false;
     }
     doc
-}
-
-/// A summary line plus one indented bullet per guidance sentence.
-fn bulleted(summary: &str, bullets: &[String]) -> String {
-    format!("{summary}\n  - {}", bullets.join("\n  - "))
-}
-
-/// TEXT001 then TEXT002 diagnostics for one measured document.
-fn document_diagnostics(doc: Document) -> Vec<Diagnostic> {
-    let mut diags = paragraph_length::diagnostics(&doc);
-    diags.extend(line_length::diagnostics(&doc));
-    diags
 }
 
 /// Measures one markdown-prose region: the producer already stripped the
@@ -357,11 +308,6 @@ fn is_exempt_content(trimmed: &str) -> bool {
         || is_link_reference_definition(trimmed)
 }
 
-/// True for markdown link reference definitions such as `[docs]: ./docs/x.md`.
-fn is_link_reference_definition(trimmed: &str) -> bool {
-    trimmed.starts_with('[') && trimmed.contains("]:")
-}
-
 /// True for lines that look like code signatures rather than plain text.
 ///
 /// Signature keywords must start the line, after any Rust visibility
@@ -399,14 +345,6 @@ mod tests {
     /// Number of the paragraph that starts at `line`, if present.
     fn paragraph_at(doc: &Document, line: usize) -> Option<&Paragraph> {
         doc.paragraphs.iter().find(|p| p.first_line == line)
-    }
-
-    /// Returns only the diagnostics with the given code.
-    ///
-    /// Shared with the [`paragraph_length`] and [`line_length`] submodule
-    /// tests.
-    pub(crate) fn codes<'a>(diags: &'a [Diagnostic], code: &str) -> Vec<&'a Diagnostic> {
-        diags.iter().filter(|d| d.code == code).collect()
     }
 
     // ── Prefix and indent stripping ──

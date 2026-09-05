@@ -79,8 +79,8 @@ mod tests {
     use crate::check::CODE_LINE_LENGTH;
     use crate::check::CODE_PARAGRAPH_SIZE;
     use crate::check::plaintext::region::{Dialect, DocRegion, RegionLine};
-    use crate::check::plaintext::run_region_checks;
-    use crate::check::plaintext::tests::codes;
+    use crate::check::run_region_checks;
+    use crate::check::tests::codes;
     use crate::diagnostic::Diagnostic;
 
     /// Builds one docstring region from `(line number, text)` pairs.

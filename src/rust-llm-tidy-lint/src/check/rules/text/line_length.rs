@@ -1,7 +1,9 @@
 //! TEXT002: line length limit over the plaintext analysis.
 
-use super::{Document, StrippedLine, bulleted};
+use super::bulleted;
 use crate::check::CODE_LINE_LENGTH;
+use crate::check::plaintext::is_link_reference_definition;
+use crate::check::plaintext::{Document, StrippedLine};
 use crate::diagnostic::{Diagnostic, Severity};
 
 /// Maximum line length before TEXT002 fires.
@@ -23,7 +25,7 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
             continue;
         }
         let trimmed = line.text.trim();
-        if trimmed.starts_with('|') || super::is_link_reference_definition(trimmed) {
+        if trimmed.starts_with('|') || is_link_reference_definition(trimmed) {
             continue;
         }
         let len = trimmed.chars().count();
@@ -58,8 +60,8 @@ fn line_length_diagnostic(line: &StrippedLine, len: usize) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::check::plaintext::run_text_checks;
-    use crate::check::plaintext::tests::codes;
+    use crate::check::run_text_checks;
+    use crate::check::tests::codes;
     use indoc::formatdoc;
 
     // ── TEXT002: line length ──

@@ -6,8 +6,8 @@
 //! Detection is delegated to the module-private [`contains_placeholder`] and
 //! the crate-visible [`contains_word`] helper.
 
+use super::is_documentable;
 use crate::check::CODE_DOC_PLACEHOLDER;
-use crate::check::is_documentable;
 use crate::diagnostic::{Diagnostic, Severity};
 use rust_llm_tidy_model::parse::SourceItem;
 

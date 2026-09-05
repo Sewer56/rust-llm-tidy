@@ -88,8 +88,8 @@ exclude:
   # literals (indoc/formatdoc); `fix_links` and `fix_tables` would rewrite
   # the literal contents and break the fixtures.
   - paths:
-      - "src/rust-llm-tidy-lint/src/check/plaintext/paragraph_length.rs"
-      - "src/rust-llm-tidy-lint/src/check/plaintext/line_length.rs"
+      - "src/rust-llm-tidy-lint/src/check/rules/text/paragraph_length.rs"
+      - "src/rust-llm-tidy-lint/src/check/rules/text/line_length.rs"
     rules:
       - links
       - tables
@@ -110,7 +110,7 @@ exclude:
   # examples of what DOC006 detects; whole-word match flags the literal ref.
   # Only DOC006 disabled here; DOC001-DOC005 + TEST001 still run.
   - paths:
-      - "src/rust-llm-tidy-lint/src/check/placeholder.rs"
+      - "src/rust-llm-tidy-lint/src/check/rules/rust/placeholder.rs"
       - "src/cli/tests/doc_check/**/*"
     rules:
       - DOC006

@@ -1,7 +1,8 @@
 //! TEXT001: paragraph and bullet size limits over the plaintext analysis.
 
-use super::{Document, Paragraph, ParagraphKind, bulleted};
+use super::bulleted;
 use crate::check::CODE_PARAGRAPH_SIZE;
+use crate::check::plaintext::{Document, Paragraph, ParagraphKind};
 use crate::diagnostic::{Diagnostic, Severity};
 
 /// Recommended maximum bullet length, stated in the shortening guidance.
@@ -72,8 +73,8 @@ fn paragraph_diagnostic(para: &Paragraph) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::check::plaintext::run_text_checks;
-    use crate::check::plaintext::tests::codes;
+    use crate::check::run_text_checks;
+    use crate::check::tests::codes;
     use indoc::formatdoc;
 
     // Builds a `///` comment paragraph of `words` filler words.
