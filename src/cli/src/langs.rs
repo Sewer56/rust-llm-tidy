@@ -572,15 +572,11 @@ mod tests {
         }
     }
 
-    /// Data formats allow no ops and never appear in the default list.
+    /// Data formats resolve to the no-op profile.
     #[test]
-    fn data_formats_allow_no_ops_and_are_excluded_by_default() {
+    fn data_formats_resolve_to_the_no_op_profile() {
         for ext in DATA_EXTENSIONS {
-            assert!(profile_for(ext).ops.is_empty(), ".{ext} must allow no ops");
-            assert!(
-                !DEFAULT_EXTENSIONS.contains(ext),
-                ".{ext} must not be allowed by default"
-            );
+            assert_profile(ext, &DATA);
         }
     }
 
@@ -595,19 +591,6 @@ mod tests {
         assert!(UNMAPPED.prefixes.is_empty());
         assert_eq!(UNMAPPED.default_ops, UNMAPPED.ops);
         const { assert!(!UNMAPPED.backend) };
-    }
-
-    /// The default list covers every language-table extension.
-    #[test]
-    fn default_extensions_covers_every_language_entry() {
-        for (ext, _) in LANG_ENTRIES {
-            assert!(
-                DEFAULT_EXTENSIONS.contains(ext),
-                ".{ext} missing from the default list"
-            );
-        }
-
-        assert_eq!(DEFAULT_EXTENSIONS.len(), LANG_ENTRIES.len());
     }
 
     /// The registry lists exactly the approved matrix: no missing, extra, or
@@ -706,6 +689,9 @@ mod tests {
     /// per extension and per AST op: dispatch composes both tables, so a
     /// language updated on only one side silently gains or loses AST ops.
     ///
+    /// The Ast text tier additionally requires the column: its doc-region
+    /// producer dispatches through the backend.
+    ///
     /// `lints` allows both the parser-driven codes and the text checks, so
     /// a backend implementing parser-driven codes implies `lints` is
     /// allowed: never dead backend work.
@@ -722,6 +708,12 @@ mod tests {
                 backend.is_some(),
                 ".{ext}: profile column and backend registry disagree"
             );
+            if profile.text_lints == TextLints::Ast {
+                assert!(
+                    profile.backend,
+                    ".{ext}: the Ast text tier needs the backend column"
+                );
+            }
             if let Some(backend) = backend {
                 for op in ["reorder", "vis"] {
                     assert_eq!(
@@ -787,8 +779,8 @@ mod tests {
         }
     }
 
-    /// Every one of the 48 allowed extensions resolves to exactly one
-    /// text-lint tier: markdown prose for the markdown family only,
+    /// Every registry extension resolves to exactly one text-lint tier:
+    /// markdown prose for the markdown family only,
     /// `rs`/`cs`/`py`/`pyi` AST regions, and the lexicon tier for every
     /// comment-marker code family.
     ///
@@ -797,8 +789,6 @@ mod tests {
     /// measurement.
     #[test]
     fn text_lint_tiers_cover_every_extension_exactly_once() {
-        assert_eq!(LANG_ENTRIES.len(), 48, "the registry pins 48 extensions");
-
         for ext in MD_FAMILY {
             assert_eq!(
                 profile_for(ext).text_lints,
@@ -872,24 +862,6 @@ mod tests {
                 !rust_llm_tidy_lang::lexicon::covers(ext),
                 ".{ext} must have no lexicon entry"
             );
-        }
-    }
-
-    /// The Ast tier needs a registered backend on both sides of dispatch:
-    /// the profile's `backend` column and the lang crate's registry.
-    #[test]
-    fn ast_text_lint_tiers_carry_a_backend() {
-        for (ext, profile) in LANG_ENTRIES {
-            if profile.text_lints == TextLints::Ast {
-                assert!(
-                    profile.backend,
-                    ".{ext} must carry the backend column for its text regions"
-                );
-                assert!(
-                    rust_llm_tidy_lang::backend_for(ext).is_some(),
-                    ".{ext} must resolve a registered backend"
-                );
-            }
         }
     }
 
