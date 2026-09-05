@@ -16,12 +16,12 @@ categories = ["development-tools"]
 rust-llm-tidy-model = { path = "../rust-llm-tidy-model", version = "0.3.1" }
 rust-llm-tidy-reorder = { path = "../rust-llm-tidy-reorder", version = "0.1.4" }
 rust-llm-tidy-lint = { path = "../rust-llm-tidy-lint", version = "0.2.1" }
+ahash = "0.8"
 anyhow = "1"
+# crate-root discovery for crate-aware visibility narrowing
+cargo_metadata = "0.23"
 tree-sitter = "0.26"
 tree-sitter-rust = "0.24"
 memchr = "2"
 tree-sitter-c-sharp = "0.23"
 tree-sitter-python = "0.25"
-
-[dev-dependencies]
-ahash = "0.8"

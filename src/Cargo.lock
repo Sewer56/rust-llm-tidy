@@ -772,7 +772,6 @@ dependencies = [
  "rust-llm-tidy-lint",
  "rust-llm-tidy-model",
  "rust-llm-tidy-reorder",
- "rust-llm-tidy-vis",
  "serde",
  "serde_json",
  "serde_yml",
@@ -793,6 +792,7 @@ version = "0.1.0"
 dependencies = [
  "ahash",
  "anyhow",
+ "cargo_metadata",
  "memchr",
  "rust-llm-tidy-lint",
  "rust-llm-tidy-model",
@@ -830,17 +830,6 @@ dependencies = [
  "derive_more",
  "rust-llm-tidy-lang",
  "rust-llm-tidy-model",
- "tree-sitter",
-]
-
-[[package]]
-name = "rust-llm-tidy-vis"
-version = "0.1.2"
-dependencies = [
- "ahash",
- "anyhow",
- "cargo_metadata",
- "rust-llm-tidy-lang",
  "tree-sitter",
 ]
 

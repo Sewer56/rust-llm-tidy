@@ -7,14 +7,15 @@
 //! The crate context (module tree + crate-wide re-export set) is built once
 //! per fixture in setup; the hot loop measures only the per-file narrowing.
 //!
-//! [`narrow_vis_in_tree`]: rust_llm_tidy_vis::narrow_vis_in_tree
+//! [`narrow_vis_in_tree`]:
+//! rust_llm_tidy_lang::backends::rust::visibility::narrow_vis_in_tree
 
 criterion_group!(benches, vis_crate_aware);
 
 criterion_main!(benches);
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use rust_llm_tidy_vis::narrow_vis_in_tree;
+use rust_llm_tidy_lang::backends::rust::visibility::narrow_vis_in_tree;
 
 #[path = "common.rs"]
 mod common;

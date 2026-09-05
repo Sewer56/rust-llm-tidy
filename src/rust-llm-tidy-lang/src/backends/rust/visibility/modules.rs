@@ -7,7 +7,7 @@
 //! Crate-root discovery uses `cargo metadata --no-deps` (the CLI narrows each
 //! file standalone when that fails - see `cli/src/main.rs`).
 
-use crate::{ParsedFile, child_of_kind, visibility_node};
+use super::{ParsedFile, child_of_kind, visibility_node};
 use ahash::AHashMap;
 use std::path::{Path, PathBuf};
 use tree_sitter::Node;

@@ -39,13 +39,13 @@ use anyhow::{Context, bail};
 use clap::Parser;
 use config::CompiledConfig;
 use rust_llm_tidy_fix as fix;
-use rust_llm_tidy_lint::check;
-use rust_llm_tidy_model::io;
-use rust_llm_tidy_model::safety;
-use rust_llm_tidy_vis::{
+use rust_llm_tidy_lang::backends::rust::visibility::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
     discover_crate_root, narrow_vis_in_tree,
 };
+use rust_llm_tidy_lint::check;
+use rust_llm_tidy_model::io;
+use rust_llm_tidy_model::safety;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fs;

@@ -24,7 +24,7 @@
 //! comment of each fixture file. The reference-only `doc/noop` fixture is the
 //! exception: it is synthetic and says so in its header.
 
-use rust_llm_tidy_vis::{
+use rust_llm_tidy_lang::backends::rust::visibility::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
 };
 
