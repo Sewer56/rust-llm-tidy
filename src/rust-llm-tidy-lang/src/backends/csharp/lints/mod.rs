@@ -5,9 +5,11 @@
 //! `test001_test_naming`.
 //!
 //! [`run`] walks the compilation unit and every declaration list in
-//! document order, builds one [`Declaration`] context per declaration,
-//! and runs every rule in the same code order the Rust backend emits
-//! (DOC001 through DOC006, then TEST001).
+//! document order, collecting one [`Declaration`] fact set per
+//! declaration.
+//!
+//! Every rule then runs over the collected facts in the same code order
+//! the Rust backend emits (DOC001 through DOC006, then TEST001).
 //!
 //! The text checks (TEXT001, TEXT002) follow from the same parse's doc
 //! regions.
@@ -127,16 +129,39 @@ pub(super) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
     if parsed.syntax_tree().root_node().has_error() {
         return Vec::new();
     }
+
     let source = parsed.source.as_str();
+    let mut declarations = Vec::with_capacity(parsed.items.len());
+    collect_children(parsed.syntax_tree().root_node(), source, &mut declarations);
+
     let mut diagnostics = Vec::with_capacity(parsed.items.len());
-    check_children(parsed.syntax_tree().root_node(), source, &mut diagnostics);
+    for decl in &declarations {
+        check_declaration(decl, &mut diagnostics);
+    }
+
     diagnostics.extend(super::text_regions::text_checks(parsed));
     diagnostics
 }
 
-/// Check every child of `list` (a `compilation_unit` or `declaration_list`)
-/// and recurse into nested bodies and preprocessor branches.
-fn check_children(list: tree_sitter::Node<'_>, source: &str, diagnostics: &mut Vec<Diagnostic>) {
+/// Run every rule over one collected declaration.
+fn check_declaration(decl: &Declaration<'_>, diagnostics: &mut Vec<Diagnostic>) {
+    diagnostics.extend(doc001_missing_docs::check(decl));
+    diagnostics.extend(doc002_missing_exception_tag::check(decl));
+    diagnostics.extend(doc003_vague_exception::check(decl));
+    diagnostics.extend(doc004_missing_param_tags::check(decl));
+    diagnostics.extend(doc005_undocumented_param::check(decl));
+    diagnostics.extend(doc006_placeholder::check(decl));
+    diagnostics.extend(test001_test_naming::check(decl));
+}
+
+/// Collect the facts of every declaration under `list` (a
+/// `compilation_unit` or `declaration_list`) in document order, recursing
+/// into nested bodies and preprocessor branches.
+fn collect_children<'a>(
+    list: tree_sitter::Node<'a>,
+    source: &'a str,
+    declarations: &mut Vec<Declaration<'a>>,
+) {
     let mut cursor = list.walk();
     for child in list.children(&mut cursor) {
         let kind = child.kind();
@@ -147,19 +172,26 @@ fn check_children(list: tree_sitter::Node<'_>, source: &str, diagnostics: &mut V
             .child_by_field_name("body")
             .filter(|b| b.kind() == "declaration_list")
         {
-            check_declaration(child, source, diagnostics);
-            check_children(body, source, diagnostics);
+            collect_declaration(child, source, declarations);
+            collect_children(body, source, declarations);
         } else if kind == "preproc_if" || kind == "preproc_else" || kind == "preproc_elif" {
-            // Conditional branches hold real declarations; check them.
-            check_children(child, source, diagnostics);
+            // Conditional branches hold real declarations; collect them.
+            collect_children(child, source, declarations);
         } else {
-            check_declaration(child, source, diagnostics);
+            collect_declaration(child, source, declarations);
         }
     }
 }
 
-/// Run every rule over one declaration node.
-fn check_declaration(node: tree_sitter::Node<'_>, source: &str, diagnostics: &mut Vec<Diagnostic>) {
+/// Collect one declaration node's facts into `declarations`.
+///
+/// Skips nodes that carry no member facts: usings, namespaces, and
+/// unrecognized kinds.
+fn collect_declaration<'a>(
+    node: tree_sitter::Node<'a>,
+    source: &'a str,
+    declarations: &mut Vec<Declaration<'a>>,
+) {
     let kind = member_kind(node.kind());
     if kind == ItemKind::Other || kind == ItemKind::Using || kind == ItemKind::Namespace {
         return;
@@ -181,7 +213,7 @@ fn check_declaration(node: tree_sitter::Node<'_>, source: &str, diagnostics: &mu
     } else {
         None
     };
-    let decl = Declaration {
+    declarations.push(Declaration {
         node,
         source,
         kind,
@@ -194,15 +226,7 @@ fn check_declaration(node: tree_sitter::Node<'_>, source: &str, diagnostics: &mu
         non_private,
         exception_scan,
         param_scan,
-    };
-
-    diagnostics.extend(doc001_missing_docs::check(&decl));
-    diagnostics.extend(doc002_missing_exception_tag::check(&decl));
-    diagnostics.extend(doc003_vague_exception::check(&decl));
-    diagnostics.extend(doc004_missing_param_tags::check(&decl));
-    diagnostics.extend(doc005_undocumented_param::check(&decl));
-    diagnostics.extend(doc006_placeholder::check(&decl));
-    diagnostics.extend(test001_test_naming::check(&decl));
+    });
 }
 
 /// The `<exception>` tags in `docs`: their count and every `cref` value.
