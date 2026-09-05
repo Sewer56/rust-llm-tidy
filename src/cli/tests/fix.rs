@@ -1,6 +1,6 @@
 //! Integration tests for the `fix` subcommand of `rust-llm-tidy`.
 //!
-//! Mirrors the helper pattern from `doc_check.rs` (`run_command`,
+//! Mirrors the helper pattern from `doc_check/mod.rs` (`run_command`,
 //! `manifest_dir`, `fixture_dir`; `binary` lives in the shared `common`
 //! module). Each test runs the built CLI binary against fixture files in
 //! `tests/fixtures/fix/`.
@@ -466,7 +466,7 @@ fn fix_nonexistent_path_fails() {
     );
 }
 
-// -- Helpers (mirrors doc_check.rs) -----------------------------------
+// -- Helpers (mirrors doc_check/mod.rs) -------------------------------
 
 /// Recursive directory: `fix` collects both `.rs` and `.md` files.
 #[test]

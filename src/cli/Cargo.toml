@@ -15,6 +15,12 @@ categories = ["command-line-utilities"]
 name = "rust-llm-tidy"
 path = "src/main.rs"
 
+# Folder-rooted integration test. Cargo auto-discovers only `tests/*.rs` and
+# `tests/*/main.rs`, so the `mod.rs` root is declared explicitly here.
+[[test]]
+name = "doc_check"
+path = "tests/doc_check/mod.rs"
+
 # Benchmarks for the two CLI operations (lint and reorder) over embedded
 # real-world source fixtures. `harness = false` enables the criterion entry
 # point defined in each bench file.

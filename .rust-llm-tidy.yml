@@ -111,7 +111,7 @@ exclude:
   # Only DOC006 disabled here; DOC001-DOC005 + TEST001 still run.
   - paths:
       - "src/rust-llm-tidy-lint/src/check/placeholder.rs"
-      - "src/cli/tests/doc_check.rs"
+      - "src/cli/tests/doc_check/**/*"
     rules:
       - DOC006
 

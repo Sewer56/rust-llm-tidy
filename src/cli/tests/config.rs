@@ -1,7 +1,7 @@
 //! Integration tests for the `--validate` mode and config-driven
 //! exclusions of `rust-llm-tidy`.
 //!
-//! Mirrors the helper pattern from `fix.rs`/`doc_check.rs` (`run_command`,
+//! Mirrors the helper pattern from `fix.rs`/`doc_check/mod.rs` (`run_command`,
 //! `manifest_dir`; `binary` lives in the shared `common` module).
 //!
 //! Each test writes a temp config and/or fixture and runs the built CLI

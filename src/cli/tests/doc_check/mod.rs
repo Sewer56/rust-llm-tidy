@@ -5,22 +5,29 @@
 //! (`integration.rs`) so the documentation-lint behavior is exercised in
 //! isolation.
 //!
-//! Each test runs the built CLI binary against a fixture file in
-//! `tests/fixtures/doc/` and asserts on its exit code and stderr diagnostics.
+//! Each test runs the built CLI binary against a fixture or temp file and
+//! asserts on its exit code and stderr diagnostics.
 
 use common::binary;
 use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod csharp;
+mod rust;
+// The folder root sits inside `tests/doc_check/`, so the helpers shared by
+// every test binary resolve at their sibling path, not under this folder.
+#[path = "../common/mod.rs"]
 mod common;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+// ── `all` subcommand ──────────────────────────────────────────────
+
 /// `all` on a clean file passes with no diagnostics.
 #[test]
 fn all_clean_file() {
-    let path = fixture_dir().join("clean.rs");
+    let path = rust_fixture_dir().join("clean.rs");
     let output = run_command(&["--dry-run"], &path);
 
     assert!(
@@ -101,6 +108,21 @@ fn all_reports_remaining_doc_gaps() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Assert that `stderr` contains the given diagnostic code and optional item
+/// name.
+fn assert_has_diagnostic(stderr: &str, code: &str, item_name: Option<&str>) {
+    assert!(
+        stderr.contains(code),
+        "stderr should contain {code}, got:\n{stderr}"
+    );
+    if let Some(name) = item_name {
+        assert!(
+            stderr.contains(name),
+            "stderr should mention `{name}`, got:\n{stderr}"
+        );
+    }
+}
+
 /// A non-existent path is rejected.
 #[test]
 fn check_nonexistent_path_fails() {
@@ -118,7 +140,7 @@ fn check_nonexistent_path_fails() {
     );
 }
 
-// ── Helpers ───────────────────────────────────────────────────────
+// ── Directory recursion ───────────────────────────────────────────
 
 /// `check` descends into directories recursively.
 #[test]
@@ -128,7 +150,7 @@ fn check_recursive_directory() {
     std::fs::create_dir_all(&sub).unwrap();
 
     // Clean file at the root.
-    std::fs::copy(fixture_dir().join("clean.rs"), dir.join("clean.rs")).unwrap();
+    std::fs::copy(rust_fixture_dir().join("clean.rs"), dir.join("clean.rs")).unwrap();
     // Undocumented file in a nested dir.
     std::fs::write(sub.join("dirty.rs"), "pub fn dirty() {}\n").unwrap();
 
@@ -145,329 +167,6 @@ fn check_recursive_directory() {
     );
 
     let _ = std::fs::remove_dir_all(&dir);
-}
-
-// ── `all` subcommand ──────────────────────────────────────────────
-
-/// `clean.rs` is fully documented and produces zero diagnostics.
-#[test]
-fn clean_file_no_diagnostics() {
-    let (stderr, exit) = run_check_fixture("clean.rs");
-    assert_eq!(exit, 0, "clean file should pass");
-    assert!(
-        stderr.is_empty(),
-        "clean file should produce no diagnostics, got:\n{stderr}"
-    );
-}
-
-/// DOC001 flags every undocumented non-private member kind and skips
-/// private, unmodified, and documented members.
-#[test]
-fn csharp_doc001_flags_undocumented_non_private_members() {
-    let (stderr, exit) = run_csharp_fixture("doc001_missing_docs.cs");
-    assert_ne!(exit, 0, "DOC001 errors must fail the run");
-
-    for name in [
-        "Undocumented",
-        "Guarded",
-        "Cached",
-        "Shape",
-        "Kind",
-        "Notify",
-        "Changed",
-        "Alpha",
-    ] {
-        assert_has_diagnostic(&stderr, "DOC001", Some(name));
-    }
-    for clean in [
-        "Hidden",
-        "InternalDefault",
-        "Documented",
-        "IBehavior",
-        "Apply",
-    ] {
-        assert!(
-            !stderr.contains(&format!("`{clean}`")),
-            "`{clean}` must not be flagged:\n{stderr}"
-        );
-    }
-    assert_eq!(
-        stderr.matches("DOC001").count(),
-        8,
-        "expected exactly 8 DOC001 findings:\n{stderr}"
-    );
-}
-
-/// DOC002 errors on the documented non-private thrower without an
-/// `<exception>` tag; the tagged and private throwers pass.
-#[test]
-fn csharp_doc002_errors_on_untagged_throwers() {
-    let (stderr, exit) = run_csharp_fixture("doc002_missing_exception.cs");
-
-    assert_ne!(exit, 0, "DOC002 errors must fail the run:\n{stderr}");
-    assert_has_diagnostic(&stderr, "DOC002", Some("Untagged"));
-    assert!(
-        stderr.contains("error[DOC002]"),
-        "DOC002 carries error severity:\n{stderr}"
-    );
-    assert!(
-        !stderr.contains("`Tagged`") && !stderr.contains("`Hidden`"),
-        "tagged and private throwers pass:\n{stderr}"
-    );
-    assert_eq!(
-        stderr.matches("DOC002").count(),
-        1,
-        "expected exactly 1 DOC002 finding:\n{stderr}"
-    );
-}
-
-/// DOC003 warns when `<exception>` tags carry no concrete `cref`.
-#[test]
-fn csharp_doc003_warns_on_vague_exception_crefs() {
-    let (stderr, exit) = run_csharp_fixture("doc003_vague_exception.cs");
-
-    assert_eq!(exit, 0, "DOC003 warnings must not fail the run");
-    assert_has_diagnostic(&stderr, "DOC003", Some("Vague"));
-    assert!(
-        !stderr.contains("`Concrete`"),
-        "a concrete cref passes:\n{stderr}"
-    );
-    assert_eq!(
-        stderr.matches("DOC003").count(),
-        1,
-        "expected exactly 1 DOC003 finding:\n{stderr}"
-    );
-}
-
-/// DOC004 warns on the parameterized member without `<param>` tags.
-#[test]
-fn csharp_doc004_warns_on_missing_param_tags() {
-    let (stderr, exit) = run_csharp_fixture("doc004_missing_param.cs");
-
-    assert_eq!(exit, 0, "DOC004 warnings must not fail the run");
-    assert_has_diagnostic(&stderr, "DOC004", Some("Greet"));
-    assert!(
-        !stderr.contains("`Greeted`") && !stderr.contains("`NoArgs`"),
-        "tagged and parameterless members pass:\n{stderr}"
-    );
-    assert_eq!(
-        stderr.matches("DOC004").count(),
-        1,
-        "expected exactly 1 DOC004 finding:\n{stderr}"
-    );
-}
-
-/// DOC005 names the parameter the `<param>` tags omitted.
-#[test]
-fn csharp_doc005_names_the_undocumented_param() {
-    let (stderr, exit) = run_csharp_fixture("doc005_undocumented_param.cs");
-
-    assert_eq!(exit, 0, "DOC005 warnings must not fail the run");
-    assert_has_diagnostic(&stderr, "DOC005", Some("Build"));
-    assert!(
-        stderr.contains("`format`"),
-        "DOC005 must name the omitted parameter:\n{stderr}"
-    );
-    assert!(
-        !stderr.contains("`Built`"),
-        "fully documented members pass:\n{stderr}"
-    );
-    assert_eq!(
-        stderr.matches("DOC005").count(),
-        1,
-        "expected exactly 1 DOC005 finding:\n{stderr}"
-    );
-}
-
-/// DOC006 warns on TODO/FIXME/TBD placeholder markers in C# doc comments.
-#[test]
-fn csharp_doc006_warns_on_placeholders() {
-    let (stderr, exit) = run_csharp_fixture("doc006_placeholders.cs");
-
-    assert_eq!(exit, 0, "DOC006 warnings must not fail the run");
-    for name in ["Todo", "Fixme", "Tbd"] {
-        assert_has_diagnostic(&stderr, "DOC006", Some(name));
-    }
-    assert!(
-        !stderr.contains("`Done`"),
-        "described members pass:\n{stderr}"
-    );
-    assert_eq!(
-        stderr.matches("DOC006").count(),
-        3,
-        "expected exactly 3 DOC006 findings:\n{stderr}"
-    );
-}
-
-/// `--include reorder --output-mode json --dry-run` on a `.cs` file
-/// records the would-be using hoist and member reorder with
-/// `severity: "success"` and no title, exactly like the Rust reorder
-/// records.
-#[test]
-fn csharp_json_dry_run_records_the_member_reorder() {
-    let path = reorder_fixture_dir()
-        .join("csharp")
-        .join("reorder_cs_before.cs");
-    let output = run_command(
-        &["--include", "reorder", "--output-mode", "json", "--dry-run"],
-        &path,
-    );
-
-    assert!(
-        output.status.success(),
-        "JSON dry-run should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let records: serde_json::Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("stdout must parse as JSON: {e}\n{stdout}"));
-    let array = records.as_array().expect("output must be an array");
-    assert_eq!(
-        array.len(),
-        2,
-        "expected the using hoist and the member reorder:\n{stdout}"
-    );
-    for rec in array {
-        assert_eq!(rec["severity"], "success");
-        assert_eq!(rec["code"], "REORDER");
-        assert!(
-            rec["title"].is_null(),
-            "change records carry no title:\n{stdout}"
-        );
-    }
-    assert!(
-        array
-            .iter()
-            .any(|r| r["item_kind"] == "class" && r["item_name"] == "OrderService"),
-        "one record names the reordered class:\n{stdout}"
-    );
-    assert!(
-        array.iter().any(|r| r["item_kind"] == "using"),
-        "one record names the hoisted using:\n{stdout}"
-    );
-}
-
-/// `--output-mode json` on a `.cs` file emits the documented lint record
-/// shape: the same field set as Rust findings, with the friendly title.
-#[test]
-fn csharp_json_output_matches_the_documented_record_shape() {
-    let path = csharp_fixture_dir().join("doc004_missing_param.cs");
-    let output = run_command(&["--include", "lints", "--output-mode", "json"], &path);
-
-    assert!(
-        output.status.success(),
-        "warnings-only JSON run should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let findings: serde_json::Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("stdout must parse as JSON: {e}\n{stdout}"));
-    let array = findings.as_array().expect("output must be an array");
-    assert_eq!(
-        array.len(),
-        1,
-        "expected exactly the DOC004 finding:\n{stdout}"
-    );
-
-    let keys: std::collections::BTreeSet<&str> = array[0]
-        .as_object()
-        .expect("the finding is an object")
-        .keys()
-        .map(String::as_str)
-        .collect();
-    assert_eq!(
-        keys,
-        [
-            "path",
-            "line",
-            "severity",
-            "code",
-            "message",
-            "item_kind",
-            "item_name",
-            "title",
-        ]
-        .into_iter()
-        .collect(),
-        "C# findings carry exactly the documented fields: {stdout}"
-    );
-    assert_eq!(array[0]["severity"], "warning");
-    assert_eq!(array[0]["code"], "DOC004");
-    assert_eq!(array[0]["title"], "missing `# Arguments` section");
-    assert_eq!(array[0]["item_kind"], "fn");
-    assert_eq!(array[0]["item_name"], "Greet");
-    assert!(array[0]["line"].as_u64().is_some_and(|l| l >= 1));
-}
-
-/// TEST001 flags marker-attributed methods with discouraged names and
-/// passes the behavioral name.
-#[test]
-fn csharp_test001_flags_discouraged_names() {
-    let (stderr, _exit) = run_csharp_fixture("test001_test_naming.cs");
-
-    for name in ["Test1", "Test_foo", "Case_1", "Test"] {
-        assert_has_diagnostic(&stderr, "TEST001", Some(name));
-    }
-    assert!(
-        !stderr
-            .lines()
-            .any(|l| l.contains("TEST001") && l.contains("ShouldReturnZeroWhenEmpty")),
-        "the behavioral name passes:\n{stderr}"
-    );
-    assert_eq!(
-        stderr.matches("TEST001").count(),
-        4,
-        "expected exactly 4 TEST001 findings:\n{stderr}"
-    );
-}
-
-/// C# text budgets fire with original file lines: TEXT001 errors on an
-/// over-budget summary paragraph at its first prose line, and TEXT002
-/// warns on a line whose tag-stripped inner text exceeds 80 chars.
-#[test]
-fn csharp_text_budgets_fire_with_original_lines() {
-    let (stderr, exit) = run_csharp_fixture("text-001_text-002_text_budgets.cs");
-
-    assert_ne!(exit, 0, "the TEXT001 error must fail the run:\n{stderr}");
-    assert!(
-        stderr.contains(":10: error[TEXT001]"),
-        "TEXT001 must report at the summary's first prose line:\n{stderr}"
-    );
-    assert!(
-        stderr.contains(":19: warning[TEXT002]"),
-        "TEXT002 must report at the over-long measured line:\n{stderr}"
-    );
-    assert_eq!(
-        stderr.matches("TEXT001").count(),
-        1,
-        "expected exactly 1 TEXT001 finding:\n{stderr}"
-    );
-    assert_eq!(
-        stderr.matches("TEXT002").count(),
-        1,
-        "expected exactly 1 TEXT002 finding:\n{stderr}"
-    );
-    assert!(
-        !stderr.contains("DOC001") && !stderr.contains("DOC004"),
-        "the fixture is otherwise documented:\n{stderr}"
-    );
-}
-
-/// C# text checks stay quiet on the probe classes: idiomatic XML docs,
-/// long `cref`/`name` attribute values, `<code>`/`<example>` blocks, and
-/// verbatim string content produce no TEXT001/TEXT002 findings.
-#[test]
-fn csharp_text_probes_stay_quiet() {
-    let (stderr, exit) = run_csharp_fixture("doc_text_quiet_probes.cs");
-
-    assert_eq!(
-        exit, 0,
-        "the probe fixture must be clean across every C# lint"
-    );
-    assert!(
-        stderr.is_empty(),
-        "idiomatic docs and string content must stay unmeasured:\n{stderr}"
-    );
 }
 
 // ── Default-run text checks: every comment-marker family ─────────
@@ -516,258 +215,6 @@ fn default_run_lints_comment_prose_in_every_comment_family() {
     );
 
     let _ = fs::remove_dir_all(&dir);
-}
-
-// ── Directory recursion ───────────────────────────────────────────
-
-/// The documented function in `doc001_missing_docs.rs` is not flagged.
-#[test]
-fn doc001_documented_not_flagged() {
-    let (stderr, _exit) = run_check_fixture("doc001_missing_docs.rs");
-    assert!(
-        !stderr.contains("`documented`"),
-        "documented functions should not be flagged:\n{stderr}"
-    );
-}
-
-/// `doc001_missing_docs.rs` flags every undocumented non-private documentable
-/// item, skips private items and `pub use`.
-#[test]
-fn doc001_missing_docs() {
-    let (stderr, exit) = run_check_fixture("doc001_missing_docs.rs");
-    assert_ne!(exit, 0, "missing docs should fail");
-
-    // Every undocumented public item is flagged.
-    assert_has_diagnostic(&stderr, "DOC001", Some("alpha"));
-    assert_has_diagnostic(&stderr, "DOC001", Some("Beta"));
-    assert_has_diagnostic(&stderr, "DOC001", Some("Gamma"));
-    assert_has_diagnostic(&stderr, "DOC001", Some("DELTA"));
-    assert_has_diagnostic(&stderr, "DOC001", Some("EPSILON"));
-    assert_has_diagnostic(&stderr, "DOC001", Some("Zeta"));
-    assert_has_diagnostic(&stderr, "DOC001", Some("Eta"));
-    assert_has_diagnostic(&stderr, "DOC001", Some("Theta"));
-
-    // Count DOC001 occurrences: 8 expected.
-    let doc001_count = stderr.matches("DOC001").count();
-    assert_eq!(
-        doc001_count, 8,
-        "expected exactly 8 DOC001 findings, got {doc001_count}:\n{stderr}"
-    );
-}
-
-/// The private function in `doc001_missing_docs.rs` is not flagged.
-#[test]
-fn doc001_private_not_flagged() {
-    let (stderr, _exit) = run_check_fixture("doc001_missing_docs.rs");
-    assert!(
-        !stderr.contains("`helper`"),
-        "private functions should not be flagged:\n{stderr}"
-    );
-}
-
-/// `pub use` is not a documentable kind and must not be flagged.
-#[test]
-fn doc001_pub_use_not_flagged() {
-    let (stderr, _exit) = run_check_fixture("doc001_missing_docs.rs");
-    // The diagnostic kind for a use item would be `(use)`; verify it never
-    // appears. Using a bare "use" substring would false-match the file path.
-    assert!(
-        !stderr.contains("(use)"),
-        "pub use should not be flagged:\n{stderr}"
-    );
-}
-
-// ── DOC002: missing `# Errors` section ────────────────────────────
-
-/// `save` in the fixture has a complete `# Errors` section and is not flagged.
-#[test]
-fn doc002_documented_not_flagged() {
-    let (stderr, _exit) = run_check_fixture("doc002_missing_errors_section.rs");
-    assert!(
-        !stderr.contains("save"),
-        "fn with complete # Errors should not be flagged:\n{stderr}"
-    );
-}
-
-/// `doc002_missing_errors_section.rs` flags pub fns returning Result without
-/// a `# Errors` section.
-#[test]
-fn doc002_missing_errors_section() {
-    let (stderr, exit) = run_check_fixture("doc002_missing_errors_section.rs");
-    assert_ne!(exit, 0, "missing # Errors should fail");
-
-    assert_has_diagnostic(&stderr, "DOC002", Some("load"));
-    assert_has_diagnostic(&stderr, "DOC002", Some("fetch"));
-
-    // Exactly 2 DOC002 findings (load and fetch).
-    let doc002_count = stderr.matches("DOC002").count();
-    assert_eq!(
-        doc002_count, 2,
-        "expected exactly 2 DOC002 findings, got {doc002_count}:\n{stderr}"
-    );
-}
-
-/// `count` returns a non-Result type and is not flagged.
-#[test]
-fn doc002_non_result_not_flagged() {
-    let (stderr, _exit) = run_check_fixture("doc002_missing_errors_section.rs");
-    assert!(
-        !stderr.contains("count"),
-        "non-Result pub fns should not be flagged:\n{stderr}"
-    );
-}
-
-// ── DOC003: vague `# Errors` section ──────────────────────────────
-
-/// `load_private` is private and not flagged even though it returns Result.
-#[test]
-fn doc002_private_not_flagged() {
-    let (stderr, _exit) = run_check_fixture("doc002_missing_errors_section.rs");
-    assert!(
-        !stderr.contains("load_private"),
-        "private fns should not be flagged:\n{stderr}"
-    );
-}
-
-/// The bracket-link variant (`[Error::NotFound]`) passes DOC003.
-#[test]
-fn doc003_bracket_link_passes() {
-    let (stderr, _exit) = run_check_fixture("doc003_vague_errors.rs");
-    assert!(
-        !stderr.contains("specific_load_bracket"),
-        "fn with variant link should not be flagged:\n{stderr}"
-    );
-}
-
-/// The path-qualified variant (`Error::Timeout` via `::`) passes DOC003.
-#[test]
-fn doc003_path_qualified_passes() {
-    let (stderr, _exit) = run_check_fixture("doc003_vague_errors.rs");
-    assert!(
-        !stderr.contains("specific_load_path"),
-        "fn with path-qualified variant should not be flagged:\n{stderr}"
-    );
-}
-
-// ── Clean file ────────────────────────────────────────────────────
-
-/// `doc003_vague_errors.rs` warns on `# Errors` sections that name no variant.
-#[test]
-fn doc003_vague_errors() {
-    let (stderr, exit) = run_check_fixture("doc003_vague_errors.rs");
-
-    // DOC003 is a warning - it should not fail the run (only errors fail).
-    assert_eq!(exit, 0, "DOC003 warnings should not fail the run");
-
-    assert_has_diagnostic(&stderr, "DOC003", Some("vague_load"));
-
-    let doc003_count = stderr.matches("DOC003").count();
-    assert_eq!(
-        doc003_count, 1,
-        "expected exactly 1 DOC003 finding, got {doc003_count}:\n{stderr}"
-    );
-}
-
-// ── DOC004: missing `# Arguments` section ─────────────────────────
-
-/// `doc004_missing_arguments.rs` warns on pub fns with parameters but no
-/// `# Arguments` section.
-#[test]
-fn doc004_missing_arguments() {
-    let (stderr, exit) = run_check_fixture("doc004_missing_arguments.rs");
-
-    // DOC004 is a warning - it should not fail the run.
-    assert_eq!(exit, 0, "DOC004 warnings should not fail the run");
-
-    assert_has_diagnostic(&stderr, "DOC004", Some("greet"));
-
-    let doc004_count = stderr.matches("DOC004").count();
-    assert_eq!(
-        doc004_count, 1,
-        "expected exactly 1 DOC004 finding, got {doc004_count}:\n{stderr}"
-    );
-}
-
-/// `no_args` has no parameters and is not flagged by DOC004.
-#[test]
-fn doc004_no_params_not_flagged() {
-    let (stderr, _exit) = run_check_fixture("doc004_missing_arguments.rs");
-    assert!(
-        !stderr.contains("no_args"),
-        "fn with no parameters should not be flagged:\n{stderr}"
-    );
-}
-
-// ── DOC005: undocumented parameter ────────────────────────────────
-
-/// `render` documents both parameters and is not flagged by DOC005.
-#[test]
-fn doc005_documented_not_flagged() {
-    let (stderr, _exit) = run_check_fixture("doc005_undocumented_param.rs");
-    assert!(
-        !stderr.contains("render"),
-        "fn with complete # Arguments should not be flagged:\n{stderr}"
-    );
-}
-
-// ── DOC006: doc-comment placeholders ──────────────────────────────
-
-/// `doc005_undocumented_param.rs` warns when a `# Arguments` section omits a
-/// parameter name.
-#[test]
-fn doc005_undocumented_param() {
-    let (stderr, exit) = run_check_fixture("doc005_undocumented_param.rs");
-
-    // DOC005 is a warning - it should not fail the run.
-    assert_eq!(exit, 0, "DOC005 warnings should not fail the run");
-
-    assert_has_diagnostic(&stderr, "DOC005", Some("build"));
-    assert!(
-        stderr.contains("fmt"),
-        "DOC005 should mention the undocumented param `fmt`:\n{stderr}"
-    );
-
-    let doc005_count = stderr.matches("DOC005").count();
-    assert_eq!(
-        doc005_count, 1,
-        "expected exactly 1 DOC005 finding, got {doc005_count}:\n{stderr}"
-    );
-}
-
-/// `done` has a clean doc comment and is not flagged by DOC006.
-#[test]
-fn doc006_clean_not_flagged() {
-    let (stderr, _exit) = run_check_fixture("doc006_placeholders.rs");
-    assert!(
-        !stderr.contains("done"),
-        "fn with clean doc should not be flagged:\n{stderr}"
-    );
-}
-
-// ── TEST001: test-function naming ─────────────────────────────────
-
-/// `doc006_placeholders.rs` warns on TODO/FIXME/TBD doc-comment markers.
-#[test]
-fn doc006_placeholders() {
-    let (stderr, exit) = run_check_fixture("doc006_placeholders.rs");
-
-    // DOC006 is a warning - it should not fail the run.
-    assert_eq!(exit, 0, "DOC006 warnings should not fail the run");
-
-    assert_has_diagnostic(&stderr, "DOC006", Some("todo_task"));
-    assert_has_diagnostic(&stderr, "DOC006", Some("fixme_task"));
-    assert_has_diagnostic(&stderr, "DOC006", Some("tbd_task"));
-    // A literal `...` is idiomatic prose, not a placeholder marker.
-    assert!(
-        !stderr.contains("Placeholder"),
-        "ellipsis-only docs should not be flagged:\n{stderr}"
-    );
-
-    let doc006_count = stderr.matches("DOC006").count();
-    assert_eq!(
-        doc006_count, 3,
-        "expected exactly 3 DOC006 findings, got {doc006_count}:\n{stderr}"
-    );
 }
 
 // ── Lexicon text checks: comment-marker families ──────────────────
@@ -875,10 +322,12 @@ fn js_lexicon_text_budgets_fire_with_original_lines() {
     );
 }
 
+// ── JSON output mode ──────────────────────────────────────────────
+
 /// The `--json` alias is equivalent to `--output-mode json`.
 #[test]
 fn json_alias_is_equivalent_to_output_mode() {
-    let path = fixture_dir().join("clean.rs");
+    let path = rust_fixture_dir().join("clean.rs");
     let alias = run_command(&["--include", "lints", "--json"], &path);
     let mode = run_command(&["--include", "lints", "--output-mode", "json"], &path);
 
@@ -890,7 +339,9 @@ fn json_alias_is_equivalent_to_output_mode() {
 /// both record the would-be reorder with `severity: "success"`.
 #[test]
 fn json_dry_run_records_changes_for_both_flags() {
-    let path = reorder_fixture_dir().join("fn_interstitial_comment_travels_with_next_before.rs");
+    let path = reorder_fixture_dir()
+        .join("rust")
+        .join("fn_interstitial_comment_travels_with_next_before.rs");
     let alias = run_command(&["--include", "reorder", "--json", "--dry-run"], &path);
     let mode = run_command(
         &["--include", "reorder", "--output-mode", "json", "--dry-run"],
@@ -978,14 +429,18 @@ fn json_in_place_run_records_fix_changes() {
 #[test]
 fn json_in_place_run_records_reorder_changes() {
     let expected = fs::read_to_string(
-        reorder_fixture_dir().join("fn_interstitial_comment_travels_with_next_after.rs"),
+        reorder_fixture_dir()
+            .join("rust")
+            .join("fn_interstitial_comment_travels_with_next_after.rs"),
     )
     .unwrap();
     let tmp = temp_file("rs");
     fs::write(
         &tmp,
         fs::read_to_string(
-            reorder_fixture_dir().join("fn_interstitial_comment_travels_with_next_before.rs"),
+            reorder_fixture_dir()
+                .join("rust")
+                .join("fn_interstitial_comment_travels_with_next_before.rs"),
         )
         .unwrap(),
     )
@@ -1018,7 +473,7 @@ fn json_in_place_run_records_reorder_changes() {
 /// `--output-mode json` on a clean file prints `[]` and exits 0.
 #[test]
 fn json_output_clean_file_prints_empty_array() {
-    let path = fixture_dir().join("clean.rs");
+    let path = rust_fixture_dir().join("clean.rs");
     let output = run_command(&["--include", "lints", "--output-mode", "json"], &path);
 
     assert!(output.status.success());
@@ -1029,7 +484,7 @@ fn json_output_clean_file_prints_empty_array() {
 /// and emits parseable JSON.
 #[test]
 fn json_output_combines_with_dry_run() {
-    let path = fixture_dir().join("clean.rs");
+    let path = rust_fixture_dir().join("clean.rs");
     let output = run_command(&["--output-mode", "json", "--dry-run"], &path);
 
     assert!(
@@ -1047,7 +502,7 @@ fn json_output_combines_with_dry_run() {
 /// non-zero after the document is written.
 #[test]
 fn json_output_merges_lints_and_changes_in_one_document() {
-    let path = fixture_dir().join("doc001_missing_docs.rs");
+    let path = rust_fixture_dir().join("doc001_missing_docs.rs");
     let output = run_command(
         &[
             "--include",
@@ -1094,7 +549,7 @@ fn json_output_merges_lints_and_changes_in_one_document() {
 /// prints the JSON document on stdout (before the error-count bail).
 #[test]
 fn json_output_prints_document_before_error_bail() {
-    let path = fixture_dir().join("doc001_missing_docs.rs");
+    let path = rust_fixture_dir().join("doc001_missing_docs.rs");
     let output = run_command(&["--include", "lints", "--output-mode", "json"], &path);
 
     assert!(
@@ -1124,7 +579,9 @@ fn json_output_prints_document_before_error_bail() {
 /// JSON duplicated on stderr.
 #[test]
 fn json_output_records_reorder_changes() {
-    let path = reorder_fixture_dir().join("fn_interstitial_comment_travels_with_next_before.rs");
+    let path = reorder_fixture_dir()
+        .join("rust")
+        .join("fn_interstitial_comment_travels_with_next_before.rs");
     let output = run_command(
         &["--include", "reorder", "--output-mode", "json", "--dry-run"],
         &path,
@@ -1163,13 +620,11 @@ fn json_output_records_reorder_changes() {
     );
 }
 
-// ── JSON output mode ──────────────────────────────────────────────
-
 /// `--output-mode json` prints one JSON array on stdout with every finding
 /// for all processed files, using the documented fields and lowercase severity.
 #[test]
 fn json_output_reports_all_findings() {
-    let path = fixture_dir().join("test001_test_naming.rs");
+    let path = rust_fixture_dir().join("test001_test_naming.rs");
     let output = run_command(&["--include", "lints", "--output-mode", "json"], &path);
 
     assert!(
@@ -1246,6 +701,8 @@ fn json_output_reports_all_findings() {
         "JSON mode must not duplicate diagnostics on stderr, got:\n{stderr}"
     );
 }
+
+// ── Markdown lint dispatch ────────────────────────────────────────
 
 /// A clean markdown file passes lint dispatch with no diagnostics.
 #[test]
@@ -1343,7 +800,7 @@ fn md_text001_suppressed_by_exclude() {
 /// stay quiet.
 #[test]
 fn py_docstring_budgets_fire_with_original_lines() {
-    let (stderr, exit) = run_check_fixture("docstring_text_budgets.py");
+    let (stderr, exit) = run_python_fixture("docstring_text_budgets.py");
 
     assert_ne!(exit, 0, "the TEXT001 error must fail the run:\n{stderr}");
     assert!(
@@ -1370,7 +827,7 @@ fn py_docstring_budgets_fire_with_original_lines() {
 /// content and `<<` operators stay quiet.
 #[test]
 fn py_text_checks_measure_comments_not_strings() {
-    let (stderr, exit) = run_check_fixture("doc_text_lexicon_budgets.py");
+    let (stderr, exit) = run_python_fixture("doc_text_lexicon_budgets.py");
 
     assert_ne!(exit, 0, "the TEXT001 error must fail the run:\n{stderr}");
     assert!(
@@ -1413,123 +870,15 @@ fn rb_lexicon_measures_comment_prose_only() {
     );
 }
 
-/// Rust block and attribute doc prose fires the text budgets with
-/// original file lines: TEXT001 errors on the over-budget `/** */` and
-/// `#[doc = "..."]` paragraphs, and TEXT002 warns on the 81-char block
-/// and attribute lines.
-#[test]
-fn rs_block_and_attribute_docs_fire_text_budgets() {
-    let (stderr, exit) = run_check_fixture("text-001_text-002_block_attr_budgets.rs");
-
-    assert_ne!(exit, 0, "the TEXT001 errors must fail the run:\n{stderr}");
-    assert!(
-        stderr.contains(":1: error[TEXT001]"),
-        "TEXT001 must report at the block doc's first prose line:\n{stderr}"
-    );
-    assert!(
-        stderr.contains(":25: error[TEXT001]"),
-        "TEXT001 must report at the attribute paragraph's first line:\n{stderr}"
-    );
-    assert!(
-        stderr.contains(":8: warning[TEXT002]"),
-        "TEXT002 must report at the over-long attribute line:\n{stderr}"
-    );
-    assert!(
-        stderr.contains(":12: warning[TEXT002]"),
-        "TEXT002 must report at the over-long block doc line:\n{stderr}"
-    );
-    assert_eq!(
-        stderr.matches("TEXT001").count(),
-        2,
-        "exactly the block and attribute paragraphs, never the plain block:\n{stderr}"
-    );
-    assert_eq!(
-        stderr.matches("TEXT002").count(),
-        2,
-        "exactly the block and attribute lines, never the plain block:\n{stderr}"
-    );
-    assert!(
-        !stderr.contains("DOC001"),
-        "the fixture's private fns stay out of DOC001:\n{stderr}"
-    );
-}
-
-/// The CLI's rendered rs findings equal the direct composition of the
-/// tree-sitter checks (`run_all`) and the rs text checks
-/// (`rust_text_regions::text_checks`) over the same file: rs dispatch
-/// adds nothing and drops nothing.
-///
-/// The rs text checks cover line comments plus `/** */` and
-/// `#[doc = "..."]` docs.
-#[test]
-fn rs_diagnostics_match_direct_check_composition() {
-    for name in [
-        "doc001_missing_docs.rs",
-        "text-001_text-002_block_attr_budgets.rs",
-    ] {
-        let path = fixture_dir().join(name);
-        let source = fs::read_to_string(&path).unwrap();
-
-        // Path A: the CLI pipeline's rendered JSON findings.
-        let output = run_command(&["--include", "lints", "--output-mode", "json"], &path);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let rendered: Vec<(usize, String, String)> =
-            serde_json::from_str::<serde_json::Value>(&stdout)
-                .expect("JSON diagnostics must parse")
-                .as_array()
-                .expect("diagnostics must be an array")
-                .iter()
-                .map(|f| {
-                    (
-                        f["line"].as_u64().expect("line must be a number") as usize,
-                        f["severity"].as_str().expect("severity").to_string(),
-                        f["code"].as_str().expect("code").to_string(),
-                    )
-                })
-                .collect();
-
-        // Path B: the two check sources composed directly over the same
-        // source.
-        let parsed = rust_llm_tidy_model::parse::parse_source(&source).unwrap();
-        let mut expected = rust_llm_tidy_lint::check::run_all(&parsed);
-        expected.extend(rust_llm_tidy_lang::rust_text_regions::text_checks(&parsed));
-        let expected: Vec<(usize, String, String)> = expected
-            .iter()
-            .map(|d| {
-                let sev = match d.severity {
-                    rust_llm_tidy_lint::Severity::Error => "error",
-                    rust_llm_tidy_lint::Severity::Warning => "warning",
-                };
-                (d.line, sev.to_string(), d.code.to_string())
-            })
-            .collect();
-
-        assert_eq!(
-            rendered, expected,
-            "{name}: CLI rs dispatch must render exactly run_all + text_checks"
-        );
-    }
-}
-
-/// Rust comments flow through the same text checks: an 81-char `///` line
-/// warns with TEXT002 while tree-sitter checks stay quiet on a private fn.
-#[test]
-fn rs_long_doc_comment_warns_text002() {
-    let path = temp_file("rs");
-    fs::write(&path, format!("/// {}\nfn hidden() {{}}\n", "w".repeat(81))).unwrap();
-
+/// Run `rust-llm-tidy --include lints` on a Rust fixture and return its
+/// (stderr, exit_code).
+fn run_rust_fixture(name: &str) -> (String, i32) {
+    let path = rust_fixture_dir().join(name);
     let output = run_command(&["--include", "lints"], &path);
-    let _ = fs::remove_file(&path);
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        output.status.success(),
-        "TEXT002 warnings must not fail the run: {stderr}"
-    );
-    assert!(
-        stderr.contains(":1: warning[TEXT002]"),
-        "expected a TEXT002 warning for the over-limit comment, got:\n{stderr}"
-    );
+    (
+        String::from_utf8_lossy(&output.stderr).to_string(),
+        output.status.code().unwrap_or(-1),
+    )
 }
 
 /// Shell heredoc payload and `$#` parameter syntax stay quiet while the
@@ -1582,56 +931,12 @@ fn sql_lexicon_measures_comments_not_strings() {
     );
 }
 
-/// `should_pass_when_valid` is a behavioral name and is not flagged.
-#[test]
-fn test001_behavioral_not_flagged() {
-    let (stderr, _exit) = run_check_fixture("test001_test_naming.rs");
-    assert!(
-        !stderr.contains("should_pass_when_valid"),
-        "behavioral test name should not be flagged:\n{stderr}"
-    );
-}
-
-/// `test001_test_naming.rs` warns on discouraged test-function names.
-#[test]
-fn test001_test_naming() {
-    let (stderr, exit) = run_check_fixture("test001_test_naming.rs");
-
-    // TEST001 is a warning - it should not fail the run.
-    assert_eq!(exit, 0, "TEST001 warnings should not fail the run");
-
-    assert_has_diagnostic(&stderr, "TEST001", Some("test_foo"));
-    assert_has_diagnostic(&stderr, "TEST001", Some("test1"));
-    assert_has_diagnostic(&stderr, "TEST001", Some("case_1"));
-
-    let test001_count = stderr.matches("TEST001").count();
-    assert_eq!(
-        test001_count, 3,
-        "expected exactly 3 TEST001 findings, got {test001_count}:\n{stderr}"
-    );
-}
-
-/// Assert that `stderr` contains the given diagnostic code and optional item
-/// name.
-fn assert_has_diagnostic(stderr: &str, code: &str, item_name: Option<&str>) {
-    assert!(
-        stderr.contains(code),
-        "stderr should contain {code}, got:\n{stderr}"
-    );
-    if let Some(name) = item_name {
-        assert!(
-            stderr.contains(name),
-            "stderr should mention `{name}`, got:\n{stderr}"
-        );
-    }
-}
+// ── Helpers ───────────────────────────────────────────────────────
 
 /// The directory holding the default-run mixed-language fixtures.
 fn defaults_fixture_dir() -> std::path::PathBuf {
     fixture_dir().join("defaults")
 }
-
-// ── DOC001: missing doc comments ──────────────────────────────────
 
 /// The directory holding fix fixtures.
 fn fix_fixture_dir() -> std::path::PathBuf {
@@ -1647,33 +952,13 @@ fn oversized_paragraph_md() -> String {
     format!("# Title\n\n{lines}\nTrailer.\n")
 }
 
-/// The directory holding reorder fixtures.
+/// The reorder fixture root; callers join the language dir (`rust` or
+/// `csharp`) before the fixture name.
 fn reorder_fixture_dir() -> std::path::PathBuf {
     manifest_dir()
         .join("tests")
         .join("fixtures")
         .join("reorder")
-}
-
-/// Run `rust-llm-tidy --include lints <fixture>` and return (stderr, exit_code).
-fn run_check_fixture(name: &str) -> (String, i32) {
-    let path = fixture_dir().join(name);
-    let output = run_command(&["--include", "lints"], &path);
-    (
-        String::from_utf8_lossy(&output.stderr).to_string(),
-        output.status.code().unwrap_or(-1),
-    )
-}
-
-/// Run `rust-llm-tidy --include lints` on a C# fixture and return its
-/// (stderr, exit_code).
-fn run_csharp_fixture(name: &str) -> (String, i32) {
-    let path = csharp_fixture_dir().join(name);
-    let output = run_command(&["--include", "lints"], &path);
-    (
-        String::from_utf8_lossy(&output.stderr).to_string(),
-        output.status.code().unwrap_or(-1),
-    )
 }
 
 /// Run `rust-llm-tidy --include lints` on a lexicon-family fixture and
@@ -1687,14 +972,28 @@ fn run_lexicon_fixture(name: &str) -> (String, i32) {
     )
 }
 
+/// Run `rust-llm-tidy --include lints` on a Python fixture and return its
+/// (stderr, exit_code).
+fn run_python_fixture(name: &str) -> (String, i32) {
+    let path = python_fixture_dir().join(name);
+    let output = run_command(&["--include", "lints"], &path);
+    (
+        String::from_utf8_lossy(&output.stderr).to_string(),
+        output.status.code().unwrap_or(-1),
+    )
+}
+
+/// The directory holding the Rust lint fixtures.
+fn rust_fixture_dir() -> std::path::PathBuf {
+    fixture_dir().join("rust")
+}
+
 /// Create a numbered temporary directory.
 fn temp_dir() -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-lint-dir-{}-{}", pid, seq))
 }
-
-// ── Markdown lint dispatch ────────────────────────────────────────
 
 /// Writes `content` to a numbered temp `.md` file and returns its path.
 fn temp_md(content: &str) -> std::path::PathBuf {
@@ -1703,20 +1002,9 @@ fn temp_md(content: &str) -> std::path::PathBuf {
     path
 }
 
-// ── C# lints: XML doc dialect over the same codes ─────────────────
-
-/// The directory holding the C# lint fixtures.
-fn csharp_fixture_dir() -> std::path::PathBuf {
-    manifest_dir()
-        .join("tests")
-        .join("fixtures")
-        .join("doc")
-        .join("csharp")
-}
-
-/// The directory holding lint fixtures.
-fn fixture_dir() -> std::path::PathBuf {
-    manifest_dir().join("tests").join("fixtures").join("doc")
+/// The directory holding the Python lint fixtures.
+fn python_fixture_dir() -> std::path::PathBuf {
+    fixture_dir().join("python")
 }
 
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
@@ -1732,6 +1020,11 @@ fn temp_file(ext: &str) -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-all-{}-{}.{}", pid, seq, ext))
+}
+
+/// The directory holding the shared, cross-language lint fixtures.
+fn fixture_dir() -> std::path::PathBuf {
+    manifest_dir().join("tests").join("fixtures").join("doc")
 }
 
 /// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.

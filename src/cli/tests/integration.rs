@@ -2,7 +2,7 @@
 //!
 //! Tests are split into two groups:
 //!
-//! 1. Synthetic fixture tests (`tests/fixtures/reorder/*_before.rs` →
+//! 1. Synthetic fixture tests (`tests/fixtures/reorder/rust/*_before.rs` →
 //!    `*_after.rs`): one test per ordering/spacing rule.  Each fixture's
 //!    module header documents the rule and the expected before/after state.
 //!
@@ -14,7 +14,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Run `rust-llm-tidy --include reorder --dry-run` against `<name>_before.rs`
-/// in `tests/fixtures/reorder/`.
+/// in `tests/fixtures/reorder/rust/`.
 ///
 /// Returns `(stdout, stderr, exit, before_path, expected_after_content)`.
 macro_rules! run_fixture {
@@ -22,10 +22,15 @@ macro_rules! run_fixture {
         let fixture_dir = manifest_dir()
             .join("tests")
             .join("fixtures")
-            .join("reorder");
+            .join("reorder")
+            .join("rust");
         let before_path = fixture_dir.join(concat!(stringify!($name), "_before.rs"));
-        let expected_after =
-            include_str!(concat!("fixtures/reorder/", stringify!($name), "_after.rs")).to_string();
+        let expected_after = include_str!(concat!(
+            "fixtures/reorder/rust/",
+            stringify!($name),
+            "_after.rs"
+        ))
+        .to_string();
 
         let (stdout, stderr, exit) = run_dry_run(&before_path);
 
@@ -152,7 +157,8 @@ fn all_after_fixtures_should_be_idempotent_on_rerun() {
     let fixture_dir = manifest_dir()
         .join("tests")
         .join("fixtures")
-        .join("reorder");
+        .join("reorder")
+        .join("rust");
     let mut after_files: Vec<_> = fs::read_dir(&fixture_dir)
         .unwrap()
         .filter_map(|entry| {
@@ -520,7 +526,7 @@ fn extension_flag_rejects_malformed_values() {
 /// `--dry-run`, and verify the file content matches the after fixture.
 #[test]
 fn in_place_write_should_match_after_fixture() {
-    let expected = include_str!("fixtures/reorder/phase_use_stable_after.rs");
+    let expected = include_str!("fixtures/reorder/rust/phase_use_stable_after.rs");
 
     let dir = std::env::temp_dir();
     let pid = std::process::id();
@@ -529,7 +535,7 @@ fn in_place_write_should_match_after_fixture() {
 
     fs::write(
         &tmp,
-        include_str!("fixtures/reorder/phase_use_stable_before.rs"),
+        include_str!("fixtures/reorder/rust/phase_use_stable_before.rs"),
     )
     .unwrap();
 
@@ -766,12 +772,12 @@ fn recursive_directory_should_reorder_every_rs_file() {
     fs::create_dir_all(&nested_dir).unwrap();
     fs::write(
         &root_file,
-        include_str!("fixtures/reorder/phase_use_stable_before.rs"),
+        include_str!("fixtures/reorder/rust/phase_use_stable_before.rs"),
     )
     .unwrap();
     fs::write(
         &nested_file,
-        include_str!("fixtures/reorder/phase_mod_non_test_stable_before.rs"),
+        include_str!("fixtures/reorder/rust/phase_mod_non_test_stable_before.rs"),
     )
     .unwrap();
 
@@ -782,8 +788,8 @@ fn recursive_directory_should_reorder_every_rs_file() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let expected_root = include_str!("fixtures/reorder/phase_use_stable_after.rs");
-    let expected_nested = include_str!("fixtures/reorder/phase_mod_non_test_stable_after.rs");
+    let expected_root = include_str!("fixtures/reorder/rust/phase_use_stable_after.rs");
+    let expected_nested = include_str!("fixtures/reorder/rust/phase_mod_non_test_stable_after.rs");
     let actual_root = fs::read_to_string(&root_file).unwrap();
     let actual_nested = fs::read_to_string(&nested_file).unwrap();
 
@@ -860,7 +866,8 @@ fn reorder_in_place_reports_change_and_writes() {
     let fixture = manifest_dir()
         .join("tests")
         .join("fixtures")
-        .join("reorder");
+        .join("reorder")
+        .join("rust");
     let expected =
         fs::read_to_string(fixture.join("fn_interstitial_comment_travels_with_next_after.rs"))
             .unwrap();
