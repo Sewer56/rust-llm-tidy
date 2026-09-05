@@ -779,7 +779,7 @@ dependencies = [
 
 [[package]]
 name = "rust-llm-tidy-fix"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "memchr",
@@ -805,7 +805,7 @@ dependencies = [
 
 [[package]]
 name = "rust-llm-tidy-lint"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "indoc",
  "rust-llm-tidy-model",
@@ -813,7 +813,7 @@ dependencies = [
 
 [[package]]
 name = "rust-llm-tidy-model"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "ahash",
  "anyhow",
@@ -823,7 +823,7 @@ dependencies = [
 
 [[package]]
 name = "rust-llm-tidy-reorder"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "ahash",
  "anyhow",

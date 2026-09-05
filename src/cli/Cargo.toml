@@ -45,10 +45,10 @@ name = "links"
 harness = false
 
 [dependencies]
-rust-llm-tidy-reorder = { path = "../rust-llm-tidy-reorder", version = "0.1.4" }
-rust-llm-tidy-lint = { path = "../rust-llm-tidy-lint", version = "0.2.1" }
-rust-llm-tidy-model = { path = "../rust-llm-tidy-model", version = "0.3.1" }
-rust-llm-tidy-fix = { path = "../rust-llm-tidy-fix", version = "0.3.0" }
+rust-llm-tidy-reorder = { path = "../rust-llm-tidy-reorder", version = "0.2.0" }
+rust-llm-tidy-lint = { path = "../rust-llm-tidy-lint", version = "0.3.0" }
+rust-llm-tidy-model = { path = "../rust-llm-tidy-model", version = "0.4.0" }
+rust-llm-tidy-fix = { path = "../rust-llm-tidy-fix", version = "0.4.0" }
 rust-llm-tidy-lang = { path = "../rust-llm-tidy-lang", version = "0.1.0" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

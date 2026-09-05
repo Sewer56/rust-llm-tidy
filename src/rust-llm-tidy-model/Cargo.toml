@@ -1,6 +1,6 @@
 [package]
 name = "rust-llm-tidy-model"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
 description = "Shared language-neutral source items, spans, and parse results."
 repository = "https://github.com/Sewer56/rust-llm-tidy"

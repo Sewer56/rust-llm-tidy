@@ -13,9 +13,9 @@ keywords = ["rust", "tree-sitter", "ast", "language", "backend"]
 categories = ["development-tools"]
 
 [dependencies]
-rust-llm-tidy-model = { path = "../rust-llm-tidy-model", version = "0.3.1" }
-rust-llm-tidy-reorder = { path = "../rust-llm-tidy-reorder", version = "0.1.4" }
-rust-llm-tidy-lint = { path = "../rust-llm-tidy-lint", version = "0.2.1" }
+rust-llm-tidy-model = { path = "../rust-llm-tidy-model", version = "0.4.0" }
+rust-llm-tidy-reorder = { path = "../rust-llm-tidy-reorder", version = "0.2.0" }
+rust-llm-tidy-lint = { path = "../rust-llm-tidy-lint", version = "0.3.0" }
 ahash = "0.8"
 anyhow = "1"
 # crate-root discovery for crate-aware visibility narrowing
