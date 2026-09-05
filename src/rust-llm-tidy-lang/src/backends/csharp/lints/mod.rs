@@ -9,7 +9,8 @@
 //! declaration.
 //!
 //! Between collection and emission it computes the can-throw closure
-//! and stamps the `<exception>` facts of every member the closure flags.
+//! and stamps the `<exception>` facts (`exception_scan`) of the
+//! non-private throwing methods and constructors the closure flags.
 //!
 //! Every rule then runs over the collected facts in the same code order
 //! the Rust backend emits (DOC001 through DOC006, then TEST001).
