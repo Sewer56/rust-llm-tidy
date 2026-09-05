@@ -716,6 +716,40 @@ fn first_item_doc_run_stays_attached_under_a_plain_banner() {
     );
 }
 
+/// Splitting same-name methods across nested types preserves all diagnostic fields.
+#[test]
+fn lint_should_preserve_findings_when_same_name_members_have_different_owners() {
+    let sources = [
+        "class C {\n void Helper() { throw new E(); }\n void Helper(int x) {}\n /// <summary>Calls a helper.</summary>\n public void Caller() { obj.Helper(); }\n}",
+        "class C { class Nested {\n void Helper() { throw new E(); } }\n void Helper(int x) {}\n /// <summary>Calls a helper.</summary>\n public void Caller() { obj.Helper(); }\n}",
+    ];
+
+    let findings: Vec<_> = sources
+        .iter()
+        .map(|source| {
+            backend()
+                .lint(&parse(source))
+                .into_iter()
+                .map(|diagnostic| {
+                    (
+                        diagnostic.code,
+                        diagnostic.severity,
+                        diagnostic.line,
+                        diagnostic.item_kind,
+                        diagnostic.item_name,
+                        diagnostic.message,
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    assert_eq!(findings[0], findings[1]);
+    assert_eq!(findings[0].len(), 1);
+    assert_eq!(findings[0][0].0, "DOC002");
+    assert_eq!(findings[0][0].4.as_deref(), Some("Caller"));
+}
+
 // ── Region interaction ───────────────────────────────────────────
 
 /// A block-scoped namespace body reorders like a type body: the nested
