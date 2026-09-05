@@ -1,6 +1,9 @@
 //! C# project-reference scope and source-versioned parse cache for indexed linting.
 
 use crate::paths;
+use quick_xml::XmlVersion;
+use quick_xml::events::Event;
+use quick_xml::reader::Reader;
 use rayon::prelude::*;
 use rust_llm_tidy_lang::backends::CanThrowIndex;
 use rust_llm_tidy_model::parse::ParseResult;
@@ -164,22 +167,7 @@ fn project_scope(inputs: &[PathBuf]) -> anyhow::Result<Vec<PathBuf>> {
         paths::collect_project_files(dir, &["cs"], &mut sources, true)?;
         files.extend(sources.into_iter().filter_map(|p| p.canonicalize().ok()));
 
-        for tag in source.split("<ProjectReference").skip(1) {
-            if !tag.starts_with(char::is_whitespace) {
-                continue;
-            }
-            let Some((tag, _)) = tag.split_once('>') else {
-                continue;
-            };
-            let Some((_, include)) = tag.split_once("Include=\"") else {
-                continue;
-            };
-            let Some((include, _)) = include.split_once('"') else {
-                continue;
-            };
-            if include.contains(['$', '*', '?']) {
-                continue;
-            }
+        for include in literal_project_includes(&source) {
             pending.push(dir.join(include.replace('\\', "/")));
         }
     }
@@ -189,11 +177,47 @@ fn project_scope(inputs: &[PathBuf]) -> anyhow::Result<Vec<PathBuf>> {
     Ok(files)
 }
 
+/// Extract the literal `Include` targets of `<ProjectReference>` elements from
+/// project XML, matching element and attribute local names so namespaces never
+/// hide a reference.
+///
+/// Commented-out references contribute nothing, and targets containing MSBuild
+/// properties or wildcards (`$`, `*`, `?`) are skipped as non-literal. XML
+/// parsing stops at malformed content, keeping the targets read before it.
+fn literal_project_includes(source: &str) -> Vec<String> {
+    let mut reader = Reader::from_str(source);
+
+    // Project fragments may nest or close loosely; only element shape matters here.
+    reader.config_mut().check_end_names = false;
+    let mut includes = Vec::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e) | Event::Empty(e)) => {
+                if e.name().local_name().as_ref() != "ProjectReference" {
+                    continue;
+                }
+                for attr in e.attributes().flatten() {
+                    if attr.key.local_name().as_ref() == "Include"
+                        && let Ok(value) = attr.normalized_value(XmlVersion::Implicit1_0)
+                        && !value.contains(['$', '*', '?'])
+                    {
+                        includes.push(value.into_owned());
+                    }
+                }
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            Ok(_) => {}
+        }
+    }
+    includes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Nearest projects close over literal references without crossing ignored or nested repository boundaries.
+    /// Nearest projects close over literal references without crossing ignored
+    /// or nested repository boundaries.
     #[test]
     fn scope_should_follow_reference_cycles_and_skip_unresolvable_targets() {
         let root = std::env::temp_dir().join(format!("rlt-csharp-scope-{}", std::process::id()));
@@ -247,7 +271,56 @@ mod tests {
         assert_eq!(loose, [root.join("loose/L.cs")]);
     }
 
-    /// Changed sources replace throw evidence while unchanged sources retain their cached syntax tree.
+    /// Include targets survive quote style, spaced equals signs, paired
+    /// elements, prefixed names, backslashes, and malformed tails, while
+    /// commented-out references and MSBuild-variable includes stay out of scope.
+    #[test]
+    fn scope_should_read_xml_includes_and_skip_commented_or_variable_references() {
+        let root = std::env::temp_dir().join(format!("rlt-csharp-xml-{}", std::process::id()));
+        let _guard = Directory(root.clone());
+        for dir in ["a", "b", "c", "commented", "vars"] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        // project_scope canonicalizes its results; align expectations when the
+        // platform temp dir is a symlink (macOS /var -> /private/var).
+        let root = root.canonicalize().unwrap();
+        for path in [
+            "a/A.cs",
+            "b/B.cs",
+            "c/C.cs",
+            "commented/Commented.cs",
+            "vars/V.cs",
+        ] {
+            std::fs::write(root.join(path), "class C {}").unwrap();
+        }
+        // The commented and $(V) projects exist on disk so skipping their
+        // references is observable in the asserted scope.
+        std::fs::write(root.join("b/b.csproj"), "<Project />").unwrap();
+        std::fs::write(root.join("c/c.csproj"), "<Project />").unwrap();
+        std::fs::write(root.join("commented/commented.csproj"), "<Project />").unwrap();
+        std::fs::write(root.join("vars/$(V).csproj"), "<Project />").unwrap();
+        std::fs::write(
+            root.join("a/a.csproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003"
+              xmlns:msb="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- <ProjectReference Include="../commented/commented.csproj" /> -->
+  <ItemGroup>
+    <ProjectReference Include = "..\b\b.csproj"><Project>../b/b.csproj</Project></ProjectReference>
+    <msb:ProjectReference Include='../c/c.csproj' />
+    <ProjectReference Include="../vars/$(V).csproj" />
+  </ItemGroup>
+</Project>
+<ProjectReference Include="../trunc"#,
+        )
+        .unwrap();
+
+        let scope = project_scope(&[root.join("a/A.cs")]).unwrap();
+
+        assert_eq!(scope, ["a/A.cs", "b/B.cs", "c/C.cs"].map(|p| root.join(p)));
+    }
+
+    /// Changed sources replace throw evidence while unchanged sources retain
+    /// their cached syntax tree.
     #[test]
     fn refresh_should_replace_changed_facts_and_reuse_unchanged_parses() {
         let root = std::env::temp_dir().join(format!("rlt-csharp-refresh-{}", std::process::id()));
