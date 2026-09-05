@@ -16,9 +16,7 @@
 
 - Use const generics for compile-time branching such as
   `<const LINE_NUMBERS: bool>`.
-- Use `#[inline]` on small hot-path functions.
 - Prefer `core` over `std` where possible.
-- Stream data instead of loading entire files when possible.
 
 ## Dependencies
 
