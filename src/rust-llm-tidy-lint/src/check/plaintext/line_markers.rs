@@ -64,17 +64,14 @@ pub fn doc_regions(source: &str, ext: &str) -> Vec<DocRegion> {
 }
 
 /// Line-comment markers stripped before measurement, keyed by file extension,
-/// longest marker first. Extensions outside the marker table use no marker, so
-/// the whole file counts as paragraph text.
+/// longest marker first.
+///
+/// Only `rs` carries markers: every other extension measures the whole file
+/// (the markdown family) or routes through its AST or lexicon producer
+/// instead.
 fn markers_for(ext: &str) -> &'static [&'static str] {
     match ext {
         "rs" => &["///", "//!", "//"],
-        "md" => &[],
-        // Rows kept for this producer's own unit tests; pipeline dispatch
-        // routes `cs` text checks through its AST doc-region producer and
-        // runs no other row's tier yet.
-        "cs" | "java" | "js" | "ts" => &["//"],
-        "py" | "sh" => &["#"],
         _ => &[],
     }
 }

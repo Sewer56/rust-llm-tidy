@@ -218,10 +218,11 @@ const C_SHARP: Profile = Profile {
     backend: true,
     text_lints: TextLints::Ast,
 };
-/// Markdown family: every text op plus text-based lints.
+/// Markdown family: every text op plus text-based lints; no comment
+/// prefixes, so tables, fences, and links treat the file as plain markdown.
 const MARKDOWN: Profile = Profile {
     ops: &["tables", "fences", "links", "lints"],
-    prefixes: DOC_LINE_PREFIXES,
+    prefixes: &[],
     default_ops: &["tables", "fences", "links", "lints"],
     backend: false,
     text_lints: TextLints::Prose,
@@ -236,17 +237,14 @@ const PYTHON: Profile = Profile {
     backend: true,
     text_lints: TextLints::Ast,
 };
-/// Rust: every op, pinned to the pipeline's current behavior.
+/// Rust: every op, with the `///`/`//!` doc markers longest first.
 const RUST: Profile = Profile {
     ops: &["tables", "fences", "links", "reorder", "vis", "lints"],
-    prefixes: DOC_LINE_PREFIXES,
+    prefixes: &["///", "//!"],
     default_ops: &["tables", "fences", "links", "reorder", "vis", "lints"],
     backend: true,
     text_lints: TextLints::Ast,
 };
-/// Rust doc-comment markers, longest first; shared by the Rust and markdown
-/// tiers so markdown files keep their current prefix-aware behavior.
-const DOC_LINE_PREFIXES: &[&str] = &["///", "//!"];
 
 /// One extension's profile data: the ops it may run and the comment
 /// prefixes its fix passes use.
@@ -468,7 +466,7 @@ mod tests {
     }
 
     /// The markdown family shares one profile: every text op runs by default,
-    /// with the same doc prefixes `.md` files use today.
+    /// with no comment prefixes (plain markdown).
     #[test]
     fn markdown_family_resolves_full_text_ops() {
         for ext in MD_FAMILY {
@@ -480,7 +478,7 @@ mod tests {
             ["tables", "fences", "links", "lints"].as_slice()
         );
         assert_eq!(MARKDOWN.default_ops, MARKDOWN.ops);
-        assert_eq!(MARKDOWN.prefixes, ["///", "//!"].as_slice());
+        assert!(MARKDOWN.prefixes.is_empty());
         const { assert!(!MARKDOWN.backend) };
     }
 

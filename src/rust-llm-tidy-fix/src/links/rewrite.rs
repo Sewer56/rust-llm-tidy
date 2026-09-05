@@ -5,15 +5,15 @@
 use super::scan::{inline_links, is_reference_definition};
 use std::collections::{HashMap, HashSet};
 
-/// Append hoisted `[text]: url` definitions at the end of one Rust doc-comment
-/// block, each on a new line carrying the block's `prefix`.
+/// Append hoisted `[text]: url` definitions at the end of one comment block,
+/// each on a new line carrying the block's `prefix`.
 ///
 /// Ensures the block ends with a newline so the first definition starts on its
-/// own comment line (a trailing doc line without a newline still yields
+/// own comment line (a trailing comment line without a newline still yields
 /// separate lines).
 ///
-/// Block definitions stay inside the comment so rustdoc still sees a valid,
-/// self-contained comment; they never escape into surrounding code.
+/// Block definitions stay inside the comment; they never escape into
+/// surrounding code.
 ///
 /// See [`needs_blank_before_defs`] for the blank separator line.
 pub(super) fn append_block_definitions(
@@ -113,8 +113,8 @@ pub(super) fn rewrite_links<'a>(
 }
 
 /// Rewrite eligible inline links and report each hoisted occurrence via
-/// `on_rewrite(text, url)` as it is rewritten. The Rust rewrite path uses this
-/// to collect which definitions belong to the enclosing doc-comment block.
+/// `on_rewrite(text, url)` as it is rewritten. The comment-block rewrite path
+/// uses this to collect which definitions belong to the enclosing block.
 pub(super) fn rewrite_links_track<'a, F>(
     prefix: &str,
     body: &'a str,
@@ -151,7 +151,7 @@ pub(super) fn tally_links<'a>(
     }
 }
 
-/// Append one `[text]: url` definition with an optional doc-comment prefix.
+/// Append one `[text]: url` definition with an optional comment prefix.
 #[inline]
 pub(super) fn append_definition(buf: &mut String, prefix: &str, text: &str, url: &str, le: &str) {
     buf.push_str(prefix);
@@ -163,9 +163,10 @@ pub(super) fn append_definition(buf: &mut String, prefix: &str, text: &str, url:
 }
 
 /// The prefix for a blank separator line: the block prefix minus the single
-/// trailing space [`strip_doc_prefix`] keeps, so the line is `///`, not `/// `.
+/// trailing space [`strip_comment_prefix`] keeps, so the line is `///`, not
+/// `/// `.
 ///
-/// [`strip_doc_prefix`]: crate::tables::strip_doc_prefix
+/// [`strip_comment_prefix`]: crate::tables::strip_comment_prefix
 #[inline]
 pub(super) fn blank_line_prefix(prefix: &str) -> &str {
     prefix.strip_suffix(' ').unwrap_or(prefix)

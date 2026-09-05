@@ -166,28 +166,14 @@ mod tests {
 
     // ── True positives ──
 
-    /// Standalone `//`, `#`, `--`, `;`, and `%` comment prose measures
-    /// as one paragraph at the paragraph's first line, for every family
-    /// extension.
+    /// Standalone line-comment prose measures as one paragraph at the
+    /// paragraph's first line, for every extension in the lexicon table
+    /// with that row's own family marker: a row wired to the wrong
+    /// lexicon stays silent, so pin all of them.
     #[test]
-    fn line_comment_prose_measures_per_family() {
-        for (marker, ext) in [
-            ("//", "js"),
-            ("//", "mjs"),
-            ("//", "tsx"),
-            ("#", "bash"),
-            ("--", "sql"),
-            ("--", "lua"),
-            ("--", "hs"),
-            ("--", "elm"),
-            ("--", "ada"),
-            (";", "el"),
-            (";", "clj"),
-            ("%", "tex"),
-            ("%", "erl"),
-            ("%", "m"),
-        ] {
-            let diags = text_checks(&long_comment(marker), ext);
+    fn line_comment_prose_measures_for_every_lexed_extension() {
+        for (ext, lexicon) in families::LEXED_EXTENSIONS {
+            let diags = text_checks(&long_comment(lexicon.line), ext);
             let found = codes(&diags, CODE_PARAGRAPH_SIZE);
             assert_eq!(found.len(), 1, ".{ext}: exactly the comment paragraph");
             assert_eq!(found[0].line, 1, ".{ext}: the first comment line");

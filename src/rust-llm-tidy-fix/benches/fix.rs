@@ -16,13 +16,16 @@ use rust_llm_tidy_fix::fix_tables;
 #[path = "common.rs"]
 mod common;
 
+/// The Rust doc-comment marker family, matching the fixtures' `///` tables.
+const DOC_PREFIXES: &[&str] = &["///", "//!"];
+
 /// Benchmark `fix_tables` over every fixture in both regimes.
 fn fix_pass(c: &mut Criterion) {
     let mut group = c.benchmark_group("fix");
     for (name, source) in common::MD_FIXTURES.iter().chain(common::RS_FIXTURES.iter()) {
         // The canonical (already-aligned) form: realigning it is a no-op, so
         // `fix_tables` borrows the input back unchanged.
-        let canonical = fix_tables(source).into_owned();
+        let canonical = fix_tables(source, DOC_PREFIXES).into_owned();
         // A deliberately misaligned copy: realigning it rebuilds every table.
         let misaligned = common::misalign(source);
 
@@ -30,14 +33,17 @@ fn fix_pass(c: &mut Criterion) {
         // (an Owned result), guarding against a fixture whose tables already
         // survive misaligning unchanged.
         debug_assert!(
-            matches!(fix_tables(&misaligned), std::borrow::Cow::Owned(_)),
+            matches!(
+                fix_tables(&misaligned, DOC_PREFIXES),
+                std::borrow::Cow::Owned(_)
+            ),
             "misalign must produce a table fix_tables will realign: {name}"
         );
 
         group.throughput(Throughput::Bytes(canonical.len() as u64));
         group.bench_function(format!("{name}/aligned"), |bencher| {
             bencher.iter(|| {
-                let out = fix_tables(std::hint::black_box(&canonical));
+                let out = fix_tables(std::hint::black_box(&canonical), DOC_PREFIXES);
                 std::hint::black_box(out);
             });
         });
@@ -45,7 +51,7 @@ fn fix_pass(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(misaligned.len() as u64));
         group.bench_function(format!("{name}/misaligned"), |bencher| {
             bencher.iter(|| {
-                let out = fix_tables(std::hint::black_box(&misaligned));
+                let out = fix_tables(std::hint::black_box(&misaligned), DOC_PREFIXES);
                 std::hint::black_box(out);
             });
         });

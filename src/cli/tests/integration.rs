@@ -976,6 +976,59 @@ fn repo_corpus_dry_run_emits_zero_change_records() {
     );
 }
 
+/// Slash-family code languages keep their TEXT checks through the lexicon,
+/// measured per extension.
+///
+/// `//` prose yields exactly one TEXT001 and one TEXT002; code and string
+/// content stay quiet, and no fix op touches the file.
+#[test]
+fn slash_family_comment_prose_lints_end_to_end() {
+    // Single-line `\n` escapes: the repo's own lexical text checks cannot
+    // see through a multi-line string literal, so physical `//` lines here
+    // would be measured as comment prose (same trick as the fix-crate
+    // tests).
+    let source = concat!(
+        "// filler words pad the paragraph past the two hundred forty limit\n",
+        "// filler words pad the paragraph past the two hundred forty limit\n",
+        "// filler words pad the paragraph past the two hundred forty limit\n",
+        "// filler words pad the paragraph past the two hundred forty limit\n",
+        "// this comment line is deliberately made far longer than eighty characters so the check fires\n",
+        "class C {\n",
+        "    String s = \"// not a comment: filler words stay quiet here\";\n",
+        "}\n",
+    );
+    for ext in [
+        "java", "c", "cc", "cpp", "h", "hpp", "go", "ts", "tsx", "js", "mjs", "kt", "php", "dart",
+        "scala", "swift", "zig",
+    ] {
+        let file = temp_file_ext(ext);
+        fs::write(&file, source).unwrap();
+        let out = run_command(&[], &file);
+        let stderr = strip_path_prefix(&String::from_utf8_lossy(&out.stderr), &file);
+        let _ = fs::remove_file(&file);
+
+        assert_eq!(
+            out.status.code(),
+            Some(1),
+            ".{ext}: the TEXT001 error must fail the run: {stderr}"
+        );
+        assert_eq!(
+            stderr.matches("TEXT001").count(),
+            1,
+            ".{ext}: exactly the comment paragraph: {stderr}"
+        );
+        assert_eq!(
+            stderr.matches("TEXT002").count(),
+            1,
+            ".{ext}: exactly the over-long comment line: {stderr}"
+        );
+        assert!(
+            !stderr.contains("success["),
+            ".{ext}: no fix op changes this file: {stderr}"
+        );
+    }
+}
+
 /// An already-sorted file (callers before callees) should be unchanged.
 #[test]
 fn sorted_file_should_roundtrip_unchanged() {

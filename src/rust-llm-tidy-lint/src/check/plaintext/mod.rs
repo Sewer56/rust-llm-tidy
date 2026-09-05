@@ -462,9 +462,9 @@ mod tests {
         assert_eq!(doc.lines[0].text, "note");
     }
 
-    // ── Marker table: language independence ──
+    // ── Marker table ──
 
-    // Markdown has no marker: every line is measured.
+    // Marker-less extensions (the markdown family) measure every line.
     #[test]
     fn analyze_keeps_all_markdown_lines() {
         let source = indoc! {"
@@ -475,30 +475,6 @@ mod tests {
         let doc = analyze(source, "md");
         assert_eq!(doc.lines.len(), 3);
         assert_eq!(doc.lines[0].text, "# Title");
-    }
-
-    // `cs`-style `//` comments strip through the same path as Rust.
-    #[test]
-    fn analyze_strips_cs_style_marker() {
-        let source = indoc! {"
-            // cs comment
-            var x = 1;
-        "};
-        let doc = analyze(source, "cs");
-        assert_eq!(doc.lines.len(), 1);
-        assert_eq!(doc.lines[0].text, "cs comment");
-    }
-
-    // `py`-style `#` comments strip through the same path.
-    #[test]
-    fn analyze_strips_py_style_marker() {
-        let source = indoc! {"
-            # py comment
-            x = 1
-        "};
-        let doc = analyze(source, "py");
-        assert_eq!(doc.lines.len(), 1);
-        assert_eq!(doc.lines[0].text, "py comment");
     }
 
     // ── Paragraph segmentation ──

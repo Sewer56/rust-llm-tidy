@@ -173,13 +173,12 @@ pub(crate) fn check_file(
 /// Fix table alignment, nested fence delimiters, and repeated inline links in a
 /// single file.
 ///
-/// Reads the source, runs [`fix::fix_tables_for`], [`fix::fix_fences_for`],
-/// then [`fix::fix_links`] (or [`fix::fix_links_with_min`] when
-/// `links_min_occurrences` exceeds 1).
+/// Reads the source, runs [`fix::fix_tables`], [`fix::fix_fences`], then
+/// [`fix::fix_links`] with the configured `links_min_occurrences` threshold.
 ///
 /// Each pass is gated by the file's [`langs::Profile`] against the active
-/// rule selection: an op the profile never allows never runs, and the table
-/// and fence passes strip and re-apply the profile's comment prefixes.
+/// rule selection: an op the profile never allows never runs, and every pass
+/// strips and re-applies the profile's comment prefixes.
 ///
 /// Writes the result back via [`io::atomic_write`] unless `--dry-run` is
 /// given.
@@ -209,7 +208,7 @@ pub(crate) fn fix_file(
     let mut change_records = Vec::new();
     if profile.op_enabled("tables", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        match fix::fix_tables_for(&prior, profile.prefixes) {
+        match fix::fix_tables(&prior, profile.prefixes) {
             Cow::Owned(after) => {
                 change_records.push(changes::table_changes());
                 out = after;
@@ -219,7 +218,7 @@ pub(crate) fn fix_file(
     }
     if profile.op_enabled("fences", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        let outcome = fix::fix_fences_for(&prior, profile.prefixes);
+        let outcome = fix::fix_fences(&prior, profile.prefixes);
         match outcome.text {
             Cow::Owned(after) => {
                 change_records.extend(changes::fence_changes(&outcome.anchors));
@@ -230,13 +229,7 @@ pub(crate) fn fix_file(
     }
     if profile.op_enabled("links", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        // Threshold 1 is the unchanged default: reuse `fix_links`; higher
-        // thresholds delegate to `fix_links_with_min`.
-        let result = if links_min_occurrences <= 1 {
-            fix::fix_links(&prior)
-        } else {
-            fix::fix_links_with_min(&prior, links_min_occurrences)
-        };
+        let result = fix::fix_links(&prior, profile.prefixes, links_min_occurrences);
         match result {
             (Cow::Owned(after), pairs) => {
                 change_records.extend(changes::link_changes(&pairs));

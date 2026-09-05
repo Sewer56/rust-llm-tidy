@@ -8,15 +8,16 @@
 //! The outer (depth-0) marker is always preserved.
 //!
 //! This mirrors the doc-comment handling of [`crate::tables::fix_tables`]: a
-//! leading comment prefix is stripped, the fence is processed, and the prefix
-//! is re-applied. [`fix_fences`] uses the Rust `///` / `//!` doc markers;
-//! [`fix_fences_for`] takes any single family of line-comment markers
-//! (`//`, `#`, `--`, `;`, `%`, ...).
+//! leading comment prefix from the caller's marker family is stripped, the
+//! fence is processed, and the prefix is re-applied.
+//!
+//! Rust callers pass the `///` / `//!` doc markers; an empty family handles
+//! plain markdown.
 //!
 //! The function is idempotent: a document already using outer-backtick /
 //! inner-tilde alternation is returned unchanged (as a borrowed [`Cow`]).
 
-use crate::tables::{DOC_PREFIXES, split_terminator, strip_comment_prefix};
+use crate::tables::{split_terminator, strip_comment_prefix};
 use crate::{FixAnchor, FixKind, FixOutcome};
 use scan::is_fence_candidate;
 use std::borrow::Cow;
@@ -35,37 +36,12 @@ struct OpenFence {
     expected_marker: char,
 }
 
-/// Rewrite nested markdown fences to alternate backtick/tilde markers.
-///
-/// Only fences nested inside another fence are rewritten; the outer
-/// (depth-0) fence keeps its original marker.
-///
-/// Run lengths, info strings, and any `///` / `//!` doc-comment prefix are
-/// preserved. When no fence changes, the outcome's `text` borrows the
-/// original buffer back (idempotent).
-///
-/// Each flipped opener/closer delimiter line contributes one [`FixAnchor`]
-/// at that line.
-///
-/// Delegates to [`fix_fences_for`] with the Rust doc-comment markers
-/// `["///", "//!"]`.
-///
-/// # Arguments
-///
-/// - `input`: the markdown (or Rust source with `///` / `//!` doc comments)
-///   to scan for nested fenced code blocks.
-pub fn fix_fences(input: &str) -> FixOutcome<'_> {
-    fix_fences_for(input, DOC_PREFIXES)
-}
-
 /// Rewrite nested markdown fences to alternate markers for one line-comment
 /// prefix family.
 ///
-/// Generalized form of [`fix_fences`]: comment lines are recognized by the
-/// markers in `prefixes` instead of the fixed Rust `///` / `//!` pair.
-///
-/// The matched marker, its indent, and one separating space (when present)
-/// are preserved on every rewritten delimiter line.
+/// Comment lines are recognized by the markers in `prefixes`: the matched
+/// marker, its indent, and one separating space (when present) are preserved
+/// on every rewritten delimiter line.
 ///
 /// Only fences nested inside another fence are rewritten; the outer
 /// (depth-0) fence keeps its original marker.
@@ -86,14 +62,14 @@ pub fn fix_fences(input: &str) -> FixOutcome<'_> {
 /// # Example
 ///
 /// ```rust
-/// use rust_llm_tidy_fix::fix_fences_for;
+/// use rust_llm_tidy_fix::fix_fences;
 ///
 /// // A nested fence inside `#` comments flips to the alternate marker.
 /// let input = "# ```text\n# ```rust\n# inner\n# ```\n# ```\n";
-/// let out = fix_fences_for(input, &["#"]);
+/// let out = fix_fences(input, &["#"]);
 /// assert_eq!(&*out.text, "# ```text\n# ~~~rust\n# inner\n# ~~~\n# ```\n");
 /// ```
-pub fn fix_fences_for<'a>(input: &'a str, prefixes: &[&str]) -> FixOutcome<'a> {
+pub fn fix_fences<'a>(input: &'a str, prefixes: &[&str]) -> FixOutcome<'a> {
     // Fast path: no fence markers anywhere means nothing can change.
     if !input.contains('`') && !input.contains('~') {
         return FixOutcome {
@@ -111,7 +87,7 @@ pub fn fix_fences_for<'a>(input: &'a str, prefixes: &[&str]) -> FixOutcome<'a> {
     // The two costs that remain are the marker presence check above and a
     // cheap per-line scan.
     //
-    // Because `fix_fences_for` only swaps `` ` `` <-> `~` marker characters,
+    // Because `fix_fences` only swaps `` ` `` <-> `~` marker characters,
     // the output length always equals `input.len()`, so
     // `String::with_capacity` never reallocates once allocated.
     let mut out: Option<String> = None;
@@ -267,10 +243,13 @@ mod tests {
     use super::*;
     use std::borrow::Cow;
 
+    /// The Rust doc-comment marker family the `rs` tier passes.
+    const DOC_PREFIXES: &[&str] = &["///", "//!"];
+
     #[test]
     fn no_fence_returns_borrowed() {
         let input = "hello world\nno fences here\n";
-        let out = fix_fences(input);
+        let out = fix_fences(input, DOC_PREFIXES);
         assert!(matches!(out.text, Cow::Borrowed(_)));
         assert!(out.anchors.is_empty(), "no fence -> no anchor");
         assert_eq!(&*out.text, input);
@@ -295,7 +274,7 @@ inner
 ~~~
 ```
 ";
-        let out = fix_fences(input);
+        let out = fix_fences(input, DOC_PREFIXES);
         assert_eq!(
             &*out.text, expected,
             "inner backticks should flip to tildes"
@@ -319,7 +298,7 @@ inner
 /// ~~~
 /// ```
 ";
-        let out = fix_fences(input);
+        let out = fix_fences(input, DOC_PREFIXES);
         assert_eq!(&*out.text, expected, "doc-comment prefix must be preserved");
     }
 
@@ -333,7 +312,7 @@ inner
         // runs.
         let input = "```text\ntext\n```rust\ninner\n```\n```\n";
         let expected = "```text\ntext\n~~~rust\ninner\n~~~\n```\n";
-        let out = fix_fences(input);
+        let out = fix_fences(input, DOC_PREFIXES);
         assert_eq!(
             &*out.text, expected,
             "inner backticks should flip to tildes"
@@ -365,7 +344,7 @@ inner
 ```
 ~~~
 ";
-        let out = fix_fences(input);
+        let out = fix_fences(input, DOC_PREFIXES);
         assert!(
             matches!(out.text, Cow::Borrowed(_)),
             "already-alternating input should be borrowed"
@@ -392,7 +371,7 @@ inner
 ```
 ~~~
 ";
-        let out = fix_fences(input);
+        let out = fix_fences(input, DOC_PREFIXES);
         assert_eq!(
             &*out.text, expected,
             "inner backtick under tilde root stays backtick (already canonical)"
@@ -418,7 +397,7 @@ inner
 ~~~~
 ```
 ";
-        let out = fix_fences(input);
+        let out = fix_fences(input, DOC_PREFIXES);
         assert_eq!(&*out.text, expected, "run length must be preserved");
     }
 
@@ -432,7 +411,7 @@ inner
 ~~~
 ```
 ";
-        let out = fix_fences(input);
+        let out = fix_fences(input, DOC_PREFIXES);
         assert!(
             out.text.contains("~~~rust,no_run"),
             "info string must be preserved:\n{}",
@@ -450,8 +429,8 @@ inner
 ~~~
 ```
 ";
-        let once = fix_fences(input).text.into_owned();
-        let twice = fix_fences(&once).text.into_owned();
+        let once = fix_fences(input, DOC_PREFIXES).text.into_owned();
+        let twice = fix_fences(&once, DOC_PREFIXES).text.into_owned();
         assert_eq!(twice, once, "fix_fences must be idempotent");
     }
 
@@ -466,7 +445,7 @@ inner
 ~~~
 ```
 ";
-        let out = fix_fences(input);
+        let out = fix_fences(input, DOC_PREFIXES);
         assert!(
             matches!(out.text, Cow::Borrowed(_)),
             "canonical outer-backtick/inner-tilde input should be borrowed"
@@ -495,7 +474,7 @@ deep
 ~~~
 ```
 ";
-        let out = fix_fences(input);
+        let out = fix_fences(input, DOC_PREFIXES);
         assert_eq!(
             &*out.text, expected,
             "depth-2 fences should reuse the root marker (backtick), not a third alternation"
@@ -512,7 +491,7 @@ deep
         // would desync the nesting stack).
         let input = "\u{c}```text\n\u{c}```rust\n\u{c}```\n```\n";
         let expected = "\u{c}```text\n\u{c}~~~rust\n\u{c}~~~\n```\n";
-        let out = fix_fences(input);
+        let out = fix_fences(input, DOC_PREFIXES);
         assert_eq!(
             &*out.text, expected,
             "form-feed-prefixed fences must be processed like space-prefixed ones"
@@ -664,7 +643,7 @@ deep
             "café and code\n```text\n```\n",
         ];
         for &input in cases {
-            let got = fix_fences(input);
+            let got = fix_fences(input, DOC_PREFIXES);
             let want = fix_fences_ref(input);
             assert_eq!(
                 &*got.text, &*want,
@@ -676,8 +655,8 @@ deep
                 "Cow variant divergence from bc51750 for input {input:?}"
             );
             // The optimized version must remain idempotent on each input.
-            let once = fix_fences(input).text.into_owned();
-            let twice = fix_fences(&once).text.into_owned();
+            let once = fix_fences(input, DOC_PREFIXES).text.into_owned();
+            let twice = fix_fences(&once, DOC_PREFIXES).text.into_owned();
             assert_eq!(twice, once, "not idempotent for input {input:?}");
         }
     }
@@ -733,7 +712,7 @@ deep
             for _ in 0..n {
                 input.push_str(frags[(next() as usize) % frags.len()]);
             }
-            let got = fix_fences(&input);
+            let got = fix_fences(&input, DOC_PREFIXES);
             let want = fix_fences_ref(&input);
             assert_eq!(
                 &*got.text, &*want,
@@ -756,7 +735,7 @@ deep
         // reuses the segment's terminator).
         let input = "/// ```text\r\n/// ```rust\r\n/// inner\r\n/// ```\r\n/// ```\r\n";
         let expected = "/// ```text\r\n/// ~~~rust\r\n/// inner\r\n/// ~~~\r\n/// ```\r\n";
-        let out = fix_fences(input);
+        let out = fix_fences(input, DOC_PREFIXES);
         assert_eq!(
             &*out.text, expected,
             "inner flips to tildes, CRLF preserved"
@@ -782,7 +761,7 @@ deep
         );
     }
 
-    // Prefix-family coverage for `fix_fences_for`. Inputs are built with
+    // Prefix-family coverage for `fix_fences`. Inputs are built with
     // `format!` from single-line `\n`-escaped templates so the repo's own
     // `fix_fences` lint hook cannot canonicalize the literals first (same
     // trick as the tests above).
@@ -811,7 +790,7 @@ deep
                 "{m} ```text\n{m} ~~~rust\n{m} inner\n{m} ~~~\n{m} ```\n",
                 m = marker
             );
-            let out = fix_fences_for(&input, &[marker]);
+            let out = fix_fences(&input, &[marker]);
             assert_eq!(
                 &*out.text, expected,
                 "fences inside {label} comments must flip with prefix kept"
@@ -831,8 +810,8 @@ deep
                 "flipped opener and closer anchor their lines for {label}"
             );
             let once = out.text.into_owned();
-            let twice = fix_fences_for(&once, &[marker]).text.into_owned();
-            assert_eq!(twice, once, "fix_fences_for must be idempotent for {label}");
+            let twice = fix_fences(&once, &[marker]).text.into_owned();
+            assert_eq!(twice, once, "fix_fences must be idempotent for {label}");
         }
     }
 
@@ -845,7 +824,7 @@ deep
                 "{m} ```text\r\n{m} ```rust\r\n{m} inner\r\n{m} ```\r\n{m} ```\r\n",
                 m = marker
             );
-            let out = fix_fences_for(&input, &[marker]);
+            let out = fix_fences(&input, &[marker]);
             let flipped_closer = format!("{marker} ~~~\r\n");
             assert!(
                 out.text.contains(flipped_closer.as_str()),
@@ -868,7 +847,7 @@ deep
         // and no fence would be recognized.
         let input = "/// ```text\n/// ```rust\n/// ```\n/// ```\n";
         let expected = "/// ```text\n/// ~~~rust\n/// ~~~\n/// ```\n";
-        let out = fix_fences_for(input, &["///", "//"]);
+        let out = fix_fences(input, &["///", "//"]);
         assert_eq!(&*out.text, expected, "`///` must win over `//`");
     }
 
@@ -877,7 +856,7 @@ deep
         // `&[]` is plain-markdown mode: no marker is stripped, so the `///`
         // lines are not fence candidates and must come back verbatim.
         let input = "/// ```text\n/// ```rust\n/// inner\n/// ```\n/// ```\n";
-        let out = fix_fences_for(input, &[]);
+        let out = fix_fences(input, &[]);
         assert_eq!(
             &*out.text, input,
             "an empty family must disable prefix handling"
