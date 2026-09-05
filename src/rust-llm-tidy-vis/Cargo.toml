@@ -13,12 +13,8 @@ keywords = ["rust", "tree-sitter", "visibility", "refactor", "lint"]
 categories = ["development-tools"]
 
 [dependencies]
-# `narrow_vis_in_tree` and `build_module_tree` walk a tree-sitter CST directly
-# (byte offsets, no line/column conversion), so this crate does not depend on
-# `rust-llm-tidy-model` (whose gap-anchored span extraction and item
-# classification it would discard). Parses with the `tree-sitter-rust` grammar.
+rust-llm-tidy-lang = { path = "../rust-llm-tidy-lang", version = "0.1.0" }
 anyhow = "1"
 tree-sitter = "0.26"
-tree-sitter-rust = "0.24"
 ahash = "0.8"
 cargo_metadata = "0.23" # crate-root discovery for cross-file vis (P1); pin/adjust to latest 0.x

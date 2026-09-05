@@ -5,8 +5,7 @@
 //! and (for functions) whether it returns `Result`. These classifications feed
 //! the parse orchestration that builds source items.
 
-use crate::parse::item::VisibilityTier;
-use crate::parse::kind::ItemKind;
+use rust_llm_tidy_model::parse::{ItemKind, VisibilityTier};
 use tree_sitter::Node;
 
 /// Result of classifying a single top-level item.
@@ -51,56 +50,6 @@ impl<'a> PendingTrivia<'a> {
     pub(super) fn attached_start(&self) -> Option<usize> {
         self.nodes.first().map(|n| n.start_byte())
     }
-}
-
-/// Extract the `string_content` node of a `#[doc = "..."]` attribute
-/// item: the literal's text between its quotes, positioned where the
-/// text starts in the file.
-///
-/// Shared by doc-comment extraction here and the lang crate's Rust
-/// doc-region producer, which reads the value's lines from the node's
-/// text and start row.
-///
-/// Returns `None` when `item` is not a doc attribute with a single
-/// string value:
-///
-/// - a list form (`#[doc(hidden)]`) or any attribute named other than
-///   `doc`,
-/// - a scoped path (`#[path::doc = "..."]`),
-/// - a value that is not one string literal.
-///
-/// # Arguments
-///
-/// - `item` - the `attribute_item` node to read.
-/// - `source` - the full source text for text extraction.
-pub fn doc_attribute_content<'a>(item: Node<'a>, source: &str) -> Option<Node<'a>> {
-    let attr = child_of_kind(item, "attribute")?;
-    // The attribute path must be exactly `doc` (a plain identifier, not scoped).
-    let path = attr_path(attr)?;
-    if path.kind() != "identifier" || path.utf8_text(source.as_bytes()).ok()? != "doc" {
-        return None;
-    }
-    // `#[doc = "..."]` carries the literal in the `value` field; list forms
-    // like `#[doc(hidden)]` instead have an `arguments` `token_tree` and are
-    // not doc-comment lines.
-    let value = attr.child_by_field_name("value")?;
-    if value.kind() != "string_literal" {
-        return None;
-    }
-    child_of_kind(value, "string_content")
-}
-
-/// True when a `line_comment`/`block_comment` node is an OUTER doc comment
-/// (`///` or `/** */`), i.e. it has an `outer` field.
-///
-/// Shared by attachment classification here and the lang crate's Rust
-/// doc-region producer.
-///
-/// # Arguments
-///
-/// - `node` - the `line_comment` or `block_comment` node to test.
-pub fn is_outer_doc(node: Node) -> bool {
-    has_field(node, "outer")
 }
 
 /// Classify a top-level item node into a [`Classification`].
@@ -331,6 +280,46 @@ pub(super) fn classify_item<'a>(
     }
 }
 
+/// Extract the `string_content` node of a `#[doc = "..."]` attribute
+/// item: the literal's text between its quotes, positioned where the
+/// text starts in the file.
+///
+/// Shared by doc-comment extraction here and the lang crate's Rust
+/// doc-region producer, which reads the value's lines from the node's
+/// text and start row.
+///
+/// Returns `None` when `item` is not a doc attribute with a single
+/// string value:
+///
+/// - a list form (`#[doc(hidden)]`) or any attribute named other than
+///   `doc`,
+/// - a scoped path (`#[path::doc = "..."]`),
+/// - a value that is not one string literal.
+///
+/// # Arguments
+///
+/// - `item` - the `attribute_item` node to read.
+/// - `source` - the full source text for text extraction.
+pub(in crate::backends::rust) fn doc_attribute_content<'a>(
+    item: Node<'a>,
+    source: &str,
+) -> Option<Node<'a>> {
+    let attr = child_of_kind(item, "attribute")?;
+    // The attribute path must be exactly `doc` (a plain identifier, not scoped).
+    let path = attr_path(attr)?;
+    if path.kind() != "identifier" || path.utf8_text(source.as_bytes()).ok()? != "doc" {
+        return None;
+    }
+    // `#[doc = "..."]` carries the literal in the `value` field; list forms
+    // like `#[doc(hidden)]` instead have an `arguments` `token_tree` and are
+    // not doc-comment lines.
+    let value = attr.child_by_field_name("value")?;
+    if value.kind() != "string_literal" {
+        return None;
+    }
+    child_of_kind(value, "string_content")
+}
+
 /// True when `node` is attachable leading trivia: an outer doc comment
 /// (`///`) or an attribute item (`#[...]`). Inner docs (`//!`) and plain
 /// comments (`//`) are NOT attachable - they are transparent to attachment.
@@ -354,6 +343,19 @@ pub(super) fn is_transparent_comment(node: Node) -> bool {
         // top-level statements are handled by `collect_item_entries` instead.
         matches!(node.kind(), "empty_statement" | "shebang")
     }
+}
+
+/// True when a `line_comment`/`block_comment` node is an OUTER doc comment
+/// (`///` or `/** */`), i.e. it has an `outer` field.
+///
+/// Shared by attachment classification here and the lang crate's Rust
+/// doc-region producer.
+///
+/// # Arguments
+///
+/// - `node` - the `line_comment` or `block_comment` node to test.
+pub(in crate::backends::rust) fn is_outer_doc(node: Node) -> bool {
+    has_field(node, "outer")
 }
 
 /// Classify a visibility modifier child of an item node into a tier.

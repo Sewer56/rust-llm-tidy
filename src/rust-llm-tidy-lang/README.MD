@@ -6,7 +6,7 @@ Each language implements the [`LanguageBackend`] trait: its tree-sitter
 grammar, its parse into the shared item model, and its AST ops. The
 extension registry maps a file extension to its backend.
 
-The Rust backend reuses the model crate's parse; its lint pass runs the
+The Rust backend owns its grammar and item parser; its lint pass runs the
 item rules in its `lints` module plus the Ast text tier.
 
 ## Installation
@@ -34,8 +34,8 @@ assert_eq!(parsed.items.len(), 1);
   backend; unregistered extensions get none and run no AST ops.
 - **Backends** - All emit the model crate's [`ParseResult`] shape, so
   reorder and lint passes share one item model.
-- **Rust parse reuse** - The `rs` backend reuses the model crate's
-  tree-sitter-rust grammar and parse function.
+- **Rust parsing** - The `rs` backend owns the tree-sitter-rust grammar,
+  item classification, and comment-pinned span extraction.
 
 ## License
 

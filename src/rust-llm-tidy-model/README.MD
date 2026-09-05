@@ -1,10 +1,9 @@
 # rust-llm-tidy-model
 
-Shared Rust source model used by the `rust-llm-tidy-reorder` and
+Shared language-neutral source model used by the `rust-llm-tidy-reorder` and
 `rust-llm-tidy-lint` tooling.
 
-It parses a Rust source file with [`syn`] and exposes a flat list of top-level
-[`SourceItem`]s, each carrying:
+Language backends produce top-level [`SourceItem`]s, each carrying:
 
 - its byte span, kind, name, and visibility tier
 - leading doc comments
@@ -14,26 +13,28 @@ It parses a Rust source file with [`syn`] and exposes a flat list of top-level
 It also provides atomic file I/O and a line-multiset safety check.
 
 This crate contains no reordering or checking logic of its own; it holds only
-the shared parsing primitives.
+the shared source data. The `rust-llm-tidy-lang` crate owns language grammars
+and parsing.
 
 ## Installation
 
 ```toml
 [dependencies]
-rust-llm-tidy-model = "0.1.1"
+rust-llm-tidy-model = "0.3.1"
+rust-llm-tidy-lang = "0.1.0"
 ```
 
 ## Usage
 
 ```rust
-use rust_llm_tidy_model::parse;
+use rust_llm_tidy_lang::{LanguageBackend, RustBackend};
 
 let source = r#"
 pub fn main() {}
 fn helper() {}
 "#;
 
-let parsed = parse::parse_source(source).unwrap();
+let parsed = RustBackend.parse(source).unwrap();
 for item in &parsed.items {
     println!("{:?} {:?} vis={:?}", item.kind(), item.name(), item.visibility());
 }
@@ -41,14 +42,10 @@ for item in &parsed.items {
 
 ## Features
 
-- **Parse** - Extract top-level items (fn, struct, enum, impl, trait, use,
-  const, static, mod, type, union) with span ranges and comment pinning.
-- **Visibility** - Classify every named item as `pub`, `pub(crate)`/restricted,
-  or private.
-- **Docs** - Capture each item's leading `///` doc comments.
-- **Function details** - For functions: named parameters (excluding the
-  receiver), whether the return type is `Result`, and whether the function
-  carries a `#[test]` attribute.
+- **Parse results** - Store backend-produced items, source text, syntax
+  trees, and preamble/trailer offsets.
+- **Item metadata** - Store spans, visibility, documentation, function
+  details, and in-type members.
 - **Safety** - Verify line-multiset equality between original and transformed
   output.
 - **Line endings** - Detect the source's dominant line ending (`\r\n` or
@@ -59,6 +56,5 @@ for item in &parsed.items {
 
 Licensed under [Apache 2.0].
 
-[`syn`]: https://docs.rs/syn
 [`SourceItem`]: https://docs.rs/rust-llm-tidy-model/latest/rust_llm_tidy_model/parse/struct.SourceItem.html
 [Apache 2.0]: ../../LICENSE

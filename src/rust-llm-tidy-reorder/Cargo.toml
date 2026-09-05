@@ -20,3 +20,4 @@ ahash = "0.8"
 derive_more = { version = "2", features = ["constructor"] }
 
 [dev-dependencies]
+rust-llm-tidy-lang = { path = "../rust-llm-tidy-lang", version = "0.1.0" }

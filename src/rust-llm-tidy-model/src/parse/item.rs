@@ -121,10 +121,7 @@ impl ParseResult {
     /// Create a parse result from its parts.
     ///
     /// Language backends use this to emit the shared item shape from their
-    /// own grammar's tree; [`parse_source`] is
-    /// the Rust producer.
-    ///
-    /// [`parse_source`]: crate::parse::parse_source
+    /// own grammar's tree.
     ///
     /// # Arguments
     ///
@@ -335,26 +332,34 @@ impl fmt::Debug for ParseResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::parse_source;
 
     /// New items carry region `0` and no members; the builders override
     /// both. The Rust parse relies on the defaults (no preprocessor
     /// conditionals, no in-type reordering).
     #[test]
     fn region_and_members_default_then_override() {
-        let parsed = parse_source("fn a() {}\n").unwrap();
-
-        assert_eq!(parsed.items[0].region(), 0, "region defaults to 0");
-        assert!(
-            parsed.items[0].members().is_empty(),
-            "no members by default"
+        let item = SourceItem::new(
+            0,
+            10,
+            1,
+            ItemKind::Fn,
+            Some("a".into()),
+            None,
+            false,
+            false,
+            false,
+            Some(VisibilityTier::Private),
+            Vec::new(),
+            false,
+            Vec::new(),
+            false,
         );
 
+        assert_eq!(item.region(), 0, "region defaults to 0");
+        assert!(item.members().is_empty(), "no members by default");
+
         let member = TypeMember::new(9, 18, 2, ItemKind::Fn, Some("helper".into()));
-        let item = parsed.items[0]
-            .clone()
-            .with_region(2)
-            .with_members(vec![member]);
+        let item = item.with_region(2).with_members(vec![member]);
 
         assert_eq!(item.region(), 2);
         assert_eq!(item.members().len(), 1);

@@ -22,11 +22,12 @@
 //!
 //! [`DocRegion`]: rust_llm_tidy_lint::check::DocRegion
 
+use super::parse::{doc_attribute_content, is_outer_doc};
 use rust_llm_tidy_lint::Diagnostic;
 use rust_llm_tidy_lint::check::{
     Dialect, DocRegion, RegionLine, line_marker_regions, run_region_checks,
 };
-use rust_llm_tidy_model::parse::{ParseResult, doc_attribute_content, is_outer_doc};
+use rust_llm_tidy_model::parse::ParseResult;
 
 /// One measured doc node from the tree walk.
 enum DocNode<'a> {
@@ -281,7 +282,7 @@ mod tests {
 
     /// Parses `source` as Rust and runs its text checks.
     fn checks(source: &str) -> Vec<Diagnostic> {
-        text_checks(&rust_llm_tidy_model::parse::parse_source(source).unwrap())
+        text_checks(&super::super::parse::parse_source(source).unwrap())
     }
 
     /// The diagnostics carrying `code`.
@@ -319,7 +320,7 @@ mod tests {
              fn hidden() {{}}\n"
         );
 
-        let parsed = rust_llm_tidy_model::parse::parse_source(&source).unwrap();
+        let parsed = super::super::parse::parse_source(&source).unwrap();
         let producer = text_checks(&parsed);
         assert!(
             !producer.is_empty(),

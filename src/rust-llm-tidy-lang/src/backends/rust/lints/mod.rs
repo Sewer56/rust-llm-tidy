@@ -171,7 +171,8 @@ fn section_body(docs: &[String], start: usize) -> Vec<&str> {
 
 #[cfg(test)]
 mod tests {
-    use rust_llm_tidy_model::parse::{self, SourceItem};
+    use crate::backends::rust::parse;
+    use rust_llm_tidy_model::parse::SourceItem;
 
     /// Parse `source` and return its first [`SourceItem`].
     ///

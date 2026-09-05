@@ -141,7 +141,7 @@ impl ReorderProfile for RustProfile {
 mod tests {
     use super::*;
     use ahash::AHashSet;
-    use rust_llm_tidy_model::parse::parse_source;
+    use rust_llm_tidy_lang::{LanguageBackend, RustBackend};
 
     /// The file's macro-definition names, mirroring the engine's set.
     fn macro_names_of(parsed: &rust_llm_tidy_model::parse::ParseResult) -> AHashSet<&str> {
@@ -165,7 +165,7 @@ mod tests {
             "mod file_tests;\n",
             "mod helpers {}\n",
         );
-        let parsed = parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let macro_names = macro_names_of(&parsed);
         let ctx = PhaseContext {
             macro_names: &macro_names,
@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn macro_invocation_routes_by_local_definition() {
         let source = "a!();\nprintln!(\"x\");\nmacro_rules! a { () => {}; }\n";
-        let parsed = parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let macro_names = macro_names_of(&parsed);
         let ctx = PhaseContext {
             macro_names: &macro_names,
@@ -210,7 +210,7 @@ mod tests {
             "impl St {}\n",
             "fn f() {}\n",
         );
-        let parsed = parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let macro_names = macro_names_of(&parsed);
         let ctx = PhaseContext {
             macro_names: &macro_names,

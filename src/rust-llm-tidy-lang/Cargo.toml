@@ -18,5 +18,7 @@ rust-llm-tidy-reorder = { path = "../rust-llm-tidy-reorder", version = "0.1.4" }
 rust-llm-tidy-lint = { path = "../rust-llm-tidy-lint", version = "0.2.1" }
 anyhow = "1"
 tree-sitter = "0.26"
+tree-sitter-rust = "0.24"
+memchr = "2"
 tree-sitter-c-sharp = "0.23"
 tree-sitter-python = "0.25"

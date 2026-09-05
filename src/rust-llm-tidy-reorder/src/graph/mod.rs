@@ -475,6 +475,7 @@ fn toposort_positions(
 mod tests {
     use super::test_profiles::MembersFirstProfile;
     use super::*;
+    use rust_llm_tidy_lang::{LanguageBackend, RustBackend};
 
     /// Independent `macro_rules!` definitions are sorted alphabetically.
     #[test]
@@ -484,7 +485,7 @@ mod tests {
             macro_rules! a { () => {}; }
         "#;
 
-        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let order = compute_order(&parsed, &RustProfile).unwrap();
 
         // Source order: 0 = macro b, 1 = macro a. Alphabetical: a, b.
@@ -499,7 +500,7 @@ mod tests {
             macro_rules! a { () => {}; }
         "#;
 
-        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let order = compute_order(&parsed, &RustProfile).unwrap();
 
         // Source order: 0 = fn b, 1 = macro a. Macro should be first.
@@ -518,7 +519,7 @@ mod tests {
             a!();
         "#;
 
-        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let order = compute_order(&parsed, &RustProfile).unwrap();
 
         // Expected phases: use(0), macro def(2), invocation(3), static(1).
@@ -535,7 +536,7 @@ mod tests {
             macro_rules! a { () => {}; }
         "#;
 
-        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let order = compute_order(&parsed, &RustProfile).unwrap();
 
         // println! is external (no local def) -> phase 1, stays first.
@@ -554,7 +555,7 @@ mod tests {
             macro_rules! m { ($x:ident) => {}; }
         "#;
 
-        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let order = compute_order(&parsed, &RustProfile).unwrap();
 
         // def(2) first, then invocations in source order: a(0), b(1).
@@ -573,7 +574,7 @@ mod tests {
             m!();
         "#;
 
-        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let order = compute_order(&parsed, &RustProfile).unwrap();
 
         // The invocation (2) follows the first definition (0) exactly once.
@@ -597,7 +598,7 @@ mod tests {
             alpha!();
         "#;
 
-        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let order = compute_order(&parsed, &RustProfile).unwrap();
 
         // bravo(1) before alpha(0) (alpha depends on bravo), then invocation(2).
@@ -621,7 +622,7 @@ mod tests {
             }
         "#;
 
-        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let order = compute_order(&parsed, &RustProfile).unwrap();
 
         // c(2), b(1), a(0): callees before callers.
@@ -640,7 +641,7 @@ mod tests {
             mod alpha;
         "#;
 
-        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let order = compute_order(&parsed, &RustProfile).unwrap();
 
         // All three are mods -> phase 3, stable source order; the test mod does
@@ -660,7 +661,7 @@ mod tests {
             mod alpha;
         "#;
 
-        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let order = compute_order(&parsed, &RustProfile).unwrap();
 
         // The file-based mod alpha stays in phase 3 (0-index 1) and the inline
@@ -678,7 +679,7 @@ mod tests {
             mod helpers_pub {}
         "#;
 
-        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let order = compute_order(&parsed, &RustProfile).unwrap();
 
         // Neither is an inline test mod, so both stay in phase 3, source order.
@@ -693,7 +694,7 @@ mod tests {
         // Source order: fn z(0, region 1) splits two region-0 fns where
         // caller b precedes callee a by reorder.
         let source = "fn b() { a(); }\nfn z() {}\nfn a() {}\n";
-        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let items: Vec<_> = parsed
             .items
             .iter()
@@ -726,7 +727,7 @@ mod tests {
         // Region 0: fn b calls fn a (b first after reorder).
         // Region 1: fn d calls fn c (d first after reorder).
         let source = "fn a() {}\nfn b() { a(); }\nfn c() {}\nfn d() { c(); }\n";
-        let parsed = rust_llm_tidy_model::parse::parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let items: Vec<_> = parsed
             .items
             .iter()

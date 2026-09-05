@@ -348,7 +348,7 @@ fn rs_diagnostics_match_direct_check_composition() {
 
         // Path B: the Rust backend's lint composition called directly over
         // the same source.
-        let parsed = rust_llm_tidy_model::parse::parse_source(&source).unwrap();
+        let parsed = rust_llm_tidy_lang::RustBackend.parse(&source).unwrap();
         let expected = rust_llm_tidy_lang::backends::rust::RustBackend.lint(&parsed);
         let expected: Vec<(usize, String, String)> = expected
             .iter()

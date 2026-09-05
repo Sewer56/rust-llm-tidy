@@ -33,6 +33,8 @@ Add this to your `Cargo.toml`:
 ```toml
 [dependencies]
 rust-llm-tidy-reorder = "0.1.1"
+rust-llm-tidy-lang = "0.1.0"
+rust-llm-tidy-model = "0.3.1"
 ```
 
 ## Usage
@@ -42,7 +44,7 @@ rust-llm-tidy-reorder = "0.1.1"
 Parse a source string, compute reorder, emit:
 
 ```rust
-use rust_llm_tidy_model::parse::parse_source;
+use rust_llm_tidy_lang::{LanguageBackend, RustBackend};
 use rust_llm_tidy_reorder::graph::{RustProfile, compute_order};
 use rust_llm_tidy_reorder::reorder::Permutation;
 
@@ -51,7 +53,7 @@ fn b() { a(); }
 fn a() {}
 "#;
 
-let parsed = parse_source(source).unwrap();
+let parsed = RustBackend.parse(source).unwrap();
 let order = compute_order(&parsed, &RustProfile).unwrap();
 let perm = Permutation::new(parsed.items.len(), order).unwrap();
 let output = rust_llm_tidy_reorder::reorder::emit(&parsed, &perm).unwrap();
@@ -65,7 +67,7 @@ assert!(output.contains("fn b()"));
 Full pipeline with safety verification and atomic write:
 
 ```rust,no_run
-use rust_llm_tidy_model::parse::parse_source;
+use rust_llm_tidy_lang::{LanguageBackend, RustBackend};
 use rust_llm_tidy_reorder::graph::{RustProfile, compute_order};
 use rust_llm_tidy_reorder::reorder::Permutation;
 use rust_llm_tidy_model::safety::verify_line_preservation;
@@ -74,7 +76,7 @@ use std::path::Path;
 
 let source = std::fs::read_to_string("src/main.rs")?;
 
-let parsed = parse_source(&source)?;
+let parsed = RustBackend.parse(&source)?;
 let order = compute_order(&parsed, &RustProfile)?;
 let perm = Permutation::new(parsed.items.len(), order)?;
 let output = rust_llm_tidy_reorder::reorder::emit(&parsed, &perm)?;

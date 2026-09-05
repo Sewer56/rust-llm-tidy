@@ -8,6 +8,7 @@
 
 use ahash::AHashSet;
 pub use modules::{ModuleTree, build_module_tree, discover_crate_root};
+use rust_llm_tidy_lang::{LanguageBackend, RustBackend};
 use std::borrow::Cow;
 use std::path::PathBuf;
 use tree_sitter::{Node, Tree};
@@ -301,12 +302,13 @@ fn narrow_if_eligible_owned<'a, 'n>(
     ));
 }
 
-/// Parse `source` with the `tree-sitter-rust` grammar. The returned [`Tree`]
+/// Parse `source` with the Rust backend's grammar. The returned [`Tree`]
 /// stores byte offsets (not references), so it stays valid for the caller's
 /// source bytes as long as those bytes are not mutated.
 fn parse(source: &str) -> anyhow::Result<Tree> {
+    // Visibility consumes only nodes, not the backend's shared item model.
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&rust_language()?)?;
+    parser.set_language(&RustBackend.language()?)?;
     parser
         .parse(source, None)
         .ok_or_else(|| anyhow::anyhow!("tree-sitter parse returned no tree"))
@@ -458,10 +460,6 @@ fn narrow_if_eligible<'a, 'n>(
     edits.push((vis.start_byte(), vis.end_byte(), Cow::Borrowed(floor)));
 }
 
-fn rust_language() -> anyhow::Result<tree_sitter::Language> {
-    Ok(tree_sitter_rust::LANGUAGE.into())
-}
-
 /// The `name` field node of an item kind eligible for narrowing (fn, struct,
 /// enum, union, type, const, static, mod, trait, extern crate).
 ///
@@ -514,6 +512,46 @@ fn last_segment_text<'a>(node: Node<'a>, source: &'a [u8]) -> Option<&'a str> {
 mod tests {
     use super::{ParsedFile, ReexportSet, collect_crate_reexports, narrow_vis_in_tree};
     use std::path::PathBuf;
+
+    /// Tree-only and shared-model parsing produce identical narrowed source,
+    /// including recovery syntax and re-export guards.
+    #[test]
+    fn tree_only_parse_should_match_backend_narrowed_output() {
+        use rust_llm_tidy_lang::{LanguageBackend, RustBackend};
+
+        let cases = [
+            ("no edits", "pub fn f() {}"),
+            ("narrowing", "pub(crate) mod m { pub fn f() {} }"),
+            (
+                "reexport",
+                "pub use m::f; pub(crate) mod m { pub fn f() {} }",
+            ),
+            ("recovery", "pub(crate) mod m { pub fn f() {} fn broken( }"),
+        ];
+
+        for (name, source) in cases {
+            let parsed = RustBackend.parse(source).unwrap();
+            let file = ParsedFile {
+                path: src(),
+                source: source.to_string(),
+                tree: parsed.syntax_tree().clone(),
+            };
+            let reexports = collect_crate_reexports(std::iter::once(&file));
+            let mut edits = Vec::new();
+
+            super::walk(
+                file.tree.root_node(),
+                None,
+                source,
+                Some(reexports.names()),
+                &mut edits,
+            );
+            let expected = super::apply_edits(source, edits);
+            let actual = narrow(source).unwrap();
+
+            assert_eq!(actual, expected, "{name}");
+        }
+    }
 
     fn src() -> PathBuf {
         PathBuf::from("test.rs")

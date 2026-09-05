@@ -287,7 +287,7 @@ fn parent_field_name(node: Node) -> Option<&'static str> {
 mod tests {
     use super::*;
     use crate::graph::{DeclNamePosition, ReorderProfile, RustProfile};
-    use rust_llm_tidy_model::parse::parse_source;
+    use rust_llm_tidy_lang::{LanguageBackend, RustBackend};
 
     /// Build a name-to-index map assigning each name a position index in the
     /// order given (decoupled from source item order, so unit tests stay stable).
@@ -303,7 +303,7 @@ mod tests {
             macro_rules! a { () => {}; }
         "#;
 
-        let parsed = parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let name_to_idx = idx_map(&["b", "a"]);
         let macro_names: AHashSet<&str> = ["a"].into_iter().collect();
 
@@ -345,7 +345,7 @@ mod tests {
         // Indices: a=0, b=1, Foo=2 (listed order, decoupled from source).
         let name_to_idx = idx_map(&["a", "b", "Foo"]);
 
-        let parsed = parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let tree = parsed.syntax_tree();
         let mut collector =
             ReferenceCollector::new(name_to_idx, AHashSet::new(), RustProfile.reference_walk());
@@ -372,7 +372,7 @@ mod tests {
         // Indices: A=0, B=1 (listed order).
         let name_to_idx = idx_map(&["A", "B"]);
 
-        let parsed = parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let tree = parsed.syntax_tree();
         let mut collector =
             ReferenceCollector::new(name_to_idx, AHashSet::new(), RustProfile.reference_walk());
@@ -398,7 +398,7 @@ mod tests {
             decl_name_positions: &[DeclNamePosition::new("mod_item", "name")],
         };
 
-        let parsed = parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let tree = parsed.syntax_tree();
 
         let mut rust_walk = ReferenceCollector::new(

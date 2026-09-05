@@ -18,14 +18,15 @@ criterion_group!(benches, reorder_pass);
 criterion_main!(benches);
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use rust_llm_tidy_model::{parse, safety};
+use rust_llm_tidy_lang::{LanguageBackend, RustBackend};
+use rust_llm_tidy_model::safety;
 use rust_llm_tidy_reorder::graph;
 use rust_llm_tidy_reorder::reorder::{Permutation, emit};
 
 #[path = "common.rs"]
 mod common;
 
-/// Benchmark the reorder pass (`parse_source` + [`compute_order`] +
+/// Benchmark the reorder pass (`RustBackend.parse` + [`compute_order`] +
 /// [`Permutation::new`] + [`emit`] + [`verify_line_preservation`]) per fixture.
 fn reorder_pass(c: &mut Criterion) {
     let mut group = c.benchmark_group("reorder");
@@ -33,7 +34,7 @@ fn reorder_pass(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(source.len() as u64));
         group.bench_function(*name, |bencher| {
             bencher.iter(|| {
-                let parsed = parse::parse_source(source).expect("fixture must parse");
+                let parsed = RustBackend.parse(source).expect("fixture must parse");
                 let order =
                     graph::compute_order(&parsed, &graph::RustProfile).expect("order must compute");
                 let permutation =

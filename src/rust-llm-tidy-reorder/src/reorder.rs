@@ -380,11 +380,11 @@ mod tests {
     use super::*;
     use crate::graph::test_profiles::MembersFirstProfile;
     use crate::graph::{RustProfile, compute_member_order};
-    use rust_llm_tidy_model::parse::parse_source;
+    use rust_llm_tidy_lang::{LanguageBackend, RustBackend};
 
     /// Full reorder pipeline: parse, compute order, build permutation, emit.
     fn reorder(source: &str) -> String {
-        let parsed = parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let order = crate::graph::compute_order(&parsed, &RustProfile).unwrap();
         let perm = Permutation::new(parsed.items.len(), order).unwrap();
         emit(&parsed, &perm).unwrap()
@@ -436,7 +436,7 @@ mod tests {
 
     /// Build the move list for a source via the full pipeline.
     fn moves(source: &str) -> Vec<ReorderMove> {
-        let parsed = parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let order = crate::graph::compute_order(&parsed, &RustProfile).unwrap();
         let perm = Permutation::new(parsed.items.len(), order).unwrap();
         compute_moves(&parsed.items, &perm)
@@ -503,7 +503,7 @@ mod tests {
         let tail = "}\n";
         let source = format!("{head}{method_z}{field_f}{method_a}{tail}");
 
-        let parsed = parse_source(&source).unwrap();
+        let parsed = RustBackend.parse(&source).unwrap();
         let z = source.find(method_z).unwrap();
         let f = source.find(field_f).unwrap();
         let a = source.find(method_a).unwrap();
@@ -585,7 +585,7 @@ mod tests {
     #[test]
     fn identity_member_order_keeps_plain_item_bytes() {
         let source = "struct S\n{\n    int F;\n}\n";
-        let parsed = parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let f = source.find("    int F;\n").unwrap();
         let members = vec![rust_llm_tidy_model::parse::TypeMember::new(
             f,
@@ -626,7 +626,7 @@ mod tests {
         // permutation then carries a two-member order for it (non-identity
         // so the splice path runs).
         let source = "struct S\n{\n    int F;\n}\n";
-        let parsed = parse_source(source).unwrap();
+        let parsed = RustBackend.parse(source).unwrap();
         let item = parsed.items[0].clone().with_members(Vec::new());
         let tree = parsed.syntax_tree().clone();
         let membered = ParseResult::new(

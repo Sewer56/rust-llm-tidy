@@ -792,12 +792,14 @@ name = "rust-llm-tidy-lang"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "memchr",
  "rust-llm-tidy-lint",
  "rust-llm-tidy-model",
  "rust-llm-tidy-reorder",
  "tree-sitter",
  "tree-sitter-c-sharp",
  "tree-sitter-python",
+ "tree-sitter-rust",
 ]
 
 [[package]]
@@ -814,10 +816,8 @@ version = "0.3.1"
 dependencies = [
  "ahash",
  "anyhow",
- "memchr",
  "tempfile",
  "tree-sitter",
- "tree-sitter-rust",
 ]
 
 [[package]]
@@ -827,6 +827,7 @@ dependencies = [
  "ahash",
  "anyhow",
  "derive_more",
+ "rust-llm-tidy-lang",
  "rust-llm-tidy-model",
  "tree-sitter",
 ]
@@ -838,8 +839,8 @@ dependencies = [
  "ahash",
  "anyhow",
  "cargo_metadata",
+ "rust-llm-tidy-lang",
  "tree-sitter",
- "tree-sitter-rust",
 ]
 
 [[package]]

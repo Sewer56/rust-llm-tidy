@@ -1,24 +1,23 @@
-//! The Rust backend: the model crate's parse setup plus the Rust item
-//! lint rules.
+//! The Rust backend owns its grammar, item parser, lint rules, and text regions.
 
 use crate::backends::LanguageBackend;
 use rust_llm_tidy_lint::Diagnostic;
-use rust_llm_tidy_model::parse::{self, ParseResult};
+use rust_llm_tidy_model::parse::ParseResult;
 use rust_llm_tidy_reorder::graph::{self, RustProfile};
 use rust_llm_tidy_reorder::reorder::Permutation;
 
 mod lints;
+mod parse;
 pub mod text_regions;
 
 /// The `rs` backend.
 ///
-/// Wraps the parse setup the pipeline has always used for Rust - the
-/// model crate's tree-sitter-rust grammar and [`parse::parse_source`].
+/// Parses Rust source into shared items and dispatches Rust AST operations.
 pub struct RustBackend;
 
 impl LanguageBackend for RustBackend {
     fn language(&self) -> anyhow::Result<tree_sitter::Language> {
-        parse::rust_language()
+        Ok(tree_sitter_rust::LANGUAGE.into())
     }
 
     fn parse(&self, source: &str) -> anyhow::Result<ParseResult> {
@@ -49,14 +48,14 @@ impl LanguageBackend for RustBackend {
 mod tests {
     use super::*;
 
-    /// The passthrough must produce exactly the model crate's parse output:
+    /// The backend produces exactly the local parser's output:
     /// same items, preamble, and trailer.
     ///
     /// The fixture covers a documented `pub fn` with parameters and a
     /// `Result` return, a trait impl, a test module, and undecorated items,
     /// so compared fields hold non-default values.
     #[test]
-    fn parse_matches_the_model_parse_output() {
+    fn parse_should_match_local_parser_output() {
         let source = concat!(
             "//! doc\n",
             "use std::fmt;\n",
