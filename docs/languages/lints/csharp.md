@@ -12,8 +12,8 @@ against misread declarations.
 | Code      | Severity | Fires when                                                                                       |
 | --------- | -------- | ------------------------------------------------------------------------------------------------ |
 | `DOC001`  | Error    | A non-private documentable member has no `///` comment.                                          |
-| `DOC002`  | Error    | A non-private method or constructor whose body throws has no `<exception>` tag.                  |
-| `DOC003`  | Warning  | A non-private throwing member's `<exception>` tags all lack a concrete `cref` type.              |
+| `DOC002`  | Error    | A non-private method or constructor that can throw has no `<exception>` tag.                     |
+| `DOC003`  | Warning  | A non-private can-throw member's `<exception>` tags all lack a concrete `cref` type.             |
 | `DOC004`  | Warning  | A non-private member with parameters has no `<param>` tags.                                      |
 | `DOC005`  | Warning  | The `<param>` tags omit a declared parameter.                                                    |
 | `DOC006`  | Warning  | A doc comment contains `TODO`, `FIXME`, or `TBD`.                                                |
@@ -104,10 +104,25 @@ Loader.cs:3: error[DOC002]: member that throws is missing an `<exception>` doc t
 Error: found 1 error(s)
 ```
 
-The body scan is a heuristic: rethrows in called helpers can be
-missed, and throws caught in a local `try`/`catch` still fire.
+Throw detection is recursive within the file: a member that calls a
+same-file method or constructor that can throw - directly or through
+further same-file calls - must document the exception too.
+
+- Calls resolve by simple name: `Helper()`, `this.Helper()`,
+  `obj.Helper()`, and `Helper<T>()` all match a member named `Helper`,
+  and `new C()` matches a constructor named `C`.
+- Overloads and same-name members of other same-file types match too:
+  accepted false positives over missed throws.
+- Calls into other files or the framework (`int.Parse`, `File.Open`)
+  are not resolved and never fire on their own.
+- `nameof(X)` mentions a name without calling it.
+- A `throw` caught by a local `try`/`catch` still counts.
 
 ### DOC003 - vague `<exception>` tag
+
+DOC003 shares DOC002's recursive same-file throw detection, so an
+indirectly-throwing member with vague tags warns the same as a direct
+thrower.
 
 Before:
 
