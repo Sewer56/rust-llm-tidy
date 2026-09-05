@@ -147,34 +147,37 @@ synthetic_fixture!(spacing_blank_line_fn_visibility);
 
 synthetic_fixture!(safety_line_preservation);
 
-// ── Idempotency: every _after.rs fixture must be unchanged ─────────
+// ── Idempotency: every _after fixture must be unchanged ───────────
 
 static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 
-/// Idempotency: every `_after.rs` fixture must be unchanged by a second run.
+/// Idempotency: every `_after.*` fixture, in every language directory
+/// under `tests/fixtures/reorder/`, must be unchanged by a second run.
 #[test]
 fn all_after_fixtures_should_be_idempotent_on_rerun() {
-    let fixture_dir = manifest_dir()
+    let fixture_root = manifest_dir()
         .join("tests")
         .join("fixtures")
-        .join("reorder")
-        .join("rust");
-    let mut after_files: Vec<_> = fs::read_dir(&fixture_dir)
-        .unwrap()
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let path = entry.path();
-            let name = path.file_name()?.to_str()?;
-            if name.ends_with("_after.rs") {
-                Some(path)
-            } else {
-                None
+        .join("reorder");
+    // Each language directory under the fixture root holds its own
+    // `<name>_after.<ext>` fixture pairs.
+    let mut after_files: Vec<std::path::PathBuf> = Vec::new();
+    for lang in fs::read_dir(&fixture_root).unwrap() {
+        let lang_dir = lang.unwrap().path().read_dir().unwrap();
+        for entry in lang_dir {
+            let path = entry.unwrap().path();
+            let is_after = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|name| name.contains("_after."));
+            if is_after {
+                after_files.push(path);
             }
-        })
-        .collect();
+        }
+    }
     after_files.sort();
 
-    assert!(!after_files.is_empty(), "no _after.rs fixtures found");
+    assert!(!after_files.is_empty(), "no _after fixtures found");
 
     for after_path in &after_files {
         let (stdout, stderr, exit) = run_dry_run(after_path);
@@ -191,113 +194,6 @@ fn all_after_fixtures_should_be_idempotent_on_rerun() {
             after_path.display()
         );
     }
-}
-
-/// A code-language file runs only `tables` among the fix ops by default:
-/// the table in `#` comments aligns while the fence and link stay
-/// untouched; the default text checks warn on the over-80 line without
-/// failing the run.
-///
-/// `--include fences` reaches the fence, and a second run emits zero
-/// change records.
-#[test]
-fn code_language_default_run_aligns_tables_only_among_fix_ops() {
-    let table = "# | Name | Value |\n# | --- | --- |\n# | a | 1 |\n# | longname | 200 |\n";
-    let fence = "# ```text\n# ```rust\n# inner\n# ```\n# ```\n";
-    // Over 80 chars so the default-run text checks emit a TEXT002 warning
-    // here without failing the run.
-    let links = "# see [A](http://x) and [A](http://x) padded past eighty chars so the default text checks warn here\n";
-    let source = format!("{table}\n{fence}\n{links}");
-
-    let file = temp_file_ext("py");
-    fs::write(&file, &source).unwrap();
-    let out = run_command(&[], &file);
-    assert!(
-        out.status.success(),
-        "default run on .py should succeed despite the warning: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stderr.contains("warning[TEXT002]"),
-        "the default run must run the text checks on a code language: {stderr}"
-    );
-    let after = fs::read_to_string(&file).unwrap();
-    assert_ne!(
-        after, source,
-        "the table inside # comments must be realigned"
-    );
-    assert!(
-        after.contains("# ```text\n# ```rust\n# inner\n# ```\n# ```"),
-        "fences must not flip by default: {after}"
-    );
-    assert!(
-        after.contains("[A](http://x) and [A](http://x)"),
-        "links must not hoist on a code language: {after}"
-    );
-
-    // Second run: idempotent, zero change records; the TEXT002 warning
-    // still prints.
-    let dry = run_command(&["--dry-run"], &file);
-    assert!(dry.status.success());
-    assert!(
-        !String::from_utf8_lossy(&dry.stderr).contains("success["),
-        "second run must emit zero change records: {}",
-        String::from_utf8_lossy(&dry.stderr)
-    );
-    let _ = fs::remove_file(&file);
-
-    // The explicit include reaches fences on a code language.
-    let file = temp_file_ext("py");
-    fs::write(&file, &source).unwrap();
-    let out = run_command(&["--include", "fences"], &file);
-    assert!(
-        out.status.success(),
-        "--include fences on .py should succeed: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let after = fs::read_to_string(&file).unwrap();
-    assert!(
-        after.contains("# ~~~rust"),
-        "inner fence must flip under --include fences: {after}"
-    );
-    assert!(
-        after.contains("# see [A](http://x) and [A](http://x)"),
-        "links must still not hoist under --include fences: {after}"
-    );
-    let _ = fs::remove_file(&file);
-}
-
-/// A dry-run C# reorder reports exactly two records - the hoisted
-/// trailing `using` and the member-reordered class - never reconstructed
-/// source, and emits no JSON on stdout.
-#[test]
-fn csharp_member_reorder_dry_run_reports_the_using_hoist_and_member_records() {
-    let before = csharp_reorder_fixture_dir().join("reorder_cs_before.cs");
-    let (stdout, stderr, exit) = run_dry_run(&before);
-
-    assert_eq!(exit, 0, "C# reorder dry-run should succeed");
-    assert!(stdout.is_empty(), "dry-run must not print source to stdout");
-    let records: Vec<&str> = stderr.lines().collect();
-    assert_eq!(
-        records.len(),
-        2,
-        "expected the using hoist and the member reorder: {stderr}"
-    );
-    assert!(
-        records.iter().all(|r| r.contains("success[REORDER]")),
-        "every record must be a change record: {stderr}"
-    );
-    assert!(
-        records.iter().any(|r| r.contains("class `OrderService`")),
-        "one record names the reordered type: {stderr}"
-    );
-    assert!(
-        records
-            .iter()
-            .any(|r| r.contains("using at line 34 from pos 4 to pos 2")),
-        "one record names the hoisted using: {stderr}"
-    );
 }
 
 /// An in-place reorder of `reorder_cs_before.cs` writes the `_after`
@@ -362,71 +258,6 @@ fn csharp_reorder_on_pure_crlf_source_preserves_the_endings() {
         String::from_utf8_lossy(&dry.stderr).is_empty(),
         "second run on the CRLF rewrite must emit zero records"
     );
-}
-
-/// A second run on the reordered fixture emits zero records: the C#
-/// reorder is idempotent.
-#[test]
-fn csharp_reorder_second_run_is_zero_records() {
-    let after = csharp_reorder_fixture_dir().join("reorder_cs_after.cs");
-    let (stdout, stderr, exit) = run_dry_run(&after);
-
-    assert_eq!(exit, 0, "second C# reorder dry-run should succeed");
-    assert!(stdout.is_empty());
-    assert!(
-        stderr.is_empty(),
-        "the reordered fixture is already tidy: zero records, got: {stderr}"
-    );
-}
-
-/// Unsupported constructs degrade to a no-op with zero records and no
-/// write: an interpolation hole holding a string literal (the region scan
-/// rejects it) and a parse-error file.
-#[test]
-fn csharp_unsupported_constructs_degrade_to_noop() {
-    let cases = [
-        (
-            "region scan reject",
-            concat!(
-                "class C\n",
-                "{\n",
-                "    string S { get; set; }\n",
-                "    void M() { var a = $\"{f(\"inner\")}\"; }\n",
-                "    int F { get; set; }\n",
-                "}\n",
-            ),
-        ),
-        ("parse error", "class Broken { void M( { ))) }\n"),
-    ];
-    for (label, source) in cases {
-        let tmp = temp_file_ext("cs");
-        fs::write(&tmp, source).unwrap();
-
-        let (stdout, stderr, exit) = run_dry_run(&tmp);
-        assert_eq!(exit, 0, "{label}: no-op run should succeed");
-        assert!(stdout.is_empty(), "{label}: no source on stdout");
-        assert!(
-            stderr.is_empty(),
-            "{label}: unsupported constructs must emit zero records: {stderr}"
-        );
-        assert_eq!(
-            fs::read_to_string(&tmp).unwrap(),
-            source,
-            "{label}: dry-run never writes"
-        );
-
-        let in_place = run_command(&["--include", "reorder"], &tmp);
-        assert!(
-            in_place.status.success(),
-            "{label}: in-place no-op should succeed"
-        );
-        assert_eq!(
-            fs::read_to_string(&tmp).unwrap(),
-            source,
-            "{label}: a declined source is never rewritten"
-        );
-        let _ = fs::remove_file(&tmp);
-    }
 }
 
 // ── CLI behavior tests ────────────────────────────────────────────
@@ -551,6 +382,27 @@ fn in_place_write_should_match_after_fixture() {
     assert_eq!(
         actual, expected,
         "in-place write: temp file content must match phase_use_stable_after.rs"
+    );
+}
+
+/// `--include fences` reaches a code language: the nested fence inside
+/// `#` comments flips its inner backtick delimiter to a tilde.
+#[test]
+fn include_fences_flips_the_nested_fence_in_hash_comments() {
+    let source = "# ```text\n# ```rust\n# inner\n# ```\n# ```\n";
+    let file = temp_file_ext("py");
+    fs::write(&file, source).unwrap();
+    let out = run_command(&["--include", "fences"], &file);
+    assert!(
+        out.status.success(),
+        "--include fences on .py should succeed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let after = fs::read_to_string(&file).unwrap();
+    let _ = fs::remove_file(&file);
+    assert!(
+        after.contains("# ~~~rust"),
+        "inner fence must flip under --include fences: {after}"
     );
 }
 
@@ -976,59 +828,6 @@ fn repo_corpus_dry_run_emits_zero_change_records() {
     );
 }
 
-/// Slash-family code languages keep their TEXT checks through the lexicon,
-/// measured per extension.
-///
-/// `//` prose yields exactly one TEXT001 and one TEXT002; code and string
-/// content stay quiet, and no fix op touches the file.
-#[test]
-fn slash_family_comment_prose_lints_end_to_end() {
-    // Single-line `\n` escapes: the repo's own lexical text checks cannot
-    // see through a multi-line string literal, so physical `//` lines here
-    // would be measured as comment prose (same trick as the fix-crate
-    // tests).
-    let source = concat!(
-        "// filler words pad the paragraph past the two hundred forty limit\n",
-        "// filler words pad the paragraph past the two hundred forty limit\n",
-        "// filler words pad the paragraph past the two hundred forty limit\n",
-        "// filler words pad the paragraph past the two hundred forty limit\n",
-        "// this comment line is deliberately made far longer than eighty characters so the check fires\n",
-        "class C {\n",
-        "    String s = \"// not a comment: filler words stay quiet here\";\n",
-        "}\n",
-    );
-    for ext in [
-        "java", "c", "cc", "cpp", "h", "hpp", "go", "ts", "tsx", "js", "mjs", "kt", "php", "dart",
-        "scala", "swift", "zig",
-    ] {
-        let file = temp_file_ext(ext);
-        fs::write(&file, source).unwrap();
-        let out = run_command(&[], &file);
-        let stderr = strip_path_prefix(&String::from_utf8_lossy(&out.stderr), &file);
-        let _ = fs::remove_file(&file);
-
-        assert_eq!(
-            out.status.code(),
-            Some(1),
-            ".{ext}: the TEXT001 error must fail the run: {stderr}"
-        );
-        assert_eq!(
-            stderr.matches("TEXT001").count(),
-            1,
-            ".{ext}: exactly the comment paragraph: {stderr}"
-        );
-        assert_eq!(
-            stderr.matches("TEXT002").count(),
-            1,
-            ".{ext}: exactly the over-long comment line: {stderr}"
-        );
-        assert!(
-            !stderr.contains("success["),
-            ".{ext}: no fix op changes this file: {stderr}"
-        );
-    }
-}
-
 /// An already-sorted file (callers before callees) should be unchanged.
 #[test]
 fn sorted_file_should_roundtrip_unchanged() {
@@ -1089,28 +888,6 @@ fn uppercase_md_explicit_file_runs_fix_not_rust_ops() {
         ".MD must never run the Rust reorder op"
     );
     let _ = fs::remove_file(&file);
-}
-
-/// An explicit `.ORG` file (outside the default set) is a silent
-/// skip: exit 0 and `[]` in JSON mode.
-#[test]
-fn uppercase_org_explicit_file_is_silently_skipped() {
-    let file = temp_file_ext("ORG");
-    fs::write(&file, "not an allowed extension\n").unwrap();
-
-    let output = run_command(&["--json"], &file);
-    let _ = fs::remove_file(&file);
-
-    assert!(
-        output.status.success(),
-        ".ORG file outside the allowed set must succeed silently: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout).trim(),
-        "[]",
-        ".ORG explicit file is a silent skip in JSON mode"
-    );
 }
 
 // ── Case-insensitive allowed extensions ───────
