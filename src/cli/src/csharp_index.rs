@@ -188,6 +188,9 @@ mod tests {
         ] {
             std::fs::create_dir_all(root.join(dir)).unwrap();
         }
+        // project_scope canonicalizes its results; align expectations when the
+        // platform temp dir is a symlink (macOS /var -> /private/var).
+        let root = root.canonicalize().unwrap();
         for path in [
             "a/src/A.cs",
             "a/nested/Hidden.cs",
