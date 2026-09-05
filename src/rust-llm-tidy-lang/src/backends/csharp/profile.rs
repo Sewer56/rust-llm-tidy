@@ -25,7 +25,8 @@
 
 use rust_llm_tidy_model::parse::{ItemKind, SourceItem, TypeMember};
 use rust_llm_tidy_reorder::graph::{
-    DeclNamePosition, PhaseContext, PhaseStrategy, ReferenceWalk, ReorderProfile, TieBreak,
+    DeclNamePosition, PhaseContext, PhaseStrategy, ReferencePosition, ReferenceWalk,
+    ReorderProfile, TieBreak,
 };
 use std::collections::HashMap;
 
@@ -41,6 +42,9 @@ static CSHARP_REFERENCE_WALK: ReferenceWalk = ReferenceWalk {
         "delegate_declaration",
     ],
     decl_name_positions: DECL_NAME_POSITIONS,
+    reference_positions: &[ReferencePosition::bare("identifier")],
+    // C# has no macro-call syntax: no marker ever matches.
+    macro_marker_kind: "",
 };
 /// The stable phase of every non-`using` item and of unrecognized members.
 const STABLE_PHASE: u32 = 2;

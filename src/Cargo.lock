@@ -791,6 +791,7 @@ dependencies = [
 name = "rust-llm-tidy-lang"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "anyhow",
  "memchr",
  "rust-llm-tidy-lint",

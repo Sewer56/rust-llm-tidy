@@ -378,14 +378,14 @@ fn spacing_group(kind: &ItemKind) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::test_profiles::MembersFirstProfile;
-    use crate::graph::{RustProfile, compute_member_order};
+    use crate::graph::compute_member_order;
+    use crate::graph::test_profiles::{CallersFirstProfile, MembersFirstProfile};
     use rust_llm_tidy_lang::{LanguageBackend, RustBackend};
 
     /// Full reorder pipeline: parse, compute order, build permutation, emit.
     fn reorder(source: &str) -> String {
         let parsed = RustBackend.parse(source).unwrap();
-        let order = crate::graph::compute_order(&parsed, &RustProfile).unwrap();
+        let order = crate::graph::compute_order(&parsed, &CallersFirstProfile).unwrap();
         let perm = Permutation::new(parsed.items.len(), order).unwrap();
         emit(&parsed, &perm).unwrap()
     }
@@ -437,7 +437,7 @@ mod tests {
     /// Build the move list for a source via the full pipeline.
     fn moves(source: &str) -> Vec<ReorderMove> {
         let parsed = RustBackend.parse(source).unwrap();
-        let order = crate::graph::compute_order(&parsed, &RustProfile).unwrap();
+        let order = crate::graph::compute_order(&parsed, &CallersFirstProfile).unwrap();
         let perm = Permutation::new(parsed.items.len(), order).unwrap();
         compute_moves(&parsed.items, &perm)
     }
@@ -473,16 +473,51 @@ mod tests {
         assert!(moves(src).is_empty());
     }
 
+    /// One synthetic item: span, line, kind, and name, with every other
+    /// field defaulted.
+    fn item(
+        start: usize,
+        end: usize,
+        line: usize,
+        kind: ItemKind,
+        name: Option<&str>,
+    ) -> rust_llm_tidy_model::parse::SourceItem {
+        rust_llm_tidy_model::parse::SourceItem::new(
+            start,
+            end,
+            line,
+            kind,
+            name.map(String::from),
+            None,
+            false,
+            false,
+            false,
+            None,
+            Vec::new(),
+            false,
+            Vec::new(),
+            false,
+        )
+    }
+
+    /// An unnamed moved item reports itself by kind and start line.
     #[test]
     fn compute_moves_describes_unnamed_item_by_kind_and_line() {
-        // Reorder moves the struct's impl before the fn that precedes it, so
-        // the unnamed impl block reports via kind + line.
-        let src = "fn uses_impl() { let _ = Foo {}; }\nstruct Foo {}\nimpl Foo {}\n";
-        let mv = moves(src);
+        // Output order struct, impl, fn: the unnamed impl moves from pos
+        // 3 to pos 2, landing before the fn that preceded it.
+        let items = vec![
+            item(0, 30, 1, ItemKind::Fn, Some("uses_impl")),
+            item(30, 60, 2, ItemKind::Struct, Some("Foo")),
+            item(60, 90, 3, ItemKind::Impl, None),
+        ];
+        let perm = Permutation::new(3, vec![1, 2, 0]).unwrap();
+
+        let mv = compute_moves(&items, &perm);
+
         let unnamed = mv
             .iter()
-            .find(|m| m.kind() == &rust_llm_tidy_model::parse::ItemKind::Impl);
-        let unnamed = unnamed.expect("an impl block should move");
+            .find(|m| m.kind() == &ItemKind::Impl)
+            .expect("an impl block should move");
         assert_eq!(unnamed.name(), None);
         assert!(unnamed.message().contains("impl at line 3"), "{}", unnamed);
     }

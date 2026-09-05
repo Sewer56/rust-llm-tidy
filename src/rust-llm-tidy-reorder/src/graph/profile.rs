@@ -55,12 +55,12 @@ pub enum PhaseStrategy {
 }
 
 /// The language-specific part of reference collection: which parse-tree
-/// nodes declare items, and which identifier positions define names
-/// rather than use them.
+/// nodes declare items, which identifier positions define names rather
+/// than use them, and which node shapes record a use.
 ///
 /// [`ReferenceCollector`] orders items by who references whom, and
 /// finds references by walking a parse tree. Grammars name their nodes
-/// differently, so each profile fills in this table and the collector
+/// differently, so each profile fills in these tables and the collector
 /// hard-codes no language.
 ///
 /// # Worked example
@@ -78,8 +78,9 @@ pub enum PhaseStrategy {
 ///                             edge parse -> helper
 /// ```
 ///
-/// Uses need no entries: identifier uses look the same in every
-/// supported grammar. Names a grammar never produces never match.
+/// Uses are [`ReferencePosition`] entries: a bare identifier kind
+/// records the node itself, path shapes record their first segment.
+/// Names a grammar never produces never match.
 ///
 /// [`ReferenceCollector`]: super::ReferenceCollector
 pub struct ReferenceWalk {
@@ -92,6 +93,13 @@ pub struct ReferenceWalk {
     /// aliases (`use a as b`). Skipped, so `let helper = 1;` never
     /// references `fn helper`.
     pub decl_name_positions: &'static [DeclNamePosition],
+    /// Reference-position shapes: how each reference-holding node kind
+    /// records its use. Kinds the table omits are walked as pure
+    /// structure: their children are examined, nothing records.
+    pub reference_positions: &'static [ReferencePosition],
+    /// Token kind that immediately follows a called path (Rust: `!`),
+    /// marking the recorded reference as a call.
+    pub macro_marker_kind: &'static str,
 }
 
 /// One definition spot: an identifier defines a name when its parent
@@ -102,6 +110,37 @@ pub struct DeclNamePosition {
     pub parent_kind: &'static str,
     /// Field of the parent holding the identifier, e.g. `name`.
     pub field: &'static str,
+}
+
+/// One reference-position node kind: how the walk turns nodes of this
+/// kind into a recorded use.
+///
+/// The walk records one referenced path per match - the node itself, or
+/// the child in `path_field` - by probing the path's leftmost segment
+/// against the known item names.
+///
+/// - `path_field`: the referenced path is this field's child; `None`
+///   records the node itself.
+/// - `segment_field`: the field a path-shaped node descends for its
+///   leftmost segment, recursively until a bare identifier; `None` when
+///   the node itself is the segment.
+/// - `recurse`: whether the walk continues into the node's children
+///   after recording.
+pub struct ReferencePosition {
+    /// Node kind that holds a reference.
+    pub kind: &'static str,
+    /// Field whose child is the referenced path: a call shape records
+    /// the called path, a wrapped shape its wrapped type. `None` when
+    /// the node itself is the path.
+    pub path_field: Option<&'static str>,
+    /// Field holding the leftmost segment of a path-shaped node, so
+    /// `a::b::c` resolves through `path` to `a`; `None` when the node
+    /// itself is the segment.
+    pub segment_field: Option<&'static str>,
+    /// Whether the walk recurses into the node after recording: wrapped
+    /// shapes carry further references among their children, while
+    /// plain paths stop after their first segment.
+    pub recurse: bool,
 }
 
 /// Per-language ordering policy consumed by the reorder engine.
@@ -142,4 +181,52 @@ pub trait ReorderProfile: Sync {
 
     /// The grammar node-kind data for this language's reference walk.
     fn reference_walk(&self) -> &'static ReferenceWalk;
+}
+
+impl ReferencePosition {
+    /// A bare identifier kind: the node itself both holds and names the
+    /// reference.
+    pub const fn bare(kind: &'static str) -> Self {
+        Self {
+            kind,
+            path_field: None,
+            segment_field: None,
+            recurse: false,
+        }
+    }
+
+    /// A path shape: the node's leftmost segment (in `segment_field`)
+    /// names the reference, and the remaining segments never reference
+    /// a top-level item, so the walk stops.
+    pub const fn path(kind: &'static str, segment_field: &'static str) -> Self {
+        Self {
+            kind,
+            path_field: None,
+            segment_field: Some(segment_field),
+            recurse: false,
+        }
+    }
+
+    /// A wrapped shape: the child in `path_field` names the reference
+    /// and the node's children hold further references (a generic
+    /// type's type arguments), so the walk records, then recurses.
+    pub const fn wrapping(kind: &'static str, path_field: &'static str) -> Self {
+        Self {
+            kind,
+            path_field: Some(path_field),
+            segment_field: Some(path_field),
+            recurse: true,
+        }
+    }
+
+    /// A call shape: the child in `path_field` names the called macro,
+    /// and the call's arguments are never walked.
+    pub const fn call(kind: &'static str, path_field: &'static str) -> Self {
+        Self {
+            kind,
+            path_field: Some(path_field),
+            segment_field: None,
+            recurse: false,
+        }
+    }
 }

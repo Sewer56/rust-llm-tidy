@@ -209,15 +209,15 @@ unexpected lint failures after a tool update.
 
 - [rust-llm-tidy-model]: Shared language-neutral model - top-level items with
   spans, visibility, and doc comments; atomic I/O; line-multiset safety
-- [rust-llm-tidy-reorder]: Reordering library - reference-graph ordering of
-  items into a review-friendly 10-phase order
+- [rust-llm-tidy-reorder]: Reordering library - the language-neutral
+  reference-graph ordering engine, driven by per-language profiles
 - [rust-llm-tidy-vis]: Visibility narrowing - narrows bare `pub` items inside
   restricted-visibility inline modules to the module's visibility
 - [rust-llm-tidy-lint]: Shared lint core - `Diagnostic` shape, lint-code
   registry, and TEXT001/TEXT002 text rules; see [docs/lints.md] for all
   codes
 - [rust-llm-tidy-lang]: Per-language AST backends - the DOC/TEST item
-  rules, grammars, item parsing, and reorder dispatch per language
+  rules, grammars, item parsing, and per-language reorder policies
 - [rust-llm-tidy-fix]: Markdown/doc-comment tidying - table realignment,
   fence fixes, and link hoisting in markdown-family and comment-prefixed
   files

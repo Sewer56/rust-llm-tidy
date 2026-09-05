@@ -15,16 +15,16 @@
 
 use ahash::{AHashMap, AHashSet};
 pub use collect::ReferenceCollector;
-pub use profile::{DeclNamePosition, PhaseContext, PhaseStrategy, ReferenceWalk, ReorderProfile};
+pub use profile::{
+    DeclNamePosition, PhaseContext, PhaseStrategy, ReferencePosition, ReferenceWalk, ReorderProfile,
+};
 use rust_llm_tidy_model::parse::{ItemKind, ParseResult, TypeMember, VisibilityTier};
-pub use rust_profile::RustProfile;
 use std::collections::BTreeMap;
 use std::ops::Range;
 pub use toposort::{TieBreak, toposort};
 
 mod collect;
 mod profile;
-mod rust_profile;
 #[cfg(test)]
 pub(crate) mod test_profiles;
 mod toposort;
@@ -106,9 +106,8 @@ pub fn compute_member_order(
 ///
 /// [`SourceItem::region`]: `rust_llm_tidy_model::parse::SourceItem::region`
 ///
-/// Phases, their ordering strategies, and the reference walk come from
-/// `profile`; [`RustProfile`] documents and provides the Rust phase
-/// order.
+/// Phases, their ordering strategies, and the reference walk all come
+/// from `profile`.
 ///
 /// Returns a `Vec<usize>` suitable for constructing a `Permutation` in the
 /// reorder stage. Each element is an index into `parsed.items`.
@@ -349,8 +348,8 @@ fn emit_macro_definitions(
     let def_order = dependency_order(parsed, &defs, edges, TieBreak::Alphabetical);
 
     // Group invocations by macro name. Invocations whose name has no
-    // matching definition emit last in source order (unreachable for the
-    // Rust profile: it routes an invocation to this phase only when a local
+    // matching definition emit last in source order (unreachable when
+    // the profile routes an invocation to this phase only when a local
     // definition shares its name).
     let def_names: AHashSet<&str> = def_order
         .iter()
@@ -473,218 +472,9 @@ fn toposort_positions(
 
 #[cfg(test)]
 mod tests {
-    use super::test_profiles::MembersFirstProfile;
+    use super::test_profiles::{CallersFirstProfile, MembersFirstProfile};
     use super::*;
     use rust_llm_tidy_lang::{LanguageBackend, RustBackend};
-
-    /// Independent `macro_rules!` definitions are sorted alphabetically.
-    #[test]
-    fn test_macros_sorted_alphabetically() {
-        let source = r#"
-            macro_rules! b { () => {}; }
-            macro_rules! a { () => {}; }
-        "#;
-
-        let parsed = RustBackend.parse(source).unwrap();
-        let order = compute_order(&parsed, &RustProfile).unwrap();
-
-        // Source order: 0 = macro b, 1 = macro a. Alphabetical: a, b.
-        assert_eq!(order, vec![1, 0]);
-    }
-
-    /// `macro_rules!` definitions sort before functions that invoke them.
-    #[test]
-    fn test_compute_order_macro_before_function() {
-        let source = r#"
-            fn b() { a!(); }
-            macro_rules! a { () => {}; }
-        "#;
-
-        let parsed = RustBackend.parse(source).unwrap();
-        let order = compute_order(&parsed, &RustProfile).unwrap();
-
-        // Source order: 0 = fn b, 1 = macro a. Macro should be first.
-        assert_eq!(order, vec![1, 0]);
-    }
-
-    /// A top-level macro invocation follows its `macro_rules!` definition,
-    /// even when `use`/`static` items sit between them in the source.
-    #[test]
-    fn test_top_level_invocation_after_def() {
-        // Source order: 0 = use, 1 = static, 2 = macro_rules! a, 3 = a!().
-        let source = r#"
-            use std::fs;
-            static COUNT: i32 = 0;
-            macro_rules! a { () => {}; }
-            a!();
-        "#;
-
-        let parsed = RustBackend.parse(source).unwrap();
-        let order = compute_order(&parsed, &RustProfile).unwrap();
-
-        // Expected phases: use(0), macro def(2), invocation(3), static(1).
-        assert_eq!(order, vec![0, 2, 3, 1]);
-    }
-
-    /// A top-level invocation of an unknown macro (no local `macro_rules!`)
-    /// stays stable like other uncategorized items, not in the macro phase.
-    #[test]
-    fn test_external_invocation_stable() {
-        // Source order: 0 = println!(), 1 = macro_rules! a.
-        let source = r#"
-            println!("x");
-            macro_rules! a { () => {}; }
-        "#;
-
-        let parsed = RustBackend.parse(source).unwrap();
-        let order = compute_order(&parsed, &RustProfile).unwrap();
-
-        // println! is external (no local def) -> phase 1, stays first.
-        // Then macro def a -> phase 4.
-        assert_eq!(order, vec![0, 1]);
-    }
-
-    /// Multiple invocations of the same macro preserve their source order and
-    /// all follow the definition.
-    #[test]
-    fn test_multiple_invocations_preserve_source_order() {
-        // Source order: 0 = a!(), 1 = b!(), 2 = macro_rules! m.
-        let source = r#"
-            m!(a);
-            m!(b);
-            macro_rules! m { ($x:ident) => {}; }
-        "#;
-
-        let parsed = RustBackend.parse(source).unwrap();
-        let order = compute_order(&parsed, &RustProfile).unwrap();
-
-        // def(2) first, then invocations in source order: a(0), b(1).
-        assert_eq!(order, vec![2, 0, 1]);
-    }
-
-    /// Duplicate `macro_rules!` names (a later definition shadows the
-    /// earlier one) attach the shared invocation to exactly one definition,
-    /// so the order never repeats an index and the permutation validates.
-    #[test]
-    fn duplicate_macro_names_emit_the_invocation_once() {
-        // Source order: 0 = macro m, 1 = macro m (shadowing), 2 = m!().
-        let source = r#"
-            macro_rules! m { () => {}; }
-            macro_rules! m { () => {}; }
-            m!();
-        "#;
-
-        let parsed = RustBackend.parse(source).unwrap();
-        let order = compute_order(&parsed, &RustProfile).unwrap();
-
-        // The invocation (2) follows the first definition (0) exactly once.
-        assert_eq!(order, vec![0, 2, 1]);
-        crate::reorder::Permutation::new(parsed.items.len(), order)
-            .expect("no index may repeat for duplicate definition names");
-    }
-
-    /// A `macro_rules!` body invoking another local macro records a reversed
-    /// dependency edge, so the referenced macro is defined first.
-    #[test]
-    fn test_macro_def_calls_another_macro_def() {
-        // Source order: 0 = alpha (calls bravo), 1 = bravo, 2 = alpha!().
-        let source = r#"
-            macro_rules! alpha {
-                () => { bravo!(); };
-            }
-            macro_rules! bravo {
-                () => {};
-            }
-            alpha!();
-        "#;
-
-        let parsed = RustBackend.parse(source).unwrap();
-        let order = compute_order(&parsed, &RustProfile).unwrap();
-
-        // bravo(1) before alpha(0) (alpha depends on bravo), then invocation(2).
-        assert_eq!(order, vec![1, 0, 2]);
-    }
-
-    /// A chain of three macro defs (a → b → c) sorts by dependency, not
-    /// alphabetical order.
-    #[test]
-    fn test_macro_chain_dependency() {
-        // Source order: 0 = macro a (calls b), 1 = macro b (calls c), 2 = macro c.
-        let source = r#"
-            macro_rules! a {
-                () => { b!(); };
-            }
-            macro_rules! b {
-                () => { c!(); };
-            }
-            macro_rules! c {
-                () => {};
-            }
-        "#;
-
-        let parsed = RustBackend.parse(source).unwrap();
-        let order = compute_order(&parsed, &RustProfile).unwrap();
-
-        // c(2), b(1), a(0): callees before callers.
-        assert_eq!(order, vec![2, 1, 0]);
-    }
-
-    /// A file-based `#[cfg(test)] mod x;` declaration stays in the mod phase,
-    /// keeping its source position among file-based mods instead of moving to
-    /// the end (rustfmt owns its alphabetical placement).
-    #[test]
-    fn file_based_test_mod_stays_in_mod_phase() {
-        // Source order: zeta(0), test_helpers(1), alpha(2).
-        let source = r#"
-            mod zeta;
-            #[cfg(test)] mod test_helpers;
-            mod alpha;
-        "#;
-
-        let parsed = RustBackend.parse(source).unwrap();
-        let order = compute_order(&parsed, &RustProfile).unwrap();
-
-        // All three are mods -> phase 3, stable source order; the test mod does
-        // not jump to the last (phase 10) position.
-        assert_eq!(order, vec![0, 1, 2]);
-    }
-
-    /// An inline `#[cfg(test)] mod x { ... }` definition lands last, after all
-    /// other phases.
-    #[test]
-    fn inline_test_mod_lands_last() {
-        // Source order: inline test mod(0), alpha(1).
-        let source = r#"
-            #[cfg(test)] mod tests {
-                fn helper() {}
-            }
-            mod alpha;
-        "#;
-
-        let parsed = RustBackend.parse(source).unwrap();
-        let order = compute_order(&parsed, &RustProfile).unwrap();
-
-        // The file-based mod alpha stays in phase 3 (0-index 1) and the inline
-        // test mod goes to phase 10, so it is emitted last.
-        assert_eq!(order, vec![1, 0]);
-    }
-
-    /// Inline non-test and file-based test mods both stay in the mod phase,
-    /// preserving source order.
-    #[test]
-    fn inline_non_test_and_file_based_test_stay_in_mod_phase() {
-        // Source order: file-based test mod(0), inline non-test mod(1).
-        let source = r#"
-            #[cfg(test)] mod file_tests;
-            mod helpers_pub {}
-        "#;
-
-        let parsed = RustBackend.parse(source).unwrap();
-        let order = compute_order(&parsed, &RustProfile).unwrap();
-
-        // Neither is an inline test mod, so both stay in phase 3, source order.
-        assert_eq!(order, vec![0, 1]);
-    }
 
     /// Items only reorder within their preprocessor region run: a caller in
     /// region 0 with its callee also in region 0 still reorders, while a
@@ -714,7 +504,7 @@ mod tests {
             parsed.trailer_start,
         );
 
-        let order = compute_order(&regioned, &RustProfile).unwrap();
+        let order = compute_order(&regioned, &CallersFirstProfile).unwrap();
 
         // Each item is its own region run: identity, even though b calls a.
         assert_eq!(order, vec![0, 1, 2]);
@@ -743,7 +533,7 @@ mod tests {
             parsed.trailer_start,
         );
 
-        let order = compute_order(&regioned, &RustProfile).unwrap();
+        let order = compute_order(&regioned, &CallersFirstProfile).unwrap();
 
         // b before a (pos 1 before 0), d before c (pos 3 before 2); the
         // region 0/1 boundary keeps run 0's items before run 1's.

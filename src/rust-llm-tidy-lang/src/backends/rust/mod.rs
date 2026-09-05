@@ -1,13 +1,16 @@
-//! The Rust backend owns its grammar, item parser, lint rules, and text regions.
+//! The Rust backend owns its grammar, item parser, reorder policy, lint
+//! rules, and text regions.
 
 use crate::backends::LanguageBackend;
+use profile::RustProfile;
 use rust_llm_tidy_lint::Diagnostic;
 use rust_llm_tidy_model::parse::ParseResult;
-use rust_llm_tidy_reorder::graph::{self, RustProfile};
+use rust_llm_tidy_reorder::graph;
 use rust_llm_tidy_reorder::reorder::Permutation;
 
 mod lints;
 mod parse;
+mod profile;
 pub mod text_regions;
 
 /// The `rs` backend.

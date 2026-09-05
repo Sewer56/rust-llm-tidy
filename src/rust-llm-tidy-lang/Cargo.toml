@@ -22,3 +22,6 @@ tree-sitter-rust = "0.24"
 memchr = "2"
 tree-sitter-c-sharp = "0.23"
 tree-sitter-python = "0.25"
+
+[dev-dependencies]
+ahash = "0.8"
