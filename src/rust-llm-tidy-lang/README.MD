@@ -2,10 +2,9 @@
 
 Per-language AST backends for the `rust-llm-tidy` tooling.
 
-It holds the [`LanguageBackend`] contract - one language's tree-sitter
-grammar, its producer into the shared item model, and the AST ops it
-implements - plus the extension registry that resolves a backend per file
-extension.
+Each language implements the [`LanguageBackend`] trait: its tree-sitter
+grammar, its parse into the shared item model, and its AST ops. The
+extension registry maps a file extension to its backend.
 
 The Rust backend is a passthrough over the parse setup in
 `rust-llm-tidy-model`; it adds no behavior of its own.
@@ -31,15 +30,12 @@ assert_eq!(parsed.items.len(), 1);
 
 ## Features
 
-- **Registry** - Resolve a file extension (ASCII case-insensitively) to its
-  registered backend; extensions without one resolve no backend and can run
-  no AST op.
-- **Backends** - Each backend emits the model crate's
-  [`ParseResult`]
-  item shape, so reorder and lint passes consume one item model for every
-  language.
+- **Registry** - Maps a file extension (ASCII case-insensitive) to its
+  backend; unregistered extensions get none and run no AST ops.
+- **Backends** - All emit the model crate's [`ParseResult`] shape, so
+  reorder and lint passes share one item model.
 - **Rust passthrough** - The `rs` backend reuses the model crate's
-  tree-sitter-rust grammar and parse function unchanged.
+  tree-sitter-rust grammar and parse function.
 
 ## License
 
