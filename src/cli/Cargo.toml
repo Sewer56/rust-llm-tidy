@@ -15,6 +15,12 @@ categories = ["command-line-utilities"]
 name = "rust-llm-tidy"
 path = "src/main.rs"
 
+# Folder-rooted integration test. Cargo auto-discovers only `tests/*.rs` and
+# `tests/*/main.rs`, so the `mod.rs` root is declared explicitly here.
+[[test]]
+name = "doc_check"
+path = "tests/doc_check/mod.rs"
+
 # Benchmarks for the two CLI operations (lint and reorder) over embedded
 # real-world source fixtures. `harness = false` enables the criterion entry
 # point defined in each bench file.
@@ -39,11 +45,11 @@ name = "links"
 harness = false
 
 [dependencies]
-rust-llm-tidy-reorder = { path = "../rust-llm-tidy-reorder", version = "0.1.4" }
-rust-llm-tidy-lint = { path = "../rust-llm-tidy-lint", version = "0.2.1" }
-rust-llm-tidy-model = { path = "../rust-llm-tidy-model", version = "0.3.1" }
-rust-llm-tidy-fix = { path = "../rust-llm-tidy-fix", version = "0.3.0" }
-rust-llm-tidy-vis = { path = "../rust-llm-tidy-vis", version = "0.1.2" }
+rust-llm-tidy-reorder = { path = "../rust-llm-tidy-reorder", version = "0.2.0" }
+rust-llm-tidy-lint = { path = "../rust-llm-tidy-lint", version = "0.3.0" }
+rust-llm-tidy-model = { path = "../rust-llm-tidy-model", version = "0.4.0" }
+rust-llm-tidy-fix = { path = "../rust-llm-tidy-fix", version = "0.4.0" }
+rust-llm-tidy-lang = { path = "../rust-llm-tidy-lang", version = "0.1.0" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

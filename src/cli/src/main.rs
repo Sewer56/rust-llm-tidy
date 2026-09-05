@@ -1,9 +1,14 @@
-//! `rust-llm-tidy` - fix, reorder, narrow visibility, and lint Rust and
-//! Markdown source files.
+//! `rust-llm-tidy` - fix, reorder, narrow visibility, and lint allowed
+//! source files.
 //!
 //! A single default command that runs the full pipeline (fix -> reorder -> vis
-//! -> lints) on `.rs` and `.md` files. When no paths are given, the changed
-//! files from the current git diff are used (filtered to `.rs` and `.md`).
+//! -> lints) on every allowed source file.
+//!
+//! Allowed by default: `.rs`, the markdown family (`.md`, `.markdown`,
+//! `.txt`, `.text`, `.mdx`), and the default registry's code languages.
+//!
+//! When no paths are given, the changed files from the current git diff are
+//! used, filtered to the same allowed extensions.
 //!
 //! # Pipeline
 //!
@@ -12,7 +17,7 @@
 //! | fix     | align tables, fix fences, hoist links              | yes     |
 //! | reorder | review-friendly item order                         | yes     |
 //! | vis     | narrow bare `pub` in restricted-visibility modules | yes     |
-//! | lints   | DOC001-DOC006 + TEST001 checks                     | no      |
+//! | lints   | DOCXXX, TEXTXXX, TESTXXX checks                    | no      |
 //!
 //! # Flags
 //!
@@ -21,6 +26,7 @@
 //! | `--validate`        | Validate config and exit (no files touched)         |
 //! | `--include <RULE>`  | Run only these rules (repeatable, overrides config) |
 //! | `--exclude <RULE>`  | Skip these rules (repeatable, additive)             |
+//! | `--extension <EXT>` | Admit an extra file extension (repeatable)          |
 //! | `--dry-run`         | Preview the changes without writing them            |
 //! | `--config <PATH>`   | Explicit config path                                |
 //! | `--no-config`       | Disable config discovery                            |
@@ -33,17 +39,13 @@ use anyhow::{Context, bail};
 use clap::Parser;
 use config::CompiledConfig;
 use rust_llm_tidy_fix as fix;
-use rust_llm_tidy_lint::check;
-use rust_llm_tidy_model::io;
-use rust_llm_tidy_model::parse as model_parse;
-use rust_llm_tidy_model::parse;
-use rust_llm_tidy_model::safety;
-use rust_llm_tidy_reorder::graph;
-use rust_llm_tidy_reorder::reorder::Permutation;
-use rust_llm_tidy_vis::{
+use rust_llm_tidy_lang::backends::rust::visibility::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
     discover_crate_root, narrow_vis_in_tree,
 };
+use rust_llm_tidy_lint::check;
+use rust_llm_tidy_model::io;
+use rust_llm_tidy_model::safety;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fs;
@@ -52,6 +54,8 @@ use std::path::{Path, PathBuf};
 mod changes;
 mod config;
 mod diff;
+// Language registry: authority for allowed extensions and op gates.
+mod langs;
 mod output;
 mod paths;
 mod pipeline;
@@ -59,16 +63,17 @@ mod pipeline;
 /// Command-line arguments for `rust-llm-tidy`, parsed via `clap`.
 ///
 /// Collects the input paths plus flags controlling dry-run, validation, rule
-/// selection, and config discovery. See the `# Flags` table in the crate docs.
+/// selection, allowed extensions, and config discovery. See the `# Flags`
+/// table in the crate docs.
 #[derive(Parser)]
 #[command(
     name = "rust-llm-tidy",
-    about = "Fix, reorder, narrow visibility, and lint Rust source files"
+    about = "Fix, reorder, narrow visibility, and lint allowed source files"
 )]
 pub(crate) struct Cli {
     /// Path(s) to the Rust source file(s) or directory(s) to process. Each
     /// directory is expanded recursively. When omitted, the changed files in
-    /// the current git diff are used (filtered to `.rs` and `.md`).
+    /// the current git diff are used, filtered to the allowed extensions.
     paths: Vec<PathBuf>,
     /// Print the changes that would be made instead of modifying files.
     #[arg(long)]
@@ -82,6 +87,11 @@ pub(crate) struct Cli {
     /// Skip these rules/lint-codes (repeatable). Additive to config `exclude`.
     #[arg(long, value_name = "RULE")]
     exclude: Vec<String>,
+    /// Allow files with this extension in addition to the config or
+    /// default allowed set (repeatable). Written without the leading dot
+    /// and matched case-insensitively.
+    #[arg(long, value_name = "EXT")]
+    extension: Vec<String>,
     /// Path to a `.rust-llm-tidy.yml` config file. Overrides auto-discovery.
     #[arg(long, global = true)]
     config: Option<PathBuf>,
@@ -124,6 +134,9 @@ impl Cli {
 ///
 /// Returns `(path, diagnostics)` pairs so the caller can either print the
 /// plaintext lines to stderr (default output) or project them to JSON.
+///
+/// The profile decides which passes run: parser-driven checks need a
+/// registered backend; text lints source TEXT001/TEXT002 per tier.
 pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
@@ -131,15 +144,23 @@ pub(crate) fn check_file(
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let profile = langs::profile_for(ext);
 
     let mut diagnostics = Vec::new();
-    if crate::paths::ext_in(Some(ext), &["rs"]) {
-        let parsed = model_parse::parse_source(&source)
+    if profile.backend
+        && let Some(backend) = rust_llm_tidy_lang::backend_for(ext)
+    {
+        let parsed = backend
+            .parse(&source)
             .with_context(|| format!("failed to parse {}", path.display()))?;
-        diagnostics = check::run_all(&parsed);
+        diagnostics = backend.lint(&parsed);
     }
-    if crate::paths::ext_in(Some(ext), &["rs", "md"]) {
-        diagnostics.extend(check::run_text_checks(&source, ext));
+    match profile.text_lints {
+        langs::TextLints::Prose => diagnostics.extend(check::run_text_checks(&source, ext)),
+        langs::TextLints::Lexicon => {
+            diagnostics.extend(rust_llm_tidy_lang::lexicon::text_checks(&source, ext));
+        }
+        langs::TextLints::Ast | langs::TextLints::None => {}
     }
     diagnostics.retain(|d| !disabled.contains(d.code));
 
@@ -153,8 +174,11 @@ pub(crate) fn check_file(
 /// single file.
 ///
 /// Reads the source, runs [`fix::fix_tables`], [`fix::fix_fences`], then
-/// [`fix::fix_links`] (or [`fix::fix_links_with_min`] when
-/// `links_min_occurrences` exceeds 1).
+/// [`fix::fix_links`] with the configured `links_min_occurrences` threshold.
+///
+/// Each pass is gated by the file's [`langs::Profile`] against the active
+/// rule selection: an op the profile never allows never runs, and every pass
+/// strips and re-applies the profile's comment prefixes.
 ///
 /// Writes the result back via [`io::atomic_write`] unless `--dry-run` is
 /// given.
@@ -173,6 +197,7 @@ pub(crate) fn check_file(
 pub(crate) fn fix_file(
     path: &Path,
     dry_run: bool,
+    profile: &langs::Profile,
     enabled: &Option<HashSet<String>>,
     disabled: &HashSet<String>,
     links_min_occurrences: usize,
@@ -181,9 +206,9 @@ pub(crate) fn fix_file(
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let mut out: String = source.clone();
     let mut change_records = Vec::new();
-    if pipeline::op_enabled("tables", enabled, disabled) {
+    if profile.op_enabled("tables", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        match fix::fix_tables(&prior) {
+        match fix::fix_tables(&prior, profile.prefixes) {
             Cow::Owned(after) => {
                 change_records.push(changes::table_changes());
                 out = after;
@@ -191,9 +216,9 @@ pub(crate) fn fix_file(
             Cow::Borrowed(_) => out = prior,
         }
     }
-    if pipeline::op_enabled("fences", enabled, disabled) {
+    if profile.op_enabled("fences", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        let outcome = fix::fix_fences(&prior);
+        let outcome = fix::fix_fences(&prior, profile.prefixes);
         match outcome.text {
             Cow::Owned(after) => {
                 change_records.extend(changes::fence_changes(&outcome.anchors));
@@ -202,15 +227,9 @@ pub(crate) fn fix_file(
             Cow::Borrowed(_) => out = prior,
         }
     }
-    if pipeline::op_enabled("links", enabled, disabled) {
+    if profile.op_enabled("links", enabled, disabled) {
         let prior = std::mem::take(&mut out);
-        // Threshold 1 is the unchanged default: reuse `fix_links`; higher
-        // thresholds delegate to `fix_links_with_min`.
-        let result = if links_min_occurrences <= 1 {
-            fix::fix_links(&prior)
-        } else {
-            fix::fix_links_with_min(&prior, links_min_occurrences)
-        };
+        let result = fix::fix_links(&prior, profile.prefixes, links_min_occurrences);
         match result {
             (Cow::Owned(after), pairs) => {
                 change_records.extend(changes::link_changes(&pairs));
@@ -228,12 +247,20 @@ pub(crate) fn fix_file(
 
 /// Reorder a single source file.
 ///
-/// Returns one per-file [`changes::Change`] record per moved item (derived from
-/// the reorder crate's `ReorderMove` producer) in both dry-run and in-place
-/// modes.
+/// Returns one per-file [`changes::Change`] record per moved item (derived
+/// from the reorder crate's `ReorderMove` producer) in both dry-run and
+/// in-place modes.
 ///
-/// Writes the reordered source only when not in dry-run and the output differs
-/// from the original.
+/// A type whose member order changed gets one record of its own: member
+/// moves carry no top-level `ReorderMove`.
+///
+/// Parses through the file's registered backend; a parse failure is an
+/// error and fails the file. A backend that parses the source but declines
+/// to order it (unsupported preprocessor shapes) degrades to a no-op:
+/// zero change records, no write.
+///
+/// Writes the reordered source only when not in dry-run and the output
+/// differs from the original.
 pub(crate) fn reorder_file(
     path: &Path,
     dry_run: bool,
@@ -246,16 +273,25 @@ pub(crate) fn reorder_file(
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
 
-    // 2. Parse - extract items, spans, comments, preamble/trailer
-    let parsed = parse::parse_source(&source)
+    // 2. Parse through the registered backend - extract items, spans,
+    //    comments, members, preamble/trailer.
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let Some(backend) = rust_llm_tidy_lang::backend_for(ext) else {
+        return Ok(Vec::new());
+    };
+    let parsed = backend
+        .parse(&source)
         .with_context(|| format!("failed to parse {}", path.display()))?;
 
-    // 3. Build reference graph and compute topological order
-    let order = graph::compute_order(&parsed).context("failed to compute item order")?;
+    // 3. Compute the item and member order; a declined source is a no-op.
+    let Some(permutation) = backend
+        .reorder_permutation(&parsed)
+        .context("failed to compute item order")?
+    else {
+        return Ok(Vec::new());
+    };
 
-    // 4. Build permutation and emit reordered source
-    let permutation =
-        Permutation::new(parsed.items.len(), order).context("failed to build permutation")?;
+    // 4. Emit the reordered source.
     let output = rust_llm_tidy_reorder::reorder::emit(&parsed, &permutation)
         .context("failed to emit reordered source")?;
 
@@ -267,19 +303,7 @@ pub(crate) fn reorder_file(
         )
     })?;
 
-    let mut change_records = Vec::new();
-    for mv in rust_llm_tidy_reorder::compute_moves(&parsed.items, &permutation) {
-        // `from` is the 1-based input sequence position; the anchor line is
-        // the moved item's first source line.
-        let item = &parsed.items[mv.from() - 1];
-        change_records.push(changes::Change {
-            line: std::num::NonZeroU32::new(item.start_line() as u32),
-            code: "REORDER",
-            message: mv.message().into_boxed_str(),
-            kind: changes::ChangeKind::Item(*mv.kind()),
-            name: mv.name().map(Box::from),
-        });
-    }
+    let change_records = changes::reorder_changes(&parsed, &permutation);
     if !dry_run && output != source {
         io::atomic_write(path, &output)
             .with_context(|| format!("failed to write {}", path.display()))?;
@@ -452,6 +476,9 @@ fn main() -> anyhow::Result<()> {
                 valid.join(", ")
             );
         }
+    }
+    for ext in &cli.extension {
+        langs::validate_extension(ext)?;
     }
     let cli_include: Option<HashSet<String>> = if cli.include.is_empty() {
         None

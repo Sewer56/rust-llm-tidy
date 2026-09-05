@@ -1,4 +1,4 @@
-//! Specialized always-hoist implementation for the default threshold of one.
+//! Specialized always-hoist implementation for the threshold of one.
 //!
 //! Unlike the configurable counted path, this path records parsed link spans
 //! once, keys candidates only by label, and rewrites directly from those
@@ -11,7 +11,7 @@ use super::rewrite::{
     append_definition, blank_line_prefix, needs_blank_before_defs, replacement_pair,
 };
 use super::scan::{definition_text, line_segments, parse_inline_link, step_fence};
-use crate::tables::{split_terminator, strip_doc_prefix};
+use crate::tables::{split_terminator, strip_comment_prefix};
 use memchr::memmem;
 use smallvec::SmallVec;
 use std::borrow::Cow;
@@ -22,7 +22,7 @@ struct Scan<'a> {
     candidates: Candidates<'a>,
     occurrences: Occurrences,
     blocks: DocBlocks<'a>,
-    rust_context: bool,
+    doc_context: bool,
     line_ending: &'static str,
 }
 
@@ -58,93 +58,27 @@ struct Occurrence {
 }
 
 /// Hoist every eligible inline link while parsing each occurrence only once.
-pub(super) fn fix_links_one(input: &str) -> (Cow<'_, str>, Vec<(String, String)>) {
+pub(super) fn fix_links_one<'a>(
+    input: &'a str,
+    prefixes: &[&str],
+) -> (Cow<'a, str>, Vec<(String, String)>) {
     // Every accepted inline shape has its closing bracket immediately followed
     // by `(`. This rejects link-free and reference-only input in one scan.
     if memmem::find(input.as_bytes(), b"](").is_none() {
         return (Cow::Borrowed(input), Vec::new());
     }
 
-    let scan = scan(input);
-    if scan.rust_context {
-        rewrite_rust(input, scan)
+    let scan = scan(input, prefixes);
+    if scan.doc_context {
+        rewrite_doc(input, scan)
     } else {
         rewrite_markdown(input, scan)
     }
 }
 
-/// Rewrite document-scoped Markdown links by copying gaps between saved spans.
-fn rewrite_markdown<'a>(input: &'a str, scan: Scan<'a>) -> (Cow<'a, str>, Vec<(String, String)>) {
-    let selected = scan
-        .candidates
-        .iter()
-        .filter(|candidate| candidate.url.is_some())
-        .count();
-    if selected == 0 {
-        return (Cow::Borrowed(input), Vec::new());
-    }
-
-    // Size references and definitions before allocating.
-    let mut capacity = input.len();
-    if !input.ends_with('\n') {
-        capacity += scan.line_ending.len();
-    }
-    for candidate in &scan.candidates {
-        if let Some(url) = candidate.url {
-            capacity -= candidate.occurrences * (url.len() + 2);
-            capacity += candidate.text.len() + url.len() + 4 + scan.line_ending.len();
-        }
-    }
-
-    let mut output = String::with_capacity(capacity);
-    let mut last = 0usize;
-    for occurrence in &scan.occurrences {
-        if !is_eligible(&scan, occurrence) {
-            continue;
-        }
-        output.push_str(&input[last..occurrence.start]);
-        output.push('[');
-        output.push_str(scan.candidates[occurrence.candidate].text);
-        output.push(']');
-        let candidate = &scan.candidates[occurrence.candidate];
-        last = occurrence.start
-            + candidate.text.len()
-            + candidate
-                .url
-                .expect("eligible candidate has an inline URL")
-                .len()
-            + 4;
-    }
-    output.push_str(&input[last..]);
-    if !output.ends_with('\n') {
-        output.push_str(scan.line_ending);
-    }
-    // A definition cannot interrupt a paragraph: when the document ends in
-    // paragraph text, separate the trailing definition block with one blank
-    // line (see `needs_blank_before_defs`).
-    if needs_blank_before_defs(&output, "") {
-        capacity += scan.line_ending.len();
-        output.push_str(scan.line_ending);
-    }
-    for candidate in &scan.candidates {
-        if let Some(url) = candidate.url {
-            append_definition(&mut output, "", candidate.text, url, scan.line_ending);
-        }
-    }
-
-    debug_assert_eq!(output.len(), capacity);
-    let pairs = build_pairs(
-        scan.candidates
-            .iter()
-            .filter(|candidate| candidate.url.is_some()),
-        selected,
-    );
-    (Cow::Owned(output), pairs)
-}
-
-/// Rewrite only doc-comment occurrences and insert definitions at each using
+/// Rewrite only comment-block occurrences and insert definitions at each using
 /// block's end. Saved block and occurrence indices make this a linear merge.
-fn rewrite_rust<'a>(input: &'a str, mut scan: Scan<'a>) -> (Cow<'a, str>, Vec<(String, String)>) {
+fn rewrite_doc<'a>(input: &'a str, mut scan: Scan<'a>) -> (Cow<'a, str>, Vec<(String, String)>) {
     let mut rewrite_count = 0usize;
     let mut hoisted: SmallVec<[usize; 16]> = SmallVec::new();
     let mut definitions: SmallVec<[usize; 24]> = SmallVec::new();
@@ -264,6 +198,75 @@ fn rewrite_rust<'a>(input: &'a str, mut scan: Scan<'a>) -> (Cow<'a, str>, Vec<(S
     (Cow::Owned(output), pairs)
 }
 
+/// Rewrite document-scoped Markdown links by copying gaps between saved spans.
+fn rewrite_markdown<'a>(input: &'a str, scan: Scan<'a>) -> (Cow<'a, str>, Vec<(String, String)>) {
+    let selected = scan
+        .candidates
+        .iter()
+        .filter(|candidate| candidate.url.is_some())
+        .count();
+    if selected == 0 {
+        return (Cow::Borrowed(input), Vec::new());
+    }
+
+    // Size references and definitions before allocating.
+    let mut capacity = input.len();
+    if !input.ends_with('\n') {
+        capacity += scan.line_ending.len();
+    }
+    for candidate in &scan.candidates {
+        if let Some(url) = candidate.url {
+            capacity -= candidate.occurrences * (url.len() + 2);
+            capacity += candidate.text.len() + url.len() + 4 + scan.line_ending.len();
+        }
+    }
+
+    let mut output = String::with_capacity(capacity);
+    let mut last = 0usize;
+    for occurrence in &scan.occurrences {
+        if !is_eligible(&scan, occurrence) {
+            continue;
+        }
+        output.push_str(&input[last..occurrence.start]);
+        output.push('[');
+        output.push_str(scan.candidates[occurrence.candidate].text);
+        output.push(']');
+        let candidate = &scan.candidates[occurrence.candidate];
+        last = occurrence.start
+            + candidate.text.len()
+            + candidate
+                .url
+                .expect("eligible candidate has an inline URL")
+                .len()
+            + 4;
+    }
+    output.push_str(&input[last..]);
+    if !output.ends_with('\n') {
+        output.push_str(scan.line_ending);
+    }
+    // A definition cannot interrupt a paragraph: when the document ends in
+    // paragraph text, separate the trailing definition block with one blank
+    // line (see `needs_blank_before_defs`).
+    if needs_blank_before_defs(&output, "") {
+        capacity += scan.line_ending.len();
+        output.push_str(scan.line_ending);
+    }
+    for candidate in &scan.candidates {
+        if let Some(url) = candidate.url {
+            append_definition(&mut output, "", candidate.text, url, scan.line_ending);
+        }
+    }
+
+    debug_assert_eq!(output.len(), capacity);
+    let pairs = build_pairs(
+        scan.candidates
+            .iter()
+            .filter(|candidate| candidate.url.is_some()),
+        selected,
+    );
+    (Cow::Owned(output), pairs)
+}
+
 fn build_pairs<'a>(
     candidates: impl Iterator<Item = &'a Candidate<'a>>,
     count: usize,
@@ -283,14 +286,14 @@ fn is_eligible(scan: &Scan<'_>, occurrence: &Occurrence) -> bool {
 
 /// Parse non-fenced inline links, existing definitions, doc blocks, and line
 /// endings in one line pass. Candidate indices replace pair hashes downstream.
-fn scan(input: &str) -> Scan<'_> {
+fn scan<'a>(input: &'a str, prefixes: &[&str]) -> Scan<'a> {
     let mut candidates = Candidates::new();
     let mut occurrences = Occurrences::new();
     let mut blocks = DocBlocks::new();
     let mut current_prefix: Option<&str> = None;
     let mut current_block = NO_BLOCK;
     let mut fence_stack = Vec::new();
-    let mut rust_context = false;
+    let mut doc_context = false;
     let mut crlf = 0usize;
     let mut lf = 0usize;
     for (segment_start, segment) in line_segments(input) {
@@ -302,7 +305,7 @@ fn scan(input: &str) -> Scan<'_> {
             lf += 1;
         }
 
-        let (prefix, body) = strip_doc_prefix(content);
+        let (prefix, body) = strip_comment_prefix(content, prefixes);
         if prefix.is_empty() {
             current_prefix = None;
             current_block = NO_BLOCK;
@@ -318,7 +321,7 @@ fn scan(input: &str) -> Scan<'_> {
 
         let fence_delimiter = step_fence(&mut fence_stack, body);
         if !prefix.is_empty() && (fence_delimiter || fence_stack.is_empty()) {
-            rust_context = true;
+            doc_context = true;
         }
         if fence_delimiter || !fence_stack.is_empty() {
             continue;
@@ -369,7 +372,7 @@ fn scan(input: &str) -> Scan<'_> {
         candidates,
         occurrences,
         blocks,
-        rust_context,
+        doc_context,
         line_ending,
     }
 }

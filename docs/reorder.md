@@ -2,12 +2,16 @@
 
 ## What it does
 
-Reorders top-level items of a Rust source file into a review-friendly
-10-phase order, so a human can read the file top to bottom in review.
+Reorders top-level items of source code into a review-friendly
+order, so you can review code by chronologically reading it from
+top to bottom.
 
-Within most phases an item precedes anything it references;
-alphabetical order breaks ties. `fn main()` comes first in its tier;
-inline `#[cfg(test)] mod tests { ... }` definitions come last.
+Functions etc. will come before anything they reference.
+Alphabetical order breaks ties. Any entry point e.g. `fn main()`
+always comes first.
+
+Other languages:
+- [Reorder for C#]
 
 ## Phases
 
@@ -114,3 +118,4 @@ In JSON mode the same record appears on stdout with `severity: "success"`:
 
 See [Change reporting] for the shared format.
 [Change reporting]: ./lints.md#change-reporting
+[reorder for C#]: ./reorder/csharp.md

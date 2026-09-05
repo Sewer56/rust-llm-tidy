@@ -6,7 +6,7 @@ members = [
     "rust-llm-tidy-reorder",
     "rust-llm-tidy-lint",
     "rust-llm-tidy-fix",
-    "rust-llm-tidy-vis",
+    "rust-llm-tidy-lang",
     "cli",
 ]
 

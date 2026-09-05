@@ -9,6 +9,18 @@
 # future rust-llm-tidy release stay disabled until added here. Otherwise, pin
 # the rust-llm-tidy version used by CI and upgrade it deliberately when you
 # want to review new or changed rules.
+#
+# Allowed file extensions, matched case-insensitively.
+#
+# `extensions` replaces the defaults when non-empty. `extra_extensions`
+# adds on top of the effective list.
+#
+# extensions:
+#   - rs
+#   - md
+# extra_extensions:
+#   - rst
+#   - vim
 
 include:
   - paths: ["**"]
@@ -24,7 +36,7 @@ include:
       # - vis
 
       # Level 3: all documentation and test-name checks.
-      # `lints` enables DOC001-DOC006 and TEST001 together.
+      # `lints` enables DOCXXX, TEXTXXX, and TESTXXX codes together.
       # Uncomment to enable the complete lint pass.
       # - lints
 
@@ -36,4 +48,6 @@ include:
       # - DOC004
       # - DOC005
       # - DOC006
+      # - TEXT001
+      # - TEXT002
       # - TEST001

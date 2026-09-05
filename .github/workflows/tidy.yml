@@ -6,6 +6,7 @@ on:
       - "src/**"
       - "**/*.md"
       - ".rust-llm-tidy.yml"
+      - ".githooks/**"
 
 jobs:
   tidy:

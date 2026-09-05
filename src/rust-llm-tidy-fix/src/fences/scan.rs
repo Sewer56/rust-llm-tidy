@@ -6,15 +6,16 @@
 //! - [`parse_fence`]: exact fence parser for a trimmed line body.
 
 /// Cheaply decide whether `segment` could begin a fence under the full
-/// [`super::strip_doc_prefix`] + Unicode `body.trim_start()` pipeline.
+/// [`super::strip_comment_prefix`] + Unicode `body.trim_start()` pipeline for
+/// one prefix family.
 ///
 /// This is a sound superset gate: it returns `true` for every line the pipeline
 /// would treat as a fence, plus a few extras the pipeline would emit verbatim
 /// (still correct).
 ///
 /// The common case - an ASCII line whose first non-whitespace byte is not a
-/// marker run or `///` / `//!` - short-circuits with a raw byte scan, so
-/// typical code and prose cost almost nothing.
+/// marker run or one of the family's comment markers - short-circuits with a
+/// raw byte scan, so typical code and prose cost almost nothing.
 ///
 /// Whitespace handled in two tiers to stay both exact and fast:
 /// - ASCII whitespace (`0x09..=0x0d` plus space `0x20` - the ASCII members of
@@ -24,7 +25,7 @@
 ///   NBSP, ideographic space) preceding a fence, so such lines defer to the
 ///   full Unicode-aware pipeline rather than risk being skipped.
 #[inline]
-pub(super) fn is_fence_candidate(segment: &str) -> bool {
+pub(super) fn is_fence_candidate(segment: &str, prefixes: &[&str]) -> bool {
     let bytes = segment.as_bytes();
     // Skip ASCII whitespace (the ASCII subset of `char::is_whitespace`); a tight
     // byte scan. `i` lands on a `char` boundary, so slicing below is safe.
@@ -34,12 +35,10 @@ pub(super) fn is_fence_candidate(segment: &str) -> bool {
     }
     match bytes.get(i).copied() {
         // ASCII first byte: a fence - after the pipeline's Unicode trim - can
-        // only start with a marker run or a doc-comment prefix, all ASCII.
+        // only start with a marker run or a comment prefix from the family,
+        // all ASCII.
         Some(b) if b <= 0x7f => {
-            b == b'`'
-                || b == b'~'
-                || segment[i..].starts_with("///")
-                || segment[i..].starts_with("//!")
+            b == b'`' || b == b'~' || prefixes.iter().any(|&p| segment[i..].starts_with(p))
         }
         // Non-ASCII leading byte: may be Unicode whitespace before a fence;
         // defer to the full pipeline, which handles Unicode whitespace exactly.

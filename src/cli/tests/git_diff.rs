@@ -131,8 +131,57 @@ fn no_args_processes_git_diff() {
     cleanup(&repo);
 }
 
+/// No-args git-diff mode selects changed files of newly allowed extensions
+/// (`.py`, `.cs`, `.markdown`), case-insensitively, through the same
+/// allowed list; a follow-up run finds nothing left to change.
+#[test]
+fn no_args_selects_newly_allowed_extensions() {
+    let Some(repo) = init_repo() else {
+        return;
+    };
+    let py = repo.join("notes.py");
+    let cs = repo.join("Doc.CS");
+    let md = repo.join("README.MARKDOWN");
+    fs::write(&py, "# | a | b |\n# | --- | --- |\n# | 1 | 22 |\n").unwrap();
+    fs::write(&cs, "// | a | b |\n// | --- | --- |\n// | 1 | 22 |\n").unwrap();
+    fs::write(&md, "| a | b |\n| --- | --- |\n| 1 | 22 |\n").unwrap();
+    git(&repo, &["add", "."]);
+
+    let out = run(&repo, &["--no-config", "--include", "tables"]);
+    assert!(
+        out.status.success(),
+        "git-diff must allow .py/.CS/.MARKDOWN: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    for name in ["notes.py", "Doc.CS", "README.MARKDOWN"] {
+        assert!(
+            stderr.contains(name),
+            "{name} must be selected and table-fixed: {stderr}"
+        );
+    }
+    assert_eq!(
+        stderr.matches("tables were aligned").count(),
+        3,
+        "each staged file must report one table fix: {stderr}"
+    );
+
+    // The fixes are in place, so a second no-args run finds nothing.
+    let out = run(&repo, &["--no-config", "--include", "tables"]);
+    assert!(
+        out.status.success(),
+        "second git-diff run should succeed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !String::from_utf8_lossy(&out.stderr).contains("success[FIX]"),
+        "second run must emit zero change records"
+    );
+    cleanup(&repo);
+}
+
 /// A staged `.MD`/`.RS` change is selected by the no-args git-diff path,
-/// so extension admission is case-insensitive there too.
+/// so the allowed-extension match is case-insensitive there too.
 #[test]
 fn no_args_selects_uppercase_extension_variants() {
     let Some(repo) = init_repo() else {
@@ -163,7 +212,7 @@ fn no_args_selects_uppercase_extension_variants() {
     );
     assert!(
         out.status.success(),
-        "git-diff must admit .RS/.MD variants: {}",
+        "git-diff must allow .RS/.MD variants: {}",
         String::from_utf8_lossy(&out.stderr)
     );
     let stderr = String::from_utf8_lossy(&out.stderr);

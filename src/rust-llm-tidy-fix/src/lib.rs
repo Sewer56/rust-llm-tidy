@@ -1,19 +1,27 @@
 //! Small, dependency-free text-tidying passes for source that has drifted
 //! after LLM editing.
 //!
-//! Each pass rewrites a class of formatting drift in Markdown and Rust doc
-//! comments in place, borrowing the input back unchanged when nothing needs
+//! Each pass rewrites a class of formatting drift in Markdown and commented
+//! source in place, borrowing the input back unchanged when nothing needs
 //! fixing (so every pass is idempotent).
 //!
 //! # Passes
 //!
 //! - [`fix_fences`]: rewrite nested markdown fences to alternate backtick/tilde
-//!   markers so an inner fence cannot close the outer block early; works on
-//!   `.md` and `///`/`//!` doc comments.
+//!   markers so an inner fence cannot close the outer block early.
 //! - [`fix_links`]: collapse inline links `[text](url)` to reference form
 //!   `[text]` plus `[text]: url` definitions; idempotent.
 //! - [`fix_tables`]: realign GFM pipe tables, including those nested inside
-//!   `///` and `//!` doc comments.
+//!   comments.
+//!
+//! # Comment-prefix families
+//!
+//! Each pass takes the language's line-comment markers, longest first
+//! (e.g. `["///", "//"]`) so a longer marker wins over a shorter one it
+//! starts with; an empty slice handles plain markdown.
+//!
+//! Tables, fences, and links inside `//`, `#`, `--`, `;`, or `%` comments
+//! then tidy the same way.
 //!
 //! [`fix_fences`] returns a [`FixOutcome`] (text + per-entity [`FixAnchor`]);
 //! [`fix_links`] returns the text plus its substitution pairs; [`fix_tables`]
@@ -21,7 +29,6 @@
 
 pub use fences::fix_fences;
 pub use links::fix_links;
-pub use links::fix_links_with_min;
 use std::borrow::Cow;
 pub use tables::fix_tables;
 

@@ -14,9 +14,11 @@
 //! # Hard-fail policy
 //!
 //! Any config error - bad YAML, bad glob syntax, unknown rule name, a
-//! `links` value below 1, or a pattern matching zero files - causes
-//! [`load_and_compile`] to return `Err`, which the CLI propagates as a non-zero
-//! exit on every command.
+//! `links` value below 1, a malformed `extensions`/`extra_extensions`
+//! entry, or a pattern matching zero files - causes [`load_and_compile`]
+//! to return `Err`.
+//!
+//! The CLI propagates that error as a non-zero exit on every command.
 //!
 //! The `--validate` flag exists for CI to check the config without processing
 //! files.
@@ -50,6 +52,11 @@ pub struct CompiledConfig {
     post_process: Vec<PostProcessStep>,
     /// Link-hoist threshold settings (`None` = always hoist at threshold 1).
     links: Option<LinkConfig>,
+    /// Replacement list from the `extensions:` key; empty = keep the defaults.
+    extensions: Vec<String>,
+    /// Additions from the `extra_extensions:` key, allowed on top of the
+    /// effective base list.
+    extra_extensions: Vec<String>,
 }
 
 /// Raw serde view of `.rust-llm-tidy.yml`. Paths/globs are relative to the
@@ -75,6 +82,14 @@ pub struct Config {
     /// Link-hoist threshold settings. Absent = always hoist (threshold 1).
     #[serde(default)]
     pub links: Option<LinkConfig>,
+    /// Full allowed-extension list, replacing the defaults when non-empty
+    /// (empty keeps the defaults). No leading dot; case-insensitive.
+    #[serde(default)]
+    pub extensions: Vec<String>,
+    /// Extra extensions allowed in addition to the effective base
+    /// (`extensions` when non-empty, else the defaults).
+    #[serde(default)]
+    pub extra_extensions: Vec<String>,
 }
 
 /// Runtime policy for a single file: whether to skip it entirely, which ops are
@@ -148,6 +163,18 @@ impl CompiledConfig {
     /// per-file loop.
     pub fn post_process_steps(&self) -> &[PostProcessStep] {
         &self.post_process
+    }
+
+    /// The replacement extension list from the `extensions:` key; empty =
+    /// keep the defaults.
+    pub fn extension_override(&self) -> &[String] {
+        &self.extensions
+    }
+
+    /// The user-added extensions from the `extra_extensions:` key, allowed
+    /// in addition to the effective base list.
+    pub fn extra_extensions(&self) -> &[String] {
+        &self.extra_extensions
     }
 
     /// Effective link-hoist threshold for files with extension `ext` (no
@@ -257,11 +284,13 @@ pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathB
 /// 1. Read the file and `serde_yml::from_str` it (YAML error -> `Err`).
 /// 2. Canonicalize the config directory (patterns resolve relative to it).
 /// 3. Reject `include` + `exclude` co-presence (xor).
-/// 4. Validate every rule name against `known_rules()`; compile each group's
+/// 4. Validate every `extensions` and `extra_extensions` entry shape via
+///    [`crate::langs::validate_extension`].
+/// 5. Validate every rule name against `known_rules()`; compile each group's
 ///    patterns into a `GlobSet` with `literal_separator(true)`. An
 ///    empty/missing `paths` in a group is treated as `["**"]`.
-/// 5. Compile the `exclude_files` patterns into one `GlobSet`.
-/// 6. Semantic check: expand each pattern via `glob::glob()` joined with
+/// 6. Compile the `exclude_files` patterns into one `GlobSet`.
+/// 7. Semantic check: expand each pattern via `glob::glob()` joined with
 ///    `config_dir`; a pattern yielding zero results is stale -> `Err`.
 ///
 /// # Arguments
@@ -276,6 +305,8 @@ pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathB
 /// - The config path has no parent directory.
 /// - The config directory cannot be canonicalized.
 /// - `include` and `exclude` are both non-empty.
+/// - Any `extensions` or `extra_extensions` entry is empty or contains a dot,
+///   a path separator, or whitespace.
 /// - Any rule name is not in [`known_rules()`].
 /// - Any glob pattern has invalid syntax.
 /// - Any pattern matches zero files under the config directory.
@@ -301,6 +332,12 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
     // XOR: include + exclude both present -> error.
     if !config.include.is_empty() && !config.exclude.is_empty() {
         bail!("cannot use `include` (whitelist) and `exclude` (blacklist) together; pick one");
+    }
+
+    // Extension-list entries must be shaped like real path extensions; a
+    // malformed entry fails the run instead of being silently ignored.
+    for ext in config.extensions.iter().chain(&config.extra_extensions) {
+        crate::langs::validate_extension(ext)?;
     }
 
     // Link thresholds: every value must be >= 1 (a missing `min_occurrences`
@@ -393,6 +430,8 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         exclude_groups,
         post_process: config.post_process,
         links: config.links,
+        extensions: config.extensions,
+        extra_extensions: config.extra_extensions,
     })
 }
 
@@ -469,8 +508,7 @@ mod tests {
         }
         let cfg_path = dir.join(".rust-llm-tidy.yml");
         std::fs::write(&cfg_path, yaml).unwrap();
-        let compiled = load_and_compile(&cfg_path).expect("config should compile");
-        compiled
+        load_and_compile(&cfg_path).expect("config should compile")
     }
 
     #[test]
@@ -605,14 +643,21 @@ mod tests {
     #[test]
     fn known_rules_lists_every_code_and_op() {
         let rules = known_rules();
-        // The seven lint codes plus the six fix/operation names (including lints).
+        // The nine lint codes plus the six fix/operation names (including lints).
         for code in [
-            "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "TEST001",
+            "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "TEXT001", "TEXT002",
+            "TEST001",
         ] {
-            assert!(rules.iter().any(|r| *r == code), "missing lint code {code}");
+            assert!(rules.contains(&code), "missing lint code {code}");
+        }
+        for retired in ["DOC007", "DOC008"] {
+            assert!(
+                !rules.contains(&retired),
+                "retired code {retired} must not resolve as a rule name"
+            );
         }
         for op in ["tables", "fences", "links", "reorder", "vis", "lints"] {
-            assert!(rules.iter().any(|r| *r == op), "missing fix/operation {op}");
+            assert!(rules.contains(&op), "missing fix/operation {op}");
         }
     }
 

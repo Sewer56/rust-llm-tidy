@@ -18,8 +18,8 @@ Library for automatically reordering Rust source code. Built for LLM workflows.
 
 - **Parse** - Extract top-level items (fn, struct, enum, impl, trait, use,
   const, static, mod, type, union) with span ranges and doc-comment pinning
-- **Graph** - Walks the `syn` AST to collect reference edges and compute a
-  10-phase ordering
+- **Graph** - Walks the parse tree to collect reference edges and compute
+  the profile-supplied ordering
 - **Reorder** - Emit reordered source by byte-slicing the original, preserving
   preamble, trailer, and the source's dominant line endings (CRLF or LF)
 - **Safety** - Verify line multiset equality between original and reordered
@@ -33,6 +33,8 @@ Add this to your `Cargo.toml`:
 ```toml
 [dependencies]
 rust-llm-tidy-reorder = "0.1.1"
+rust-llm-tidy-lang = "0.1.0"
+rust-llm-tidy-model = "0.3.1"
 ```
 
 ## Usage
@@ -42,19 +44,20 @@ rust-llm-tidy-reorder = "0.1.1"
 Parse a source string, compute reorder, emit:
 
 ```rust
-use rust_llm_tidy_model::parse::parse_source;
-use rust_llm_tidy_reorder::graph::compute_order;
-use rust_llm_tidy_reorder::reorder::Permutation;
+use rust_llm_tidy_lang::{LanguageBackend, RustBackend};
+use rust_llm_tidy_reorder::reorder::emit;
 
 let source = r#"
 fn b() { a(); }
 fn a() {}
 "#;
 
-let parsed = parse_source(source).unwrap();
-let order = compute_order(&parsed).unwrap();
-let perm = Permutation::new(parsed.items.len(), order).unwrap();
-let output = rust_llm_tidy_reorder::reorder::emit(&parsed, &perm).unwrap();
+let parsed = RustBackend.parse(source).unwrap();
+let perm = RustBackend
+    .reorder_permutation(&parsed)
+    .unwrap()
+    .unwrap(); // the Rust backend always reorders
+let output = emit(&parsed, &perm).unwrap();
 
 assert!(output.contains("fn a()"));
 assert!(output.contains("fn b()"));
@@ -65,19 +68,19 @@ assert!(output.contains("fn b()"));
 Full pipeline with safety verification and atomic write:
 
 ```rust,no_run
-use rust_llm_tidy_model::parse::parse_source;
-use rust_llm_tidy_reorder::graph::compute_order;
-use rust_llm_tidy_reorder::reorder::Permutation;
+use rust_llm_tidy_lang::{LanguageBackend, RustBackend};
 use rust_llm_tidy_model::safety::verify_line_preservation;
 use rust_llm_tidy_model::io::atomic_write;
+use rust_llm_tidy_reorder::reorder::emit;
 use std::path::Path;
 
 let source = std::fs::read_to_string("src/main.rs")?;
 
-let parsed = parse_source(&source)?;
-let order = compute_order(&parsed)?;
-let perm = Permutation::new(parsed.items.len(), order)?;
-let output = rust_llm_tidy_reorder::reorder::emit(&parsed, &perm)?;
+let parsed = RustBackend.parse(&source)?;
+let perm = RustBackend
+    .reorder_permutation(&parsed)?
+    .expect("the Rust backend always reorders");
+let output = emit(&parsed, &perm)?;
 
 // Ensure no lines were lost or duplicated.
 verify_line_preservation(&source, &output)?;
@@ -91,6 +94,19 @@ atomic_write(Path::new("src/main.rs"), &output)?;
 
 The algorithm orders top-level items across phases. Within most phases, an item
 comes before any item it references; alphabetical order breaks ties.
+
+Ordering is defined per language. [`compute_order`] takes a [`ReorderProfile`]
+that supplies the phases, their ordering strategies, and the node kinds the
+reference walk matches.
+
+- The `rust-llm-tidy-lang` crate's Rust backend supplies the Rust order
+  documented here through its `reorder_permutation`.
+- The same crate's C# backend ships `CSharpProfile`; its rules are documented
+  in `docs/reorder/csharp.md`.
+
+Items reorder only within their preprocessor region (see `SourceItem::region`).
+Items with in-type members can also reorder those members through
+[`compute_member_order`].
 
 Below is an annotated example of the output order. The comments show which
 phase each item belongs to and why.
@@ -199,3 +215,6 @@ Licensed under Apache 2.0
 [crates-badge]: https://img.shields.io/crates/v/rust-llm-tidy-reorder.svg
 [docs-badge]: https://docs.rs/rust-llm-tidy-reorder/badge.svg
 [ci-badge]: https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg
+[`compute_order`]: crate::graph::compute_order
+[`compute_member_order`]: crate::graph::compute_member_order
+[`ReorderProfile`]: crate::graph::ReorderProfile

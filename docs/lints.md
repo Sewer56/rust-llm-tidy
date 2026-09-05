@@ -1,16 +1,29 @@
-# `lints` - documentation and test-naming checks
+# `lints` - documentation, text, and test-naming checks
 
 ## What it does
 
-The `lints` op runs nine read-only checks (DOC001-DOC008 + TEST001). It is
-on by default in the pipeline and never mutates files. Exits non-zero when
-any error-severity finding is present (warnings do not fail).
+The `lints` op runs read-only checks. It is on by default in the
+pipeline and never mutates files. Exits non-zero when any error-severity
+finding is present (warnings do not fail).
 
-The nine lint codes are sub-checks of `lints`; they stay individually
+The lint codes are sub-checks of `lints`; they stay individually
 toggleable through the same rule namespace as the ops.
 
 So `exclude: [{rules: [DOC001]}]` turns off just missing-docs and
 `exclude: [{rules: [lints]}]` turns off all linting.
+
+Which codes run depends on the language:
+
+- Rust: every code, read from a tree-sitter parse.
+- C#: every code, read from a tree-sitter parse, evaluated against XML
+  doc comments ([lints for C#]).
+
+Languages other than Rust and C# run the text lints only ([text lints]):
+
+- Markdown family: read from the raw file.
+- Python: read from a tree-sitter-python parse.
+- Comment-marker families (`//`, `#`, `--`, `;`, `%`): read from the
+  comment lexicon.
 
 ## Codes
 
@@ -22,8 +35,8 @@ So `exclude: [{rules: [DOC001]}]` turns off just missing-docs and
 | [`DOC004`]  | Warning  | A `pub fn` with parameters has no `# Arguments` section.                          |
 | [`DOC005`]  | Warning  | A `# Arguments` section does not mention every parameter name.                    |
 | [`DOC006`]  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).                   |
-| [`DOC007`]  | Error    | A doc paragraph over 240 chars of full text (bullets warn).                       |
-| [`DOC008`]  | Warning  | A doc line over 80 chars of full text (code blocks, tables, link defs exempt).    |
+| [`TEXT001`] | Error    | A doc paragraph over 240 chars of full text (bullets warn).                       |
+| [`TEXT002`] | Warning  | A doc line over 80 chars of full text (code blocks, tables, link defs exempt).    |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
 
 ## Examples
@@ -250,90 +263,6 @@ src/lib.rs:1: warning[DOC006]: doc comment contains placeholder text (TODO/FIXME
 
 `DOC006` is warning-severity, so the run exits 0.
 
-### DOC007 - oversized paragraph
-
-A paragraph of doc text over 240 chars is an error. A bullet over
-240 chars warns instead and recommends one checkable action of at most 160
-chars. Nested bullets are separate paragraphs.
-
-Both checks strip leading whitespace, the comment marker (`//`, `///`, `//!`
-in Rust), and one following space. They run on `.rs` and `.md` files.
-
-Code blocks, tables, headings, signature lines, and link definitions are
-exempt as whole lines and end a paragraph.
-
-Before:
-
-```rust
-/// Loads the configured data from disk, parses it, validates every field
-/// against the schema, resolves relative paths against the config
-/// directory, retries transient failures with bounded backoff, and logs a
-/// one-line summary when the load settles.
-pub fn load() {}
-```
-
-After:
-
-```rust
-/// Loads the configured data from disk and parses it.
-///
-/// - Validates every field against the schema.
-/// - Resolves relative paths against the config directory.
-/// - Retries transient failures with bounded backoff.
-/// - Logs a one-line summary when the load settles.
-pub fn load() {}
-```
-
-#### DOC007 CLI output
-
-```text
-$ rust-llm-tidy --no-config --include DOC007 src/lib.rs
-src/lib.rs:1: error[DOC007]: paragraph is 243 chars long.
-  - Paragraphs over 240 chars outlast a short attention span.
-  - Split it at the nearest idea change with a blank line.
-  - Convert list-like paragraphs into bullets.
-  - Keep each bullet to one checkable action of at most 160 chars.
-  - Move remarks into their own sections.
-  - The check skips code blocks, tables, headings, signature lines, and link definitions. (file)
-Error: found 1 error(s)
-```
-
-`DOC007` is error-severity for prose, so the run exits non-zero; bullets
-exit 0.
-
-### DOC008 - long line
-
-A doc line over 80 chars is a warning. Lines count in full: code spans,
-URLs, and link targets included.
-
-Code blocks, table rows, and link reference definitions are exempt.
-
-Before:
-
-```md
-The config is discovered by walking up from the current directory to the repo root, checking each level.
-```
-
-After:
-
-```md
-The config is discovered by walking up from the current directory to the repo
-root, checking each level.
-```
-
-#### DOC008 CLI output
-
-```text
-$ rust-llm-tidy --no-config --include DOC008 README.md
-README.md:1: warning[DOC008]: line is 104 chars long.
-  - Lines over 80 chars strain short attention spans and need wide monitors.
-  - Split it at the nearest idea change with a blank line.
-  - Code spans, URLs, and link targets count.
-  - Code blocks, table rows, and link definitions are exempt. (file)
-```
-
-`DOC008` is warning-severity, so the run exits 0.
-
 ### TEST001 - non-behavioral test name
 
 Test-attributed functions should describe behavior, not use `test`, `test_*`,
@@ -417,8 +346,8 @@ Fields:
 
 - `severity` - `"error"` or `"warning"` for lint findings, `"success"` for
   change records (applied or would-be changes)
-- `line` - 1-based item start line; `null` when the record has no specific
-  line (e.g. link/table fixes)
+- `line` - 1-based item start line; `null` when the record has no
+  specific line (e.g. link/table fixes)
 - `item_name` - item name, `null` when unnamed
 - `title` - friendly per-code title for lint findings, `null` for change
   records
@@ -471,6 +400,8 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`DOC004`]: #doc004---missing-arguments-section
 [`DOC005`]: #doc005---undocumented-parameter
 [`DOC006`]: #doc006---placeholder-text
-[`DOC007`]: #doc007---oversized-paragraph
-[`DOC008`]: #doc008---long-line
+[`TEXT001`]: ./text-lints.md#text001---oversized-paragraph
+[`TEXT002`]: ./text-lints.md#text002---long-line
 [`TEST001`]: #test001---non-behavioral-test-name
+[lints for C#]: ./languages/lints/csharp.md
+[text lints]: ./text-lints.md

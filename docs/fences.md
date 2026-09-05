@@ -4,7 +4,10 @@
 
 When a fenced code block is nested inside another fenced block, the inner
 fence uses the opposite delimiter (```` ``` ```` vs ```` ~~~ ````) so the
-outer block does not close early. Runs in `.md` files and `.rs` doc comments.
+outer block does not close early.
+
+Runs in markdown-family files and in `///` and `//!` doc comments.
+For other languages, it must be enabled explicitly.
 
 ## Before
 

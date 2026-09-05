@@ -1,8 +1,11 @@
 //! Benchmarks for the `fix` fence pass.
 //!
-//! Measures [`fix_fences`] over each fixture, mirroring the CLI's `fix_file`
-//! fence step (run after table alignment) minus file I/O. `clean` fixtures are
-//! borrowed back unchanged; `dirty` fixtures trigger marker rewriting.
+//! Measures [`fix_fences`] over each fixture with the Rust doc-marker
+//! family, mirroring the CLI's `fix_file` fence step (run after table
+//! alignment) minus file I/O.
+//!
+//! `clean` fixtures are borrowed back unchanged; `dirty` fixtures trigger
+//! marker rewriting.
 //!
 //! [`fix_fences`]: rust_llm_tidy_fix::fix_fences
 
@@ -16,6 +19,9 @@ use rust_llm_tidy_fix::fix_fences;
 #[path = "common.rs"]
 mod common;
 
+/// The Rust doc-comment marker family the fixtures' fences carry.
+const DOC_PREFIXES: &[&str] = &["///", "//!"];
+
 /// Benchmark [`fix_fences`] per fixture.
 fn fence_pass(c: &mut Criterion) {
     let mut group = c.benchmark_group("fences");
@@ -23,7 +29,7 @@ fn fence_pass(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(source.len() as u64));
         group.bench_function(*name, |bencher| {
             bencher.iter(|| {
-                let out = fix_fences(source);
+                let out = fix_fences(source, DOC_PREFIXES);
                 std::hint::black_box(out);
             });
         });

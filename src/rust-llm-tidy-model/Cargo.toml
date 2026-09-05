@@ -1,8 +1,8 @@
 [package]
 name = "rust-llm-tidy-model"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
-description = "Shared Rust source model: parse top-level items with spans, visibility, and doc comments."
+description = "Shared language-neutral source items, spans, and parse results."
 repository = "https://github.com/Sewer56/rust-llm-tidy"
 license = "Apache-2.0"
 include = ["src/**/*"]
@@ -14,8 +14,6 @@ categories = ["development-tools"]
 [dependencies]
 anyhow = "1"
 tree-sitter = "0.26"
-tree-sitter-rust = "0.24"
-memchr = "2"
 ahash = "0.8"
 tempfile = "3"
 

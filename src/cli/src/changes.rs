@@ -8,7 +8,8 @@
 //! Records are label-level - they describe the affected region from its first
 //! line and never embed the reconstructed source bytes.
 //!
-//! Reorder records come from the reorder crate's `ReorderMove`. Fence fix
+//! Reorder records come from the reorder crate's `ReorderMove` producer
+//! plus one record per member-reordered type ([`reorder_changes`]). Fence fix
 //! records come from the per-entity [`rust_llm_tidy_fix::FixAnchor`]s via
 //! [`fence_changes`]; tables emit one per-file record via [`table_changes`];
 //! link hoists map the fix crate's before/after pairs to records via
@@ -145,6 +146,61 @@ pub(crate) fn link_changes(pairs: &[(String, String)]) -> Vec<Change> {
             name: None,
         })
         .collect()
+}
+
+/// Derive the reorder [`Change`] records for a parsed file and its
+/// permutation.
+///
+/// Two record kinds, both anchored at the affected item's first source
+/// line:
+///
+/// - one per top-level move, from the reorder crate's `ReorderMove`
+///   producer (`from` there is the 1-based input position);
+/// - one per type whose member permutation is not the identity: member
+///   moves carry no top-level `ReorderMove` of their own.
+///
+/// An identity permutation yields zero records.
+///
+/// # Arguments
+///
+/// - `parsed`: the parsed source whose items moved.
+/// - `permutation`: the validated permutation the reorder emitted.
+pub(crate) fn reorder_changes(
+    parsed: &rust_llm_tidy_model::parse::ParseResult,
+    permutation: &rust_llm_tidy_reorder::reorder::Permutation,
+) -> Vec<Change> {
+    let mut change_records = Vec::new();
+    for mv in rust_llm_tidy_reorder::compute_moves(&parsed.items, permutation) {
+        // `mv.from()` is the 1-based input sequence position.
+        let item = &parsed.items[mv.from() - 1];
+        change_records.push(Change {
+            line: NonZeroU32::new(item.start_line() as u32),
+            code: "REORDER",
+            message: mv.message().into_boxed_str(),
+            kind: ChangeKind::Item(*mv.kind()),
+            name: mv.name().map(Box::from),
+        });
+    }
+    // Member moves: one record per type whose member permutation is not the
+    // identity, anchored at the type's own line.
+    for (idx, item) in parsed.items.iter().enumerate() {
+        let moved = permutation
+            .member_order(idx)
+            .map(|order| order.iter().enumerate().any(|(pos, &m)| pos != m))
+            .unwrap_or(false);
+        if !moved {
+            continue;
+        }
+        change_records.push(Change {
+            line: NonZeroU32::new(item.start_line() as u32),
+            code: "REORDER",
+            message: format!("rearrange {} members to the profile order", item.kind())
+                .into_boxed_str(),
+            kind: ChangeKind::Item(*item.kind()),
+            name: item.name().map(Box::from),
+        });
+    }
+    change_records
 }
 
 /// The one [`Change`] a file emits when its tables were realigned.

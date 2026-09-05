@@ -318,6 +318,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
+name = "derive_more"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d751e9e49156b02b44f9c1815bcb94b984cdcc4396ecc32521c739452808b134"
+dependencies = [
+ "derive_more-impl",
+]
+
+[[package]]
+name = "derive_more-impl"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "799a97264921d8623a957f6c3b9011f3b5492f557bbb7a5a19b7fa6d06ba8dcb"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "rustc_version",
+ "syn 2.0.118",
+]
+
+[[package]]
 name = "either"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -747,10 +768,10 @@ dependencies = [
  "ignore",
  "rayon",
  "rust-llm-tidy-fix",
+ "rust-llm-tidy-lang",
  "rust-llm-tidy-lint",
  "rust-llm-tidy-model",
  "rust-llm-tidy-reorder",
- "rust-llm-tidy-vis",
  "serde",
  "serde_json",
  "serde_yml",
@@ -758,7 +779,7 @@ dependencies = [
 
 [[package]]
 name = "rust-llm-tidy-fix"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "memchr",
@@ -766,8 +787,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-llm-tidy-lang"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "anyhow",
+ "cargo_metadata",
+ "memchr",
+ "rust-llm-tidy-lint",
+ "rust-llm-tidy-model",
+ "rust-llm-tidy-reorder",
+ "tree-sitter",
+ "tree-sitter-c-sharp",
+ "tree-sitter-python",
+ "tree-sitter-rust",
+]
+
+[[package]]
 name = "rust-llm-tidy-lint"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "indoc",
  "rust-llm-tidy-model",
@@ -775,35 +813,24 @@ dependencies = [
 
 [[package]]
 name = "rust-llm-tidy-model"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "ahash",
  "anyhow",
- "memchr",
  "tempfile",
  "tree-sitter",
- "tree-sitter-rust",
 ]
 
 [[package]]
 name = "rust-llm-tidy-reorder"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "ahash",
  "anyhow",
+ "derive_more",
+ "rust-llm-tidy-lang",
  "rust-llm-tidy-model",
  "tree-sitter",
-]
-
-[[package]]
-name = "rust-llm-tidy-vis"
-version = "0.1.2"
-dependencies = [
- "ahash",
- "anyhow",
- "cargo_metadata",
- "tree-sitter",
- "tree-sitter-rust",
 ]
 
 [[package]]
@@ -811,6 +838,15 @@ name = "rustc-hash"
 version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
+
+[[package]]
+name = "rustc_version"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
+dependencies = [
+ "semver",
+]
 
 [[package]]
 name = "rustix"
@@ -1014,10 +1050,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-c-sharp"
+version = "0.23.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1aac67f1ad71de1d6d39708d34811081c26dfa495658de6c14c34200849357c"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "tree-sitter-language"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
+
+[[package]]
+name = "tree-sitter-python"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6bf85fd39652e740bf60f46f4cda9492c3a9ad75880575bf14960f775cb74a1c"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
 
 [[package]]
 name = "tree-sitter-rust"

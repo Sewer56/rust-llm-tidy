@@ -1,10 +1,15 @@
 //! Data model for parsed source items.
 //!
-//! Holds the value types produced by parsing a Rust source file: the kind,
-//! name, visibility, doc comments, and span of each top-level item, plus the
-//! container that bundles them with the original source text and
+//! Holds the value types produced by parsing a source file: the kind,
+//! name, visibility, doc comments, and span of each top-level item, plus
+//! the container that bundles them with the original source text and
 //! preamble/trailer offsets.
+//!
+//! Items also carry the preprocessor region id and in-type members a
+//! language backend fills for reordering.
 
+use crate::parse::kind::ItemKind;
+use crate::parse::member::TypeMember;
 use std::fmt;
 
 /// The result of parsing a source file.
@@ -85,108 +90,14 @@ pub struct SourceItem {
     params: Vec<String>,
     /// True for fn items carrying a `#[test]` or `#[...::test]` attribute.
     is_test_fn: bool,
-}
-
-/// Kind of a parsed source item.
-///
-/// Each variant is shown with the minimal Rust syntax that produces it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ItemKind {
-    /// A free function.
-    ///
-    /// ```rust,ignore
-    /// fn main() {}
-    /// ```
-    Fn,
-    /// A struct definition.
-    ///
-    /// ```rust,ignore
-    /// struct Foo { x: i32 }
-    /// ```
-    Struct,
-    /// An enum definition.
-    ///
-    /// ```rust,ignore
-    /// enum Color { Red, Green, Blue }
-    /// ```
-    Enum,
-    /// A type alias.
-    ///
-    /// ```rust,ignore
-    /// type Point = (i32, i32);
-    /// ```
-    Type,
-    /// A union definition.
-    ///
-    /// ```rust,ignore
-    /// union Bytes { as_u32: u32, as_bytes: [u8; 4] }
-    /// ```
-    Union,
-    /// An inherent or trait impl block.
-    ///
-    /// ```rust,ignore
-    /// impl Foo {}
-    /// impl Default for Foo { fn default() -> Self { Self {} } }
-    /// ```
-    Impl,
-    /// A `use` import.
-    ///
-    /// ```rust,ignore
-    /// use std::io;
-    /// ```
-    Use,
-    /// A `const` item.
-    ///
-    /// ```rust,ignore
-    /// const MAX: u32 = 100;
-    /// ```
-    Const,
-    /// A `static` item.
-    ///
-    /// ```rust,ignore
-    /// static COUNTER: AtomicUsize = AtomicUsize::new(0);
-    /// ```
-    Static,
-    /// A module declaration or inline module.
-    ///
-    /// ```rust,ignore
-    /// mod foo;
-    /// mod bar {}
-    /// ```
-    Mod,
-    /// An `extern crate` declaration.
-    ///
-    /// ```rust,ignore
-    /// extern crate serde;
-    /// ```
-    Extern,
-    /// A trait definition.
-    ///
-    /// ```rust,ignore
-    /// trait Draw { fn render(&self); }
-    /// ```
-    Trait,
-    /// A `macro_rules!` definition.
-    ///
-    /// ```rust,ignore
-    /// macro_rules! say_hello { () => { println!("hi"); }; }
-    /// ```
-    Macro,
-    /// A top-level macro invocation (e.g. `foo!();`) that is not a
-    /// `macro_rules!` definition. Named after the last path segment so the
-    /// graph stage can pair it with its local `macro_rules!` definition.
-    ///
-    /// ```rust,ignore
-    /// println!("x");
-    /// ```
-    MacroInvocation,
-    /// Any other top-level item not covered above (foreign modules, trait
-    /// aliases, verbatim items).
-    ///
-    /// ```rust,ignore
-    /// extern "C" { fn f(); }
-    /// ```
-    Other,
+    /// Preprocessor region id this item belongs to: reordering permutes
+    /// items only within one region id, so no item crosses a preprocessor
+    /// conditional boundary. `0` for languages without preprocessor
+    /// conditionals (Rust).
+    region: u32,
+    /// In-type members of this item, for member reordering. Empty unless a
+    /// language backend's parse produced them; the Rust parse emits none.
+    members: Vec<TypeMember>,
 }
 
 /// Visibility classification for ordering items.
@@ -205,6 +116,36 @@ impl ParseResult {
     /// passes avoid a second parse of [`ParseResult::source`].
     pub fn syntax_tree(&self) -> &tree_sitter::Tree {
         &self.tree
+    }
+
+    /// Create a parse result from its parts.
+    ///
+    /// Language backends use this to emit the shared item shape from their
+    /// own grammar's tree.
+    ///
+    /// # Arguments
+    ///
+    /// - `items`: the parsed items in file order.
+    /// - `source`: the full source text.
+    /// - `tree`: the tree-sitter syntax tree parsed from `source`.
+    /// - `preamble_end`: byte offset where the preamble ends (before the
+    ///   first item).
+    /// - `trailer_start`: byte offset where the trailer begins (after the
+    ///   last item).
+    pub fn new(
+        items: Vec<SourceItem>,
+        source: String,
+        tree: tree_sitter::Tree,
+        preamble_end: usize,
+        trailer_start: usize,
+    ) -> Self {
+        Self {
+            items,
+            source,
+            tree,
+            preamble_end,
+            trailer_start,
+        }
     }
 }
 
@@ -301,6 +242,35 @@ impl SourceItem {
         self.start_line
     }
 
+    /// The preprocessor region id of this item: reordering permutes items
+    /// only within one region, so no item crosses a preprocessor
+    /// conditional boundary. `0` for languages without preprocessor
+    /// conditionals (Rust).
+    #[inline]
+    pub fn region(&self) -> u32 {
+        self.region
+    }
+
+    /// The in-type members of this item, for member reordering.
+    ///
+    /// Empty unless a language backend's parse produced them; the Rust
+    /// parse emits none (Rust reorders top-level items only).
+    pub fn members(&self) -> &[TypeMember] {
+        &self.members
+    }
+
+    /// Set the preprocessor region id (see [`SourceItem::region`]).
+    pub fn with_region(mut self, region: u32) -> Self {
+        self.region = region;
+        self
+    }
+
+    /// Attach in-type members (see [`SourceItem::members`]).
+    pub fn with_members(mut self, members: Vec<TypeMember>) -> Self {
+        self.members = members;
+        self
+    }
+
     #[allow(clippy::too_many_arguments)]
     /// Creates a new `SourceItem`.
     ///
@@ -340,33 +310,8 @@ impl SourceItem {
             returns_result,
             params,
             is_test_fn,
-        }
-    }
-}
-
-impl ItemKind {
-    /// The stable `&'static str` form of this kind (e.g. `"fn"`), shared by
-    /// [`Display`] and structured change/diagnostic reporting so
-    /// records can hold the kind without an owned allocation.
-    ///
-    /// [`Display`]: std::fmt::Display
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ItemKind::Fn => "fn",
-            ItemKind::Struct => "struct",
-            ItemKind::Enum => "enum",
-            ItemKind::Type => "type",
-            ItemKind::Union => "union",
-            ItemKind::Impl => "impl",
-            ItemKind::Use => "use",
-            ItemKind::Const => "const",
-            ItemKind::Static => "static",
-            ItemKind::Mod => "mod",
-            ItemKind::Extern => "extern",
-            ItemKind::Trait => "trait",
-            ItemKind::Macro => "macro",
-            ItemKind::MacroInvocation => "macro-invocation",
-            ItemKind::Other => "other",
+            region: 0,
+            members: Vec::new(),
         }
     }
 }
@@ -384,8 +329,42 @@ impl fmt::Debug for ParseResult {
     }
 }
 
-impl fmt::Display for ItemKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// New items carry region `0` and no members; the builders override
+    /// both. The Rust parse relies on the defaults (no preprocessor
+    /// conditionals, no in-type reordering).
+    #[test]
+    fn region_and_members_default_then_override() {
+        let item = SourceItem::new(
+            0,
+            10,
+            1,
+            ItemKind::Fn,
+            Some("a".into()),
+            None,
+            false,
+            false,
+            false,
+            Some(VisibilityTier::Private),
+            Vec::new(),
+            false,
+            Vec::new(),
+            false,
+        );
+
+        assert_eq!(item.region(), 0, "region defaults to 0");
+        assert!(item.members().is_empty(), "no members by default");
+
+        let member = TypeMember::new(9, 18, 2, ItemKind::Fn, Some("helper".into()));
+        let item = item.with_region(2).with_members(vec![member]);
+
+        assert_eq!(item.region(), 2);
+        assert_eq!(item.members().len(), 1);
+        assert_eq!(item.members()[0].name(), Some("helper"));
+        assert_eq!(item.members()[0].region(), 2);
+        assert_eq!(item.members()[0].kind(), &ItemKind::Fn);
     }
 }

@@ -130,7 +130,6 @@ jobs:
             src/rust-llm-tidy-reorder
             src/rust-llm-tidy-lint
             src/rust-llm-tidy-fix
-            src/rust-llm-tidy-vis
             src/cli
           compression-tool: 7z
           artifact-groups-file: .github/artifact-groups.yml

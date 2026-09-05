@@ -1,8 +1,9 @@
 //! Helpers shared by the `rust-llm-tidy` CLI integration tests.
 //!
-//! Each file under `tests/` is compiled as its own crate, so helpers used by
-//! several test binaries live in this submodule (`tests/common/mod.rs`) and
-//! are pulled in with `mod common;` per test file.
+//! Each test binary under `tests/` is its own crate, so helpers used by
+//! several of them live in this submodule (`tests/common/mod.rs`). Flat
+//! roots pull it in with `mod common;`; folder roots use
+//! `#[path = "../common/mod.rs"]`.
 
 /// Returns the path to the `rust-llm-tidy` binary for spawning in tests.
 ///

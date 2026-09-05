@@ -22,8 +22,8 @@ align:
 It works on:
 
 - Plain markdown (`.md`): tables are realigned directly.
-- Rust doc comments (`.rs`): a leading `///` or `//!` prefix is stripped, the
-  table is realigned, and the prefix is re-applied.
+- Commented source: a leading comment prefix is stripped, the table is
+  realigned, and the prefix is re-applied.
 
 The function is idempotent: an already-aligned table is returned unchanged.
 
@@ -32,7 +32,7 @@ The function is idempotent: an already-aligned table is returned unchanged.
 [`fix_fences`] flips each nested fence to the opposite marker (backticks <->
 tildes) so an inner fence can't close the outer block early.
 
-Applies to `.md` files and to fences inside `///` and `//!` doc comments.
+Applies to `.md` files and to fences inside any comment-marker family.
 
 Before (both backticks - inner closes outer early):
 
@@ -110,13 +110,17 @@ let input = " | a   | bb |
 | ------------- | --- |
 | ccc           | d   |
 ";
-let out = fix_tables(input);
+// Plain markdown: an empty marker family.
+let out = fix_tables(input, &[]);
 assert_ne!(&*out, input);
+
+// Commented source: the language's markers, longest first (Rust here).
+let out = fix_tables(input, &["///", "//"]);
 
 // Link hoisting works independently:
 let links = "see [A](http://x) and [A](http://x)\n";
-let out = fix_links(links);
-assert_eq!(&*out, "see [A] and [A]\n[A]: http://x\n");
+let (out, _) = fix_links(links, &[], 1);
+assert_eq!(&*out, "see [A] and [A]\n\n[A]: http://x\n");
 ```
 
 ## Alignment

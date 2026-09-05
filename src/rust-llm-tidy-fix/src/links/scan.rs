@@ -41,13 +41,14 @@ pub(super) fn definition_text(body: &str) -> Option<&str> {
     parse_definition(s)
 }
 
-/// The doc-comment block key for a line with doc `prefix`.
+/// The comment-block key for a line with comment `prefix`.
 ///
-/// Lines outside any `///` / `//!` doc comment return `None`. A line belongs
-/// to the doc-comment block identified by `Some(prefix)`, and a block is the
-/// maximal run of consecutive lines sharing the same `Some(prefix)`.
+/// Lines outside any comment block (no marker matched) return `None`. A
+/// line belongs to the comment block identified by `Some(prefix)`, and a
+/// block is the maximal run of consecutive lines sharing the same
+/// `Some(prefix)`.
 ///
-/// The rewrite pass uses this to keep each rustdoc comment's definitions
+/// The rewrite pass uses this to keep each comment block's definitions
 /// inside the same block.
 #[inline]
 pub(super) fn doc_block_key(prefix: &str) -> Option<&str> {
@@ -126,9 +127,9 @@ pub(super) fn line_segments(input: &str) -> impl Iterator<Item = (usize, &str)> 
 /// The stack therefore holds at most one entry; it stays a `Vec` because
 /// callers test it with `is_empty`.
 ///
-/// `body` is the result of [`crate::tables::strip_doc_prefix`], so the `///` /
-/// `//!` marker (and its indent) is already gone; only an optional inner indent
-/// may remain.
+/// `body` is the result of [`crate::tables::strip_comment_prefix`], so the
+/// matched marker (and its indent) is already gone; only an optional inner
+/// indent may remain.
 pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
     // Cheap candidate check: after leading whitespace, a fence must start with
     // a backtick/tilde run.

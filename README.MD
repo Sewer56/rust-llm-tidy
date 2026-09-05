@@ -3,8 +3,8 @@
 [![Crates.io][crates-badge]][Crates.io CLI]
 [![CI][ci-badge]][CI]
 
-Opinionated linter for my Rust and Markdown preferences. Primarily for
-fixing LLM output, but useful for any code.
+Opinionated linter for my Rust, C#, and Markdown preferences.
+Primarily for fixing LLM output, but useful for any code.
 
 > **⚠ Largely written by LLMs - personal tooling, not production software.**
 >
@@ -30,8 +30,11 @@ cargo install rust-llm-tidy-cli
 ```
 
 `rust-llm-tidy` is a single command that runs the full pipeline (fix,
-reorder, vis, lints) by default on `.rs` and `.md` files:
+reorder, vis, lints) by default on every allowed source file.
 
+Allowed by default: `.rs`, the markdown family (`.md`, `.markdown`, `.txt`,
+`.text`, `.mdx`), and the code languages allowed for table fixes and
+text lints.
 ```bash
 # Tidy a file in place
 rust-llm-tidy src/main.rs
@@ -39,7 +42,7 @@ rust-llm-tidy src/main.rs
 # Preview the changes that would be made without writing them
 rust-llm-tidy --dry-run src/main.rs
 
-# Tidy every .rs/.md file under a directory recursively
+# Tidy every allowed source file under a directory recursively
 rust-llm-tidy src
 
 # No paths given -> process the changed files in the current git diff
@@ -60,20 +63,25 @@ rust-llm-tidy --output-mode json src/main.rs
 ```
 
 Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
-`--include <OP>` (repeatable), `--exclude <OP>` (repeatable),
-`--output-mode <MODE>` (`text` default or `json`), `--json` (alias for
-`--output-mode json`).
+`--include <OP>`, `--exclude <OP>`, `--extension <EXT>` (all repeatable), and
+`--output-mode text|json` (`--json` for short).
 
 #### Operations
 
-| Op        | Does                                    | Mutates | Default on? |
-| --------- | --------------------------------------- | ------- | ----------- |
-| `tables`  | align GFM tables                        | yes     | yes         |
-| `fences`  | alternate nested fence delimiters       | yes     | yes         |
-| `links`   | hoist inline links to reference style   | yes     | yes         |
-| `reorder` | review-friendly item order              | yes     | yes         |
-| `vis`     | narrow bare `pub` in restricted modules | yes     | yes         |
-| `lints`   | run DOC001-DOC008 + TEST001 checks      | no      | yes         |
+| Op        | Does                                    | Languages   | Mutates | Default on? |
+| --------- | --------------------------------------- | ----------- | ------- | ----------- |
+| `tables`  | align GFM tables                        | all allowed | yes     | yes         |
+| `fences`  | alternate nested fence delimiters       | markdown*   | yes     | markdown*   |
+| `links`   | hoist inline links to reference style   | markdown*   | yes     | markdown*   |
+| `reorder` | review-friendly item order              | `rs`, `cs`  | yes     | `rs`, `cs`  |
+| `vis`     | narrow bare `pub` in restricted modules | `rs`        | yes     | `rs`        |
+| `lints`   | run DOCXXX, TEXTXXX, TESTXXX checks     | all allowed | no      | yes         |
+
+\* markdown*: the markdown family (`.md`, `.markdown`, `.txt`, `.text`,
+`.mdx`), plus languages that use markdown for doc comments.
+
+`lints` splits by language: `rs` and `cs` run every code; every other
+allowed language runs the text lints only.
 
 #### JSON output
 
@@ -115,14 +123,17 @@ See [change reporting] for the shared record format.
 
 #### Feature documentation
 
-| Feature                        | Page              |
-| ------------------------------ | ----------------- |
-| Reorder                        | [docs/reorder.md] |
-| Visibility narrowing           | [docs/vis.md]     |
-| Table alignment                | [docs/tables.md]  |
-| Fence delimiters               | [docs/fences.md]  |
-| Link hoisting                  | [docs/links.md]   |
-| Lints (DOC001-DOC008, TEST001) | [docs/lints.md]   |
+| Feature              | Page                             |
+| -------------------- | -------------------------------- |
+| Reorder              | [docs/reorder.md]                |
+| Reorder for C#       | [docs/reorder/csharp.md]         |
+| Visibility narrowing | [docs/vis.md]                    |
+| Table alignment      | [docs/tables.md]                 |
+| Fence delimiters     | [docs/fences.md]                 |
+| Link hoisting        | [docs/links.md]                  |
+| Lints                | [docs/lints.md]                  |
+| Text lints           | [docs/text-lints.md]             |
+| Lints for C#         | [docs/languages/lints/csharp.md] |
 
 ### Configuration
 
@@ -140,6 +151,11 @@ error). Omitting `paths` in an `include` or `exclude` group implies `["**"]`
 
 Additionally:
 
+- `extensions` - replaces the default allowed extensions when non-empty;
+  empty or absent keeps the defaults.
+- `extra_extensions` - added on top of the effective list (`extensions`
+  when non-empty, else the defaults). Both lists take dotless entries,
+  matched case-insensitively.
 - `post_process` - external commands run on processed files after tidying.
   Each entry has `command`, `args` (default empty), and `extensions`
   (default empty = all). File path appended as last arg.
@@ -148,7 +164,7 @@ Additionally:
 Globs are relative to the config file's directory and use `literal_separator`
 semantics (`*` does not cross `/`; `**` recurses).
 
-Rule names are the nine lint codes (DOC001-DOC008, TEST001) plus the six
+Rule names are the lint codes (`DOCXXX`, `TEXTXXX`, `TESTXXX`) plus the six
 ops: `tables`, `fences`, `links`, `reorder`, `vis`, `lints`.
 
 The config is discovered automatically: `rust-llm-tidy` walks up from the
@@ -158,8 +174,9 @@ checking each level for `.rust-llm-tidy.yml`; the first found wins.
 Override with `--config <PATH>`; disable all discovery and loading with
 `--no-config`.
 
-Every config error - bad YAML, unknown rule name, bad glob syntax, or a pattern
-matching zero files - produces a non-zero exit on every command.
+Every config error - bad YAML, unknown rule name, bad glob syntax, a
+malformed `extensions`/`extra_extensions` entry, or a pattern matching zero
+files - produces a non-zero exit on every command.
 
 This is so LLMs can immediately detect config errors. There is no "warn and
 continue" mode. Use `--validate` to check the config without processing files
@@ -190,18 +207,19 @@ unexpected lint failures after a tool update.
 
 ## Crates
 
-- [rust-llm-tidy-model]: Shared source model - parse top-level items with
+- [rust-llm-tidy-model]: Shared language-neutral model - top-level items with
   spans, visibility, and doc comments; atomic I/O; line-multiset safety
-- [rust-llm-tidy-reorder]: Reordering library - reference-graph ordering of
-  items into a review-friendly 10-phase order
-- [rust-llm-tidy-vis]: Visibility narrowing - narrows bare `pub` items inside
-  restricted-visibility inline modules to the module's visibility
-- [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/
-  `# Arguments`, paragraph- and line-length, test-naming, etc.; see
-  [docs/lints.md] for all codes
-- [rust-llm-tidy-fix]: Markdown/doc-comment tidying - realigns GFM tables,
-  fixes nested fence delimiters, and hoists inline links to reference style
-  in `.rs` doc comments and `.md` files
+- [rust-llm-tidy-reorder]: Reordering library - the language-neutral
+  reference-graph ordering engine, driven by per-language profiles
+- [rust-llm-tidy-lint]: Shared lint core - `Diagnostic` shape, lint-code
+  registry, and TEXT001/TEXT002 text rules; see [docs/lints.md] for all
+  codes
+- [rust-llm-tidy-lang]: Per-language AST backends - the DOC/TEST item
+  rules, grammars, item parsing, per-language reorder policies, and the
+  visibility narrowing pass
+- [rust-llm-tidy-fix]: Markdown/doc-comment tidying - table realignment,
+  fence fixes, and link hoisting in markdown-family and comment-prefixed
+  files
 - [cli]: Unified command-line interface (fix, reorder, vis, lints)
 
 ## Git Hook (optional)
@@ -228,8 +246,9 @@ Bundled hooks, in run order:
 
 ## GitHub Action
 
-[`rust-llm-tidy-action`] runs `rust-llm-tidy` in CI on Rust and Markdown
-files to gate pull requests. Full input reference in the [action README].
+[`rust-llm-tidy-action`] runs `rust-llm-tidy` in CI on every allowed
+source file to gate pull requests. Full input reference in the [action
+README].
 
 Minimal usage (default `mode: apply`; on a PR commits and pushes fixes):
 
@@ -262,8 +281,8 @@ Licensed under [Apache 2.0].
 [ci-badge]: https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg
 [rust-llm-tidy-model]: ./src/rust-llm-tidy-model/README.MD
 [rust-llm-tidy-reorder]: ./src/rust-llm-tidy-reorder/README.MD
-[rust-llm-tidy-vis]: ./src/rust-llm-tidy-vis/README.MD
 [rust-llm-tidy-lint]: ./src/rust-llm-tidy-lint/README.MD
+[rust-llm-tidy-lang]: ./src/rust-llm-tidy-lang/README.MD
 [rust-llm-tidy-fix]: ./src/rust-llm-tidy-fix/README.MD
 [cli]: ./src/cli/README.MD
 [action README]: ./submodules/action/README.MD
@@ -273,9 +292,12 @@ Licensed under [Apache 2.0].
 [Apache 2.0]: ./LICENSE
 [change reporting]: ./docs/lints.md#change-reporting
 [docs/reorder.md]: ./docs/reorder.md
+[docs/reorder/csharp.md]: ./docs/reorder/csharp.md
 [docs/vis.md]: ./docs/vis.md
 [docs/tables.md]: ./docs/tables.md
 [docs/fences.md]: ./docs/fences.md
 [docs/links.md]: ./docs/links.md
 [docs/lints.md]: ./docs/lints.md
+[docs/text-lints.md]: ./docs/text-lints.md
+[docs/languages/lints/csharp.md]: ./docs/languages/lints/csharp.md
 [`.rust-llm-tidy.example.yml`]: ./.rust-llm-tidy.example.yml

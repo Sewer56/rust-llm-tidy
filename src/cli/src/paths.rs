@@ -68,7 +68,7 @@ pub(crate) fn resolve_inputs(cli: &Cli, exts: &[&str]) -> anyhow::Result<Vec<Pat
 ///
 /// Returns `true` when `ext` (a path extension without the leading dot) matches
 /// any entry in `exts` ignoring ASCII case, so `.RS`/`.MD` variants are
-/// admitted exactly like their lowercase forms.
+/// allowed exactly like their lowercase forms.
 ///
 /// Non-allocating: compares each candidate byte-wise instead of materializing a
 /// lowercase copy.

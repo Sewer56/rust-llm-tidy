@@ -1,6 +1,6 @@
 //! Integration tests for the `fix` subcommand of `rust-llm-tidy`.
 //!
-//! Mirrors the helper pattern from `doc_check.rs` (`run_command`,
+//! Mirrors the helper pattern from `doc_check/mod.rs` (`run_command`,
 //! `manifest_dir`, `fixture_dir`; `binary` lives in the shared `common`
 //! module). Each test runs the built CLI binary against fixture files in
 //! `tests/fixtures/fix/`.
@@ -466,7 +466,7 @@ fn fix_nonexistent_path_fails() {
     );
 }
 
-// -- Helpers (mirrors doc_check.rs) -----------------------------------
+// -- Helpers (mirrors doc_check/mod.rs) -------------------------------
 
 /// Recursive directory: `fix` collects both `.rs` and `.md` files.
 #[test]
@@ -508,6 +508,39 @@ fn fix_recursive_directory_collects_md_and_rs() {
     );
 
     let _ = fs::remove_dir_all(&dir);
+}
+
+/// A JavaScript indexed call `items[i](count)` reads like an inline link but
+/// is call syntax: even an explicit `--include links` leaves the file
+/// byte-unchanged with zero records.
+#[test]
+fn js_indexed_call_stays_unchanged_even_with_links_included() {
+    let original =
+        fs::read_to_string(fixture_dir().join("links_js_indexed_call_untouched.js")).unwrap();
+    let arg_sets: [&[&str]; 2] = [&[], &["--include", "links"]];
+
+    for args in arg_sets {
+        let tmp = temp_file("js");
+        fs::write(&tmp, &original).unwrap();
+
+        let output = run_command(args, &tmp);
+        assert!(
+            output.status.success(),
+            "run with {args:?} should succeed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            fs::read_to_string(&tmp).unwrap(),
+            original,
+            "indexed calls must stay byte-unchanged under {args:?}"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !stderr.contains("success["),
+            "the links op must not rewrite call syntax: {stderr}"
+        );
+        let _ = fs::remove_file(&tmp);
+    }
 }
 
 /// With `links.by_extension: { rs: 2 }`, a single-use doc-comment link in a
@@ -612,6 +645,161 @@ fn links_global_min_two_suppresses_single_use_rs() {
         "single-use .rs file must stay byte-unchanged under min_occurrences: 2"
     );
     let _ = fs::remove_dir_all(&dir);
+}
+
+/// Pipe-bearing lines that never form a GFM table stay byte-unchanged under
+/// the default run: Haskell guard runs, SQL `||` concatenation, and Lua
+/// comment notes without a delimiter row.
+#[test]
+fn non_table_pipe_lines_stay_byte_unchanged() {
+    for name in [
+        "table_hs_guards_untouched.hs",
+        "table_sql_concat_untouched.sql",
+        "table_lua_dash_notes_untouched.lua",
+    ] {
+        let ext = name.rsplit_once('.').unwrap().1;
+        let original = fs::read_to_string(fixture_dir().join(name)).unwrap();
+        let tmp = temp_file(ext);
+        fs::write(&tmp, &original).unwrap();
+
+        let output = run_command(&[], &tmp);
+        let after = fs::read_to_string(&tmp).unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let _ = fs::remove_file(&tmp);
+        assert!(
+            output.status.success(),
+            "{name}: default run should succeed: {stderr}"
+        );
+        assert_eq!(
+            after, original,
+            "{name}: non-table pipe lines must stay byte-unchanged"
+        );
+        assert!(
+            !stderr.contains("success["),
+            "{name}: a non-table file must report zero change records: {stderr}"
+        );
+    }
+}
+
+// ── Per-language table fixtures ────────────────────────────────────
+
+/// One before/after pair per comment-prefix family, the C# `///`/`//`
+/// profile, and a markdown-family `.txt`: the default run realigns each
+/// table with its marker and indent kept, reports one record, and a second
+/// run emits zero records.
+#[test]
+fn table_fixtures_realign_with_marker_and_indent_kept() {
+    let pairs = [
+        (
+            "table_slash_comment_before.go",
+            "table_slash_comment_after.go",
+        ),
+        (
+            "table_xml_doc_comment_before.cs",
+            "table_xml_doc_comment_after.cs",
+        ),
+        (
+            "table_hash_comment_before.py",
+            "table_hash_comment_after.py",
+        ),
+        (
+            "table_dash_comment_before.sql",
+            "table_dash_comment_after.sql",
+        ),
+        (
+            "table_semi_comment_before.el",
+            "table_semi_comment_after.el",
+        ),
+        (
+            "table_percent_comment_before.tex",
+            "table_percent_comment_after.tex",
+        ),
+        // Markdown-family sibling: full default ops, `.md`-identical bytes.
+        ("table_txt_before.txt", "table_txt_after.txt"),
+    ];
+
+    for (before_name, after_name) in pairs {
+        let ext = before_name.rsplit_once('.').unwrap().1;
+        let expected = fs::read_to_string(fixture_dir().join(after_name)).unwrap();
+        let tmp = temp_file(ext);
+        fs::write(
+            &tmp,
+            fs::read_to_string(fixture_dir().join(before_name)).unwrap(),
+        )
+        .unwrap();
+
+        let output = run_command(&[], &tmp);
+        assert!(
+            output.status.success(),
+            "{before_name}: default run should succeed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            fs::read_to_string(&tmp).unwrap(),
+            expected,
+            "{before_name}: default run must produce {after_name} byte-for-byte"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(
+            stderr.matches("success[FIX]").count(),
+            1,
+            "{before_name}: only the realigned table reports a record: {stderr}"
+        );
+
+        let second = run_command(&["--include", "tables", "--dry-run"], &tmp);
+        let _ = fs::remove_file(&tmp);
+        assert!(
+            second.status.success(),
+            "{before_name}: second run should succeed"
+        );
+        assert!(
+            String::from_utf8_lossy(&second.stderr).is_empty(),
+            "{before_name}: second run must emit zero change records"
+        );
+    }
+}
+
+/// A GFM table inside a Python string literal is re-padded by the default
+/// run: a whitespace-only change inside the literal (the words and the
+/// quotes stay identical), one record, and a second run is a no-op.
+#[test]
+fn table_inside_a_python_string_literal_is_repadded() {
+    let expected = fs::read_to_string(fixture_dir().join("table_string_literal_after.py")).unwrap();
+    let tmp = temp_file("py");
+    fs::write(
+        &tmp,
+        fs::read_to_string(fixture_dir().join("table_string_literal_before.py")).unwrap(),
+    )
+    .unwrap();
+
+    let output = run_command(&[], &tmp);
+    assert!(
+        output.status.success(),
+        "default run should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(&tmp).unwrap(),
+        expected,
+        "the string-embedded table must be re-padded to the after fixture"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        stderr.matches("success[FIX]").count(),
+        1,
+        "exactly the re-padded table reports a record: {stderr}"
+    );
+
+    let second = run_command(&["--include", "tables", "--dry-run"], &tmp);
+    let _ = fs::remove_file(&tmp);
+    assert!(
+        second.status.success(),
+        "second run on the re-padded file should succeed"
+    );
+    assert!(
+        String::from_utf8_lossy(&second.stderr).is_empty(),
+        "second run must emit zero change records"
+    );
 }
 
 /// The directory holding `fix` fixtures.

@@ -18,7 +18,7 @@
 #
 # Rule names (used in include.rules, exclude.rules, --include, --exclude):
 # ops tables, fences, links, reorder, vis, lints - plus lint codes
-# DOC001-DOC008 and TEST001. The `lints` op groups all nine lint codes.
+# (`DOCXXX`, `TEXTXXX`, `TESTXXX`). The `lints` op groups them all.
 #
 # The `links` op hoists inline links `[text](url)` to `[text]` + a definition
 # (threshold 1 by default) in `.rs` doc comments and `.md`. Tune it per file:
@@ -88,11 +88,18 @@ exclude:
   # literals (indoc/formatdoc); `fix_links` and `fix_tables` would rewrite
   # the literal contents and break the fixtures.
   - paths:
-      - "src/rust-llm-tidy-lint/src/check/plaintext/paragraph_length.rs"
-      - "src/rust-llm-tidy-lint/src/check/plaintext/line_length.rs"
+      - "src/rust-llm-tidy-lint/src/check/rules/text/paragraph_length.rs"
+      - "src/rust-llm-tidy-lint/src/check/rules/text/line_length.rs"
     rules:
       - links
       - tables
+  # integration.rs embeds before-state markdown fixtures in string literals;
+  # table/fence fixers would rewrite them and break the parity test.
+  - paths:
+      - "src/cli/tests/integration.rs"
+    rules:
+      - tables
+      - fences
   # .github holds plain markdown (workflows/templates) outside any Rust crate;
   # `vis` can't (and needn't) do crate-aware narrowing there.
   - paths:
@@ -101,10 +108,10 @@ exclude:
       - vis
   # DOC006 self-reference: these docs spell the markers (e.g. `` `TODO` ``) as
   # examples of what DOC006 detects; whole-word match flags the literal ref.
-  # Only DOC006 disabled here; DOC001-005 + TEST001 still run.
+  # Only DOC006 disabled here; DOC001-DOC005 + TEST001 still run.
   - paths:
-      - "src/rust-llm-tidy-lint/src/check/placeholder.rs"
-      - "src/cli/tests/doc_check.rs"
+      - "src/rust-llm-tidy-lang/src/backends/rust/lints/doc006_placeholder.rs"
+      - "src/cli/tests/doc_check/**/*"
     rules:
       - DOC006
 
