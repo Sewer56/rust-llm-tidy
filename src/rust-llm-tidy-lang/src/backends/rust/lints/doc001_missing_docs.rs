@@ -1,12 +1,12 @@
 //! `DOC001` - missing doc comments on non-private items.
 //!
-//! [`missing_docs`] fires on `pub` and `pub(crate)`/`pub(super)`/`pub(in path)`
+//! [`check`] fires on `pub` and `pub(crate)`/`pub(super)`/`pub(in path)`
 //! items of documentable kinds that carry no leading `///` doc comment. Test
 //! modules are skipped.
 
 use super::is_documentable;
-use crate::check::CODE_MISSING_DOCS;
-use crate::diagnostic::{Diagnostic, Severity};
+use rust_llm_tidy_lint::check::CODE_MISSING_DOCS;
+use rust_llm_tidy_lint::{Diagnostic, Severity};
 use rust_llm_tidy_model::parse::{SourceItem, VisibilityTier};
 
 /// `DOC001` - non-private documentable items must have a `///` doc comment.
@@ -19,7 +19,7 @@ use rust_llm_tidy_model::parse::{SourceItem, VisibilityTier};
 ///
 /// - `item` - the parsed source item to inspect for a missing `///` doc comment
 ///   on a non-private documentable item.
-pub fn missing_docs(item: &SourceItem) -> Vec<Diagnostic> {
+pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     let Some(vis) = item.visibility() else {
         return Vec::new();
     };
@@ -49,15 +49,15 @@ pub fn missing_docs(item: &SourceItem) -> Vec<Diagnostic> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::check::tests::parse_one;
+    use crate::backends::rust::lints::tests::parse_one;
 
-    // ── DOC001: missing_docs ──
+    // ── DOC001: missing docs ──
 
     // Public function with no doc comment -> reports an error.
     #[test]
     fn test_missing_docs_pub_fn() {
         let item = parse_one("pub fn do_thing() {}");
-        let diags = missing_docs(&item);
+        let diags = check(&item);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_MISSING_DOCS);
         assert_eq!(diags[0].severity, Severity::Error);
@@ -67,21 +67,21 @@ mod tests {
     #[test]
     fn test_missing_docs_documented() {
         let item = parse_one("/// Does the thing.\npub fn do_thing() {}");
-        assert!(missing_docs(&item).is_empty());
+        assert!(check(&item).is_empty());
     }
 
     // Private item -> skipped, no error.
     #[test]
     fn test_missing_docs_private_skipped() {
         let item = parse_one("fn helper() {}");
-        assert!(missing_docs(&item).is_empty());
+        assert!(check(&item).is_empty());
     }
 
     // Public struct with no doc comment -> reports an error.
     #[test]
     fn test_missing_docs_pub_struct() {
         let item = parse_one("pub struct Foo;");
-        let diags = missing_docs(&item);
+        let diags = check(&item);
         assert_eq!(diags.len(), 1);
     }
 
@@ -89,7 +89,7 @@ mod tests {
     #[test]
     fn test_missing_docs_pub_crate() {
         let item = parse_one("pub(crate) fn internal() {}");
-        let diags = missing_docs(&item);
+        let diags = check(&item);
         assert_eq!(diags.len(), 1);
     }
 
@@ -98,13 +98,23 @@ mod tests {
     fn test_missing_docs_test_mod_skipped() {
         let source = "#[cfg(test)]\npub mod tests {}";
         let item = parse_one(source);
-        assert!(missing_docs(&item).is_empty());
+        assert!(check(&item).is_empty());
     }
 
     // use statement -> not documentable, skipped.
     #[test]
     fn test_missing_docs_use_skipped() {
         let item = parse_one("pub use std::io;");
-        assert!(missing_docs(&item).is_empty());
+        assert!(check(&item).is_empty());
+    }
+
+    // Item starts on line 3 (after two doc lines); the reported diagnostic
+    // line must equal the precomputed start line, not 1.
+    #[test]
+    fn test_start_line_is_reported() {
+        let item = parse_one("\n\npub fn do_thing() {}");
+        let diags = check(&item);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].line, 3);
     }
 }

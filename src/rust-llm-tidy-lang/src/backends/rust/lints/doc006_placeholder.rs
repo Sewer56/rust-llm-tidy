@@ -1,14 +1,11 @@
 //! `DOC006` - placeholder text in doc comments.
 //!
-//! [`doc_placeholder`] fires on documentable items whose doc comments contain a
+//! [`check`] fires on documentable items whose doc comments contain a
 //! placeholder marker (`TODO`, `FIXME`, or `TBD`).
-//!
-//! Detection is delegated to the module-private [`contains_placeholder`] and
-//! the crate-visible [`contains_word`] helper.
 
-use super::is_documentable;
-use crate::check::CODE_DOC_PLACEHOLDER;
-use crate::diagnostic::{Diagnostic, Severity};
+use super::{contains_word, is_documentable};
+use rust_llm_tidy_lint::check::CODE_DOC_PLACEHOLDER;
+use rust_llm_tidy_lint::{Diagnostic, Severity};
 use rust_llm_tidy_model::parse::SourceItem;
 
 /// `DOC006` - doc comments must not contain placeholder text.
@@ -21,7 +18,7 @@ use rust_llm_tidy_model::parse::SourceItem;
 ///
 /// - `item` - the parsed source item to inspect for placeholder text in its doc
 ///   comments.
-pub fn doc_placeholder(item: &SourceItem) -> Vec<Diagnostic> {
+pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     if !is_documentable(item.kind()) {
         return Vec::new();
     }
@@ -43,36 +40,6 @@ pub fn doc_placeholder(item: &SourceItem) -> Vec<Diagnostic> {
     }]
 }
 
-/// Case-insensitive whole-word match for `needle` in `haystack`.
-///
-/// A word boundary is any non-alphanumeric, non-underscore character (or the
-/// start/end of the text), so `todo` matches in `// TODO:` but not in
-/// `todolist`, and `name` matches in `` `name` `` but not in `filename`.
-///
-/// Used by DOC006 ([`contains_placeholder`]) and DOC005 in `check::arguments`.
-pub(crate) fn contains_word(haystack: &str, needle: &str) -> bool {
-    let h = haystack.to_ascii_lowercase();
-    let n = needle.to_ascii_lowercase();
-    let mut start = 0;
-    while let Some(pos) = h[start..].find(&n) {
-        let abs = start + pos;
-        let before_ok = h[..abs]
-            .chars()
-            .next_back()
-            .is_none_or(|c| !c.is_alphanumeric() && c != '_');
-        let after_idx = abs + n.len();
-        let after_ok = h[after_idx..]
-            .chars()
-            .next()
-            .is_none_or(|c| !c.is_alphanumeric() && c != '_');
-        if before_ok && after_ok {
-            return true;
-        }
-        start = abs + n.len();
-    }
-    false
-}
-
 fn contains_placeholder(text: &str) -> bool {
     contains_word(text, "todo") || contains_word(text, "fixme") || contains_word(text, "tbd")
 }
@@ -80,15 +47,15 @@ fn contains_placeholder(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::check::tests::parse_one;
+    use crate::backends::rust::lints::tests::parse_one;
 
-    // ── DOC006: doc_placeholder ──
+    // ── DOC006: doc placeholder ──
 
     // TODO marker in doc -> warning.
     #[test]
     fn test_doc_placeholder_todo() {
         let item = parse_one("/// TODO: implement.\npub fn task() {}");
-        let diags = doc_placeholder(&item);
+        let diags = check(&item);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_DOC_PLACEHOLDER);
     }
@@ -97,7 +64,7 @@ mod tests {
     #[test]
     fn test_doc_placeholder_fixme() {
         let item = parse_one("/// FIXME: broken.\npub fn task() {}");
-        assert_eq!(doc_placeholder(&item).len(), 1);
+        assert_eq!(check(&item).len(), 1);
     }
 
     // `...` is unambiguous (ellipsis) and idiomatic in prose, so it is NOT
@@ -106,20 +73,20 @@ mod tests {
     #[test]
     fn test_doc_placeholder_ellipsis_not_flagged() {
         let item = parse_one("/// Something ... here.\npub fn task() {}");
-        assert!(doc_placeholder(&item).is_empty());
+        assert!(check(&item).is_empty());
     }
 
     // Clean doc, no placeholder -> no warning.
     #[test]
     fn test_doc_placeholder_clean() {
         let item = parse_one("/// A clean doc.\npub fn task() {}");
-        assert!(doc_placeholder(&item).is_empty());
+        assert!(check(&item).is_empty());
     }
 
     // todo inside non-documentable item (impl) -> skipped.
     #[test]
     fn test_doc_placeholder_non_documentable() {
         let item = parse_one("/// TODO.\nimpl Foo {}");
-        assert!(doc_placeholder(&item).is_empty());
+        assert!(check(&item).is_empty());
     }
 }

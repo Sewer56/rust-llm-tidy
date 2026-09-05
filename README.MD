@@ -213,9 +213,11 @@ unexpected lint failures after a tool update.
   items into a review-friendly 10-phase order
 - [rust-llm-tidy-vis]: Visibility narrowing - narrows bare `pub` items inside
   restricted-visibility inline modules to the module's visibility
-- [rust-llm-tidy-lint]: Linter - missing-docs, incomplete-`# Errors`/
-  `# Arguments`, paragraph- and line-length, test-naming, etc.; see
-  [docs/lints.md] for all codes
+- [rust-llm-tidy-lint]: Shared lint core - `Diagnostic` shape, lint-code
+  registry, and TEXT001/TEXT002 text rules; see [docs/lints.md] for all
+  codes
+- [rust-llm-tidy-lang]: Per-language AST backends - the DOC/TEST item
+  rules, parse, and reorder dispatch per language
 - [rust-llm-tidy-fix]: Markdown/doc-comment tidying - table realignment,
   fence fixes, and link hoisting in markdown-family and comment-prefixed
   files
@@ -282,6 +284,7 @@ Licensed under [Apache 2.0].
 [rust-llm-tidy-reorder]: ./src/rust-llm-tidy-reorder/README.MD
 [rust-llm-tidy-vis]: ./src/rust-llm-tidy-vis/README.MD
 [rust-llm-tidy-lint]: ./src/rust-llm-tidy-lint/README.MD
+[rust-llm-tidy-lang]: ./src/rust-llm-tidy-lang/README.MD
 [rust-llm-tidy-fix]: ./src/rust-llm-tidy-fix/README.MD
 [cli]: ./src/cli/README.MD
 [action README]: ./submodules/action/README.MD

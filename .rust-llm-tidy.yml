@@ -110,7 +110,7 @@ exclude:
   # examples of what DOC006 detects; whole-word match flags the literal ref.
   # Only DOC006 disabled here; DOC001-DOC005 + TEST001 still run.
   - paths:
-      - "src/rust-llm-tidy-lint/src/check/rules/rust/placeholder.rs"
+      - "src/rust-llm-tidy-lang/src/backends/rust/lints/doc006_placeholder.rs"
       - "src/cli/tests/doc_check/**/*"
     rules:
       - DOC006

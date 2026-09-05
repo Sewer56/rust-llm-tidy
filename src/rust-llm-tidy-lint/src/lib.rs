@@ -1,37 +1,31 @@
-//! Documentation linter for Rust source files.
+//! The shared lint core for `rust-llm-tidy`.
 //!
-//! Runs a set of documentation checks over a parsed source file and produces
-//! [`Diagnostic`]s. Checks cover:
+//! Holds the [`Diagnostic`] shape every pass emits, the lint-code registry
+//! every language's findings draw from ([`check::LINT_CODES`]), and the
+//! text rules over measured prose:
 //!
-//! - Missing doc comments on non-private items ([`check::missing_docs`]).
-//! - Missing `# Errors` sections on public functions returning `Result`
-//!   ([`check::missing_errors_section`]).
-//! - `# Errors` sections whose bullets name no concrete error variant
-//!   ([`check::vague_errors`]).
-//! - Missing `# Arguments` sections on public functions with parameters
-//!   ([`check::missing_arguments_section`]).
-//! - `# Arguments` sections that do not mention every parameter name
-//!   ([`check::undocumented_param`]).
-//! - Placeholder text in doc comments ([`check::doc_placeholder`]).
-//! - Discouraged test-function names ([`check::test_naming`]).
+//! - Oversized paragraphs (TEXT001) via [`check::run_text_checks`] and
+//!   [`check::run_region_checks`].
+//! - Long lines (TEXT002) through the same entry points.
+//!
+//! The AST item rules (DOC001-DOC006, TEST001) live with their languages:
+//! each backend's `lints` module in `rust_llm_tidy-lang` implements the
+//! codes over its own parse.
 //!
 //! # Example
 //!
 //! ```rust
 //! use rust_llm_tidy_lint::check;
-//! use rust_llm_tidy_model::parse;
 //!
-//! let source = "pub fn load() -> Result<(), String> { Ok(()) }";
-//! let parsed = parse::parse_source(source).unwrap();
-//! let diags = check::run_all(&parsed);
-//! assert!(!diags.is_empty());
+//! let source = "A prose line that keeps going well past the eighty character line budget for docs.";
+//! let diags = check::run_text_checks(source, "md");
+//! assert!(diags.iter().any(|d| d.code == "TEXT002"));
 //! ```
 //!
-//! The checks are pure functions over a `parse::ParseResult` and produce no
+//! The checks are pure functions over text or measured regions and produce no
 //! side effects. Callers iterate the returned [`Vec<Diagnostic>`] to print or
 //! filter as needed.
 
-pub use check::run_all;
 pub use diagnostic::{Diagnostic, Severity};
 
 pub mod check;

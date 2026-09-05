@@ -310,18 +310,20 @@ fn rs_block_and_attribute_docs_fire_text_budgets() {
     );
 }
 
-/// The CLI's rendered rs findings equal the direct composition of the
-/// tree-sitter checks (`run_all`) and the rs text checks
-/// (`backends::rust::text_regions::text_checks`) over the same file: rs dispatch
-/// adds nothing and drops nothing.
+/// The CLI's rendered rs findings equal the Rust backend's lint
+/// composition over the same file: the item rules (DOC001-DOC006,
+/// TEST001) plus the rs text checks (line comments plus `/** */` and
+/// `#[doc = "..."]` docs).
 ///
-/// The rs text checks cover line comments plus `/** */` and
-/// `#[doc = "..."]` docs.
+/// rs dispatch adds nothing and drops nothing.
 #[test]
 fn rs_diagnostics_match_direct_check_composition() {
+    use rust_llm_tidy_lang::backends::LanguageBackend;
+
     for name in [
         "doc001_missing_docs.rs",
         "text-001_text-002_block_attr_budgets.rs",
+        "doc001_doc002_doc004_text002_mixed.rs",
     ] {
         let path = rust_fixture_dir().join(name);
         let source = fs::read_to_string(&path).unwrap();
@@ -344,11 +346,10 @@ fn rs_diagnostics_match_direct_check_composition() {
                 })
                 .collect();
 
-        // Path B: the two check sources composed directly over the same
-        // source.
+        // Path B: the Rust backend's lint composition called directly over
+        // the same source.
         let parsed = rust_llm_tidy_model::parse::parse_source(&source).unwrap();
-        let mut expected = rust_llm_tidy_lint::check::run_all(&parsed);
-        expected.extend(rust_llm_tidy_lang::backends::rust::text_regions::text_checks(&parsed));
+        let expected = rust_llm_tidy_lang::backends::rust::RustBackend.lint(&parsed);
         let expected: Vec<(usize, String, String)> = expected
             .iter()
             .map(|d| {
@@ -362,7 +363,7 @@ fn rs_diagnostics_match_direct_check_composition() {
 
         assert_eq!(
             rendered, expected,
-            "{name}: CLI rs dispatch must render exactly run_all + text_checks"
+            "{name}: CLI rs dispatch must render exactly the backend lint composition"
         );
     }
 }

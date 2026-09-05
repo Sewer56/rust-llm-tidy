@@ -1,11 +1,10 @@
 //! `TEST001` - test-function naming.
 //!
-//! [`test_naming`] fires on `#[test]` functions whose names use a discouraged
-//! pattern (`test_*`, `case_*`, `test` + digits). Detection is delegated to the
-//! module-private [`is_bad_test_name`] and [`is_test_plus_digits`] helpers.
+//! [`check`] fires on `#[test]` functions whose names use a discouraged
+//! pattern (`test_*`, `case_*`, `test` + digits).
 
-use crate::check::CODE_TEST_NAMING;
-use crate::diagnostic::{Diagnostic, Severity};
+use rust_llm_tidy_lint::check::CODE_TEST_NAMING;
+use rust_llm_tidy_lint::{Diagnostic, Severity};
 use rust_llm_tidy_model::parse::SourceItem;
 
 /// `TEST001` - test functions should use behavioral names.
@@ -20,7 +19,7 @@ use rust_llm_tidy_model::parse::SourceItem;
 /// # Arguments
 ///
 /// - `item`: the parsed source item to check for a discouraged test name.
-pub fn test_naming(item: &SourceItem) -> Vec<Diagnostic> {
+pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     if !item.is_test_fn() {
         return Vec::new();
     }
@@ -67,15 +66,15 @@ fn is_test_plus_digits(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::check::tests::parse_one;
+    use crate::backends::rust::lints::tests::parse_one;
 
-    // ── TEST001: test_naming ──
+    // ── TEST001: test naming ──
 
     // Name starts with test_ -> warning.
     #[test]
     fn test_naming_test_prefix() {
         let item = parse_one("#[test]\nfn test_foo() {}");
-        let diags = test_naming(&item);
+        let diags = check(&item);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_TEST_NAMING);
     }
@@ -84,27 +83,27 @@ mod tests {
     #[test]
     fn test_naming_test_digits() {
         let item = parse_one("#[test]\nfn test1() {}");
-        assert_eq!(test_naming(&item).len(), 1);
+        assert_eq!(check(&item).len(), 1);
     }
 
     // Name starts with case_ -> warning.
     #[test]
     fn test_naming_case_prefix() {
         let item = parse_one("#[test]\nfn case_1() {}");
-        assert_eq!(test_naming(&item).len(), 1);
+        assert_eq!(check(&item).len(), 1);
     }
 
     // Behavioral name (should_pass_when_valid) -> no warning.
     #[test]
     fn test_naming_behavioral() {
         let item = parse_one("#[test]\nfn should_pass_when_valid() {}");
-        assert!(test_naming(&item).is_empty());
+        assert!(check(&item).is_empty());
     }
 
     // Not a #[test] fn -> skipped.
     #[test]
     fn test_naming_non_test() {
         let item = parse_one("fn helper() {}");
-        assert!(test_naming(&item).is_empty());
+        assert!(check(&item).is_empty());
     }
 }

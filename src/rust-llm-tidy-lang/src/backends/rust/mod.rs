@@ -1,5 +1,5 @@
-//! The Rust backend: a passthrough over the model crate's tree-sitter-rust
-//! parse setup.
+//! The Rust backend: the model crate's parse setup plus the Rust item
+//! lint rules.
 
 use crate::backends::LanguageBackend;
 use rust_llm_tidy_lint::Diagnostic;
@@ -7,16 +7,13 @@ use rust_llm_tidy_model::parse::{self, ParseResult};
 use rust_llm_tidy_reorder::graph::{self, RustProfile};
 use rust_llm_tidy_reorder::reorder::Permutation;
 
+mod lints;
 pub mod text_regions;
 
 /// The `rs` backend.
 ///
-/// Wraps the parse setup the pipeline has always used for Rust - the model
-/// crate's tree-sitter-rust grammar and [`parse::parse_source`] - adding no
-/// behavior of its own.
-///
-/// Its lint and reorder compositions call the exact functions the pipeline
-/// called before backends existed, so `.rs` runs stay byte-identical.
+/// Wraps the parse setup the pipeline has always used for Rust - the
+/// model crate's tree-sitter-rust grammar and [`parse::parse_source`].
 pub struct RustBackend;
 
 impl LanguageBackend for RustBackend {
@@ -36,7 +33,7 @@ impl LanguageBackend for RustBackend {
         // The Ast text-lint tier rides the backend lint composition:
         // the line-marker regions (`///`, `//!`, `//`) merge with the
         // parse tree's `/** */` and `#[doc = "..."]` doc regions.
-        let mut diags = rust_llm_tidy_lint::check::run_all(parsed);
+        let mut diags = lints::run_all(parsed);
         diags.extend(text_regions::text_checks(parsed));
         diags
     }
@@ -102,5 +99,42 @@ mod tests {
         let tree = parser.parse("fn a() {}", None).unwrap();
 
         assert_eq!(tree.root_node().kind(), "source_file");
+    }
+
+    /// The lint composition emits every item rule in code order per
+    /// item, then the text tier, so the sequence is not line-sorted:
+    /// `bare`'s DOC001 at line 6 follows the over-budget doc line's
+    /// TEXT002 at line 3 in source but not in output.
+    #[test]
+    fn lint_orders_item_rules_before_the_text_tier() {
+        let source = concat!(
+            "pub fn load(path: &str, fmt: &str) -> Result<(), String> { Ok(()) }\n",
+            "\n",
+            "/// A documented function whose doc line runs past the eighty character budget limit for lines.\n",
+            "pub fn documented() {}\n",
+            "\n",
+            "pub fn bare() {}\n",
+        );
+
+        let parsed = parse::parse_source(source).unwrap();
+        let order: Vec<(usize, &str)> = RustBackend
+            .lint(&parsed)
+            .iter()
+            .map(|diagnostic| (diagnostic.line, diagnostic.code))
+            .collect();
+
+        // Hardcoded on purpose: deriving the sequence from the
+        // composition would leave the assertion invariant under reorders.
+        assert_eq!(
+            order,
+            [
+                (1, "DOC001"),
+                (1, "DOC002"),
+                (1, "DOC004"),
+                (6, "DOC001"),
+                (3, "TEXT002"),
+            ],
+            "item rules in code order per item, then the text tier"
+        );
     }
 }
