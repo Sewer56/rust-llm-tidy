@@ -165,9 +165,17 @@ impl<'a> ThrowFacts<'a> {
         }
     }
 
-    /// Walk one member's subtree depth-first, reusing `cursor`: a
+    /// Walk one member's own body depth-first, reusing `cursor`: a
     /// `throw_statement` flags the member and seeds its name, and each
     /// call site that names a same-file member records a reverse edge.
+    ///
+    /// Nested callables (`lambda_expression`,
+    /// `anonymous_method_expression`, `local_function_statement`) are
+    /// boundaries, not body.
+    ///
+    /// Their throws and calls belong to the nested scope, so the walk
+    /// skips their subtrees instead of attributing them to the
+    /// enclosing member.
     fn scan_member(
         &mut self,
         idx: usize,
@@ -179,23 +187,29 @@ impl<'a> ThrowFacts<'a> {
         cursor.reset(node);
         'walk: loop {
             let current = cursor.node();
-            match current.kind() {
-                "throw_statement" => {
-                    self.direct_throw[idx] = true;
-                    if let Some(name) = caller {
-                        self.can_throw.insert(name);
+            let nested_callable = matches!(
+                current.kind(),
+                "lambda_expression" | "anonymous_method_expression" | "local_function_statement"
+            );
+            if !nested_callable {
+                match current.kind() {
+                    "throw_statement" => {
+                        self.direct_throw[idx] = true;
+                        if let Some(name) = caller {
+                            self.can_throw.insert(name);
+                        }
                     }
+                    "invocation_expression" => {
+                        self.record_call(current, "function", decl.source, caller)
+                    }
+                    "object_creation_expression" => {
+                        self.record_call(current, "type", decl.source, caller)
+                    }
+                    _ => {}
                 }
-                "invocation_expression" => {
-                    self.record_call(current, "function", decl.source, caller)
+                if cursor.goto_first_child() {
+                    continue 'walk;
                 }
-                "object_creation_expression" => {
-                    self.record_call(current, "type", decl.source, caller)
-                }
-                _ => {}
-            }
-            if cursor.goto_first_child() {
-                continue 'walk;
             }
             loop {
                 if cursor.goto_next_sibling() {
@@ -309,6 +323,9 @@ fn call_target_name<'a>(target: tree_sitter::Node<'a>, source: &'a str) -> Optio
 ///   without calling it.
 /// - Private members count as throw sources; the checks themselves
 ///   still skip them.
+/// - Calls and throws inside nested lambdas, anonymous methods, and
+///   local functions belong to the nested scope, never the enclosing
+///   member.
 ///
 /// The fixpoint over reverse call edges is cycle-safe: names enter the
 /// can-throw set at most once, so self- and mutual recursion
@@ -498,7 +515,65 @@ fn tag_slices<'a>(docs: &'a [String], tag: &str) -> impl Iterator<Item = &'a str
 
 #[cfg(test)]
 mod tests {
-    use super::tag_slices;
+    use super::{run, tag_slices};
+    use rust_llm_tidy_lint::check::CODE_MISSING_ERRORS;
+
+    /// Full C# lint pass over `source`: the entry point every rule
+    /// observes, shared by the can-throw tests.
+    fn lint(source: &str) -> Vec<rust_llm_tidy_lint::Diagnostic> {
+        let parsed = super::super::parse::parse(source).expect("test source must parse");
+        run(&parsed)
+    }
+
+    /// The DOC002 findings' member names of the pass; members without a
+    /// name cannot be flagged, so they never appear.
+    fn missing_exception_names(source: &str) -> Vec<String> {
+        lint(source)
+            .into_iter()
+            .filter(|d| d.code == CODE_MISSING_ERRORS)
+            .filter_map(|d| d.item_name)
+            .collect()
+    }
+
+    // ── nested-callable scan boundaries ──
+
+    /// A returned lambda's body runs on the caller's schedule, so a
+    /// throwing call inside it must not flag the enclosing member;
+    /// a direct call in the member's own body still does.
+    #[test]
+    fn deferred_lambda_calls_do_not_flag_enclosing_member() {
+        let source = "\
+class C {
+    void Thrower() { throw new System.Exception(); }
+    /// <summary>Returns a deferred thrower.</summary>
+    public System.Func<int> Deferred() {
+        return () => { Thrower(); return 0; };
+    }
+    /// <summary>Calls the thrower now.</summary>
+    public int Direct() { Thrower(); return 0; }
+}
+";
+
+        assert_eq!(missing_exception_names(source), ["Direct".to_string()]);
+    }
+
+    /// An uncalled local function's body runs only when invoked, so its
+    /// throwing call must not flag the enclosing member.
+    #[test]
+    fn local_function_calls_do_not_flag_enclosing_member() {
+        let source = "\
+class C {
+    void Thrower() { throw new System.Exception(); }
+    /// <summary>Wraps a local function.</summary>
+    public int Outer() {
+        int Local() { Thrower(); return 0; }
+        return 1;
+    }
+}
+";
+
+        assert_eq!(missing_exception_names(source), Vec::<String>::new());
+    }
 
     // ── whole-tag-name matching ──
 
