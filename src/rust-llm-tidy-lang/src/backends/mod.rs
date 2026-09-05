@@ -1,13 +1,17 @@
 //! The [`LanguageBackend`] contract and the extension registry that resolves
 //! a backend per source-file extension.
 
-use crate::csharp::CSharpBackend;
-use crate::python_backend::PythonBackend;
-use crate::rust_backend::RustBackend;
+use csharp::CSharpBackend;
+use python::PythonBackend;
+use rust::RustBackend;
 use rust_llm_tidy_lint::Diagnostic;
 use rust_llm_tidy_model::parse::ParseResult;
 use rust_llm_tidy_reorder::reorder::Permutation;
 use std::cmp::Ordering;
+
+mod csharp;
+pub(crate) mod python;
+pub mod rust;
 
 /// Extensions with a registered backend, sorted by extension (ASCII) so
 /// binary search applies. The sortedness test guards this invariant.

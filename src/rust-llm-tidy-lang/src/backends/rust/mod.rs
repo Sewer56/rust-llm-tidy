@@ -1,11 +1,13 @@
 //! The Rust backend: a passthrough over the model crate's tree-sitter-rust
 //! parse setup.
 
-use crate::backend::LanguageBackend;
+use crate::backends::LanguageBackend;
 use rust_llm_tidy_lint::Diagnostic;
 use rust_llm_tidy_model::parse::{self, ParseResult};
 use rust_llm_tidy_reorder::graph::{self, RustProfile};
 use rust_llm_tidy_reorder::reorder::Permutation;
+
+pub mod text_regions;
 
 /// The `rs` backend.
 ///
@@ -35,7 +37,7 @@ impl LanguageBackend for RustBackend {
         // the line-marker regions (`///`, `//!`, `//`) merge with the
         // parse tree's `/** */` and `#[doc = "..."]` doc regions.
         let mut diags = rust_llm_tidy_lint::check::run_all(parsed);
-        diags.extend(crate::rust_text_regions::text_checks(parsed));
+        diags.extend(text_regions::text_checks(parsed));
         diags
     }
 

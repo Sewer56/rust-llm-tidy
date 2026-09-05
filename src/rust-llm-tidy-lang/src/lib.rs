@@ -34,17 +34,18 @@
 //! no backend at all: a fail-closed scan of comments and the family's
 //! string forms.
 //!
-//! The [`rust_text_regions`] module sources the same checks for `rs`
-//! from the parse the backend already requires: the line-comment
-//! regions plus `/** */` block docs and `#[doc = "..."]` attribute docs.
+//! Each backend module also carries a `text_regions` submodule sourcing
+//! the same checks from the parse the backend already requires, led by
+//! [`backends::rust::text_regions`]:
 //!
-//! The [`python_text_regions`] module sources them for `py`/`pyi` from
-//! the Python backend's parse: first-statement triple-quoted docstrings
-//! plus `#` comments.
+//! - `rs`: line-comment regions plus `/** */` block docs and
+//!   `#[doc = "..."]` attribute docs.
+//! - `py`/`pyi`: first-statement triple-quoted docstrings plus `#`
+//!   comments.
+//! - `cs`: `///` XML-doc comment runs.
 //!
 //! [`lexicon`]: self::lexicon
-//! [`rust_text_regions`]: self::rust_text_regions
-//! [`python_text_regions`]: self::python_text_regions
+//! [`backends::rust::text_regions`]: backends::rust::text_regions
 //!
 //! # Lookup
 //!
@@ -52,14 +53,8 @@
 //! resolves like `.rs`) by binary search over a sorted static table. Lookups
 //! allocate nothing and run at most once per file, never per item.
 
-pub use backend::{LanguageBackend, backend_for};
-pub use rust_backend::RustBackend;
+pub use backends::rust::RustBackend;
+pub use backends::{LanguageBackend, backend_for};
 
-mod backend;
-mod csharp;
+pub mod backends;
 pub mod lexicon;
-mod python_backend;
-pub mod python_text_regions;
-pub mod regions;
-mod rust_backend;
-pub mod rust_text_regions;

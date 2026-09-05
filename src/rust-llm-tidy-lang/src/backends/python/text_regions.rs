@@ -46,7 +46,7 @@ use rust_llm_tidy_model::parse::ParseResult;
 /// tree-sitter fails to produce a syntax tree.
 ///
 /// [text_checks]: self::text_checks
-pub fn parse(source: &str) -> anyhow::Result<ParseResult> {
+pub(crate) fn parse(source: &str) -> anyhow::Result<ParseResult> {
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(&language()?)?;
     let tree = parser
@@ -71,7 +71,7 @@ pub fn parse(source: &str) -> anyhow::Result<ParseResult> {
 /// # Arguments
 ///
 /// - `parsed`: the parse produced by [`parse`], over the same source.
-pub fn text_checks(parsed: &ParseResult) -> Vec<Diagnostic> {
+pub(crate) fn text_checks(parsed: &ParseResult) -> Vec<Diagnostic> {
     if parsed.syntax_tree().root_node().has_error() {
         return Vec::new();
     }

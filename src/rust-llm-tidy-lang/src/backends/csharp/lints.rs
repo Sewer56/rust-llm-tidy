@@ -26,7 +26,7 @@
 //!   discouraged (`test_*`, `case_*`, `test` + digits) names.
 //! - TEXT001/TEXT002: `///` doc-comment prose measured with the XML doc
 //!   dialect; findings carry original file lines. The dialect rules live
-//!   with the lint crate's measuring core; see [`text_regions`] for the
+//!   with the lint crate's measuring core; see [`text_regions`]
 //!   producer.
 //!
 //! [`run_all`]: rust_llm_tidy_lint::check::run_all

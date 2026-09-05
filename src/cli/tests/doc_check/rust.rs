@@ -312,7 +312,7 @@ fn rs_block_and_attribute_docs_fire_text_budgets() {
 
 /// The CLI's rendered rs findings equal the direct composition of the
 /// tree-sitter checks (`run_all`) and the rs text checks
-/// (`rust_text_regions::text_checks`) over the same file: rs dispatch
+/// (`backends::rust::text_regions::text_checks`) over the same file: rs dispatch
 /// adds nothing and drops nothing.
 ///
 /// The rs text checks cover line comments plus `/** */` and
@@ -348,7 +348,7 @@ fn rs_diagnostics_match_direct_check_composition() {
         // source.
         let parsed = rust_llm_tidy_model::parse::parse_source(&source).unwrap();
         let mut expected = rust_llm_tidy_lint::check::run_all(&parsed);
-        expected.extend(rust_llm_tidy_lang::rust_text_regions::text_checks(&parsed));
+        expected.extend(rust_llm_tidy_lang::backends::rust::text_regions::text_checks(&parsed));
         let expected: Vec<(usize, String, String)> = expected
             .iter()
             .map(|d| {

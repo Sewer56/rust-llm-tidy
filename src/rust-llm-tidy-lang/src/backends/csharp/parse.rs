@@ -40,7 +40,7 @@
 //! fallback never authorizes a move.
 
 use super::lines::{end_past_newline, line_of, line_start_offsets, skip_one_line_ending};
-use crate::regions::Regions;
+use super::regions::Regions;
 use rust_llm_tidy_model::parse::{ItemKind, ParseResult, SourceItem, TypeMember, VisibilityTier};
 
 /// Attribute names marking a test method, per the accepted marker set; the

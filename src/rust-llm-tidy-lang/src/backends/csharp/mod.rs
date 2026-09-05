@@ -26,9 +26,9 @@
 //! A declined source returns `None`, so callers emit zero change
 //! records and never write.
 
-use crate::backend::LanguageBackend;
-use crate::regions::Regions;
+use crate::backends::LanguageBackend;
 use profile::CSharpProfile;
+use regions::Regions;
 use rust_llm_tidy_model::parse::{ItemKind, ParseResult};
 use rust_llm_tidy_reorder::graph::compute_member_order;
 use rust_llm_tidy_reorder::reorder::Permutation;
@@ -37,6 +37,7 @@ mod lines;
 mod lints;
 mod parse;
 mod profile;
+mod regions;
 mod text_regions;
 
 /// The `cs` backend.
