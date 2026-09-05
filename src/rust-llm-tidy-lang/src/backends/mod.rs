@@ -2,6 +2,7 @@
 //! a backend per source-file extension.
 
 use csharp::CSharpBackend;
+pub use csharp::CanThrowIndex;
 use python::PythonBackend;
 use rust::RustBackend;
 use rust_llm_tidy_lint::Diagnostic;
@@ -77,6 +78,13 @@ pub trait LanguageBackend: Sync {
     /// trees with error nodes: findings against misread declarations would
     /// be noise.
     fn lint(&self, parsed: &ParseResult) -> Vec<Diagnostic>;
+
+    /// Lint `parsed` using C# throw facts from `index` when supported.
+    ///
+    /// Returns the same diagnostics as [`Self::lint`] for backends without indexed checks.
+    fn lint_indexed(&self, parsed: &ParseResult, _index: &CanThrowIndex) -> Vec<Diagnostic> {
+        self.lint(parsed)
+    }
 
     /// Compute the full reorder permutation for a parse produced by
     /// [`Self::parse`]: the top-level item order plus any in-type member

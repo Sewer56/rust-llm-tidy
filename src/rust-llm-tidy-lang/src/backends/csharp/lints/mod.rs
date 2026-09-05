@@ -24,7 +24,7 @@
 //!   `protected`-family modifiers) need a `///` doc comment.
 //! - DOC002: a non-private method or constructor that can throw needs
 //!   an `<exception>` tag (error severity); throwing includes calls to
-//!   same-file members that throw.
+//!   same-file members and indexed qualified members that throw.
 //! - DOC003: non-private can-throw members whose `<exception>` tags
 //!   all lack a concrete `cref` type.
 //! - DOC004: non-private methods, constructors, and indexers with
@@ -44,10 +44,11 @@ use super::parse::{
     declaration_name, doc_comment_texts, doc_run_start_line, member_kind, parameter_names,
     visibility_of,
 };
+pub use can_throw::CanThrowIndex;
 use rust_llm_tidy_lint::{Diagnostic, Severity};
 use rust_llm_tidy_model::parse::{ItemKind, ParseResult, VisibilityTier};
-use std::collections::{HashMap, HashSet};
 
+mod can_throw;
 mod doc001_missing_docs;
 mod doc002_missing_exception_tag;
 mod doc003_vague_exception;
@@ -74,7 +75,7 @@ const DOCUMENTABLE: &[ItemKind] = &[
 /// Kinds checked for parameter documentation (DOC004/DOC005); properties
 /// cover indexers, whose parameter lists hold real parameters.
 const PARAMETERIZED: &[ItemKind] = &[ItemKind::Fn, ItemKind::Constructor, ItemKind::Property];
-/// Kinds checked for throwing, directly or through same-file calls
+/// Kinds checked for throwing, directly or through resolved calls
 /// (DOC002/DOC003).
 const THROWING: &[ItemKind] = &[ItemKind::Fn, ItemKind::Constructor];
 
@@ -89,6 +90,8 @@ struct Declaration<'a> {
     kind: ItemKind,
     /// The declaration's name, when it has a meaningful one.
     name: Option<String>,
+    /// The innermost containing type, without namespace qualification.
+    type_name: Option<String>,
     /// The declaration's `///` doc-comment lines.
     docs: Vec<String>,
     /// True when the visibility modifier is not `private`.
@@ -97,7 +100,7 @@ struct Declaration<'a> {
     /// present, else the declaration's own row.
     line: usize,
     /// The `<exception>` tag facts for a non-private member that can
-    /// throw, directly or through same-file calls: tag count plus every
+    /// throw, directly or through resolved calls: tag count plus every
     /// `cref` value.
     ///
     /// `None` for members that cannot or do not throw, so DOC002 and
@@ -109,22 +112,6 @@ struct Declaration<'a> {
     ///
     /// `None` otherwise, so DOC004 and DOC005 share one parameter walk.
     param_scan: Option<(Vec<String>, Vec<String>)>,
-}
-
-/// The facts the can-throw closure is computed from, filled in one
-/// subtree walk per method and constructor.
-struct ThrowFacts<'a> {
-    /// Names of every method and constructor in the file: the targets a
-    /// call site can resolve to.
-    member_names: HashSet<&'a str>,
-    /// Names proven to can throw: direct throws seed the set, reverse
-    /// call edges grow it.
-    can_throw: HashSet<&'a str>,
-    /// Reverse call edges: callee name -> names of the members calling
-    /// it.
-    callers_of: HashMap<&'a str, Vec<&'a str>>,
-    /// Direct-subtree `throw` flags, indexed like the declaration list.
-    direct_throw: Vec<bool>,
 }
 
 impl Declaration<'_> {
@@ -142,114 +129,6 @@ impl Declaration<'_> {
     }
 }
 
-impl<'a> ThrowFacts<'a> {
-    /// Empty facts for `declaration_count` declarations.
-    fn new(declaration_count: usize) -> Self {
-        Self {
-            member_names: HashSet::with_capacity(declaration_count),
-            can_throw: HashSet::new(),
-            callers_of: HashMap::new(),
-            direct_throw: vec![false; declaration_count],
-        }
-    }
-
-    /// Index the names calls can resolve to: methods and constructors
-    /// of any visibility.
-    fn index_member_names(&mut self, declarations: &'a [Declaration<'a>]) {
-        for decl in declarations {
-            if THROWING.contains(&decl.kind)
-                && let Some(name) = decl.name.as_deref()
-            {
-                self.member_names.insert(name);
-            }
-        }
-    }
-
-    /// Walk one member's own body depth-first, reusing `cursor`: a
-    /// `throw_statement` flags the member and seeds its name, and each
-    /// call site that names a same-file member records a reverse edge.
-    ///
-    /// Nested callables (`lambda_expression`,
-    /// `anonymous_method_expression`, `local_function_statement`) are
-    /// boundaries, not body.
-    ///
-    /// Their throws and calls belong to the nested scope, so the walk
-    /// skips their subtrees instead of attributing them to the
-    /// enclosing member.
-    fn scan_member(
-        &mut self,
-        idx: usize,
-        decl: &'a Declaration<'a>,
-        cursor: &mut tree_sitter::TreeCursor<'a>,
-    ) {
-        let node = decl.node;
-        let caller = decl.name.as_deref();
-        cursor.reset(node);
-        'walk: loop {
-            let current = cursor.node();
-            let nested_callable = matches!(
-                current.kind(),
-                "lambda_expression" | "anonymous_method_expression" | "local_function_statement"
-            );
-            if !nested_callable {
-                match current.kind() {
-                    "throw_statement" => {
-                        self.direct_throw[idx] = true;
-                        if let Some(name) = caller {
-                            self.can_throw.insert(name);
-                        }
-                    }
-                    "invocation_expression" => {
-                        self.record_call(current, "function", decl.source, caller)
-                    }
-                    "object_creation_expression" => {
-                        self.record_call(current, "type", decl.source, caller)
-                    }
-                    _ => {}
-                }
-                if cursor.goto_first_child() {
-                    continue 'walk;
-                }
-            }
-            loop {
-                if cursor.goto_next_sibling() {
-                    continue 'walk;
-                }
-                if !cursor.goto_parent() || cursor.node() == node {
-                    break 'walk;
-                }
-            }
-        }
-    }
-
-    /// Record one call edge when its target names a same-file method or
-    /// constructor.
-    ///
-    /// A member with no name cannot be flagged, and no call can reach
-    /// it, so its edges are dropped.
-    fn record_call(
-        &mut self,
-        call: tree_sitter::Node<'a>,
-        target_field: &'static str,
-        source: &'a str,
-        caller: Option<&'a str>,
-    ) {
-        let Some(caller) = caller else {
-            return;
-        };
-        let Some(target) = call.child_by_field_name(target_field) else {
-            return;
-        };
-        let Some(name) = call_target_name(target, source) else {
-            return;
-        };
-        // `nameof(X)` mentions a member; it never calls it.
-        if name != "nameof" && self.member_names.contains(name) {
-            self.callers_of.entry(name).or_default().push(caller);
-        }
-    }
-}
-
 /// Run every C# check over `parsed` and return all diagnostics in document
 /// order: the declaration checks first, then the text checks (TEXT001,
 /// TEXT002) over the same parse's doc regions.
@@ -258,19 +137,38 @@ impl<'a> ThrowFacts<'a> {
 /// broken tree would report findings against misread declarations, so the
 /// whole pass degrades to silence.
 pub(super) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
+    run_indexed(parsed, None)
+}
+
+/// Run checks on `parsed` with optional shared throw answers from `shared`.
+/// Returns diagnostics in document order, or none for a tree with syntax errors.
+pub(super) fn run_indexed(parsed: &ParseResult, shared: Option<&CanThrowIndex>) -> Vec<Diagnostic> {
     if parsed.syntax_tree().root_node().has_error() {
         return Vec::new();
     }
 
     let source = parsed.source.as_str();
     let mut declarations = Vec::with_capacity(parsed.items.len());
-    collect_children(parsed.syntax_tree().root_node(), source, &mut declarations);
+    collect_children(
+        parsed.syntax_tree().root_node(),
+        source,
+        None,
+        &mut declarations,
+    );
 
     // The can-throw closure spans the whole file (a caller may sit
     // before its callee), so it runs between collection and the rules;
     // stamping from its answers keeps diagnostics in document order.
-    let can_throw = can_throw_closure(&declarations);
-    for (decl, throws) in declarations.iter_mut().zip(can_throw) {
+    let index = CanThrowIndex::from_declarations(&declarations);
+    let shared = shared.map(|index| index.including(parsed));
+    for (position, decl) in declarations.iter_mut().enumerate() {
+        let throws = index.declaration_can_throw(position)
+            || shared.as_ref().is_some_and(|shared| {
+                decl.type_name
+                    .as_deref()
+                    .zip(decl.name.as_deref())
+                    .is_some_and(|(owner, member)| shared.member_can_throw(owner, member))
+            });
         if decl.non_private && THROWING.contains(&decl.kind) && throws {
             decl.exception_scan = Some(exception_tags(&decl.docs));
         }
@@ -283,94 +181,6 @@ pub(super) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
 
     diagnostics.extend(super::text_regions::text_checks(parsed));
     diagnostics
-}
-
-/// The simple call-target name of `target`.
-///
-/// - A bare name yields the identifier itself: `Helper()`.
-/// - A qualified target yields its rightmost segment:
-///   `this.Helper()`, `obj.Helper()`, `new Cfg.Exception()`.
-/// - A generic target yields its bare name: `Helper<T>()`.
-fn call_target_name<'a>(target: tree_sitter::Node<'a>, source: &'a str) -> Option<&'a str> {
-    let mut node = target;
-    loop {
-        if node.kind() == "identifier" {
-            return node.utf8_text(source.as_bytes()).ok();
-        }
-        // member_access_expression and qualified_name hold their
-        // rightmost segment in `name`; generic_name holds its bare name
-        // as the leading identifier child.
-        let next = node
-            .child_by_field_name("name")
-            .or_else(|| node.named_child(0))?;
-        node = next;
-    }
-}
-
-/// The can-throw answers for one file's declarations: declaration `i`
-/// can throw when its subtree holds a `throw` or one of its calls
-/// reaches, transitively, a same-file member that throws.
-///
-/// Resolution is same-file and name-keyed, so it stays conservative:
-///
-/// - `Helper()`, `this.Helper()`, `obj.Helper()`, and `Helper<T>()`
-///   all resolve to a member named `Helper`; `new C()` resolves to a
-///   constructor named `C`.
-/// - Overloads and same-name members of other same-file types match
-///   too: accepted false positives over missed throws.
-/// - Calls the file cannot resolve (framework members, other-file
-///   helpers) never flag the caller; `nameof(X)` references a name
-///   without calling it.
-/// - Private members count as throw sources; the checks themselves
-///   still skip them.
-/// - Calls and throws inside nested lambdas, anonymous methods, and
-///   local functions belong to the nested scope, never the enclosing
-///   member.
-///
-/// The fixpoint over reverse call edges is cycle-safe: names enter the
-/// can-throw set at most once, so self- and mutual recursion
-/// terminate, and a cycle can throw when any member reachable in it
-/// can.
-fn can_throw_closure<'a>(declarations: &'a [Declaration<'a>]) -> Vec<bool> {
-    let mut facts = ThrowFacts::new(declarations.len());
-    facts.index_member_names(declarations);
-    if let Some(first) = declarations.first() {
-        // One cursor is reused across every member's subtree; a fresh
-        // cursor per member would allocate behind every step.
-        let mut cursor = first.node.walk();
-        for (idx, decl) in declarations.iter().enumerate() {
-            if THROWING.contains(&decl.kind) {
-                facts.scan_member(idx, decl, &mut cursor);
-            }
-        }
-    }
-
-    // Propagate along reverse edges until stable: a caller of a
-    // can-throw name can throw.
-    let mut work: Vec<&str> = facts.can_throw.iter().copied().collect();
-    while let Some(name) = work.pop() {
-        if let Some(callers) = facts.callers_of.get_mut(name) {
-            for caller in callers.iter().copied() {
-                if facts.can_throw.insert(caller) {
-                    work.push(caller);
-                }
-            }
-        }
-    }
-
-    declarations
-        .iter()
-        .enumerate()
-        .map(|(idx, decl)| {
-            // A nameless member can still throw directly; it just never
-            // propagates, because no call can name it.
-            facts.direct_throw[idx]
-                || decl
-                    .name
-                    .as_deref()
-                    .is_some_and(|name| facts.can_throw.contains(name))
-        })
-        .collect()
 }
 
 /// Run every rule over one collected declaration.
@@ -390,6 +200,7 @@ fn check_declaration(decl: &Declaration<'_>, diagnostics: &mut Vec<Diagnostic>) 
 fn collect_children<'a>(
     list: tree_sitter::Node<'a>,
     source: &'a str,
+    type_name: Option<&str>,
     declarations: &mut Vec<Declaration<'a>>,
 ) {
     let mut cursor = list.walk();
@@ -402,13 +213,28 @@ fn collect_children<'a>(
             .child_by_field_name("body")
             .filter(|b| b.kind() == "declaration_list")
         {
-            collect_declaration(child, source, declarations);
-            collect_children(body, source, declarations);
+            collect_declaration(child, source, type_name, declarations);
+            let nested_type = matches!(
+                member_kind(kind),
+                ItemKind::Class
+                    | ItemKind::Struct
+                    | ItemKind::Interface
+                    | ItemKind::Record
+                    | ItemKind::Enum
+            )
+            .then(|| declaration_name(child, source))
+            .flatten();
+            collect_children(
+                body,
+                source,
+                nested_type.as_deref().or(type_name),
+                declarations,
+            );
         } else if kind == "preproc_if" || kind == "preproc_else" || kind == "preproc_elif" {
             // Conditional branches hold real declarations; collect them.
-            collect_children(child, source, declarations);
+            collect_children(child, source, type_name, declarations);
         } else {
-            collect_declaration(child, source, declarations);
+            collect_declaration(child, source, type_name, declarations);
         }
     }
 }
@@ -433,6 +259,7 @@ fn exception_tags(docs: &[String]) -> (usize, Vec<String>) {
 fn collect_declaration<'a>(
     node: tree_sitter::Node<'a>,
     source: &'a str,
+    type_name: Option<&str>,
     declarations: &mut Vec<Declaration<'a>>,
 ) {
     let kind = member_kind(node.kind());
@@ -456,6 +283,7 @@ fn collect_declaration<'a>(
         source,
         kind,
         name: declaration_name(node, source),
+        type_name: type_name.map(str::to_owned),
         // The `///` doc run's line when present, else the declaration's own
         // row; doc_run_start_line shares the parse module's adjacency
         // contract with span building and doc collection.
@@ -517,6 +345,133 @@ fn tag_slices<'a>(docs: &'a [String], tag: &str) -> impl Iterator<Item = &'a str
 mod tests {
     use super::{run, tag_slices};
     use rust_llm_tidy_lint::check::CODE_MISSING_ERRORS;
+    use std::collections::{HashMap, HashSet};
+
+    /// The name-keyed and qualified-index paths emit identical complete diagnostics.
+    #[test]
+    fn index_should_match_name_keyed_diagnostics() {
+        let sources = [
+            include_str!(
+                "../../../../../cli/tests/fixtures/doc/csharp/doc002_missing_exception.cs"
+            ),
+            include_str!(
+                "../../../../../cli/tests/fixtures/doc/csharp/doc002_indirect_exception.cs"
+            ),
+            "class C { void A() { B(); } void B() { A(); throw new E(); } public void Caller() { A(); } }",
+            "class C { C() { throw new E(); } public void Caller() { new C(); } }",
+            "class C { void Helper() { throw new E(); } public void Caller() { System.Action a = () => { Helper(); }; void Local() { Helper(); } } }",
+            "class C { class Nested { void Helper() { throw new E(); } } void Helper(int x) {} public void Caller() { obj.Helper(); } }",
+        ];
+
+        for source in sources {
+            let parsed = super::super::parse::parse(source).expect("fixture parses");
+            assert!(!parsed.syntax_tree().root_node().has_error());
+            let mut declarations = Vec::new();
+            super::collect_children(
+                parsed.syntax_tree().root_node(),
+                source,
+                None,
+                &mut declarations,
+            );
+            let flags = name_keyed_throw_closure(&declarations);
+            let mut expected = Vec::new();
+            for (decl, throws) in declarations.iter_mut().zip(flags) {
+                if decl.non_private && super::THROWING.contains(&decl.kind) && throws {
+                    decl.exception_scan = Some(super::exception_tags(&decl.docs));
+                }
+                super::check_declaration(decl, &mut expected);
+            }
+            expected.extend(super::super::text_regions::text_checks(&parsed));
+
+            let actual = run(&parsed);
+
+            assert_eq!(format!("{actual:?}"), format!("{expected:?}"), "{source}");
+        }
+    }
+
+    /// Evaluate a simple-name graph independently of qualified index positions.
+    /// `declarations` supplies syntax bodies and the names available in one file.
+    fn name_keyed_throw_closure(declarations: &[super::Declaration<'_>]) -> Vec<bool> {
+        let names: HashSet<_> = declarations
+            .iter()
+            .filter(|decl| super::THROWING.contains(&decl.kind))
+            .filter_map(|decl| decl.name.as_deref())
+            .collect();
+        let mut throwing = HashSet::new();
+        let mut callers: HashMap<&str, Vec<&str>> = HashMap::new();
+        let mut direct = vec![false; declarations.len()];
+
+        for (ordinal, decl) in declarations.iter().enumerate() {
+            if !super::THROWING.contains(&decl.kind) {
+                continue;
+            }
+            let mut cursor = decl.node.walk();
+            'walk: loop {
+                let node = cursor.node();
+                if !matches!(
+                    node.kind(),
+                    "lambda_expression"
+                        | "anonymous_method_expression"
+                        | "local_function_statement"
+                ) {
+                    if node.kind() == "throw_statement" {
+                        direct[ordinal] = true;
+                        if let Some(name) = decl.name.as_deref() {
+                            throwing.insert(name);
+                        }
+                    } else if let Some(field) = match node.kind() {
+                        "invocation_expression" => Some("function"),
+                        "object_creation_expression" => Some("type"),
+                        _ => None,
+                    } && let Some(caller) = decl.name.as_deref()
+                        && let Some(target) = node.child_by_field_name(field)
+                        && let Some(name) =
+                            super::super::parse::call_target_name(target, decl.source)
+                        && name != "nameof"
+                        && names.contains(name)
+                    {
+                        callers.entry(name).or_default().push(caller);
+                    }
+
+                    if cursor.goto_first_child() {
+                        continue 'walk;
+                    }
+                }
+
+                loop {
+                    if cursor.goto_next_sibling() {
+                        continue 'walk;
+                    }
+                    if !cursor.goto_parent() || cursor.node() == decl.node {
+                        break 'walk;
+                    }
+                }
+            }
+        }
+
+        let mut work: Vec<_> = throwing.iter().copied().collect();
+        while let Some(name) = work.pop() {
+            if let Some(callers) = callers.get(name) {
+                for &caller in callers {
+                    if throwing.insert(caller) {
+                        work.push(caller);
+                    }
+                }
+            }
+        }
+
+        declarations
+            .iter()
+            .enumerate()
+            .map(|(ordinal, decl)| {
+                direct[ordinal]
+                    || decl
+                        .name
+                        .as_deref()
+                        .is_some_and(|name| throwing.contains(name))
+            })
+            .collect()
+    }
 
     /// Full C# lint pass over `source`: the entry point every rule
     /// observes, shared by the can-throw tests.

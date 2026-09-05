@@ -41,7 +41,10 @@
 
 use super::lines::{end_past_newline, line_of, line_start_offsets, skip_one_line_ending};
 use super::regions::Regions;
+pub(super) use call_targets::{call_target_name, qualified_call_target, receiver_value_names};
 use rust_llm_tidy_model::parse::{ItemKind, ParseResult, SourceItem, TypeMember, VisibilityTier};
+
+mod call_targets;
 
 /// Attribute names marking a test method, per the accepted marker set; the
 /// customary `Attribute` suffix is stripped before matching.

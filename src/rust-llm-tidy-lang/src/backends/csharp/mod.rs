@@ -27,6 +27,7 @@
 //! records and never write.
 
 use crate::backends::LanguageBackend;
+pub use lints::CanThrowIndex;
 use profile::CSharpProfile;
 use regions::Regions;
 use rust_llm_tidy_model::parse::{ItemKind, ParseResult};
@@ -58,6 +59,14 @@ impl LanguageBackend for CSharpBackend {
 
     fn lint(&self, parsed: &ParseResult) -> Vec<rust_llm_tidy_lint::Diagnostic> {
         lints::run(parsed)
+    }
+
+    fn lint_indexed(
+        &self,
+        parsed: &ParseResult,
+        index: &CanThrowIndex,
+    ) -> Vec<rust_llm_tidy_lint::Diagnostic> {
+        lints::run_indexed(parsed, Some(index))
     }
 
     fn reorder_permutation(&self, parsed: &ParseResult) -> anyhow::Result<Option<Permutation>> {

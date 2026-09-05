@@ -23,31 +23,7 @@ pub(crate) fn collect_files(
     exts: &[&str],
     out: &mut Vec<PathBuf>,
 ) -> anyhow::Result<()> {
-    // `hidden(false)` keeps dot-dirs walkable (gitignore still applies), so
-    // behaviour matches a plain recursive read.
-    //
-    // Global/exclude gitignore files are not consulted; only repo
-    // `.gitignore` files apply, for reproducible runs independent of the
-    // host's global config.
-    let walker = WalkBuilder::new(dir)
-        .hidden(false)
-        .git_ignore(true)
-        .git_global(false)
-        .git_exclude(false)
-        .parents(true)
-        .build();
-
-    for entry in walker {
-        let entry = entry?;
-        let path = entry.path();
-        if entry.file_type().is_some_and(|ft| ft.is_file())
-            && ext_in(path.extension().and_then(|e| e.to_str()), exts)
-        {
-            out.push(path.to_path_buf());
-        }
-    }
-
-    Ok(())
+    collect_project_files(dir, exts, out, false)
 }
 
 // ---------------------------------------------------------------------------
@@ -64,17 +40,47 @@ pub(crate) fn resolve_inputs(cli: &Cli, exts: &[&str]) -> anyhow::Result<Vec<Pat
     }
 }
 
-/// ASCII case-insensitive extension membership check.
+/// Collect `exts` under `dir` into `out`, optionally skipping nested repositories.
 ///
-/// Returns `true` when `ext` (a path extension without the leading dot) matches
-/// any entry in `exts` ignoring ASCII case, so `.RS`/`.MD` variants are
-/// allowed exactly like their lowercase forms.
-///
-/// Non-allocating: compares each candidate byte-wise instead of materializing a
-/// lowercase copy.
-#[inline]
-pub(crate) fn ext_in(ext: Option<&str>, exts: &[&str]) -> bool {
-    ext.is_some_and(|e| exts.iter().any(|x| e.eq_ignore_ascii_case(x)))
+/// # Errors
+/// Returns an error when a directory entry cannot be read.
+pub(crate) fn collect_project_files(
+    dir: &Path,
+    exts: &[&str],
+    out: &mut Vec<PathBuf>,
+    skip_repositories: bool,
+) -> anyhow::Result<()> {
+    // `hidden(false)` keeps dot-dirs walkable (gitignore still applies), so
+    // behaviour matches a plain recursive read.
+    //
+    // Global/exclude gitignore files are not consulted; only repo
+    // `.gitignore` files apply, for reproducible runs independent of the
+    // host's global config.
+    let walker = WalkBuilder::new(dir)
+        .hidden(false)
+        .git_ignore(true)
+        .git_global(false)
+        .git_exclude(false)
+        .parents(true)
+        .filter_entry(move |entry| {
+            !skip_repositories
+                || entry.depth() == 0
+                || !entry.file_type().is_some_and(|kind| kind.is_dir())
+                || !entry.path().join(".git").exists()
+        })
+        .build();
+
+    for entry in walker {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type().is_some_and(|ft| ft.is_file())
+            && ext_in(path.extension().and_then(|e| e.to_str()), exts)
+        {
+            out.push(path.to_path_buf());
+        }
+    }
+
+    Ok(())
 }
 
 /// Resolve a list of input paths into a flat, ordered list of files with
@@ -89,6 +95,19 @@ pub(crate) fn resolve_all(inputs: &[PathBuf], exts: &[&str]) -> anyhow::Result<V
     paths.sort();
     paths.dedup();
     Ok(paths)
+}
+
+/// ASCII case-insensitive extension membership check.
+///
+/// Returns `true` when `ext` (a path extension without the leading dot) matches
+/// any entry in `exts` ignoring ASCII case, so `.RS`/`.MD` variants are
+/// allowed exactly like their lowercase forms.
+///
+/// Non-allocating: compares each candidate byte-wise instead of materializing a
+/// lowercase copy.
+#[inline]
+pub(crate) fn ext_in(ext: Option<&str>, exts: &[&str]) -> bool {
+    ext.is_some_and(|e| exts.iter().any(|x| e.eq_ignore_ascii_case(x)))
 }
 
 /// Resolve `path` into a sorted list of files with matching extensions.

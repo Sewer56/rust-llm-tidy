@@ -109,6 +109,124 @@ fn csharp_doc002_errors_on_untagged_throwers() {
     );
 }
 
+/// A loose caller has no foreign facts; vague tags warn without failing a paired invocation.
+#[test]
+fn csharp_doc002_should_degrade_for_loose_files_and_keep_doc003_warning_exit() {
+    let caller = super::temp_file("cs");
+    let helper = super::temp_file("cs");
+    std::fs::write(
+        &caller,
+        "class A {\n/// <summary>Loads a value.</summary>\npublic void Load() { T.Helper(); }\n}",
+    )
+    .unwrap();
+    std::fs::write(&helper, "class T { void Helper() { throw new E(); } }").unwrap();
+
+    let loose = run_command(&["--include", "lints"], &caller);
+    std::fs::write(
+        &caller,
+        "class A {\n/// <exception>Failure.</exception>\npublic void Load() { T.Helper(); }\n}",
+    )
+    .unwrap();
+    let paired = std::process::Command::new(super::binary())
+        .args(["--no-config", "--include", "lints"])
+        .arg(&caller)
+        .arg(&helper)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&paired.stderr);
+    std::fs::remove_file(caller).unwrap();
+    std::fs::remove_file(helper).unwrap();
+
+    assert!(loose.status.success());
+    assert!(loose.stderr.is_empty());
+    assert!(paired.status.success(), "{stderr}");
+    assert_eq!(stderr.matches("warning[DOC003]").count(), 1, "{stderr}");
+    assert_eq!(stderr.matches("warning[").count(), 1, "{stderr}");
+    assert!(!stderr.contains("error["), "{stderr}");
+}
+
+/// Explicit file pairs and project-scoped single inputs report the same cross-file error.
+#[test]
+fn csharp_doc002_should_find_project_throwers_from_single_or_multiple_inputs() {
+    let root = manifest_dir().join("tests/fixtures/doc/csharp/doc002_cross_file");
+    let caller = root.join("caller/Caller.cs");
+    let thrower = root.join("thrower/Thrower.cs");
+
+    for multiple in [false, true] {
+        let mut command = std::process::Command::new(super::binary());
+        command
+            .args(["--no-config", "--include", "lints"])
+            .arg(&caller);
+        if multiple {
+            command.arg(&thrower);
+        }
+
+        let output = command.output().unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(!output.status.success(), "{stderr}");
+        assert_eq!(stderr.matches("error[DOC002]").count(), 1, "{stderr}");
+        assert_eq!(stderr.matches("(fn `Load`)").count(), 1, "{stderr}");
+        assert_eq!(stderr.matches("error[").count(), 1, "{stderr}");
+        assert!(!stderr.contains("warning["), "{stderr}");
+    }
+}
+
+/// Real member movement preserves the same current-source lint records as a fresh lint pass.
+#[test]
+fn csharp_doc002_should_refresh_diagnostic_positions_after_reorder() {
+    let caller = super::temp_file("cs");
+    let helper = super::temp_file("cs");
+    let source = "class A\n{\n    /// <summary>Loads first.</summary>\n    public void First() { T.Helper(); }\n    /// <summary>Loads second.</summary>\n    public void Second() { First(); }\n}\n";
+    std::fs::write(&caller, source).unwrap();
+    std::fs::write(&helper, "class T { void Helper() { throw new E(); } }").unwrap();
+    let run = |include| {
+        std::process::Command::new(super::binary())
+            .args(["--no-config", "--output-mode", "json", "--include", include])
+            .arg(&caller)
+            .arg(&helper)
+            .output()
+            .unwrap()
+    };
+
+    let combined = std::process::Command::new(super::binary())
+        .args([
+            "--no-config",
+            "--output-mode",
+            "json",
+            "--include",
+            "reorder",
+            "--include",
+            "lints",
+        ])
+        .arg(&caller)
+        .arg(&helper)
+        .output()
+        .unwrap();
+    let current = std::fs::read_to_string(&caller).unwrap();
+    let fresh = run("lints");
+    let diagnostics = |output: &[u8]| {
+        let records: Vec<serde_json::Value> = serde_json::from_slice(output).unwrap();
+        records
+            .into_iter()
+            .filter(|record| record["code"] == "DOC002")
+            .collect::<Vec<_>>()
+    };
+    let combined_records = diagnostics(&combined.stdout);
+    let fresh_records = diagnostics(&fresh.stdout);
+    std::fs::remove_file(&caller).unwrap();
+    std::fs::remove_file(&helper).unwrap();
+
+    assert_ne!(current, source);
+    assert!(current.find("void Second").unwrap() < current.find("void First").unwrap());
+    assert_eq!(combined.status.code(), fresh.status.code());
+    assert!(!combined.status.success());
+    assert_eq!(combined_records.len(), 2);
+    assert_eq!(combined_records, fresh_records);
+    assert_eq!(combined_records[0]["line"], 3);
+    assert_eq!(combined_records[1]["line"], 5);
+}
+
 // ── DOC003: vague `<exception>` cref ─────────────────────────────
 
 /// DOC003 warns when `<exception>` tags carry no concrete `cref`.
