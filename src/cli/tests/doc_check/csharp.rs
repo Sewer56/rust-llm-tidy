@@ -50,6 +50,42 @@ fn csharp_doc001_flags_undocumented_non_private_members() {
 
 // ── DOC002: missing `<exception>` tag ────────────────────────────
 
+/// DOC002 recursion: a caller with no `throw` of its own is flagged
+/// for calling a same-file thrower, transitively; the private thrower,
+/// framework calls, and tagged callers stay silent. Findings keep
+/// document order and error severity.
+#[test]
+fn csharp_doc002_errors_on_indirect_throwers() {
+    let (stderr, exit) = run_csharp_fixture("doc002_indirect_exception.cs");
+
+    assert_ne!(exit, 0, "DOC002 errors must fail the run:\n{stderr}");
+    assert!(
+        stderr.contains("error[DOC002]"),
+        "DOC002 carries error severity:\n{stderr}"
+    );
+    assert_has_diagnostic(&stderr, "DOC002", Some("Load"));
+    assert_has_diagnostic(&stderr, "DOC002", Some("LoadTwice"));
+    assert!(
+        !stderr.contains("`Validate`")
+            && !stderr.contains("`Parse`")
+            && !stderr.contains("`LoadGuarded`"),
+        "private throwers, framework calls, and tagged callers pass:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("DOC002").count(),
+        2,
+        "expected exactly 2 DOC002 findings:\n{stderr}"
+    );
+    let direct = stderr.find("(fn `Load`)").expect("Load must be named");
+    let transitive = stderr
+        .find("(fn `LoadTwice`)")
+        .expect("LoadTwice must be named");
+    assert!(
+        direct < transitive,
+        "findings stay in document order:\n{stderr}"
+    );
+}
+
 /// DOC002 errors on the documented non-private thrower without an
 /// `<exception>` tag; the tagged and private throwers pass.
 #[test]
