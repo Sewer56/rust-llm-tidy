@@ -2,9 +2,10 @@
 //!
 //! Tests are split into two groups:
 //!
-//! 1. Synthetic fixture tests (`tests/fixtures/reorder/rust/*_before.rs` →
-//!    `*_after.rs`): one test per ordering/spacing rule.  Each fixture's
-//!    module header documents the rule and the expected before/after state.
+//! 1. Synthetic fixture tests (`tests/fixtures/reorder/<lang>/*_before.<ext>`
+//!    → `*_after.<ext>`): one test per ordering/spacing rule, for `rust`
+//!    and `csharp`.  Each fixture's header comment documents the rule and
+//!    the expected before/after state.
 //!
 //! 2. CLI behavior tests: dry-run, in-place writes, directory traversal,
 //!    error handling, and idempotency.
@@ -13,22 +14,25 @@ use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-/// Run `rust-llm-tidy --include reorder --dry-run` against `<name>_before.rs`
-/// in `tests/fixtures/reorder/rust/`.
+/// Run `rust-llm-tidy --include reorder --dry-run` against
+/// `<name>_before.<ext>` in `tests/fixtures/reorder/<lang>/`.
 ///
 /// Returns `(stdout, stderr, exit, before_path, expected_after_content)`.
 macro_rules! run_fixture {
-    ($name:ident) => {{
+    ($lang:ident, $ext:literal, $name:ident) => {{
         let fixture_dir = manifest_dir()
             .join("tests")
             .join("fixtures")
             .join("reorder")
-            .join("rust");
-        let before_path = fixture_dir.join(concat!(stringify!($name), "_before.rs"));
+            .join(stringify!($lang));
+        let before_path = fixture_dir.join(concat!(stringify!($name), "_before.", $ext));
         let expected_after = include_str!(concat!(
-            "fixtures/reorder/rust/",
+            "fixtures/reorder/",
+            stringify!($lang),
+            "/",
             stringify!($name),
-            "_after.rs"
+            "_after.",
+            $ext
         ))
         .to_string();
 
@@ -45,10 +49,11 @@ macro_rules! run_fixture {
 /// _after" coverage is preserved by re-ordering a temp copy in place and
 /// comparing its content.
 macro_rules! synthetic_fixture {
-    ($name:ident) => {
+    ($lang:ident, $ext:literal, $name:ident) => {
         #[test]
         fn $name() {
-            let (stdout, stderr, exit, before_path, expected_after) = run_fixture!($name);
+            let (stdout, stderr, exit, before_path, expected_after) =
+                run_fixture!($lang, $ext, $name);
             assert_eq!(
                 exit, 0,
                 concat!(stringify!($name), " dry-run should succeed")
@@ -72,11 +77,12 @@ macro_rules! synthetic_fixture {
             }
             // In-place reorder still produces the _after fixture byte-for-byte.
             assert_eq!(
-                reorder_in_place(&before_path),
+                reorder_in_place(&before_path, $ext),
                 expected_after,
                 concat!(
                     stringify!($name),
-                    " fixture: in-place reorder must match _after.rs"
+                    " fixture: in-place reorder must match _after.",
+                    $ext
                 )
             );
         }
@@ -85,67 +91,107 @@ macro_rules! synthetic_fixture {
 
 // ── Synthetic fixture tests: one per rule ─────────────────────────
 
-synthetic_fixture!(phase_extern_crate_stable);
+synthetic_fixture!(rust, "rs", phase_extern_crate_stable);
 
-synthetic_fixture!(phase_other_stable);
+synthetic_fixture!(rust, "rs", phase_other_stable);
 
-synthetic_fixture!(phase_use_stable);
+synthetic_fixture!(rust, "rs", phase_use_stable);
 
-synthetic_fixture!(phase_mod_non_test_stable);
+synthetic_fixture!(rust, "rs", phase_mod_non_test_stable);
 
-synthetic_fixture!(phase_macro_alphabetical);
+synthetic_fixture!(rust, "rs", phase_macro_alphabetical);
 
-synthetic_fixture!(phase_macro_dependency);
+synthetic_fixture!(rust, "rs", phase_macro_dependency);
 
-synthetic_fixture!(phase_macro_invocation_after_def);
+synthetic_fixture!(rust, "rs", phase_macro_invocation_after_def);
 
-synthetic_fixture!(phase_const_static_alphabetical);
+synthetic_fixture!(rust, "rs", phase_const_static_alphabetical);
 
-synthetic_fixture!(phase_const_static_dependency);
+synthetic_fixture!(rust, "rs", phase_const_static_dependency);
 
-synthetic_fixture!(phase_type_alphabetical);
+synthetic_fixture!(rust, "rs", phase_type_alphabetical);
 
-synthetic_fixture!(phase_type_dependency);
+synthetic_fixture!(rust, "rs", phase_type_dependency);
 
-synthetic_fixture!(phase_trait_alphabetical);
+synthetic_fixture!(rust, "rs", phase_trait_alphabetical);
 
-synthetic_fixture!(phase_trait_dependency);
+synthetic_fixture!(rust, "rs", phase_trait_dependency);
 
-synthetic_fixture!(phase_impl_inherent_before_trait);
+synthetic_fixture!(rust, "rs", phase_impl_inherent_before_trait);
 
-synthetic_fixture!(phase_impl_after_matching_type);
+synthetic_fixture!(rust, "rs", phase_impl_after_matching_type);
 
-synthetic_fixture!(phase_impl_orphan_stable);
+synthetic_fixture!(rust, "rs", phase_impl_orphan_stable);
 
-synthetic_fixture!(fn_visibility_groups);
+synthetic_fixture!(rust, "rs", fn_visibility_groups);
 
-synthetic_fixture!(fn_main_first);
+synthetic_fixture!(rust, "rs", fn_main_first);
 
-synthetic_fixture!(fn_callers_before_callees);
+synthetic_fixture!(rust, "rs", fn_callers_before_callees);
 
-synthetic_fixture!(fn_alphabetical_tie_break);
+synthetic_fixture!(rust, "rs", fn_alphabetical_tie_break);
 
-synthetic_fixture!(fn_mutual_recursion_contiguous);
+synthetic_fixture!(rust, "rs", fn_mutual_recursion_contiguous);
 
-synthetic_fixture!(cfg_test_mod_last_stable);
+synthetic_fixture!(rust, "rs", cfg_test_mod_last_stable);
 
-synthetic_fixture!(mod_file_decl_stays_in_phase);
+synthetic_fixture!(rust, "rs", mod_file_decl_stays_in_phase);
 
-synthetic_fixture!(preamble_preserved);
+synthetic_fixture!(rust, "rs", preamble_preserved);
 
-synthetic_fixture!(trailer_preserved);
+synthetic_fixture!(rust, "rs", trailer_preserved);
 
-synthetic_fixture!(fn_interstitial_comment_travels_with_next);
+synthetic_fixture!(rust, "rs", fn_interstitial_comment_travels_with_next);
 
-synthetic_fixture!(docs_attrs_travel);
+synthetic_fixture!(rust, "rs", docs_attrs_travel);
 
-synthetic_fixture!(spacing_compact_use_mod_const_static);
+synthetic_fixture!(rust, "rs", spacing_compact_use_mod_const_static);
 
-synthetic_fixture!(spacing_blank_line_between_phases);
+synthetic_fixture!(rust, "rs", spacing_blank_line_between_phases);
 
-synthetic_fixture!(spacing_blank_line_fn_visibility);
+synthetic_fixture!(rust, "rs", spacing_blank_line_fn_visibility);
 
-synthetic_fixture!(safety_line_preservation);
+synthetic_fixture!(rust, "rs", safety_line_preservation);
+
+// ── Synthetic C# fixture tests: one per rule ──────────────────────
+
+synthetic_fixture!(csharp, "cs", usings_hoist_above_types);
+
+synthetic_fixture!(csharp, "cs", usings_keep_source_order);
+
+synthetic_fixture!(csharp, "cs", top_level_types_keep_source_order);
+
+synthetic_fixture!(csharp, "cs", member_buckets_reorder);
+
+synthetic_fixture!(csharp, "cs", member_fields_keep_source_order);
+
+synthetic_fixture!(csharp, "cs", member_delegates_events_keep_source_order);
+
+synthetic_fixture!(csharp, "cs", member_enums_nested_types_keep_source_order);
+
+synthetic_fixture!(csharp, "cs", member_properties_indexers_keep_source_order);
+
+synthetic_fixture!(csharp, "cs", member_callers_before_callees);
+
+synthetic_fixture!(csharp, "cs", member_methods_keep_source_order);
+
+synthetic_fixture!(csharp, "cs", member_mutual_recursion_contiguous);
+
+synthetic_fixture!(csharp, "cs", member_docs_attributes_travel);
+
+synthetic_fixture!(csharp, "cs", member_leading_comment_travels);
+
+synthetic_fixture!(csharp, "cs", member_compact_spacing_stays_compact);
+
+synthetic_fixture!(csharp, "cs", nested_type_moves_whole);
+
+synthetic_fixture!(csharp, "cs", namespace_usings_pin_first);
+
+synthetic_fixture!(csharp, "cs", header_comment_preserved);
+
+synthetic_fixture!(csharp, "cs", footer_comment_preserved);
+
+synthetic_fixture!(csharp, "cs", spacing_usings_compact_types_separated);
 
 // ── Idempotency: every _after fixture must be unchanged ───────────
 
@@ -671,12 +717,13 @@ fn reorder_dry_run_reports_change_with_empty_stdout() {
     );
 }
 
-/// Reorder a temp copy of `path` in place and return the rewritten content.
+/// Reorder a temp copy of `path` (keeping the given extension, which
+/// selects the language backend) in place and return the rewritten content.
 ///
 /// Preserves the byte-for-byte "produces the _after fixture" coverage while
 /// dry-run keeps stdout empty.
-fn reorder_in_place(path: &std::path::Path) -> String {
-    let tmp = temp_file();
+fn reorder_in_place(path: &std::path::Path, ext: &str) -> String {
+    let tmp = temp_file_ext(ext);
     fs::copy(path, &tmp).unwrap();
     let output = run_command(&["--include", "reorder"], &tmp);
     assert!(
@@ -1016,8 +1063,8 @@ fn temp_dir() -> std::path::PathBuf {
     std::env::temp_dir().join(format!("rust-llm-tidy-dir-{}-{}", pid, seq))
 }
 
-/// Create a numbered temporary `.rs` file path (reorder only runs on Rust
-/// inputs, so the temp copy must keep the extension).
+/// Create a numbered temporary `.rs` file path for fixture copies that
+/// reorder in place.
 fn temp_file() -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
@@ -1025,8 +1072,9 @@ fn temp_file() -> std::path::PathBuf {
 }
 
 /// Create a numbered temporary file path with the given extension, for
-/// case-sensitivity tests that need `.RS`/`.MD`/`.TXT` (the local `temp_file`
-/// is fixed to `.rs`).
+/// fixture copies whose language the extension selects (`.cs`) and
+/// case-sensitivity tests that need `.RS`/`.MD`/`.TXT` (the local
+/// `temp_file` is fixed to `.rs`).
 fn temp_file_ext(ext: &str) -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
