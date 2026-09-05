@@ -92,21 +92,17 @@ atomic_write(Path::new("src/main.rs"), &output)?;
 The algorithm orders top-level items across phases. Within most phases, an item
 comes before any item it references; alphabetical order breaks ties.
 
-The phases, their ordering strategies, and the reference walk's node-kind
-matching come from a per-language [`ReorderProfile`](
-crate::graph::ReorderProfile) supplied to
-[`compute_order`].
-[`RustProfile`] reproduces the
-Rust order documented here for every Rust source.
+Ordering is defined per language. [`compute_order`] takes a [`ReorderProfile`]
+that supplies the phases, their ordering strategies, and the node kinds the
+reference walk matches.
 
-The repository's C# backend ships a second profile (`CSharpProfile` in
-the `rust-llm-tidy-lang` crate); its user-facing rules are documented in
-the repository's `docs/reorder/csharp.md`.
+- [`RustProfile`] applies the Rust order documented here to every Rust source.
+- The C# backend ships `CSharpProfile` (in the `rust-llm-tidy-lang` crate).
+  Its rules are documented in `docs/reorder/csharp.md`.
 
-Items only reorder within their preprocessor region (see `SourceItem::region`),
-and items carrying in-type members can additionally reorder those members
-through [`compute_member_order`](
-crate::graph::compute_member_order).
+Items reorder only within their preprocessor region (see `SourceItem::region`).
+Items with in-type members can also reorder those members through
+[`compute_member_order`].
 
 Below is an annotated example of the output order. The comments show which
 phase each item belongs to and why.
@@ -216,4 +212,6 @@ Licensed under Apache 2.0
 [docs-badge]: https://docs.rs/rust-llm-tidy-reorder/badge.svg
 [ci-badge]: https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg
 [`compute_order`]: crate::graph::compute_order
+[`compute_member_order`]: crate::graph::compute_member_order
+[`ReorderProfile`]: crate::graph::ReorderProfile
 [`RustProfile`]: crate::graph::RustProfile
