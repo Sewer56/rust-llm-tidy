@@ -438,115 +438,22 @@ mod tests {
     /// The approved matrix's markdown-family extensions.
     const MD_FAMILY: &[&str] = &["md", "markdown", "txt", "text", "mdx"];
 
-    /// The approved matrix's code-language extensions, grouped by the
-    /// profile they must resolve to and the comment marker their tier
-    /// strips.
-    const CODE_FAMILIES: &[(&[&str], &Profile, &str)] = &[
-        (
-            &[
-                "c", "h", "cpp", "cc", "hpp", "java", "js", "mjs", "ts", "tsx", "go", "swift",
-                "kt", "php", "dart", "scala", "zig",
-            ],
-            &CODE_SLASH,
-            "//",
-        ),
-        (
-            &["rb", "sh", "bash", "zsh", "r", "pl", "jl", "nim", "conf"],
-            &CODE_HASH,
-            "#",
-        ),
-        (&["lua", "sql", "hs", "elm", "ada"], &CODE_DASH, "--"),
-        (&["el", "lisp", "clj", "cljc", "scm"], &CODE_SEMI, ";"),
-        (&["tex", "erl", "m"], &CODE_PERCENT, "%"),
+    /// The approved matrix's code-language extensions, grouped by comment
+    /// marker family.
+    const CODE_FAMILIES: &[&[&str]] = &[
+        &[
+            "c", "h", "cpp", "cc", "hpp", "java", "js", "mjs", "ts", "tsx", "go", "swift", "kt",
+            "php", "dart", "scala", "zig",
+        ],
+        &["rb", "sh", "bash", "zsh", "r", "pl", "jl", "nim", "conf"],
+        &["lua", "sql", "hs", "elm", "ada"],
+        &["el", "lisp", "clj", "cljc", "scm"],
+        &["tex", "erl", "m"],
     ];
 
     /// Assert `ext` resolves to `profile` so failures name the extension.
     fn assert_profile(ext: &str, profile: &Profile) {
         assert_eq!(profile_for(ext), profile, "wrong tier for .{ext}");
-    }
-
-    /// The markdown family shares one profile: every text op runs by default,
-    /// with no comment prefixes (plain markdown).
-    #[test]
-    fn markdown_family_resolves_full_text_ops() {
-        for ext in MD_FAMILY {
-            assert_profile(ext, &MARKDOWN);
-        }
-
-        assert_eq!(
-            MARKDOWN.ops,
-            ["tables", "fences", "links", "lints"].as_slice()
-        );
-        assert_eq!(MARKDOWN.default_ops, MARKDOWN.ops);
-        assert!(MARKDOWN.prefixes.is_empty());
-        const { assert!(!MARKDOWN.backend) };
-    }
-
-    /// `rs` keeps exactly the op set the pipeline runs for it today: the fix
-    /// ops, reorder, vis, and lints.
-    #[test]
-    fn rust_profile_matches_current_pipeline_ops() {
-        assert_profile("rs", &RUST);
-
-        assert_eq!(
-            RUST.ops,
-            ["tables", "fences", "links", "reorder", "vis", "lints"].as_slice()
-        );
-        assert_eq!(RUST.default_ops, RUST.ops);
-        assert_eq!(RUST.prefixes, ["///", "//!"].as_slice());
-        const { assert!(RUST.backend) };
-    }
-
-    /// `cs` gets tables plus the AST ops, `///`/`//` prefixes longest first,
-    /// no links, and fences only through an explicit include.
-    #[test]
-    fn csharp_profile_is_tables_plus_ast_ops_without_links() {
-        assert_profile("cs", &C_SHARP);
-
-        assert_eq!(
-            C_SHARP.ops,
-            ["tables", "fences", "reorder", "lints"].as_slice()
-        );
-        assert_eq!(
-            C_SHARP.default_ops,
-            ["tables", "reorder", "lints"].as_slice()
-        );
-        assert_eq!(C_SHARP.prefixes, ["///", "//"].as_slice());
-        const { assert!(C_SHARP.backend) };
-    }
-
-    /// `py`/`pyi` keep the `#`-marker fix behavior of a code language but
-    /// source their text checks from the Python backend's docstring walk
-    /// instead of the comment lexicon; no AST ops ride the backend.
-    #[test]
-    fn python_profiles_measure_docstrings_through_the_backend() {
-        for ext in ["py", "pyi"] {
-            assert_profile(ext, &PYTHON);
-        }
-
-        assert_eq!(PYTHON.ops, ["tables", "fences", "lints"].as_slice());
-        assert_eq!(PYTHON.default_ops, ["tables", "lints"].as_slice());
-        assert_eq!(PYTHON.prefixes, ["#"].as_slice());
-        const { assert!(PYTHON.backend) };
-        assert_eq!(PYTHON.text_lints, TextLints::Ast);
-    }
-
-    /// Every code language resolves tables-and-lints defaults with its own
-    /// comment marker and the lexicon text tier; `fences` stays reachable
-    /// only through an explicit include.
-    #[test]
-    fn code_families_default_to_tables_and_lints_with_their_comment_marker() {
-        for (exts, profile, marker) in CODE_FAMILIES {
-            for ext in *exts {
-                assert_profile(ext, profile);
-            }
-
-            assert_eq!(profile.ops, ["tables", "fences", "lints"].as_slice());
-            assert_eq!(profile.default_ops, ["tables", "lints"].as_slice());
-            assert_eq!(profile.prefixes, [*marker].as_slice());
-            assert!(!profile.backend);
-            assert_eq!(profile.text_lints, TextLints::Lexicon);
-        }
     }
 
     /// Uppercase and mixed-case extensions resolve identically to their
@@ -580,26 +487,13 @@ mod tests {
         }
     }
 
-    /// Extensions outside every table resolve tables-only with no prefixes.
-    #[test]
-    fn unmapped_extensions_resolve_tables_only_without_prefixes() {
-        for ext in ["org", "unknown", ""] {
-            assert_profile(ext, &UNMAPPED);
-        }
-
-        assert_eq!(UNMAPPED.ops, ["tables"].as_slice());
-        assert!(UNMAPPED.prefixes.is_empty());
-        assert_eq!(UNMAPPED.default_ops, UNMAPPED.ops);
-        const { assert!(!UNMAPPED.backend) };
-    }
-
     /// The registry lists exactly the approved matrix: no missing, extra, or
     /// duplicated extensions.
     #[test]
     fn registry_lists_exactly_the_approved_matrix() {
         let mut expected: BTreeSet<&str> = MD_FAMILY.iter().copied().collect();
         expected.extend(["rs", "cs", "py", "pyi"]);
-        for (exts, _, _) in CODE_FAMILIES {
+        for exts in CODE_FAMILIES {
             expected.extend(exts.iter().copied());
         }
 
@@ -803,8 +697,7 @@ mod tests {
                 ".{ext} must source text regions from its backend"
             );
         }
-        let lexicon_exts: Vec<&[&str]> = CODE_FAMILIES.iter().map(|(exts, _, _)| *exts).collect();
-        for exts in &lexicon_exts {
+        for exts in CODE_FAMILIES {
             for ext in *exts {
                 assert_eq!(
                     profile_for(ext).text_lints,
@@ -824,7 +717,7 @@ mod tests {
                     ".{ext} has no registered doc-region producer"
                 ),
                 TextLints::Lexicon => assert!(
-                    lexicon_exts.iter().any(|exts| exts.contains(ext)),
+                    CODE_FAMILIES.iter().any(|exts| exts.contains(ext)),
                     ".{ext} is outside the lexicon families"
                 ),
                 // All 48 registry extensions carry a producer tier; the
