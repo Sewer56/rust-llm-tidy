@@ -50,7 +50,10 @@ impl CSharpIndex {
             if !paths::ext_in(path.extension().and_then(|e| e.to_str()), &["cs"]) {
                 continue;
             }
-            let key = path.canonicalize().unwrap_or_else(|_| path.clone());
+            // Deleted sources keep their canonical cache key so the stale parse is removed.
+            let key = path
+                .canonicalize()
+                .unwrap_or_else(|_| missing_source_key(path));
             let source = std::fs::read_to_string(path).ok();
             if source.as_deref() == self.parses.get(&key).map(|p| p.source.as_str()) {
                 continue;
@@ -74,6 +77,24 @@ impl CSharpIndex {
     pub(crate) fn parsed(&self, path: &Path) -> Option<&ParseResult> {
         self.parses.get(&path.canonicalize().ok()?)
     }
+}
+
+/// Reproduce the canonical cache key a now-deleted `path` received from
+/// [`project_scope`], so refresh still invalidates its cached parse.
+///
+/// Canonicalizes the surviving parent directory and rejoins the file name;
+/// bare file names anchor at the current directory instead.
+fn missing_source_key(path: &Path) -> PathBuf {
+    let Some(name) = path.file_name() else {
+        return path.to_path_buf();
+    };
+    let parent = path.parent().unwrap_or(Path::new(""));
+    let anchor = if parent.as_os_str().is_empty() {
+        std::env::current_dir().unwrap_or_default()
+    } else {
+        parent.to_path_buf()
+    };
+    anchor.canonicalize().unwrap_or(anchor).join(name)
 }
 
 /// Resolve nearest projects and their literal reference closure for C# `inputs`.
@@ -263,6 +284,55 @@ mod tests {
                 .id(),
             tree
         );
+    }
+
+    /// Deleted helper sources drop their throw facts from the shared index,
+    /// even when the supplied inputs are relative paths.
+    #[test]
+    fn refresh_should_drop_deleted_source_facts_for_relative_inputs() {
+        let root = std::env::temp_dir().join(format!("rlt-csharp-relative-{}", std::process::id()));
+        let _guard = Directory(root.clone());
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join(".git"), "").unwrap();
+        let caller = root.join("A.cs");
+        let helper = root.join("T.cs");
+        std::fs::write(&caller, "class A { public void Caller() { T.Helper(); } }").unwrap();
+        std::fs::write(&helper, "class T { void Helper() { throw new E(); } }").unwrap();
+
+        // Explicit CLI inputs arrive as given: relative to the cwd.
+        let inputs = [path_from_cwd(&caller), path_from_cwd(&helper)];
+        let mut cache = CSharpIndex::build(&inputs).unwrap();
+        let backend = rust_llm_tidy_lang::backend_for("cs").unwrap();
+        let initial = backend.lint_indexed(cache.parsed(&caller).unwrap(), &cache.index);
+        std::fs::remove_file(&helper).unwrap();
+
+        cache.refresh(&inputs);
+        let refreshed = backend.lint_indexed(cache.parsed(&caller).unwrap(), &cache.index);
+
+        assert!(initial.iter().any(|d| d.code == "DOC002"));
+        assert!(!refreshed.iter().any(|d| d.code == "DOC002"));
+    }
+
+    /// Express `target` relative to the current directory without mutating it,
+    /// mirroring how explicit CLI inputs reach the pipeline.
+    fn path_from_cwd(target: &Path) -> PathBuf {
+        let cwd = std::env::current_dir().unwrap();
+        let cwd: Vec<_> = cwd.components().collect();
+        let target_parts: Vec<_> = target.components().collect();
+        let common = cwd
+            .iter()
+            .zip(&target_parts)
+            .take_while(|(a, b)| **a == **b)
+            .count();
+
+        let mut rel = PathBuf::new();
+        for _ in common..cwd.len() {
+            rel.push("..");
+        }
+        for part in &target_parts[common..] {
+            rel.push(part.as_os_str());
+        }
+        rel
     }
 
     struct Directory(PathBuf);
