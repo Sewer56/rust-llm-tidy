@@ -4,7 +4,7 @@
 
 The `lints` op runs read-only checks. It is on by default in the
 pipeline and never mutates files. Exits non-zero when any error-severity
-finding is present (warnings do not fail).
+finding is present (warnings and hints do not fail).
 
 The lint codes are sub-checks of `lints`; they stay individually
 toggleable through the same rule namespace as the ops.
@@ -344,8 +344,8 @@ changes, and still prints the document when the run exits non-zero:
 
 Fields:
 
-- `severity` - `"error"` or `"warning"` for lint findings, `"success"` for
-  change records (applied or would-be changes)
+- `severity` - `"error"`, `"warning"`, or `"hint"` for lint findings,
+  `"success"` for change records (applied or would-be changes)
 - `line` - 1-based item start line; `null` when the record has no
   specific line (e.g. link/table fixes)
 - `item_name` - item name, `null` when unnamed
@@ -356,6 +356,16 @@ Fields:
 In JSON mode the plaintext `path:line: sev[CODE]: ...` diagnostics are not
 printed to stderr. Change records and lint findings are folded into the same
 document, in both in-place and `--dry-run` runs.
+
+## Hints
+
+`hint` is an advisory severity for suggestions an LLM or human may want to
+investigate, such as a possible pre-allocation.
+
+- Hints never gate the exit code; only `error` findings do.
+- Text mode prints them in a separate group at the end, in the usual
+  `path:line: hint[CODE]: ...` shape.
+- JSON mode records them with `severity: "hint"` and the usual lint fields.
 
 ## Change reporting
 

@@ -28,12 +28,25 @@ pub struct Diagnostic {
 /// `Error` severities are gating: a CI run with any `Error` diagnostic should
 /// fail. `Warning` severities are advisory and may be surfaced without failing
 /// the run.
+///
+/// `Hint` severities are suggestions for a large language model or a human
+/// to investigate, such as a possible pre-allocation; they never fail a run
+/// and surface separately from errors and warnings.
+///
+/// # Remarks
+///
+/// Adding `Hint` is additive, not free for every consumer: exhaustive
+/// downstream matches on this enum need a new arm, and strict severity
+/// parsers must accept the `hint` value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Severity {
     /// A gating finding (missing docs, missing `# Errors` section).
     Error,
     /// An advisory finding (vague error wording).
     Warning,
+    /// A suggestion for an LLM or human to investigate; see the enum
+    /// documentation for gating and compatibility.
+    Hint,
 }
 
 impl Diagnostic {
@@ -51,6 +64,7 @@ impl std::fmt::Display for Diagnostic {
         let sev = match self.severity {
             Severity::Error => "error",
             Severity::Warning => "warning",
+            Severity::Hint => "hint",
         };
         match &self.item_name {
             Some(name) => write!(
@@ -106,5 +120,24 @@ mod tests {
     #[test]
     fn title_falls_back_to_the_raw_code_when_untitled() {
         assert_eq!(diagnostic("DOC999").title(), "DOC999");
+    }
+
+    /// A hint-severity finding renders with the `hint` severity token in
+    /// the shared plaintext line shape.
+    #[test]
+    fn display_renders_hint_severity() {
+        let finding = Diagnostic {
+            severity: Severity::Hint,
+            code: "DOC999",
+            message: "consider pre-allocating the buffer".to_string(),
+            line: 3,
+            item_kind: "fn".to_string(),
+            item_name: Some("load".to_string()),
+        };
+
+        assert_eq!(
+            finding.to_string(),
+            "3: hint[DOC999]: consider pre-allocating the buffer (fn `load`)"
+        );
     }
 }
