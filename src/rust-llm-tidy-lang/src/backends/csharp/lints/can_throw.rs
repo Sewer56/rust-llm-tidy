@@ -1,14 +1,15 @@
-//! Owned can-throw facts for one C# file, with type-qualified member keys.
+//! Owned C# can-throw graphs with type-qualified member keys.
 //!
 //! Simple-name groups preserve conservative same-file matches.
-//! Qualified call facts do not participate in propagation across files.
+//! Qualified calls connect members across the supplied parses.
 
 use super::super::parse::{call_target_name, qualified_call_target, receiver_value_names};
 use super::{Declaration, THROWING};
 use std::collections::{HashMap, HashSet};
 
-/// A file's owned graph and declaration answers, independent of its syntax tree.
-pub(super) struct CanThrowIndex {
+/// Shared throw facts and declaration answers for supplied C# source files.
+#[derive(Clone, Default)]
+pub struct CanThrowIndex {
     /// Qualified keys map namespace and nesting collisions to one position.
     members: HashMap<String, usize>,
     /// Reverse same-file edges, indexed by graph position.
@@ -19,9 +20,115 @@ pub(super) struct CanThrowIndex {
     can_throw: Vec<bool>,
     /// Each declaration's graph position, including nameless declarations.
     declarations: Vec<usize>,
+    /// Parsed tree identities already represented by this graph.
+    trees: HashMap<usize, tree_sitter::Tree>,
 }
 
 impl CanThrowIndex {
+    /// Build a shared graph from C# `parses`, ignoring trees with syntax errors.
+    ///
+    /// Returns cycle-safe throw answers across the supplied files.
+    pub fn from_parses<'a>(
+        parses: impl IntoIterator<Item = &'a rust_llm_tidy_model::parse::ParseResult>,
+    ) -> Self {
+        let mut merged = Self::default();
+        for parsed in parses {
+            if parsed.syntax_tree().root_node().has_error() {
+                continue;
+            }
+            let mut declarations = Vec::with_capacity(parsed.items.len());
+            super::collect_children(
+                parsed.syntax_tree().root_node(),
+                &parsed.source,
+                None,
+                &mut declarations,
+            );
+            merged.merge(Self::from_declarations(&declarations));
+            merged.trees.insert(
+                parsed.syntax_tree().root_node().id(),
+                parsed.syntax_tree().clone(),
+            );
+        }
+
+        merged.connect_qualified_calls();
+        merged.propagate();
+        merged
+    }
+
+    /// Compose a separately supplied `parsed` file with shared facts when absent.
+    /// Existing tree identities borrow the already-computed graph without copying it.
+    pub(super) fn including<'a>(
+        &'a self,
+        parsed: &rust_llm_tidy_model::parse::ParseResult,
+    ) -> std::borrow::Cow<'a, Self> {
+        if self
+            .trees
+            .contains_key(&parsed.syntax_tree().root_node().id())
+        {
+            return std::borrow::Cow::Borrowed(self);
+        }
+        let mut declarations = Vec::with_capacity(parsed.items.len());
+        super::collect_children(
+            parsed.syntax_tree().root_node(),
+            &parsed.source,
+            None,
+            &mut declarations,
+        );
+        let local = Self::from_declarations(&declarations);
+
+        let mut merged = self.clone();
+        merged.merge(local);
+        merged.connect_qualified_calls();
+        merged.propagate();
+        std::borrow::Cow::Owned(merged)
+    }
+
+    /// Add `local` vertices and collision edges without copying its owned facts.
+    fn merge(&mut self, local: Self) {
+        let merged = self;
+        let offset = merged.can_throw.len();
+        merged.can_throw.extend(local.can_throw);
+        merged.callers.resize_with(merged.can_throw.len(), Vec::new);
+        merged
+            .qualified_calls
+            .resize_with(merged.can_throw.len(), Vec::new);
+
+        // Connect collisions instead of copying each overload's incoming edges.
+        for (key, position) in local.members {
+            let target = offset + position;
+            if let Some(&existing) = merged.members.get(&key) {
+                merged.callers[existing].push(target);
+                merged.callers[target].push(existing);
+            } else {
+                merged.members.insert(key, target);
+            }
+        }
+        for (position, callers) in local.callers.into_iter().enumerate() {
+            merged.callers[offset + position].extend(callers.into_iter().map(|i| offset + i));
+        }
+        for (position, calls) in local.qualified_calls.into_iter().enumerate() {
+            merged.qualified_calls[offset + position] = calls;
+        }
+    }
+
+    /// Resolve retained qualified targets against all members currently present.
+    fn connect_qualified_calls(&mut self) {
+        for (caller, targets) in self.qualified_calls.iter().enumerate() {
+            for target in targets {
+                if let Some(&callee) = self.members.get(target) {
+                    self.callers[callee].push(caller);
+                }
+            }
+        }
+    }
+
+    /// Return whether `owner` and `member` identify a throwing indexed declaration.
+    pub(super) fn member_can_throw(&self, owner: &str, member: &str) -> bool {
+        self.members
+            .get(&format!("{owner}.{member}"))
+            .is_some_and(|&i| self.can_throw[i])
+    }
+
     /// Build owned facts from `declarations` using same-file edges only.
     pub(super) fn from_declarations(declarations: &[Declaration<'_>]) -> Self {
         let count = declarations.len();
@@ -31,14 +138,11 @@ impl CanThrowIndex {
             qualified_calls: Vec::with_capacity(count),
             can_throw: Vec::with_capacity(count),
             declarations: Vec::with_capacity(count),
+            trees: HashMap::new(),
         };
         let mut names: HashMap<&str, Vec<usize>> = HashMap::with_capacity(count);
-        let mut types = HashSet::with_capacity(count);
 
         for decl in declarations {
-            if let Some(type_name) = decl.type_name.as_deref() {
-                types.insert(type_name);
-            }
             let position = if THROWING.contains(&decl.kind)
                 && let (Some(owner), Some(name)) = (&decl.type_name, &decl.name)
             {
@@ -85,31 +189,34 @@ impl CanThrowIndex {
                         decl,
                         index.declarations[ordinal],
                         &names,
-                        (&types, &values),
+                        &values,
                         &mut cursor,
                     );
                 }
             }
         }
 
-        let mut work = Vec::with_capacity(index.can_throw.len());
+        index.propagate();
+        index
+    }
+
+    /// Propagate new throw evidence through reverse edges until every caller agrees.
+    fn propagate(&mut self) {
+        let mut work = Vec::with_capacity(self.can_throw.len());
         work.extend(
-            index
-                .can_throw
+            self.can_throw
                 .iter()
                 .enumerate()
                 .filter_map(|(i, &throws)| throws.then_some(i)),
         );
         while let Some(callee) = work.pop() {
-            for &caller in &index.callers[callee] {
-                if !index.can_throw[caller] {
-                    index.can_throw[caller] = true;
+            for &caller in &self.callers[callee] {
+                if !self.can_throw[caller] {
+                    self.can_throw[caller] = true;
                     work.push(caller);
                 }
             }
         }
-
-        index
     }
 
     /// Return the throw answer for `ordinal` in the original declaration order.
@@ -119,13 +226,13 @@ impl CanThrowIndex {
 
     /// Scan `decl` with a reused cursor, excluding nested callable bodies.
     /// `caller` addresses its graph position; `names` bounds same-file matches.
-    /// `receivers` pairs known type names with value names to reject.
+    /// `values` rejects declared value receivers before retaining qualified candidates.
     fn scan_member<'a>(
         &mut self,
         decl: &Declaration<'a>,
         caller: usize,
         names: &HashMap<&str, Vec<usize>>,
-        receivers: (&HashSet<&str>, &HashSet<&str>),
+        values: &HashSet<&str>,
         cursor: &mut tree_sitter::TreeCursor<'a>,
     ) {
         cursor.reset(decl.node);
@@ -156,8 +263,8 @@ impl CanThrowIndex {
                         field == "type",
                         decl.source,
                         decl.type_name.as_deref(),
-                        receivers.0,
-                        receivers.1,
+                        None,
+                        values,
                     ) {
                         self.qualified_calls[caller].push(format!("{owner}.{member}"));
                     }
@@ -205,7 +312,11 @@ mod tests {
         assert!(index.can_throw[index.members["Inner.Helper"]]);
         assert!(index.can_throw[index.members["Outer.Helper"]]);
         assert!(index.can_throw[index.members["Outer.Caller"]]);
-        assert!(index.qualified_calls[index.members["Outer.Caller"]].is_empty());
+        assert_eq!(
+            index.qualified_calls[index.members["Outer.Caller"]],
+            ["obj.Helper"]
+        );
+        assert!(!index.members.contains_key("obj.Helper"));
         assert!(!index.members.contains_key("N.Outer.Inner.Helper"));
     }
 }

@@ -104,23 +104,47 @@ Loader.cs:3: error[DOC002]: member that throws is missing an `<exception>` doc t
 Error: found 1 error(s)
 ```
 
-Throw detection is recursive within the file: a member that calls a
-same-file method or constructor that can throw - directly or through
-further same-file calls - must document the exception too.
+Throw detection follows calls transitively within files and across the
+indexed C# project-reference scope.
 
 - Calls resolve by simple name: `Helper()`, `this.Helper()`,
   `obj.Helper()`, and `Helper<T>()` all match a member named `Helper`,
   and `new C()` matches a constructor named `C`.
 - Overloads and same-name members of other same-file types match too:
   accepted false positives over missed throws.
-- Calls into other files or the framework (`int.Parse`, `File.Open`)
-  are not resolved and never fire on their own.
+- Cross-file calls resolve by `Type.Member`: bare calls and `this` calls
+  use the caller's containing type.
+- Type-qualified calls and constructor calls resolve against indexed types.
+- Unknown value receivers and framework members absent from the index
+  add no cross-file findings.
+- Namespace and nesting names do not distinguish same-named types;
+  collisions can produce false positives.
 - `nameof(X)` mentions a name without calling it.
 - A `throw` caught by a local `try`/`catch` still counts.
 
+#### Project scope and parse reuse
+
+- Each input selects its nearest ancestor `.csproj`, stopping at the
+  repository root.
+- The index includes non-ignored C# files beneath that project and its
+  transitive literal `ProjectReference` targets.
+- Nested repositories are skipped during project collection.
+- Without a project ancestor, only supplied input files contribute facts;
+  a lone loose file has no foreign facts.
+- References use literal `Include="..."` paths relative to their project
+  directory; missing targets are skipped silently.
+- MSBuild variables, wildcard includes, injected references, and external
+  compile source lists are not evaluated.
+- Repository `.gitignore` rules apply; global ignores and
+  `.git/info/exclude` do not.
+- Unchanged source shares one parse between index construction and linting.
+- Formatting and reordering retain their own parsing; changed source
+  refreshes cached parses and index facts before linting.
+- Foreign files with syntax errors contribute no facts.
+
 ### DOC003 - vague `<exception>` tag
 
-DOC003 shares DOC002's recursive same-file throw detection, so an
+DOC003 shares DOC002's recursive throw detection, so an
 indirectly-throwing member with vague tags warns the same as a direct
 thrower.
 

@@ -53,6 +53,7 @@ use std::path::{Path, PathBuf};
 
 mod changes;
 mod config;
+mod csharp_index;
 mod diff;
 // Language registry: authority for allowed extensions and op gates.
 mod langs;
@@ -137,9 +138,17 @@ impl Cli {
 ///
 /// The profile decides which passes run: parser-driven checks need a
 /// registered backend; text lints source TEXT001/TEXT002 per tier.
+///
+/// - `path`: source file to check
+/// - `disabled`: diagnostic codes to suppress
+/// - `index`: refreshed C# facts and cached parses for this run
+///
+/// # Errors
+/// Returns an error when reading source or constructing its syntax tree fails.
 pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
+    index: Option<&csharp_index::CSharpIndex>,
 ) -> anyhow::Result<Vec<(PathBuf, rust_llm_tidy_lint::Diagnostic)>> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
@@ -150,10 +159,19 @@ pub(crate) fn check_file(
     if profile.backend
         && let Some(backend) = rust_llm_tidy_lang::backend_for(ext)
     {
-        let parsed = backend
-            .parse(&source)
-            .with_context(|| format!("failed to parse {}", path.display()))?;
-        diagnostics = backend.lint(&parsed);
+        let owned;
+        let parsed = if let Some(parsed) = index.and_then(|i| i.parsed(path)) {
+            parsed
+        } else {
+            owned = backend
+                .parse(&source)
+                .with_context(|| format!("failed to parse {}", path.display()))?;
+            &owned
+        };
+        diagnostics = match index {
+            Some(index) => backend.lint_indexed(parsed, &index.index),
+            None => backend.lint(parsed),
+        };
     }
     match profile.text_lints {
         langs::TextLints::Prose => diagnostics.extend(check::run_text_checks(&source, ext)),

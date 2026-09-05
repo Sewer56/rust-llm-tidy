@@ -66,6 +66,7 @@ impl PerFileOut {
         self.printed
             .push(format!("error processing {}: {err:?}", path.display()));
         self.failed = true;
+        self.processed = false;
     }
 }
 
@@ -117,6 +118,15 @@ pub(crate) fn run_pipeline(
     // Parallel only pays once work exceeds rayon's ~0.7ms pool overhead.
     let parallelize = should_parallelize(&paths);
 
+    let lints_may_run = !cli_disabled.contains("lints")
+        && cli_include.is_none_or(|set| {
+            set.contains("lints") || check::LINT_CODES.iter().any(|code| set.contains(*code))
+        });
+    let mut csharp = if lints_may_run {
+        Some(crate::csharp_index::CSharpIndex::build(&paths)?)
+    } else {
+        None
+    };
     let map_file = |path: &PathBuf| {
         process_one(
             path,
@@ -124,14 +134,42 @@ pub(crate) fn run_pipeline(
             cli_include,
             cli_disabled,
             ctx.as_ref(),
-            cli.dry_run,
-            json_mode,
+            (cli.dry_run, json_mode),
+            (None, None),
         )
     };
     let results: Vec<PerFileOut> = if parallelize {
         paths.par_iter().map(map_file).collect()
     } else {
         paths.iter().map(map_file).collect()
+    };
+
+    // Finish mutations before any indexed lint consumes cross-file facts.
+    if let Some(index) = &mut csharp {
+        index.refresh(&paths);
+    }
+    let lint_file = |(path, out): (&PathBuf, PerFileOut)| {
+        if out.failed {
+            return out;
+        }
+        process_one(
+            path,
+            config,
+            cli_include,
+            cli_disabled,
+            ctx.as_ref(),
+            (cli.dry_run, json_mode),
+            (Some(out), csharp.as_ref()),
+        )
+    };
+    let results: Vec<_> = if parallelize {
+        paths
+            .par_iter()
+            .zip(results.into_par_iter())
+            .map(lint_file)
+            .collect()
+    } else {
+        paths.iter().zip(results).map(lint_file).collect()
     };
 
     // Sequential replay: emit plaintext lines in input order, then fold each
@@ -345,8 +383,13 @@ fn dedup_inputs(paths: Vec<PathBuf>) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Process a single file: run every enabled op in the canonical order
-/// (fix, reorder, vis, lints), buffering results and plaintext lines.
+/// Process one mutation or lint phase, buffering results and plaintext lines.
+///
+/// - `output_mode`: dry-run and JSON-output switches
+/// - `phase`: prior mutation output and optional refreshed C# index
+///
+/// An absent prior output selects mutations. A present output selects linting.
+/// Refresh shared facts after all mutations and before dispatching lint phases.
 ///
 /// Shared state is read-only; each file mutates only its own path (atomic
 /// write), so safe to run on one rayon thread per file.
@@ -359,17 +402,23 @@ fn process_one(
     cli_include: Option<&HashSet<String>>,
     cli_disabled: &HashSet<String>,
     ctx: Option<&VisContext>,
-    dry_run: bool,
-    json_mode: bool,
+    output_mode: (bool, bool),
+    phase: (
+        Option<PerFileOut>,
+        Option<&crate::csharp_index::CSharpIndex>,
+    ),
 ) -> PerFileOut {
-    let mut out = PerFileOut {
+    let (dry_run, json_mode) = output_mode;
+    let (prior, index) = phase;
+    let lint_phase = prior.is_some();
+    let mut out = prior.unwrap_or_else(|| PerFileOut {
         changes: Vec::new(),
         diagnostics: Vec::new(),
         printed: Vec::new(),
         error_count: 0,
         failed: false,
         processed: false,
-    };
+    });
     let mut policy = config.map(|c| c.policy_for(path)).unwrap_or_default();
     if policy.skip {
         // Excluded files are never mutated or post-processed.
@@ -408,9 +457,10 @@ fn process_one(
         || ["reorder", "vis"].iter().any(|op| ast_op_on(op));
 
     // Fix auto-fixable formatting (tables, fences, links) via fix_file.
-    if profile.op_enabled("tables", enabled, disabled)
-        || profile.op_enabled("fences", enabled, disabled)
-        || profile.op_enabled("links", enabled, disabled)
+    if !lint_phase
+        && (profile.op_enabled("tables", enabled, disabled)
+            || profile.op_enabled("fences", enabled, disabled)
+            || profile.op_enabled("links", enabled, disabled))
     {
         // Resolve the link-hoist threshold by the file's extension (1 when no
         // config), so a single per-file value reaches fix_file.
@@ -428,7 +478,7 @@ fn process_one(
     }
 
     // Reorder next (fixes ordering).
-    if ast_op_on("reorder") {
+    if !lint_phase && ast_op_on("reorder") {
         match super::reorder_file(path, dry_run, disabled) {
             Ok(found) => out.record_changes(path, found, json_mode),
             Err(e) => {
@@ -439,7 +489,7 @@ fn process_one(
     }
     // Narrow visibility next (fixes misleading bare `pub` inside
     // restricted-visibility inline modules).
-    if ast_op_on("vis") {
+    if !lint_phase && ast_op_on("vis") {
         match super::vis_file(path, dry_run, ctx, disabled) {
             Ok(found) => out.record_changes(path, found, json_mode),
             Err(e) => {
@@ -458,7 +508,7 @@ fn process_one(
             }
             None => profile.op_enabled("lints", enabled, disabled),
         };
-    if lints_on {
+    if lint_phase && lints_on {
         // In whitelist mode without `lints` in the set, only whitelisted
         // lint codes should run; disable the rest.
         let lint_disabled: HashSet<String> = match enabled {
@@ -470,7 +520,7 @@ fn process_one(
                 .collect(),
             _ => disabled.clone(),
         };
-        match super::check_file(path, &lint_disabled) {
+        match super::check_file(path, &lint_disabled, index) {
             Ok(found) => {
                 for (p, d) in &found {
                     if matches!(d.severity, Severity::Error) {
@@ -505,6 +555,60 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TEST_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
+
+    /// A read failure between phases revokes post-processing eligibility.
+    /// Successful linting retains eligibility even when diagnostics report errors.
+    #[test]
+    fn lint_phase_should_exclude_failed_reads_from_processed_files() {
+        let dir = temp_dir();
+        let path = dir.join("Caller.cs");
+        let disabled = std::collections::HashSet::new();
+        let included = ["tables".to_string(), "lints".to_string()]
+            .into_iter()
+            .collect();
+
+        for (label, source, remove, errors) in [
+            ("clean", "class C {}", false, false),
+            (
+                "diagnostic",
+                "class C { public void Caller() { throw new E(); } }",
+                false,
+                true,
+            ),
+            ("read_failure", "class C {}", true, false),
+        ] {
+            fs::write(&path, source).unwrap();
+            let mutated = super::process_one(
+                &path,
+                None,
+                Some(&included),
+                &disabled,
+                None,
+                (false, true),
+                (None, None),
+            );
+            assert!(mutated.processed, "{label}");
+            if remove {
+                fs::remove_file(&path).unwrap();
+            }
+
+            let linted = super::process_one(
+                &path,
+                None,
+                Some(&included),
+                &disabled,
+                None,
+                (false, true),
+                (Some(mutated), None),
+            );
+
+            assert_eq!(linted.failed, remove, "{label}");
+            assert_eq!(linted.processed, !remove, "{label}");
+            assert_eq!(linted.error_count > 0, errors, "{label}");
+        }
+
+        cleanup(&dir);
+    }
 
     fn temp_dir() -> PathBuf {
         let n = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);

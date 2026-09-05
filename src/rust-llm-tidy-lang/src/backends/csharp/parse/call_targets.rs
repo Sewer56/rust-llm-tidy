@@ -5,18 +5,18 @@ use std::collections::HashSet;
 /// Qualify an extracted call `target` and simple `member` in `source`.
 ///
 /// - `caller_type`: owner of bare and `this` calls
-/// - `known_types`: type names eligible for explicit receiver matching
+/// - `known_types`: eligible explicit receivers; `None` retains unresolved candidates
 /// - `value_names`: declared values that suppress explicit receiver matches
 /// - `constructor`: whether the target names a constructed type
 ///
-/// Unknown receivers return `None`.
+/// Declared value receivers return `None`; supplied type sets also reject unknown types.
 pub(in super::super) fn qualified_call_target<'a>(
     target: tree_sitter::Node<'_>,
     member: &'a str,
     constructor: bool,
     source: &'a str,
     caller_type: Option<&'a str>,
-    known_types: &HashSet<&str>,
+    known_types: Option<&HashSet<&str>>,
     value_names: &HashSet<&str>,
 ) -> Option<(&'a str, &'a str)> {
     if constructor {
@@ -38,7 +38,9 @@ pub(in super::super) fn qualified_call_target<'a>(
                     return None;
                 }
                 let name = call_target_name(receiver, source)?;
-                if !known_types.contains(name) || value_names.contains(name) {
+                if known_types.is_some_and(|types| !types.contains(name))
+                    || value_names.contains(name)
+                {
                     return None;
                 }
                 name
@@ -156,7 +158,7 @@ mod tests {
                 constructor,
                 &source,
                 Some("C"),
-                &types,
+                Some(&types),
                 &values,
             );
 

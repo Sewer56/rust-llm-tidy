@@ -24,7 +24,7 @@
 //!   `protected`-family modifiers) need a `///` doc comment.
 //! - DOC002: a non-private method or constructor that can throw needs
 //!   an `<exception>` tag (error severity); throwing includes calls to
-//!   same-file members that throw.
+//!   same-file members and indexed qualified members that throw.
 //! - DOC003: non-private can-throw members whose `<exception>` tags
 //!   all lack a concrete `cref` type.
 //! - DOC004: non-private methods, constructors, and indexers with
@@ -44,7 +44,7 @@ use super::parse::{
     declaration_name, doc_comment_texts, doc_run_start_line, member_kind, parameter_names,
     visibility_of,
 };
-use can_throw::CanThrowIndex;
+pub use can_throw::CanThrowIndex;
 use rust_llm_tidy_lint::{Diagnostic, Severity};
 use rust_llm_tidy_model::parse::{ItemKind, ParseResult, VisibilityTier};
 
@@ -75,7 +75,7 @@ const DOCUMENTABLE: &[ItemKind] = &[
 /// Kinds checked for parameter documentation (DOC004/DOC005); properties
 /// cover indexers, whose parameter lists hold real parameters.
 const PARAMETERIZED: &[ItemKind] = &[ItemKind::Fn, ItemKind::Constructor, ItemKind::Property];
-/// Kinds checked for throwing, directly or through same-file calls
+/// Kinds checked for throwing, directly or through resolved calls
 /// (DOC002/DOC003).
 const THROWING: &[ItemKind] = &[ItemKind::Fn, ItemKind::Constructor];
 
@@ -100,7 +100,7 @@ struct Declaration<'a> {
     /// present, else the declaration's own row.
     line: usize,
     /// The `<exception>` tag facts for a non-private member that can
-    /// throw, directly or through same-file calls: tag count plus every
+    /// throw, directly or through resolved calls: tag count plus every
     /// `cref` value.
     ///
     /// `None` for members that cannot or do not throw, so DOC002 and
@@ -137,6 +137,12 @@ impl Declaration<'_> {
 /// broken tree would report findings against misread declarations, so the
 /// whole pass degrades to silence.
 pub(super) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
+    run_indexed(parsed, None)
+}
+
+/// Run checks on `parsed` with optional shared throw answers from `shared`.
+/// Returns diagnostics in document order, or none for a tree with syntax errors.
+pub(super) fn run_indexed(parsed: &ParseResult, shared: Option<&CanThrowIndex>) -> Vec<Diagnostic> {
     if parsed.syntax_tree().root_node().has_error() {
         return Vec::new();
     }
@@ -154,8 +160,15 @@ pub(super) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
     // before its callee), so it runs between collection and the rules;
     // stamping from its answers keeps diagnostics in document order.
     let index = CanThrowIndex::from_declarations(&declarations);
+    let shared = shared.map(|index| index.including(parsed));
     for (position, decl) in declarations.iter_mut().enumerate() {
-        let throws = index.declaration_can_throw(position);
+        let throws = index.declaration_can_throw(position)
+            || shared.as_ref().is_some_and(|shared| {
+                decl.type_name
+                    .as_deref()
+                    .zip(decl.name.as_deref())
+                    .is_some_and(|(owner, member)| shared.member_can_throw(owner, member))
+            });
         if decl.non_private && THROWING.contains(&decl.kind) && throws {
             decl.exception_scan = Some(exception_tags(&decl.docs));
         }
