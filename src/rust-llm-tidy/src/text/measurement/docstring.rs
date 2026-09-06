@@ -171,7 +171,8 @@ mod tests {
             (7, "Returns the value."),
         ]);
 
-        assert!(diags.is_empty(), "the doctest block stays fully quiet");
+        assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
     }
 
     // Prose before and after a doctest never joins: two over-half-budget
@@ -227,7 +228,8 @@ mod tests {
             (5, "More prose."),
         ]);
 
-        assert!(diags.is_empty(), "the fenced example stays quiet");
+        assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
     }
 
     // A `>>>` line inside a fenced example is fenced content. The
@@ -270,7 +272,8 @@ mod tests {
             (6, "More prose."),
         ]);
 
-        assert!(diags.is_empty(), "the fenced doctest stays quiet");
+        assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
     }
 
     // A line the producer marked indented is example code and exempt.
@@ -284,6 +287,7 @@ mod tests {
         ]);
         let diags = run_region_checks(vec![region]);
 
-        assert!(diags.is_empty(), "the indented example stays quiet");
+        assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
     }
 }

@@ -925,6 +925,7 @@ fn lint_should_preserve_findings_when_same_name_members_have_different_owners() 
         .collect();
 
     assert_eq!(findings[0], findings[1]);
+    // The item rule alone: the single-sentence opener stays TEXT004-quiet.
     assert_eq!(findings[0].len(), 1);
     assert_eq!(findings[0][0].0, "DOC002");
     assert_eq!(findings[0][0].4.as_deref(), Some("Caller"));

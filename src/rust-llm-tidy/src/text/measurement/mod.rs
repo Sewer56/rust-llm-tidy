@@ -67,6 +67,9 @@ struct PendingParagraph {
 pub(crate) struct Paragraph {
     /// 1-based line number of the paragraph's first member line.
     pub first_line: usize,
+    /// True when this is the first paragraph of a doc region: the region's
+    /// opener, such as a module or method doc's leading paragraph.
+    pub opens_region: bool,
     pub kind: ParagraphKind,
     /// Char count of `text`.
     pub size: usize,
@@ -147,6 +150,7 @@ pub(crate) fn measure(regions: Vec<DocRegion>) -> Document {
     let mut in_fence = false;
 
     for region in regions {
+        let region_start = doc.paragraphs.len();
         match region.dialect {
             Dialect::Markdown => {
                 measure_markdown_region(region, &mut doc, &mut pending, &mut in_fence);
@@ -165,6 +169,10 @@ pub(crate) fn measure(regions: Vec<DocRegion>) -> Document {
         // never span it.
         flush(&mut pending, &mut doc);
         in_fence = false;
+        // The region's first paragraph is its opener.
+        if let Some(first) = doc.paragraphs.get_mut(region_start) {
+            first.opens_region = true;
+        }
     }
     doc
 }
@@ -310,6 +318,7 @@ fn flush(pending: &mut Option<PendingParagraph>, doc: &mut Document) {
         let size = open.text.chars().count();
         doc.paragraphs.push(Paragraph {
             first_line: open.first_line,
+            opens_region: false,
             kind: open.kind,
             size,
             text: open.text.into_boxed_str(),
@@ -473,6 +482,23 @@ mod tests {
     }
 
     // ── Retained paragraph text ──
+
+    // Each doc region's first paragraph is its opener; later paragraphs in
+    // the region are not.
+    #[test]
+    fn analyze_marks_each_regions_first_paragraph_as_opener() {
+        let source = indoc! {"
+            /// first region opener
+            ///
+            /// first region follower
+
+            /// second region opener
+        "};
+        let doc = analyze(source, "rs");
+        assert!(paragraph_at(&doc, 1).unwrap().opens_region);
+        assert!(!paragraph_at(&doc, 3).unwrap().opens_region);
+        assert!(paragraph_at(&doc, 5).unwrap().opens_region);
+    }
 
     // The finished paragraph retains its joined full text and each member
     // line's number with its start offset in that text.
