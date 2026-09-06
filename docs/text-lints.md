@@ -324,6 +324,53 @@ src/lib.rs:3: hint[TEXT006]: consider simpler wording.
 
 [wording dictionary]: ../src/rust-llm-tidy/src/rules/lint/text/text006_verbose_synonyms/suggestions.rs
 
+## TEXT007 - passive voice and past behaviour
+
+Warns when docs may use passive voice or describe past behaviour.
+Say what the code does, directly:
+
+- Passive: `Errors are returned by the scanner.` →
+  `The scanner returns errors.`
+- Past behaviour: `This no longer panics.` →
+  `This returns an error.` (if accurate)
+
+### Detection details
+
+- Checks each line; reports at most one warning, preferring passive voice.
+- Flags be-verbs followed by past participles, but allows state descriptions
+  such as `is required` and `is deprecated`.
+- Flags `no longer`, `previously`, `used to`, `now`, bare `was`, and
+  clause-initial `Before,`. Allows temporal uses such as `before validation`.
+- May flag harmless phrases such as `previously refuted findings`.
+- Allows past-behaviour wording in `CHANGELOG*`, `MIGRATION*`, and
+  `releases/**`, but still checks passive voice.
+
+Before:
+
+```rust
+/// Errors are returned by the scanner.
+pub fn scan() {}
+```
+
+After:
+
+```rust
+/// The scanner returns errors.
+pub fn scan() {}
+```
+
+### TEXT007 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include TEXT007 src/lib.rs
+src/lib.rs:1: warning[TEXT007]: passive construction: `are returned`.
+  - State the current contract in active voice.
+  - Old behavior belongs in release or migration notes only for a genuine public-API compatibility concern.
+  - Confirm that obligation with the user rather than narrating.
+  - Private code, internals, tests, and helpers never carry old behavior. (file)
+```
+
+`TEXT007` is warning-severity, so the run exits 0.
 
 [`lints`]: ./lints.md
 
