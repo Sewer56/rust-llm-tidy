@@ -652,7 +652,8 @@ mod tests {
     #[test]
     fn known_rules_lists_every_code_and_op() {
         let rules = known_rules();
-        // The eleven lint codes plus the six fix/operation names (including lints).
+        // Sample lint codes (not every code is pinned here) plus the six
+        // fix/operation names (including lints).
         for code in [
             "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "TEXT001", "TEXT002",
             "TEXT003", "TEXT004", "TEST001",

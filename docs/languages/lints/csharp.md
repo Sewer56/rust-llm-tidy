@@ -20,6 +20,7 @@ against misread declarations.
 | `TEXT001` | Error    | An XML doc text paragraph over 240 chars of inner text.                                          |
 | `TEXT002` | Warning  | A doc line whose tag-stripped inner text exceeds 80 chars.                                       |
 | `TEXT003` | Warning  | A doc sentence whose tag-stripped inner text exceeds 25 words.                                   |
+| `TEXT006` | Warning  | A doc line whose inner text uses a verbose synonym (`utilize`, `demonstrate`, `facilitate` etc.) |
 | `TEST001` | Warning  | A `TestMethod`/`Test`/`Fact`/`Theory` method uses a `test_*`, `case_*`, or `test` + digits name. |
 
 Error-severity codes fail the run with a non-zero exit; warnings exit 0.
@@ -422,6 +423,52 @@ Loader.cs:4: warning[TEXT003]: sentence is 26 words long.
   - Readers understand over 90% of the text when sentences contain 14 words or fewer.
   - At 43 words per sentence, comprehension drops below 10%.
   - Split this sentence where the idea changes. (file)
+```
+
+### TEXT006 - verbose synonyms
+
+A measured `///` line whose inner text uses a verbose synonym is a
+warning.
+
+The synonyms are the whole words `utilize`, `demonstrate`, and
+`facilitate`, and the phrase `in order to`.
+
+Matching is case-insensitive and whole-word, and code spans are
+exempt.
+
+Before:
+
+```csharp
+public class Loader
+{
+    /// <summary>We utilize this loader in order to show values.</summary>
+    public int Load(string key)
+    {
+        return 1;
+    }
+}
+```
+
+After:
+
+```csharp
+public class Loader
+{
+    /// <summary>We use this loader to show values.</summary>
+    public int Load(string key)
+    {
+        return 1;
+    }
+}
+```
+
+#### TEXT006 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include TEXT006 Loader.cs
+Loader.cs:4: warning[TEXT006]: verbose synonym: utilize.
+  - Pick the short everyday word: use, show, help, or so that.
+  - Inline code spans are exempt; quoted code never fires. (file)
 ```
 
 ### TEST001 - non-behavioral test name

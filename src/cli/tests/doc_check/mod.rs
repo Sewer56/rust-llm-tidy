@@ -828,6 +828,48 @@ fn md_three_sentence_heading_opener_warns_text004_without_failing() {
     );
 }
 
+/// A markdown prose line with a verbose synonym warns with TEXT006
+/// without failing.
+///
+/// Code-span occurrences stay quiet, and `--include TEXT006` /
+/// `--exclude TEXT006` gate the finding.
+#[test]
+fn md_verbose_synonym_warns_text006_with_gating() {
+    let path = temp_md("# Title\n\nWe utilize this.\nUse `utilize` inside code spans.\n");
+
+    let output = run_command(&["--include", "lints"], &path);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "TEXT006 warnings must not fail the run: {stderr}"
+    );
+    assert!(
+        stderr.contains(":3: warning[TEXT006]: verbose synonym: utilize."),
+        "expected a TEXT006 warning at line 3, got:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("TEXT006").count(),
+        1,
+        "the prose occurrence only, never the code span:\n{stderr}"
+    );
+
+    let included = run_command(&["--include", "TEXT006"], &path);
+    let include_stderr = String::from_utf8_lossy(&included.stderr);
+    assert_eq!(
+        include_stderr.matches("TEXT006").count(),
+        1,
+        "--include TEXT006 must report the finding:\n{include_stderr}"
+    );
+
+    let excluded = run_command(&["--include", "lints", "--exclude", "TEXT006"], &path);
+    let exclude_stderr = String::from_utf8_lossy(&excluded.stderr);
+    assert!(
+        excluded.status.success() && !exclude_stderr.contains("TEXT006"),
+        "excluding TEXT006 must suppress the finding:\n{exclude_stderr}"
+    );
+}
+
 /// Python docstring prose fires the text budgets with original file lines.
 ///
 /// TEXT001 errors on the module docstring's over-budget paragraph, and

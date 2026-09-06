@@ -275,6 +275,40 @@ README.md:5: warning[TEXT005]: fenced code block uses bare `ignore`.
 
 `TEXT005` is warning-severity, so the run exits 0.
 
+## TEXT006 - verbose synonyms
+
+A measured doc line that uses a verbose synonym is a warning.
+
+The synonyms are the whole words `utilize`, `demonstrate`, and
+`facilitate`, and the phrase `in order to`.
+
+Before:
+
+```text
+We utilize this helper in order to show the value.
+```
+
+After:
+
+```text
+We use this helper to show the value.
+```
+
+TEXT006 is check-only: it removes nothing and suggests the short
+everyday word instead.
+
+### TEXT006 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include TEXT006 src/lib.rs
+src/lib.rs:3: warning[TEXT006]: verbose synonym: utilize.
+  - Pick the short everyday word: use, show, help, or so that.
+  - Inline code spans are exempt; quoted code never fires. (file)
+```
+
+`TEXT006` is warning-severity, so the run exits 0.
+
+
 [`lints`]: ./lints.md
 
 ## Library access
