@@ -170,6 +170,53 @@ src/lib.rs:1: warning[TEXT003]: sentence is 30 words long.
 
 `TEXT003` is warning-severity, so the run exits 0.
 
+## TEXT004 - header opener shape
+
+An opener paragraph with three or more sentences is a warning.
+
+Openers are:
+
+- The first measured paragraph of each doc region: the file, module, or
+  item opener (first paragraph of a function, method, struct, enum, or
+  field doc).
+- The first measured paragraph after each heading line.
+- For consecutive heading lines, only the paragraph after the last
+  heading; a heading with no following paragraph is never checked.
+
+A sentence boundary is `.`, `!`, or `?` followed by whitespace.
+
+`e.g.` before a lowercase word, decimals, and URLs never split, so
+misses are possible but fabricated reports are not.
+
+Before:
+
+```rust
+/// Loads the configured data from disk. It parses every field. Then it
+/// validates the schema.
+pub fn load() {}
+```
+
+After:
+
+```rust
+/// Loads the configured data from disk.
+///
+/// - Parses every field.
+/// - Validates the schema.
+pub fn load() {}
+```
+
+### TEXT004 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include TEXT004 src/lib.rs
+src/lib.rs:1: warning[TEXT004]: header opener has 3 sentences.
+  - Reduce the opener to a single capability line.
+  - Move detail into bullets holding one fact each. (file)
+```
+
+`TEXT004` is warning-severity, so the run exits 0.
+
 [`lints`]: ./lints.md
 
 ## Library access
