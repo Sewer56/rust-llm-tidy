@@ -62,8 +62,10 @@ fn prose_is_indented(text: &str) -> bool {
 
 /// Strips the line's `*` continuation marker in place. A maximal leading
 /// `*` run vanishes when only whitespace (at most one space of it) or
-/// nothing follows. A lone `*`-led word keeps one marker so `* - item`
-/// stays a recognizable bullet.
+/// nothing follows.
+///
+/// A lone `*`-led word keeps one marker so `* - item` stays a
+/// recognizable bullet.
 ///
 /// ```text
 /// "* Parses."  -> "Parses."
@@ -86,10 +88,12 @@ fn strip_continuation(mut text: String) -> String {
     text
 }
 
-/// The byte length of a tag line's exempt prefix. That prefix is the
-/// tag token, the name argument of name-taking tags, an optional JSDoc
-/// `{type}` group, and the separating whitespace. Zero when the line
+/// The byte length of a tag line's exempt prefix. Zero when the line
 /// does not start with `@` plus a tag word.
+///
+/// That prefix is the tag token, the name argument of name-taking
+/// tags, an optional JSDoc `{type}` group, and the separating
+/// whitespace.
 ///
 /// ```text
 /// "@param name parses the input"   -> exempt "@param name"

@@ -761,8 +761,12 @@ fn table_fixtures_realign_with_marker_and_indent_kept() {
 }
 
 /// A GFM table inside a Python string literal is re-padded by the default
-/// run. The change inside the literal is whitespace-only: the words and the
-/// quotes stay identical. It yields one record, and a second run is a no-op.
+/// run.
+///
+/// - The change inside the literal is whitespace-only: the words and the
+///   quotes stay identical.
+/// - It yields one record.
+/// - A second run is a no-op.
 #[test]
 fn table_inside_a_python_string_literal_is_repadded() {
     let expected = fs::read_to_string(fixture_dir().join("table_string_literal_after.py")).unwrap();

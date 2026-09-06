@@ -559,9 +559,10 @@ mod tests {
         assert!(edges.contains(&(1, 0)));
     }
 
-    /// Walk shapes: a generic type records its base type and every type
-    /// argument. A scoped path records only its first segment. A macro
-    /// call's arguments are never walked.
+    /// Walk shapes:
+    /// - A generic type records its base type and every type argument.
+    /// - A scoped path records only its first segment.
+    /// - A macro call's arguments are never walked.
     #[test]
     fn walk_shapes_record_bases_type_arguments_and_first_segments_only() {
         type ReferenceCase<'a> = (&'a str, &'a [&'a str], &'a [&'a str], Vec<(usize, usize)>);

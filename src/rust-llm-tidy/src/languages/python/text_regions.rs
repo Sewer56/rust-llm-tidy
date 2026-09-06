@@ -127,9 +127,11 @@ fn walk(
     }
 }
 
-/// Measures one `#` comment node. Standalone comments join the open run
-/// on adjacent rows. A trailing comment (code before the marker) is its
-/// own region, and the marker run plus one space strips.
+/// Measures one `#` comment node.
+///
+/// - Standalone comments join the open run on adjacent rows.
+/// - A trailing comment (code before the marker) is its own region.
+/// - The marker run plus one space strips.
 ///
 /// The measurement matches the comment lexicon's `#`-family output.
 fn comment_region(

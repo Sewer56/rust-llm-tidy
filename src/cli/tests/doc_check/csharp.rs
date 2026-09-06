@@ -50,10 +50,11 @@ fn csharp_doc001_flags_undocumented_non_private_members() {
 
 // ── DOC002: missing `<exception>` tag ────────────────────────────
 
-/// DOC002 recursion: a caller with no `throw` of its own is flagged
-/// for calling a same-file thrower, transitively. The private thrower,
-/// framework calls, and tagged callers stay silent. Findings keep
-/// document order and error severity.
+/// DOC002 recursion follows same-file throwers transitively.
+///
+/// - A caller without its own `throw` is flagged for calling a same-file thrower.
+/// - The private thrower, framework calls, and tagged callers stay silent.
+/// - Findings keep document order and error severity.
 #[test]
 fn csharp_doc002_errors_on_indirect_throwers() {
     let (stderr, exit) = run_csharp_fixture("doc002_indirect_exception.cs");
@@ -444,9 +445,10 @@ fn csharp_test001_flags_discouraged_names() {
 
 // ── Text budgets ─────────────────────────────────────────────────
 
-/// C# text budgets fire with original file lines. TEXT001 errors on an
-/// over-budget summary paragraph at its first prose line. TEXT002 warns
-/// on a line whose tag-stripped inner text exceeds 80 chars.
+/// C# text budgets fire with original file lines.
+///
+/// - TEXT001 errors on an over-budget summary paragraph at its first prose line.
+/// - TEXT002 warns on a line whose tag-stripped inner text exceeds 80 chars.
 #[test]
 fn csharp_text_budgets_fire_with_original_lines() {
     let (stderr, exit) = run_csharp_fixture("text-001_text-002_text_budgets.cs");

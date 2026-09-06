@@ -16,10 +16,10 @@
 //!
 //! # Remarks
 //!
-//! The library does not print or exit. Inspect returned reports before choosing
-//! failure policy.
-//! The CLI package remains `rust-llm-tidy-cli`; it installs the `rust-llm-tidy`
-//! executable.
+//! - The library does not print or exit.
+//! - Inspect returned reports before choosing failure policy.
+//! - The CLI package remains `rust-llm-tidy-cli`.
+//! - The CLI installs the `rust-llm-tidy` executable.
 
 pub use pipeline::RunOptions;
 pub use pipeline::SourceOptions;

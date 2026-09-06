@@ -14,9 +14,11 @@ use std::path::PathBuf;
     about = "Fix, reorder, narrow visibility, and lint allowed source files"
 )]
 pub(crate) struct Cli {
-    /// Path(s) to the Rust source file(s) or directory(s) to process. Each
-    /// directory is expanded recursively. When omitted, the changed files in
-    /// the current git diff are used, filtered to the allowed extensions.
+    /// Paths to Rust source files or directories to process.
+    ///
+    /// - Directories: expanded recursively.
+    /// - Omitted paths: use changed files in the current git diff,
+    ///   filtered to the allowed extensions.
     pub(crate) paths: Vec<PathBuf>,
     /// Print the changes that would be made instead of modifying files.
     #[arg(long)]

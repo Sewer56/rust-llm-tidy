@@ -1,5 +1,6 @@
 // Partially vendored from rust-reorder (MIT).
 // Modified based on https://github.com/umwelt-ai/rust-reorder.
+//
 // Line-multiset safety verification.
 
 use crate::source::line_count::count_lines;

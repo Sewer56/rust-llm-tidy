@@ -43,9 +43,11 @@ guesses.
 
 ## TEXT001 - oversized paragraph
 
-A paragraph of doc text over 240 chars is an error. A bullet over
-240 chars warns instead and recommends one checkable action of at most 160
-chars. Nested bullets are separate paragraphs.
+A paragraph of doc text over 240 chars is an error.
+
+- A bullet over 240 chars warns instead and recommends one checkable action
+  of at most 160 chars.
+- Nested bullets are separate paragraphs.
 
 Code blocks, tables, headings, signature lines, and link definitions are
 exempt as whole lines and end a paragraph.

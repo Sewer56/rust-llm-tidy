@@ -163,7 +163,9 @@ pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
 }
 
 /// If `body` at byte index `open` (`[`) opens an inline link `[text](url)`
-/// eligible for hoisting, return `(text, url, end)`. Here `end` is one past
+/// eligible for hoisting, return `(text, url, end)`.
+///
+/// Here `end` is one past
 /// the closing `)`. Eligible text is non-blank (at least one byte that is
 /// not a space or tab) and contains no `[` or `]` byte, nested or escaped;
 /// [`super`] documents why.
@@ -349,7 +351,9 @@ fn closing_bracket(after: &str) -> Option<usize> {
     None
 }
 
-/// Length of a title's content `tail`. For quotes, this is the position of
+/// Length of a title's content `tail`.
+///
+/// For quotes, this is the position of
 /// the first unescaped `close` byte. For parenthesized titles it is the
 /// position of its matching unescaped `)` (balanced content required).
 #[inline]

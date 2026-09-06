@@ -219,9 +219,9 @@ fn narrow_if_eligible<'a, 'n>(
         return; // already restricted - idempotent skip
     }
 
-    // Re-export guard: skip items whose name is re-exported via `pub use`. A
-    // glob sentinel ("*") disables narrowing for every named child. The name
-    // is only read when a re-export set exists (rare path).
+    // Re-export guard: skip items whose name is re-exported via `pub use`;
+    // a glob sentinel ("*") disables narrowing for every named child. The
+    // name is only read when a re-export set exists (rare path).
     if let Some(set) = reexported
         && let Ok(n) = name.utf8_text(source.as_bytes())
         && (set.contains(n) || set.contains("*"))
@@ -528,9 +528,8 @@ mod tests {
     #[test]
     fn crlf_line_endings_preserved_when_narrowing() {
         // CRLF source: bare `pub fn f` inside a `pub(crate)` inline module.
-        // It is narrowed to `pub(crate) fn f` via a byte-range
-        // `replace_range` swap that touches only the `pub` token bytes.
-        // Every `\r\n` survives.
+        // The swap replaces only the `pub` token bytes, so every `\r\n`
+        // survives.
         let src = "pub(crate) mod m {\r\n    pub fn f() {}\r\n}\r\n";
         let out = narrow(src).unwrap();
         let owned = out.into_owned();

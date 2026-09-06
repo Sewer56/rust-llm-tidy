@@ -77,9 +77,11 @@ pub struct SourceItem {
     /// Visibility tier used for ordering and doc-coverage checks. `Some` for
     /// every item kind that has a visibility modifier (fn, struct, enum, etc.).
     visibility: Option<VisibilityTier>,
-    /// Text of each leading `///` (or `#[doc = "..."]`) line for this item,
-    /// in source order. Each entry preserves syn's value (so a `/// foo` line
-    /// yields `" foo"`). Empty when the item has no doc comment.
+    /// Text of each leading `///` (or `#[doc = "..."]`) line for this item.
+    ///
+    /// - Entries follow source order.
+    /// - Each entry preserves syn's value (so a `/// foo` line yields `" foo"`).
+    /// - Empty when the item has no doc comment.
     doc_comments: Vec<String>,
     /// True for fn items whose return type path ends in `Result` (i.e. a
     /// `-> Result<...>` signature). `false` for non-fn items and fns that do

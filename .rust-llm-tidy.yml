@@ -42,6 +42,8 @@ exclude_files:
 
 # Disable specific rules for files matching a group's patterns.
 exclude:
+  - paths: ['**/AGENTS.md']
+    rules: [lints]
   # Integration tests embed markdown (`[text](url)`) in Rust string literals;
   # `fix_links` would emit a `[text]: url` definition outside the literal and
   # break compilation. changes.rs's unit tests do the same, so disable `links`
@@ -94,6 +96,11 @@ exclude:
     rules:
       - links
       - tables
+  # Embedded fixtures intentionally contain openers that trigger TEXT004.
+  - paths:
+      - "src/rust-llm-tidy/src/rules/lint/text/text001_paragraph_size.rs"
+      - "src/rust-llm-tidy/src/rules/lint/text/text004_header_opener.rs"
+    rules: [TEXT004]
   # integration.rs embeds before-state markdown fixtures in string literals;
   # table/fence fixers would rewrite them and break the parity test.
   - paths:

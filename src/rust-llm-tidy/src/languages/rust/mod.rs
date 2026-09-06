@@ -94,7 +94,9 @@ mod tests {
     }
 
     /// The lint composition emits every item rule in code order per
-    /// item, then the text tier. The sequence is not line-sorted.
+    /// item, then the text tier.
+    ///
+    /// The sequence is not line-sorted.
     /// In source, `bare`'s DOC001 at line 6 follows the over-budget
     /// doc line's TEXT002 at line 3. In output, it does not.
     #[test]

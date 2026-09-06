@@ -19,8 +19,10 @@ use std::process::Command;
 ///
 /// # Arguments
 ///
-/// - `exts`: file extensions (without the leading dot, e.g. `"rs"`) to keep.
-///   A changed path is returned only when its extension matches one of these.
+/// Select which file extensions to keep.
+///
+/// - `exts`: file extensions without the leading dot, such as `"rs"`
+/// - A changed path is returned only when its extension matches an entry in `exts`.
 ///
 /// # Errors
 ///

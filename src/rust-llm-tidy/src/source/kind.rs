@@ -93,7 +93,9 @@ pub enum ItemKind {
     /// ```
     Macro,
     /// A top-level macro invocation (e.g. `foo!();`) that is not a
-    /// `macro_rules!` definition. Named after the last path segment so the
+    /// `macro_rules!` definition.
+    ///
+    /// Named after the last path segment so the
     /// graph stage can pair it with its local `macro_rules!` definition.
     ///
     /// ```rust,ignore

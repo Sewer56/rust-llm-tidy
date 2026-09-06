@@ -5,10 +5,11 @@
 //! passes keep the source's line endings on in-place writes instead of
 //! hardcoding `"\n"`.
 
-/// Dominant line ending of `source`. CRLF when CRLF breaks are at least as
-/// common as bare LF (and at least one CRLF exists); else LF. Rust source
-/// only uses `\n` or `\r\n`, so lone `\r` is ignored. A source with no
-/// newlines defaults to LF.
+/// Return the dominant line ending of `source`.
+///
+/// - CRLF: CRLF breaks are at least as common as bare LF, with at least one CRLF.
+/// - LF: Returned otherwise, including when the source has no newlines.
+/// - Lone `\r` is ignored because Rust source only uses `\n` or `\r\n`.
 ///
 /// # Arguments
 ///

@@ -669,6 +669,7 @@ mod tests {
     }
 
     /// Every registry extension resolves to exactly one text-lint tier.
+    ///
     /// Markdown prose covers the markdown family only. `rs`/`cs`/`py`/`pyi`
     /// use AST regions, and every comment-marker code family uses the
     /// lexicon tier.

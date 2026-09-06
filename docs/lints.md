@@ -2,9 +2,11 @@
 
 ## What it does
 
-The `lints` op runs read-only checks. It is on by default in the
-pipeline and never mutates files. Exits non-zero when any error-severity
-finding is present (warnings and hints do not fail).
+The `lints` op runs read-only checks.
+
+- It is on by default in the pipeline and never mutates files.
+- Exits non-zero when any error-severity finding is present (warnings and
+  hints do not fail).
 
 The lint codes are sub-checks of `lints`; they stay individually
 toggleable through the same rule namespace as the ops.
@@ -47,10 +49,11 @@ Each example shows the smallest common fix for its lint.
 
 ### DOC001 - missing documentation
 
-Non-private documentable items need a `///`, `/** ... */`, or
-`#[doc = "..."]` comment. Private items, modules, imports, impls, macros,
-macro invocations, uncategorized items, and `extern crate` items are not
-checked.
+Non-private documentable items need a doc comment.
+
+- Accepted forms: `///`, `/** ... */`, or `#[doc = "..."]`.
+- Private items, modules, imports, impls, macros, macro invocations,
+  uncategorized items, and `extern crate` items are not checked.
 
 Before:
 
@@ -372,8 +375,10 @@ investigate, such as a possible pre-allocation.
 ## Change reporting
 
 Every run reports the edits each enabled op makes (in-place) or would make
-(`--dry-run`). `--dry-run` previews the changes without writing them. In text
-mode every edit is one plaintext line on stderr:
+(`--dry-run`).
+
+- `--dry-run` previews the changes without writing them.
+- In text mode every edit is one plaintext line on stderr:
 
 ```text
 src/lib.rs:20: success[REORDER]: rearrange fn a_main from pos 2 to pos 1 (before b_helper) (fn `a_main`)

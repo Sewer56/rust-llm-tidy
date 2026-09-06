@@ -24,9 +24,11 @@ enum ModChild {
     },
 }
 
-/// A resolved cross-file module tree. It maps each source file to its
-/// effective floor visibility (the most-restrictive `mod` visibility on the
-/// path from the crate root). It also exposes per-file lookup used by
+/// A resolved cross-file module tree.
+///
+/// It maps each source file to its effective floor visibility (the
+/// most-restrictive `mod` visibility on the path from the crate root).
+/// It also exposes per-file lookup used by
 /// `narrow_vis_in_tree`.
 pub struct ModuleTree {
     /// Canonicalized file path -> effective floor visibility text
@@ -86,8 +88,9 @@ pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<Mo
     let known_files: std::collections::HashSet<PathBuf> =
         files.iter().map(|f| f.path.clone()).collect();
 
-    // 2. Vec-based stack, so queue.pop() gives depth-first order. Root's floor
-    //    is None. Multiple mod edges to one file: first recorded floor wins.
+    // 2. Vec-based stack, so queue.pop() gives depth-first order.
+    //
+    //    Root's floor is None. Multiple mod edges to one file: first recorded floor wins.
     let mut floors: AHashMap<PathBuf, Option<String>> = AHashMap::new();
     let mut warnings = Vec::new();
     let mut queue: Vec<(PathBuf, Option<String>)> = vec![(root.to_path_buf(), None)];
@@ -336,9 +339,10 @@ fn find_path_attr(attrs: &[Node], source: &str) -> Option<String> {
     None
 }
 
-/// `mod foo;` -> `foo.rs` (preferred) else `foo/mod.rs`. Both editions prefer
-/// the file form. If both exist it is E0761 (compile error); we still pick
-/// `foo.rs` and warn.
+/// `mod foo;` -> `foo.rs` (preferred) else `foo/mod.rs`.
+///
+/// Both editions prefer the file form. If both exist it is E0761 (compile
+/// error); we still pick `foo.rs` without warning.
 fn resolve_mod_file(
     dir: &Path,
     name: &str,

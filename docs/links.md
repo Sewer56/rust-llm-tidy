@@ -37,8 +37,10 @@ see [A] and [A]
 ## Config
 
 The repo's own `src/cli/tests/**` embed markdown in Rust string literals.
-`links` would emit a `[text]: url` line outside the literal and break
-compilation. `links` is excluded for those paths:
+
+- `links` would emit a `[text]: url` line outside the literal and break
+  compilation.
+- `links` is excluded for those paths:
 
 ```yaml
 exclude:

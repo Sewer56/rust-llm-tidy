@@ -1,5 +1,6 @@
 // Partially vendored from rust-reorder (MIT).
 // Modified based on https://github.com/umwelt-ai/rust-reorder.
+//
 // Provides permutation validation and byte-slice emit.
 
 use crate::source::line_endings::dominant_line_ending;
@@ -531,8 +532,9 @@ mod tests {
     #[test]
     fn member_reorder_round_trips_through_emit() {
         // One type item whose body holds three members: method Z (calls A),
-        // field F, method A. Members tile the body back-to-back. The item is
-        // built directly because the member machinery is language-agnostic;
+        // field F, method A. Members tile the body back-to-back.
+        //
+        // The item is built directly because the member machinery is language-agnostic;
         // the tree only accompanies the parse result.
         let method_z = "    void Z() { A(); }\n";
         let field_f = "    int F;\n";

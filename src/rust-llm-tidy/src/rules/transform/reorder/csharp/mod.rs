@@ -109,8 +109,9 @@ pub(crate) fn reorder_permutation(parsed: &ParseResult) -> anyhow::Result<Option
     Ok(Some(permutation))
 }
 
-/// The top-level item order for the all-stable C# profile. Region
-/// runs emit in source order. Within each run the `using` directives
+/// Compute the top-level item order for the all-stable C# profile.
+///
+/// Region runs emit in source order. Within each run the `using` directives
 /// pin first while everything else keeps source order.
 ///
 /// The engine's [`compute_order`] would produce the same order.

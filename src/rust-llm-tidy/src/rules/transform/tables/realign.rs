@@ -324,7 +324,9 @@ fn drop_border_empties(cells: &mut Vec<&str>) {
 /// [`drop_border_empties`] to strip them, as [`split_cells`] does.
 fn split_cells_into<'a>(line: &'a str, out: &mut Vec<&'a str>) {
     // `|` (0x7C) and `\` (0x5C) are ASCII, so they never appear inside a
-    // multibyte UTF-8 sequence. Iterating bytes is therefore sound. It also
+    // multibyte UTF-8 sequence.
+    //
+    // Iterating bytes is therefore sound. It also
     // lets us slice at every pipe without decoding characters.
     let bytes = line.as_bytes();
     let mut start = 0usize;
