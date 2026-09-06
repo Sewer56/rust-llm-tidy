@@ -198,9 +198,9 @@ const PERCENT_ERL: Lexicon = Lexicon {
     word_start_comments: false,
     block_markers_alone: false,
 };
-/// MATLAB and Octave: `%` comments and `%{ %}` block comments (the
-/// markers count only alone on their lines); `'` strings and
-/// transposes and `"` strings, all single-line.
+/// MATLAB and Octave: `%` comments and `%{ %}` block comments
+/// (the markers count only alone on their lines). It also scans
+/// `'` strings and transposes and `"` strings, all single-line.
 const PERCENT_MATLAB: Lexicon = Lexicon {
     line: "%",
     block: Some(("%{", "%}")),
@@ -311,8 +311,8 @@ pub(super) struct Lexicon {
     /// carries its state.
     pub(super) multiline_quotes: bool,
     /// Whether the comment marker opens a comment only at the start of a
-    /// word (POSIX `#` rules; Ruby after a token), so regex literals and
-    /// mid-word `#` stay code.
+    /// word (POSIX `#` rules; Ruby after a token). Outside that, regex
+    /// literals and mid-word `#` stay code.
     pub(super) word_start_comments: bool,
     /// Whether the block pair's markers open and close only alone on
     /// their lines (MATLAB `%{`/`%}`); elsewhere the line marker

@@ -9,8 +9,8 @@
 //!
 //! # Spans
 //!
-//! Spans follow the source module's back-to-back layout: each item's
-//! `end` is the byte after its trailing newline, and every non-first
+//! Spans follow the source module's back-to-back layout. Each item's
+//! `end` is the byte after its trailing newline. Every non-first
 //! item's `start` is the previous item's `end`.
 //!
 //! The blank lines and comments preceding an item travel with it.
@@ -21,7 +21,7 @@
 //! # Members
 //!
 //! A body (namespace, class, struct, interface, record) emits members
-//! only when its declaration list holds no preprocessor directive: the
+//! only when its declaration list holds no preprocessor directive. The
 //! grammar groups `#if`/`#else`/`#endif` runs into single `preproc_*`
 //! nodes.
 //!
@@ -35,8 +35,8 @@
 //! Items and members carry the preprocessor region id of their
 //! declaration line from one [`Regions`] scan.
 //!
-//! A scan that rejects the source leaves region `0` everywhere; the
-//! reorder pass re-checks the scan and degrades to a no-op, so the
+//! A scan that rejects the source leaves region `0` everywhere. The
+//! reorder pass re-checks the scan and degrades to a no-op. The
 //! fallback never authorizes a move.
 
 use super::lines::{end_past_newline, line_of, line_start_offsets, skip_one_line_ending};
@@ -52,10 +52,10 @@ const TEST_MARKER_ATTRIBUTES: &[&str] = &["TestMethod", "Test", "Fact", "Theory"
 
 /// The declaration name of `node`, if it has a meaningful one.
 ///
-/// Fields and event fields report their first declared variable (their
-/// `variable_declaration` child carries no field name, so it is found by
-/// kind); operators report their operator token; everything else reports
-/// its `name` field.
+/// Fields and event fields report their first declared variable. Their
+/// `variable_declaration` child carries no field name, so it is found
+/// by kind. Operators report their operator token. Everything else
+/// reports its `name` field.
 pub(crate) fn declaration_name(node: tree_sitter::Node<'_>, source: &str) -> Option<String> {
     let kind = node.kind();
     let text = |n: tree_sitter::Node<'_>| n.utf8_text(source.as_bytes()).unwrap_or("").to_string();
@@ -78,9 +78,9 @@ pub(crate) fn declaration_name(node: tree_sitter::Node<'_>, source: &str) -> Opt
 
 /// The `///` doc-comment lines directly above `node`, in source order.
 ///
-/// A doc run is the longest chain of `///` comment siblings where each
-/// node sits on the line immediately above the next (no blank line
-/// between), and the closest one sits directly above `node`.
+/// A doc run is the longest chain of `///` comment siblings. Each
+/// node sits on the line immediately above the next, with no blank
+/// line between. The closest one sits directly above `node`.
 ///
 /// Each entry keeps the text after `///` (so `/// Summary.` yields
 /// `" Summary."`).
@@ -316,19 +316,20 @@ fn body_list(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
 }
 
 /// Build the member list of one `declaration_list` body, tiling spans
-/// back-to-back: the first member starts right after the opening
-/// brace's newline, and later members start at the previous member's
+/// back-to-back. The first member starts right after the opening
+/// brace's newline. Later members start at the previous member's
 /// end.
 ///
 /// Each member's end is the byte after its trailing newline.
 ///
 /// A body whose members do not each occupy their own lines emits no
-/// members instead: line-tiled spans cannot represent the body, so it
+/// members instead. Line-tiled spans cannot represent the body. It
 /// stays whole rather than permuting into a guessed rewrite.
 ///
-/// That covers several members on one line, a first member sharing the
-/// opening brace's row or preceded by any bytes on that row, and a
-/// last member sharing the closing brace's line.
+/// That covers several members on one line. It also covers a first
+/// member sharing the opening brace's row or preceded by any bytes on
+/// that row. Finally, it covers a last member sharing the closing
+/// brace's line.
 ///
 /// Blank lines and comments on their own rows after the brace stay
 /// tileable: they travel with the first member.
@@ -359,7 +360,7 @@ fn build_members(
                 .is_some_and(|brace| {
                     // Blank lines and indent after the brace's line
                     // ending tile fine (they travel with the first
-                    // member); any bytes on the brace's own row do
+                    // member). Any bytes on the brace's own row do
                     // not.
                     let gap = &source[brace.end_byte()..first.start_byte()];
                     let trivia_before_newline = gap
@@ -429,8 +430,8 @@ fn top_level_kind(kind: &str) -> ItemKind {
 /// The first `///` comment node of `node`'s doc run, if it has one.
 ///
 /// A non-`///` comment ends the walk without discarding the run collected
-/// so far: the run stays attached to the item while the plain comment
-/// above it stays in the preamble (or in the previous item's span).
+/// so far. The run stays attached to the item. The plain comment above it
+/// stays in the preamble (or in the previous item's span).
 fn doc_run_node<'t>(node: tree_sitter::Node<'t>, source: &str) -> Option<tree_sitter::Node<'t>> {
     let mut current = node;
     while let Some(comment) = adjacent_comment_above(current, source) {

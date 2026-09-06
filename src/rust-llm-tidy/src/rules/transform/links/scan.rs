@@ -59,10 +59,9 @@ pub(super) fn doc_block_key(prefix: &str) -> Option<&str> {
     }
 }
 
-/// Iterate hoist-eligible inline links in one body (see
-/// [`parse_inline_link`] for the label rule), resuming one byte past each
-/// rejected `[` so a badge's declined outer link still yields its flat inner
-/// image.
+/// Iterate hoist-eligible inline links in one body (see [`parse_inline_link`]
+/// for the label rule). Scanning resumes one byte past each rejected `[`, so
+/// a badge's declined outer link still yields its flat inner image.
 #[inline]
 pub(super) fn inline_links(body: &str) -> impl Iterator<Item = InlineLink<'_>> {
     let mut next = 0usize;
@@ -121,8 +120,8 @@ pub(super) fn line_segments(input: &str) -> impl Iterator<Item = (usize, &str)> 
 /// marker run is code-block content.
 ///
 /// A `~~~` line inside a backtick fence (or a too-short run of the same
-/// marker) therefore neither opens nor closes anything, and the original
-/// fence still closes on its own delimiter.
+/// marker) therefore neither opens nor closes anything. The original fence
+/// still closes on its own delimiter.
 ///
 /// The stack therefore holds at most one entry; it stays a `Vec` because
 /// callers test it with `is_empty`.
@@ -164,7 +163,7 @@ pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
 }
 
 /// If `body` at byte index `open` (`[`) opens an inline link `[text](url)`
-/// eligible for hoisting, return `(text, url, end)` where `end` is one past
+/// eligible for hoisting, return `(text, url, end)`. Here `end` is one past
 /// the closing `)`. Eligible text is non-blank (at least one byte that is
 /// not a space or tab) and contains no `[` or `]` byte, nested or escaped;
 /// [`super`] documents why.
@@ -190,9 +189,9 @@ pub(super) fn parse_inline_link(body: &str, open: usize) -> Option<(&str, &str, 
     if escapes % 2 == 1 {
         return None;
     }
-    // Walk to the matching `]`, allowing balanced nested `[ ]`, and track in
-    // the same pass whether the text qualifies as a hoisted label: flat (no
-    // bracket bytes inside the text) and non-blank (a non-space/tab byte).
+    // Walk to the matching `]`, allowing balanced nested `[ ]`. The same pass
+    // tracks whether the text qualifies as a hoisted label: flat (no bracket
+    // bytes inside the text) and non-blank (a non-space/tab byte).
     let mut depth = 1usize;
     let mut flat = true;
     let mut non_blank = false;
@@ -281,8 +280,8 @@ fn is_fence_candidate_body(body: &str) -> bool {
 }
 
 /// Parse the leading-whitespace-trimmed `s` as one complete CommonMark link
-/// reference definition, `[label]: destination` plus an optional quoted or
-/// parenthesized title, with nothing else on the line.
+/// reference definition. A definition is `[label]: destination` plus an
+/// optional quoted or parenthesized title, with nothing else on the line.
 ///
 /// Returns the label. Any malformed form (blank label, unescaped bracket in
 /// the label, invalid destination, glued title, trailing junk) is paragraph
@@ -350,9 +349,9 @@ fn closing_bracket(after: &str) -> Option<usize> {
     None
 }
 
-/// Length of a title's content `tail`: the position of the first unescaped
-/// `close` byte (quotes) or the position of its matching unescaped `)`
-/// (parenthesized titles need balanced content).
+/// Length of a title's content `tail`. For quotes, this is the position of
+/// the first unescaped `close` byte. For parenthesized titles it is the
+/// position of its matching unescaped `)` (balanced content required).
 #[inline]
 fn closing_delimiter(tail: &str, close: u8) -> Option<usize> {
     let bytes = tail.as_bytes();

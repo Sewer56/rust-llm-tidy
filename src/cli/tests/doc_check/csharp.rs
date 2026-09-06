@@ -1,7 +1,7 @@
 //! C# lint tests: the XML doc dialect over the same lint codes as Rust.
 //!
 //! The lint tests run the built CLI binary with `--include lints` on a
-//! fixture in `tests/fixtures/doc/csharp/`; the JSON record tests also
+//! fixture in `tests/fixtures/doc/csharp/`. The JSON record tests also
 //! cover `--include reorder` over `tests/fixtures/reorder/csharp/`.
 //!
 //! The shared runner helpers live in `mod.rs`.
@@ -51,7 +51,7 @@ fn csharp_doc001_flags_undocumented_non_private_members() {
 // ── DOC002: missing `<exception>` tag ────────────────────────────
 
 /// DOC002 recursion: a caller with no `throw` of its own is flagged
-/// for calling a same-file thrower, transitively; the private thrower,
+/// for calling a same-file thrower, transitively. The private thrower,
 /// framework calls, and tagged callers stay silent. Findings keep
 /// document order and error severity.
 #[test]
@@ -444,9 +444,9 @@ fn csharp_test001_flags_discouraged_names() {
 
 // ── Text budgets ─────────────────────────────────────────────────
 
-/// C# text budgets fire with original file lines: TEXT001 errors on an
-/// over-budget summary paragraph at its first prose line, and TEXT002
-/// warns on a line whose tag-stripped inner text exceeds 80 chars.
+/// C# text budgets fire with original file lines. TEXT001 errors on an
+/// over-budget summary paragraph at its first prose line. TEXT002 warns
+/// on a line whose tag-stripped inner text exceeds 80 chars.
 #[test]
 fn csharp_text_budgets_fire_with_original_lines() {
     let (stderr, exit) = run_csharp_fixture("text-001_text-002_text_budgets.cs");
@@ -476,7 +476,7 @@ fn csharp_text_budgets_fire_with_original_lines() {
     );
 }
 
-/// C# text checks stay quiet on the probe classes: idiomatic XML docs,
+/// C# text checks stay quiet on the probe classes. Idiomatic XML docs,
 /// long `cref`/`name` attribute values, `<code>`/`<example>` blocks, and
 /// verbatim string content produce no TEXT001/TEXT002 findings.
 #[test]

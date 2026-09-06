@@ -1,7 +1,7 @@
 //! The C# reorder profile: the ordering policy the engine consumes.
 //!
 //! Top level, `using` directives pin first and keep their relative order
-//! (they never reorder among themselves); every other top-level item -
+//! (they never reorder among themselves). Every other top-level item -
 //! namespaces, types, preprocessor directives, statements - keeps its
 //! source order.
 //!
@@ -69,9 +69,9 @@ static DECL_NAME_POSITIONS: &[DeclNamePosition] = &[
     DeclNamePosition::new("parameter", "name"),
 ];
 
-/// The C# reorder profile: `using` directives pinned first, everything else
-/// in source order at the top level, and the documented member buckets
-/// inside type and namespace bodies.
+/// The C# reorder profile: `using` directives pinned first. Everything
+/// else stays in source order at the top level, with the documented
+/// member buckets inside type and namespace bodies.
 pub(super) struct CSharpProfile;
 
 impl ReorderProfile for CSharpProfile {
@@ -267,7 +267,7 @@ mod tests {
 
     /// Every member kind maps to its documented bucket: fields, then
     /// constructors, finalizers, delegates/events, enums and nested types,
-    /// properties, operators, methods; usings pin first for namespace
+    /// properties, operators, methods. Usings pin first for namespace
     /// bodies.
     #[test]
     fn member_phases_follow_the_documented_buckets() {

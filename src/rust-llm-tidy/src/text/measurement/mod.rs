@@ -2,7 +2,7 @@
 //! stripped lines and paragraphs the text rules measure.
 //!
 //! Doc-region producers strip a file's comment markers into
-//! [`region::DocRegion`]s; the measuring core folds them into numbered
+//! [`region::DocRegion`]s. The measuring core folds them into numbered
 //! stripped doc lines, paragraphs, and exemption classifications in one
 //! linear pass.
 //!
@@ -10,7 +10,7 @@
 //! and XML doc comments feed the same measurement.
 //!
 //! The measured budgets count the full line text, code spans, URLs, and
-//! link targets included; table rows, code blocks, and link reference
+//! link targets included. Table rows, code blocks, and link reference
 //! definitions are exempt.
 //!
 //! # Layers
@@ -18,7 +18,7 @@
 //! - [`region`] - the doc-region input shape: stripped lines, original
 //!   line numbers, and the dialect tag.
 //! - [`line_markers`] - the legacy producer: line-comment markers keyed by
-//!   file extension, one region per contiguous comment run; the Rust AST
+//!   file extension, one region per contiguous comment run. The Rust AST
 //!   producer reuses its `rs` regions through [`line_marker_regions`].
 //! - [`xml_doc`] - the XML doc dialect: text-node measurement over
 //!   tag-carrying doc lines.

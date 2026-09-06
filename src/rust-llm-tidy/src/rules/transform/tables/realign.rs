@@ -1,15 +1,15 @@
 //! GFM table alignment: split, validate, and re-pad table columns.
 //!
 //! [`realign_table`] takes the raw (prefix-stripped) lines of a single
-//! contiguous table and returns the canonically aligned lines, or [`None`]
-//! when the lines are not a table or are already aligned.
+//! contiguous table and returns the canonically aligned lines. It returns
+//! [`None`] when the lines are not a table or are already aligned.
 
 use core::iter::repeat_n;
 
 /// Per-column text alignment parsed from a GFM delimiter row.
 ///
 /// A delimiter cell with no colons (`---`) parses as [`Alignment::None`]:
-/// it pads like [`Alignment::Left`] but the regenerated delimiter carries no
+/// it pads like [`Alignment::Left`]. The regenerated delimiter carries no
 /// colon, preserving the original marker style.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Alignment {
@@ -53,8 +53,9 @@ enum Alignment {
 /// # Returns
 ///
 /// [`Some`] realigned lines when the entries form a table with a valid
-/// delimiter row and realignment produces a different layout, or [`None`]
-/// when they are not a table or are already aligned (idempotent fast path).
+/// delimiter row and realignment produces a different layout. Returns
+/// [`None`] when they are not a table or are already aligned (idempotent
+/// fast path).
 ///
 /// # Allocation strategy
 ///
@@ -62,12 +63,13 @@ enum Alignment {
 /// whole parse/measure/compare phase.
 ///
 /// `body` is one flat grid (`ncols` per row, row-major) filled from a single
-/// reused `row_buf`, so the parse cost is a **constant** number of allocations
-/// regardless of row count - not one `Vec` per row.
+/// reused `row_buf`. The parse cost is therefore a **constant** number of
+/// allocations regardless of row count - not one `Vec` per row.
 ///
 /// An already-aligned table is then rejected with **zero** per-row `String`
 /// allocation: each canonical row is written into one reused buffer
-/// ([`build_row_into`] / [`build_delimiter_into`]) and compared in place.
+/// ([`build_row_into`] / [`build_delimiter_into`]). The row is compared
+/// in place.
 ///
 /// Only when a change is detected does [`emit_all`] materialize the owned
 /// result rows.
@@ -147,8 +149,9 @@ fn compute_widths(header: &[&str], body: &[&str], ncols: usize) -> Vec<usize> {
     // `widths[col_index]` is the target width every cell in column `col_index`
     // pads to: the widest cell across the header and every body row.
 
-    // Seed it from the header first so a wide header cell can't be beaten by narrower
-    // body cells (which would leave the header narrower than its own column).
+    // Seed it from the header first so a wide header cell can't be beaten
+    // by narrower body cells. Otherwise the header could end up narrower
+    // than its own column.
     let mut widths = vec![0usize; ncols];
     for (col_index, cell) in header.iter().enumerate() {
         widths[col_index] = widths[col_index].max(char_width(cell));
@@ -168,8 +171,9 @@ fn compute_widths(header: &[&str], body: &[&str], ncols: usize) -> Vec<usize> {
 /// Phase 2 - materialize every realigned row once a change has been detected.
 ///
 /// Reached only when Phase 1 found a mismatch. Each row is written into a
-/// fresh, pre-sized `String` by the same builders used for detection, so there
-/// is no logic duplication and no intermediate `Vec<String>`/`join` churn.
+/// fresh, pre-sized `String` by the same builders used for detection. There
+/// is no logic duplication. There is also no intermediate `Vec<String>`/`join`
+/// churn.
 fn emit_all(
     header: &[&str],
     body: &[&str],
@@ -320,8 +324,8 @@ fn drop_border_empties(cells: &mut Vec<&str>) {
 /// [`drop_border_empties`] to strip them, as [`split_cells`] does.
 fn split_cells_into<'a>(line: &'a str, out: &mut Vec<&'a str>) {
     // `|` (0x7C) and `\` (0x5C) are ASCII, so they never appear inside a
-    // multibyte UTF-8 sequence; iterating bytes is therefore sound and lets
-    // us slice at every pipe without decoding characters.
+    // multibyte UTF-8 sequence. Iterating bytes is therefore sound. It also
+    // lets us slice at every pipe without decoding characters.
     let bytes = line.as_bytes();
     let mut start = 0usize;
     let mut i = 0usize;
@@ -401,7 +405,7 @@ fn write_padded(cell: &str, width: usize, alignment: Alignment, out: &mut String
 }
 
 /// Character count of `s`, using the byte length directly when `s` is ASCII
-/// (the overwhelmingly common case for table cells), which lets the optimizer
+/// (the overwhelmingly common case for table cells). This lets the optimizer
 /// avoid decoding UTF-8.
 #[inline]
 fn char_width(s: &str) -> usize {

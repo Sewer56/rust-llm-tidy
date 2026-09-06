@@ -1,7 +1,7 @@
 //! Line-frequency multiset used by the line-preservation safety check.
 //!
 //! `count_lines` counts non-blank lines of a source string into an `AHashMap`
-//! keyed by the borrowed `&str` slice, avoiding the per-line `String`
+//! keyed by the borrowed `&str` slice. This avoids the per-line `String`
 //! allocation the previous `HashMap<String, _>` incurred.
 //!
 //! Keys borrow from the source string, so the returned map must not outlive

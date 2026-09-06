@@ -97,8 +97,8 @@ pub fn compute_member_order(
 /// ordering.
 ///
 /// Items order within their preprocessor regions: items partition into
-/// consecutive runs of equal [`SourceItem::region`], and the runs emit in
-/// original order - so no item ever moves across a conditional boundary.
+/// consecutive runs of equal [`SourceItem::region`]. The runs emit in
+/// original order. So no item ever moves across a conditional boundary.
 ///
 /// Each run orders by the profile's phases and strategies. Sources without
 /// preprocessor conditionals carry region `0` on every item, making the
@@ -348,9 +348,9 @@ fn emit_macro_definitions(
     let def_order = dependency_order(parsed, &defs, edges, TieBreak::Alphabetical);
 
     // Group invocations by macro name. Invocations whose name has no
-    // matching definition emit last in source order (unreachable when
-    // the profile routes an invocation to this phase only when a local
-    // definition shares its name).
+    // matching definition emit last in source order. This case is
+    // unreachable: the profile routes an invocation to this phase only
+    // when a local definition shares its name.
     let def_names: AHashSet<&str> = def_order
         .iter()
         .filter_map(|&idx| parsed.items[idx].name())
@@ -411,7 +411,7 @@ fn dependency_order(
 ///
 /// 1. Map each `group` value to its 0-based position within the group.
 /// 2. Keep only `edges` whose `(referencer, referenced)` endpoints both
-///    lie in `group`, rewriting each pair to those positions; edges
+///    lie in `group`, rewriting each pair to those positions. Edges
 ///    touching anything outside the group never constrain the sort.
 /// 3. Delegate to [`toposort`] with the group-local names and edges.
 ///
@@ -477,7 +477,7 @@ mod tests {
     use crate::languages::{LanguageBackend, RustBackend};
 
     /// Items only reorder within their preprocessor region run: a caller in
-    /// region 0 with its callee also in region 0 still reorders, while a
+    /// region 0 with its callee also in region 0 still reorders. A
     /// region-1 item sitting between them never crosses.
     #[test]
     fn items_reorder_only_within_region_runs() {

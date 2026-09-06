@@ -48,7 +48,7 @@ mod realign;
 /// Realign every GFM table in `input` for one line-comment prefix family.
 ///
 /// After the leading indent, each line's comment marker comes from
-/// `prefixes`; the matched marker, its indent, and one separating space
+/// `prefixes`. The matched marker, its indent, and one separating space
 /// (when present) are re-applied to every realigned row.
 ///
 /// A run of pipe lines joins one table only while every line keeps the same
@@ -66,8 +66,8 @@ mod realign;
 ///
 /// # Allocation strategy
 ///
-/// The output buffer is allocated lazily: a single read-only scan runs first,
-/// and only when a table actually changes is a `String` allocated and the
+/// The output buffer is allocated lazily: a single read-only scan runs first.
+/// Only when a table actually changes is a `String` allocated and the
 /// unchanged text before it copied in.
 ///
 /// A fully-aligned document therefore returns a [`Cow::Borrowed`] with
@@ -523,7 +523,8 @@ trailer
     //
     // Inputs are built with `format!` from single-line `\n`-escaped templates
     // so the repo's own `fix_tables` pre-commit hook cannot realign the
-    // literals back to canonical form (same trick as the tests above).
+    // literals back to canonical form. This is the same trick as the tests
+    // above.
 
     /// One line-comment family per entry: the marker family and a label for
     /// assertion messages.
@@ -594,7 +595,7 @@ trailer
     #[test]
     fn prefix_family_tables_realign_with_marker_and_indent_kept() {
         // One misaligned GFM table per line-comment family: every row comes
-        // back with the marker and indent re-applied, the code line stays
+        // back with the marker and indent re-applied. The code line stays
         // untouched, and a second pass is a no-op.
         for (marker, label) in PREFIX_FAMILIES {
             let input = format!(
@@ -652,8 +653,8 @@ trailer
     fn org_mode_tables_are_left_untouched() {
         // Org-mode delimiters (`|---+---|`) carry a `+`, which GFM
         // delimiter validation rejects: the block is not a table and
-        // comes back verbatim, as the empty (unmapped) prefix family
-        // would see it.
+        // comes back verbatim. The empty (unmapped) prefix family would
+        // see it the same way.
         let input = "\
 | a | b |
 |---+---|

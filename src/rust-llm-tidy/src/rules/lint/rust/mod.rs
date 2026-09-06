@@ -47,7 +47,7 @@ pub(crate) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
 /// Case-insensitive whole-word match for `needle` in `haystack`.
 ///
 /// A word boundary is any non-alphanumeric, non-underscore character (or
-/// the start/end of the text), so the needle matches when framed by
+/// the start/end of the text). Hence the needle matches when framed by
 /// punctuation but never inside a longer word, and `name` matches in
 /// `` `name` `` but not in `filename`.
 ///
@@ -166,7 +166,8 @@ fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
 }
 
 /// The section body: lines after the header at `start` up to the next
-/// trimmed `# ` header or end of docs, empty and content lines alike.
+/// trimmed `# ` header or end of docs. It includes empty and content lines
+/// alike.
 ///
 /// Used by DOC003 ([`doc003_vague_errors`]) and DOC005
 /// ([`doc005_undocumented_param`]).

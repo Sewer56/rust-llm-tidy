@@ -1,7 +1,7 @@
 //! The item-kind classification shared by every language backend.
 //!
 //! [`ItemKind`] names what a parsed item is; the Rust parse produces the
-//! Rust variants, and C-family backends produce the C-family variants in
+//! Rust variants. C-family backends produce the C-family variants in
 //! addition to the kind-agnostic ones (`Fn`, `Enum`, `Const`, ...).
 
 use std::fmt;

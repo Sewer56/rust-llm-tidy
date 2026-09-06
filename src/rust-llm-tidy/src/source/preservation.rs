@@ -14,8 +14,8 @@ use anyhow::{Result, bail, ensure};
 /// re-normalizes blank lines between item groups.
 ///
 /// It also guards the source's dominant line ending: a CRLF -> LF flip (or
-/// vice versa) is rejected even when every line's content survives, so an
-/// in-place transform cannot silently change line endings.
+/// vice versa) is rejected even when every line's content survives. This
+/// prevents an in-place transform from silently changing line endings.
 ///
 /// # Algorithm
 ///

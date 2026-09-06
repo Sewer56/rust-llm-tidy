@@ -33,7 +33,7 @@ pub(super) fn measure_region(
     for line in region.lines {
         let trimmed = line.text.trim();
         // A fence delimiter ends the example and flows through the
-        // classifier, which closes the fence: swallowing it as doctest
+        // classifier, which closes the fence. Swallowing it as doctest
         // output would leave the fence open and exempt the docstring's
         // remaining prose.
         if in_doctest && !trimmed.is_empty() && !is_fence_delimiter(trimmed) {
@@ -230,7 +230,7 @@ mod tests {
         assert!(diags.is_empty(), "the fenced example stays quiet");
     }
 
-    // A `>>>` line inside a fenced example is fenced content, and the
+    // A `>>>` line inside a fenced example is fenced content. The
     // closing delimiter closes the fence: prose after the block
     // measures, never silently exempt for the rest of the docstring.
     #[test]

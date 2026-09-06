@@ -12,8 +12,8 @@ use crate::source::SourceItem;
 /// `DOC004` - `pub fn` with parameters must have an `# Arguments` section.
 ///
 /// Fires on fully-public functions (`pub fn`) that declare at least one named
-/// parameter (excluding `self`) and whose doc comments contain no `# Arguments`
-/// or `# Parameters` header.
+/// parameter (excluding `self`). Their doc comments must also contain no
+/// `# Arguments` or `# Parameters` header.
 ///
 /// # Arguments
 ///

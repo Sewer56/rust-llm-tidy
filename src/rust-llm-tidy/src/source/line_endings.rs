@@ -1,9 +1,9 @@
 //! Dominant line-ending detection for source-preserving transforms.
 //!
 //! `dominant_line_ending` returns the line terminator (`"\r\n"` or `"\n"`)
-//! that occurs most often in a source string, so text-transform passes can
-//! keep the source's line endings on in-place writes instead of hardcoding
-//! `"\n"`.
+//! that occurs most often in a source string. This lets text-transform
+//! passes keep the source's line endings on in-place writes instead of
+//! hardcoding `"\n"`.
 
 /// Dominant line ending of `source`. CRLF when CRLF breaks are at least as
 /// common as bare LF (and at least one CRLF exists); else LF. Rust source

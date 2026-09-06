@@ -172,9 +172,9 @@ checking each level for `.rust-llm-tidy.yml`; the first found wins.
 Override with `--config <PATH>`; disable all discovery and loading with
 `--no-config`.
 
-Every config error - bad YAML, unknown rule name, bad glob syntax, a
-malformed `extensions`/`extra_extensions` entry, or a pattern matching zero
-files - produces a non-zero exit on every command.
+Every config error produces a non-zero exit on every command. That covers
+bad YAML, unknown rule name, bad glob syntax, a malformed
+`extensions`/`extra_extensions` entry, or a pattern matching zero files.
 
 This is so LLMs can immediately detect config errors. There is no "warn and
 continue" mode. Use `--validate` to check the config without processing files

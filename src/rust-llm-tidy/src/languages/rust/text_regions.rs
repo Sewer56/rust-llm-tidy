@@ -17,7 +17,7 @@
 //! as nothing.
 //!
 //! Regions never merge across sources: each block or attribute doc is
-//! its own region, so the line-comment output stays unchanged and the
+//! its own region. The line-comment output stays unchanged, and the
 //! additions carry findings only for their own prose.
 //!
 //! [`DocRegion`]: crate::text::measurement::DocRegion
@@ -125,7 +125,7 @@ fn ast_doc_regions(parsed: &ParseResult) -> Vec<DocRegion> {
 /// An empty input returns the other list unchanged: most files carry
 /// no block or attribute docs, so the merge allocates nothing for them.
 ///
-/// A tie keeps the line-marker region first, and no tie can occur: a
+/// A tie keeps the line-marker region first, and no tie can occur. A
 /// line-comment region and a block or attribute region never share a
 /// first line.
 fn merge_regions(marker: Vec<DocRegion>, tree: Vec<DocRegion>) -> Vec<DocRegion> {
@@ -253,7 +253,7 @@ fn content_fragments<'a>(
 }
 
 /// The content node's text as `(1-based line number, line text)` pairs,
-/// numbered from the node's own row: a value or block spanning lines
+/// numbered from the node's own row. A value or block spanning lines
 /// keeps each line's original number.
 ///
 /// Lazy, so callers consume each borrowed line once with no

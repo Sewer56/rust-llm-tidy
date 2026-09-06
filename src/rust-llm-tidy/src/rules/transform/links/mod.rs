@@ -32,13 +32,13 @@
 //!
 //! Definitions are placed by content, not by file type:
 //!
-//! - Comment context (input carries lines with a marker from `prefixes`
-//!   outside code fences): each `[text]: url` definition goes at the end of
-//!   every comment block using the label, prefixed like that block.
+//! - Comment context: input carries lines with a marker from `prefixes`
+//!   outside code fences. Each `[text]: url` definition goes at the end of
+//!   every comment block using the label. Each is prefixed like that block.
 //! - Links on lines outside a comment block are left alone.
 //! - Markdown context (everything else): one document-scoped trailing
-//!   definition block is appended at the end of the input, separated from a
-//!   trailing paragraph by a blank line.
+//!   definition block is appended at the end of the input. It is separated
+//!   from a trailing paragraph by a blank line.
 //!
 //!   CommonMark forbids a link reference definition from interrupting a
 //!   paragraph, hence the required separator.
@@ -92,7 +92,7 @@ mod scan;
 /// non-fenced input.
 ///
 /// Comment lines are recognized by the markers in `prefixes`: a hoisted
-/// link keeps its prefix, and each `[text]: url` definition lands inside
+/// link keeps its prefix. Each `[text]: url` definition lands inside
 /// every comment block using the label.
 ///
 /// Without any marker (plain markdown), one definition block is appended at
@@ -134,12 +134,13 @@ fn fix_links_counted<'a>(
         return (Cow::Borrowed(input), Vec::new());
     }
 
-    // Pass 1: tally eligible inline links (outside code fences), record the
-    // texts of every existing `[text]:` definition so we never re-define one,
-    // and detect whether the input is comment-block content.
+    // Pass 1: tally eligible inline links (outside code fences) and record
+    // the texts of every existing `[text]:` definition. The texts prevent
+    // re-definition, and the pass detects whether the input is comment-block
+    // content.
     //
     // Splitting each line once (into content/body) feeds the fence step, the
-    // link tally, and the comment-context detection, and the `contains('[')`
+    // link tally, and the comment-context detection. The `contains('[')`
     // guard skips link work for the common bracket-less line.
     let mut fence_stack: Vec<(char, usize)> = Vec::new();
     let mut counts: HashMap<(&str, &str), usize> = HashMap::new();
@@ -172,8 +173,8 @@ fn fix_links_counted<'a>(
     // already defined.
     //
     // `existing.insert(text)` returns false for pre-existing definitions and
-    // also dedups by text, so we never emit two `[text]:` lines for one text
-    // and the first-seen `(text, url)` for a repeated text wins.
+    // also dedups by text. We therefore never emit two `[text]:` lines for
+    // one text. The first-seen `(text, url)` for a repeated text wins.
     let mut hoist: Vec<(&str, &str)> = Vec::new();
     let mut hoist_set: HashSet<(&str, &str)> = HashSet::new();
     for &(text, url) in &order {
@@ -226,8 +227,8 @@ fn rewrite_doc_context<'a>(
         let block_key = doc_block_key(prefix);
 
         // Close the previous block the moment the line leaves it (a new
-        // block, a non-comment line, or a fence carries a different key), so
-        // each using comment gets exactly one in-comment definition copy.
+        // block, a non-comment line, or a fence carries a different key).
+        // Thus each using comment gets exactly one in-comment definition copy.
         if block_key != cur_block {
             flush_block_defs(&mut out, cur_block, &mut cur_defs, &mut cur_defs_seen, le);
             cur_block = block_key;
@@ -428,8 +429,8 @@ after
     #[test]
     fn mismatched_marker_inside_fence_is_content() {
         // A `~~~` line inside a backtick fence is code-block content, not a
-        // second opener, so the `` ``` `` closer really closes the block and the
-        // link after it is still hoisted.
+        // second opener. The `` ``` `` closer therefore really closes the
+        // block, and the link after it is still hoisted.
         let input = "```text\n~~~\n```\nsee [A](http://x) here\n";
         let expected = "```text\n~~~\n```\nsee [A] here\n\n[A]: http://x\n";
         let (out, pairs) = fix_links(input, RUST_DOC, 1);
@@ -532,8 +533,9 @@ after
     #[test]
     fn bracket_text_link_untouched() {
         // A repeated link whose text contains `[`/`]` bytes, or whose open
-        // `[` is escaped (literal `\[x](u)` text, never a link), has no valid
-        // hoisted label: the input comes back byte-identical in both engines.
+        // `[` is escaped, has no valid hoisted label. The escaped form is
+        // literal `\[x](u)` text, never a link. The input comes back
+        // byte-identical in both engines.
         for input in [
             "[text [x]](u) and [text [x]](u)\n",
             "[\\[x\\]](u) and [\\[x\\]](u)\n",
@@ -638,7 +640,7 @@ see [A] and [A]
     #[test]
     fn existing_definition_prevents_hoist() {
         // A pre-existing `[A]:` definition (any URL, including the valid empty
-        // angle destination `<>`) excludes the pair, so the inline occurrences
+        // angle destination `<>`) excludes the pair. The inline occurrences
         // are left as-is rather than re-targeted.
         for dest in ["http://z", "<>"] {
             let input = format!("[A](http://x) [A](http://x)\n[A]: {dest}\n");
@@ -703,7 +705,7 @@ see [A] and [A]
         // comments.
         //
         // Each comment keeps its own `[text]` uses plus its own duplicated
-        // definition lines; no definition appears at EOF or between comments,
+        // definition lines. No definition appears at EOF or between comments,
         // so every comment stays rustdoc-clean.
         let input = "\
 /// See [field](Self::field) and [path](crate::path).
@@ -814,7 +816,7 @@ pub fn b() {}
     #[test]
     fn non_doc_commented_link_not_rewritten_and_borrowed() {
         // Rust context (one `///` line exists), but the only inline link sits
-        // on a non-doc-comment line (a string literal): it is never rewritten
+        // on a non-doc-comment line (a string literal). It is never rewritten
         // and gets no definition, so the pass returns the input borrowed.
         let input = "\
 /// some doc
@@ -864,8 +866,8 @@ pub fn f() {
     #[test]
     fn definition_shaped_trailing_line_still_gets_blank() {
         // `[x]:` (no destination) and `[x]: junk` (trailing junk after the
-        // destination, no valid title) are paragraph text, not definitions, so
-        // appended definitions need a blank separator after them.
+        // destination, no valid title) are paragraph text, not definitions.
+        // Appended definitions therefore need a blank separator after them.
         for bad in ["[x]:", "[x]: not a valid dest title junk"] {
             let input = format!("see [A](http://x) and [A](http://x)\n{bad}\n");
             let (out, _) = fix_links(&input, RUST_DOC, 1);
@@ -899,9 +901,9 @@ pub fn f() {
     #[test]
     fn idempotent_on_hoisted_output() {
         // Re-running `fix_links` on its own output is a borrowed no-op for
-        // every hoisted shape: flat links, flat images, badges hoisted via
-        // their inner image, and a corrupted badge definition line that
-        // coexists with a hoisted flat link.
+        // every hoisted shape. Shapes: flat links, flat images, badges hoisted
+        // via their inner image, and a corrupted badge definition line
+        // coexisting with a hoisted flat link.
         let cases = [
             "see [A](http://x) and [A](http://x)\n",
             "lead ![logo](i.png) mid ![logo](i.png)\n",
@@ -1003,14 +1005,14 @@ pub fn f() {
     #[test]
     fn malformed_definition_lines_do_not_block_hoist() {
         // Each line is definition-shaped but malformed: CommonMark leaves it
-        // as paragraph text, so the label is free to hoist and the appended
-        // definition needs a blank separator after it.
+        // as paragraph text. The label is therefore free to hoist, and the
+        // appended definition needs a blank separator after it.
         //
         // `definition_text` and `is_reference_definition` share one parser,
         // so both reject these.
         //
-        // Labels need one non-space character; unescaped `[` can never be in
-        // a label; an absent, unclosed, or unbalanced destination, an
+        // Labels need one non-space character. Unescaped `[` can never be in
+        // a label. An absent, unclosed, or unbalanced destination, an
         // unclosed angle form, and a title glued to an angle destination all
         // leave paragraph text.
         //
@@ -1126,7 +1128,7 @@ pub fn f() {
     fn crlf_no_trailing_newline_uses_crlf_guard() {
         // CRLF input without a trailing newline: the `ends_with('\n')` guard
         // in `append_definitions` must push `le` ("\r\n") before the first
-        // definition, and every `\n` in the output must be part of `\r\n`.
+        // definition. Every `\n` in the output must be part of `\r\n`.
         let input = "intro\r\nsee [A](http://x) and [A](http://x)";
         let (out, _) = fix_links(input, RUST_DOC, 1);
         let s = out.into_owned();
@@ -1220,8 +1222,8 @@ pub fn f() {
 
     #[test]
     fn empty_prefix_family_hoists_doc_marker_lines_as_markdown() {
-        // With no marker family, `///` lines are plain paragraph text: the
-        // links hoist in markdown context and the definition lands in the
+        // With no marker family, `///` lines are plain paragraph text. The
+        // links hoist in markdown context. The definition lands in the
         // trailing block, not inside a comment.
         let input = "/// see [A](http://x) and [A](http://x)\n";
         let expected = "/// see [A] and [A]\n\n[A]: http://x\n";

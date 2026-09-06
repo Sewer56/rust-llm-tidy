@@ -1,7 +1,7 @@
 //! Benchmarks for the `check` CLI operation.
 //!
 //! Measures the full lint pass over each fixture: parse the source with
-//! the Rust backend, then run its lint composition (the item rules plus
+//! the Rust backend. Then run its lint composition (the item rules plus
 //! the Ast text tier). This mirrors the CLI's `check_file` dispatch minus
 //! file I/O.
 

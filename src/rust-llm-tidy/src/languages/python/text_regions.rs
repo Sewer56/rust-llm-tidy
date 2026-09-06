@@ -9,7 +9,7 @@
 //!   class, or function becomes a [`Docstring`]-dialect region, with the
 //!   quotes stripped and the docstring's common indentation removed;
 //! - `#` comments become markdown-prose regions exactly as the comment
-//!   lexicon measured them: contiguous standalone runs join one region,
+//!   lexicon measured them. Contiguous standalone runs join one region,
 //!   the marker run and one space strip, and a trailing comment is its
 //!   own region.
 //!
@@ -19,8 +19,8 @@
 //! # Fail-closed
 //!
 //! A parse tree carrying error nodes produces no findings: a mis-scoped
-//! string in a broken tree would risk measuring string content as prose,
-//! so invalid sources stay silent instead of guessed.
+//! string in a broken tree would risk measuring string content as prose.
+//! Invalid sources stay silent instead of guessed.
 //!
 //! [`DocRegion`]: crate::text::measurement::DocRegion
 //! [`Docstring`]: crate::rules::lint::Dialect::Docstring
@@ -43,7 +43,7 @@ pub(crate) fn doc_regions(parsed: &ParseResult) -> Vec<DocRegion> {
     let mut run: Option<DocRegion> = None;
     walk(root, source, &mut regions, &mut run);
     // The module body is visited before its children, so its docstring
-    // lands ahead of leading comments that precede it in the file; a
+    // lands ahead of leading comments that precede it in the file. A
     // stable sort by first line restores source order.
     regions.sort_by_key(|region| region.lines[0].number);
     regions
@@ -52,7 +52,7 @@ pub(crate) fn doc_regions(parsed: &ParseResult) -> Vec<DocRegion> {
 /// Parses `source` with the pinned Python grammar into the shared item
 /// model.
 ///
-/// Python implements no AST ops, so the result carries zero items; the
+/// Python implements no AST ops, so the result carries zero items. The
 /// parse exists for [text_checks]' doc-region walk, which reads the tree
 /// and the source through it.
 ///
@@ -127,8 +127,8 @@ fn walk(
     }
 }
 
-/// Measures one `#` comment node: standalone comments join the open run
-/// on adjacent rows, a trailing comment (code before the marker) is its
+/// Measures one `#` comment node. Standalone comments join the open run
+/// on adjacent rows. A trailing comment (code before the marker) is its
 /// own region, and the marker run plus one space strips.
 ///
 /// The measurement matches the comment lexicon's `#`-family output.
@@ -373,12 +373,12 @@ mod tests {
 
     // A triple-quoted string that is not a first statement is string
     // content: assigned, second-statement, and block-local strings never
-    // measure, while the real module docstring and comment run do.
+    // measure. The real module docstring and comment run do.
     //
     // The in-string payloads are plain prose that crosses the paragraph
     // budget - `#`-led filler would read as headings and stay exempt if
-    // measured - so a loosened first-statement or body gate fires and
-    // fails the count.
+    // measured. A loosened first-statement or body gate therefore fires
+    // and fails the count.
     #[test]
     fn non_docstring_triple_quoted_strings_stay_quiet() {
         let payload = "filler words pad the paragraph past the two hundred forty limit";
@@ -412,7 +412,7 @@ mod tests {
     // ── Comment coverage ──
 
     // Standalone `#` comment runs measure as one paragraph per run, and
-    // a trailing comment is its own region: fragments never pool - the
+    // a trailing comment is its own region: fragments never pool. The
     // fragments join past the paragraph budget, so pooling would fire.
     #[test]
     fn comment_runs_measure_and_trailing_comments_isolate() {

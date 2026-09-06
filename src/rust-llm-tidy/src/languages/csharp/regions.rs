@@ -8,28 +8,29 @@
 //! any other directive boundary.
 //!
 //! Directives inside comments and string or character literals never start
-//! regions: the scan tracks `//` and `/* */` comments, regular and
+//! regions. The scan tracks `//` and `/* */` comments, regular and
 //! interpolated strings, verbatim strings, and raw strings across lines in
 //! one pass.
 //!
 //! Anything ambiguous fails closed to `None` so callers degrade reordering
 //! to a no-op.
 //!
-//! Ambiguous sources: unbalanced conditionals (an `#endif`/`#else`/
-//! `#elif` without a matching `#if`, or an unclosed `#if` at end of
-//! file) and a file ending inside an unterminated block comment,
+//! Ambiguous sources: unbalanced conditionals. That means an `#endif`/
+//! `#else`/`#elif` without a matching `#if`, or an unclosed `#if` at end
+//! of file. Also a file ending inside an unterminated block comment,
 //! verbatim string, or raw string.
 //!
 //! Interpolated raw strings (`$"""`-form) and multi-dollar runs (`$$"`)
-//! also reject the scan: their interpolation holes can hold nested
-//! literals with quote runs the raw scan cannot safely attribute.
+//! also reject the scan. Their interpolation holes can hold nested
+//! literals. Those carry quote runs the raw scan cannot safely attribute.
 //!
 //! Interpolation holes in classic `$"..."` and `$@"..."` strings are
 //! scanned as expression content: `{`/`}` nest by depth.
 //!
 //! A hole holding a string or character literal, or reaching the end of
-//! a line without closing, rejects the scan: the hole's expression is
-//! then outside the modeled lexicon, so the whole scan fails closed.
+//! a line without closing, rejects the scan. The hole's expression is
+//! then outside the modeled lexicon. The whole scan therefore fails
+//! closed.
 
 /// Lexical state carried across lines of the scan.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -68,9 +69,9 @@ enum LexState {
 
 /// Per-line region ids produced by [`Regions::scan`].
 ///
-/// Lines sharing an id form one region; every directive line starts a new
-/// id, so ids are assigned in increasing order and items of one id are
-/// contiguous in the file.
+/// Lines sharing an id form one region; every directive line starts a
+/// new id. Ids are assigned in increasing order, and items of one id
+/// are contiguous in the file.
 pub struct Regions {
     /// Region id per line.
     ids: Vec<u32>,
@@ -79,10 +80,12 @@ pub struct Regions {
 impl Regions {
     /// Scan `source` for preprocessor conditional regions.
     ///
-    /// Returns `None` when the source is ambiguous for region assignment:
-    /// unbalanced conditionals, interpolated raw strings, or the file
-    /// ending inside an unterminated block comment, verbatim string, or
-    /// raw string (see the module docs).
+    /// Returns `None` when the source is ambiguous for region assignment
+    /// (see the module docs).
+    ///
+    /// Ambiguity covers unbalanced conditionals, interpolated raw
+    /// strings, or the file ending inside an unterminated block comment,
+    /// verbatim string, or raw string.
     pub fn scan(source: &str) -> Option<Self> {
         let mut ids: Vec<u32> = Vec::with_capacity(source.lines().count());
         let mut state = LexState::Code;
@@ -157,8 +160,8 @@ fn directive_word(line: &str) -> Option<&str> {
 /// safely (interpolated raw strings); the caller rejects the whole scan.
 ///
 /// Scans bytes: every delimiter the scanner tracks is ASCII, and UTF-8
-/// continuation bytes never collide with ASCII, so byte scanning is safe
-/// and allocates nothing per line.
+/// continuation bytes never collide with ASCII. Byte scanning is
+/// therefore safe and allocates nothing per line.
 fn lex_line(mut state: LexState, line: &str) -> Option<LexState> {
     let bytes = line.as_bytes();
     let mut i = 0;
@@ -177,10 +180,10 @@ fn lex_line(mut state: LexState, line: &str) -> Option<LexState> {
                     i += 1;
                 }
             }
-            // Regular strings and char literals cannot span lines, so their
-            // closing quote or the line's end leaves code state; escapes
-            // keep the scan inside the literal, and only the matching
-            // quote closes it.
+            // Regular strings and char literals cannot span lines. Their
+            // closing quote or the line's end leaves code state. Escapes
+            // keep the scan inside the literal; only the matching quote
+            // closes it.
             LexState::String => {
                 if bytes[i] == b'\\' && bytes.get(i + 1).is_some() {
                     i += 2;
@@ -296,14 +299,14 @@ fn lex_line(mut state: LexState, line: &str) -> Option<LexState> {
         }
     }
     // An unterminated regular string, char literal, or classic
-    // interpolated string is invalid source; leaving its state would
+    // interpolated string is invalid source. Leaving its state would
     // swallow following directive lines, so the line's end closes it
     // (splitting conservatively).
     //
     // An interpolation hole reaching the line's end rejects the scan
-    // instead: a hole spanning lines cannot be distinguished from an
-    // unterminated one, and carrying hole state across lines could
-    // swallow real directives (fail-open).
+    // instead. A hole spanning lines cannot be distinguished from an
+    // unterminated one. Carrying hole state across lines could swallow
+    // real directives (fail-open).
     Some(match state {
         LexState::String | LexState::Char | LexState::InterpString => LexState::Code,
         LexState::InterpHole { .. } => return None,
@@ -360,8 +363,8 @@ fn code_step(bytes: &[u8], i: usize) -> Option<(LexState, usize)> {
 /// `$`/`@` prefix bytes followed by a run of at least three `"` quotes.
 ///
 /// Returns the opening quote-run length, the consumed width, and whether
-/// the prefix marks an interpolated raw string, or `None` when the bytes
-/// at `i` do not open a raw string.
+/// the prefix marks an interpolated raw string. Returns `None` when the
+/// bytes at `i` do not open a raw string.
 fn raw_string_open(bytes: &[u8], i: usize) -> Option<(usize, usize, bool)> {
     let mut j = i;
     while j < bytes.len() && (bytes[j] == b'$' || bytes[j] == b'@') && j - i < 3 {
@@ -478,9 +481,9 @@ mod tests {
     /// (`$@"` and `@$"`), so directive-position lines inside them stay
     /// inert.
     ///
-    /// The `#endif` lines sit at column 0: mis-reading either prefix
-    /// would drop the scanner back to code state, read them as real
-    /// unbalanced directives, and reject the scan.
+    /// The `#endif` lines sit at column 0. Mis-reading either prefix
+    /// would drop the scanner back to code state. It would then read
+    /// them as real unbalanced directives and reject the scan.
     #[test]
     fn scan_ignores_directives_inside_interpolated_verbatim_strings() {
         let source = concat!(
@@ -516,13 +519,13 @@ mod tests {
         assert_eq!(scan_ids(source), vec![0, 0, 0, 0, 1, 1, 2]);
     }
 
-    /// Interpolated raw strings reject the whole scan: their holes can
+    /// Interpolated raw strings reject the whole scan. Their holes can
     /// hold nested literals with quote runs the raw scan cannot safely
-    /// attribute, so callers degrade reordering to a no-op.
+    /// attribute. Callers therefore degrade reordering to a no-op.
     ///
     /// The directive pair inside the literal is balanced and sits at
-    /// column 0, so a regression that lexed the literal would return
-    /// `Some` with split regions instead of the expected `None`.
+    /// column 0. A regression that lexed the literal would therefore
+    /// return `Some` with split regions instead of the expected `None`.
     #[test]
     fn scan_rejects_interpolated_raw_strings() {
         let source = concat!(
@@ -540,13 +543,15 @@ mod tests {
     }
 
     /// A quote inside a classic interpolated string's hole is a nested
-    /// literal the scan does not model: the scan rejects so callers
+    /// literal the scan does not model. The scan rejects, so callers
     /// degrade reordering to a no-op.
     ///
     /// The directive pair after the string is balanced and sits at
-    /// column 0, so the fail-open alternative (mis-paired quotes
-    /// swallowing the directives into a phantom string) would return
-    /// `Some` with one merged region, not the expected `None`.
+    /// column 0.
+    ///
+    /// The fail-open alternative (mis-paired quotes swallowing the
+    /// directives into a phantom string) would therefore return `Some`
+    /// with one merged region, not the expected `None`.
     #[test]
     fn scan_rejects_string_literals_inside_interpolation_holes() {
         let cases = [
@@ -577,8 +582,8 @@ mod tests {
         }
     }
 
-    /// A hole reaching the line's end rejects the scan: a multi-line hole
-    /// cannot be told apart from an unterminated one, and carrying hole
+    /// A hole reaching the line's end rejects the scan. A multi-line hole
+    /// cannot be told apart from an unterminated one. Carrying hole
     /// state across lines could swallow real directives.
     #[test]
     fn scan_rejects_interpolation_holes_reaching_line_end() {
@@ -635,9 +640,9 @@ mod tests {
     /// Escaped quotes and escapes inside strings and char literals keep the
     /// scanner in-literal.
     ///
-    /// The escaped quote before `/*` pins the load-bearing path: broken
-    /// escape handling would close the string early, open a block comment,
-    /// and swallow the following real directives.
+    /// The escaped quote before `/*` pins the load-bearing path. Broken
+    /// escape handling would close the string early, open a block
+    /// comment, and swallow the following real directives.
     #[test]
     fn scan_handles_escaped_quotes() {
         let source = concat!(

@@ -89,7 +89,7 @@ pub(crate) fn check_file(
 /// Reads the source and applies the shared buffer transformation pipeline.
 ///
 /// Each pass is gated by the file's [`langs::Profile`] against the active
-/// rule selection: an op the profile never allows never runs, and every pass
+/// rule selection. An op the profile never allows never runs. Every pass
 /// strips and re-applies the profile's comment prefixes.
 ///
 /// Writes the result back via [`io::atomic_write`] unless `--dry-run` is
@@ -272,13 +272,13 @@ pub(crate) fn resolve_vis_context(
 }
 
 /// Narrow visibility in a single source file. With a [`VisContext`] (crate
-/// root discovered) the file's tree floor + crate-wide re-export guard apply,
-/// but only when the file is a node in the resolved crate module tree.
+/// root discovered) the file's tree floor + crate-wide re-export guard apply.
+/// This holds only when the file is a node in the resolved crate module tree.
 ///
 /// A file outside that tree (e.g. an integration test, example, bench, or a
-/// fixture under `tests/`) is narrowed standalone, since the crate-wide
-/// re-export set is built only from the crate `src/` dir and would miss the
-/// file's own `pub use`.
+/// fixture under `tests/`) is narrowed standalone. The crate-wide re-export
+/// set is built only from the crate `src/` dir and would miss the file's own
+/// `pub use`.
 ///
 /// Without a [`VisContext`] (no crate root) every file narrows standalone with
 /// `floor = None` and a per-file re-export guard.

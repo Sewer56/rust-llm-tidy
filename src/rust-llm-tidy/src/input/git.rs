@@ -2,8 +2,8 @@
 //!
 //! When the CLI is invoked with no path arguments, [`changed_files`]
 //! collects tracked files changed in the current `git` diff (staged +
-//! unstaged), filtered to the caller's extensions and skipping deletions
-//! and missing files.
+//! unstaged). Results are filtered to the caller's extensions and skipping
+//! deletions and missing files.
 //!
 //! Shells out to `git` via `std::process::Command`; no new dependencies.
 

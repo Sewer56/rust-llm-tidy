@@ -94,7 +94,7 @@ pub trait LanguageBackend: Sync {
     ///
     /// Returns `Ok(None)` when the source holds constructs the engine
     /// declines to reorder (parse-tree error nodes, unsupported
-    /// preprocessor shapes): callers degrade to a no-op with zero change
+    /// preprocessor shapes). Callers degrade to a no-op with zero change
     /// records instead of guessing a partial rewrite.
     ///
     /// # Errors
@@ -177,8 +177,9 @@ mod tests {
     }
 
     /// Extensions without a registered backend resolve no backend, so no AST
-    /// op can dispatch for them: code languages, the markdown family, data
-    /// formats, unmapped extensions, and the empty extension.
+    /// op can dispatch for them. Such extensions include code languages,
+    /// the markdown family, data formats, unmapped extensions, and the
+    /// empty extension.
     #[test]
     fn backendless_extensions_resolve_no_backend() {
         for ext in ["js", "md", "json", "org", ""] {

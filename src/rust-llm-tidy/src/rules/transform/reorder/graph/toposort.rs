@@ -23,8 +23,8 @@ pub enum TieBreak {
 /// Compute a topological ordering of item indices by reference dependencies.
 ///
 /// - `fns`: the list of item names (borrowed) in original file order within a
-///   phase (parameter name reflects original function-oriented use; works
-///   for any named item type).
+///   phase. The parameter name reflects original function-oriented use; it
+///   works for any named item type.
 /// - `edges`: a set of `(referencer_position, referenced_position)` pairs,
 ///   already filtered to positions within this phase.
 /// - `tie_break`: controls ordering of zero-in-degree nodes and cycle nodes.

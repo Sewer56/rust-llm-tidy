@@ -405,8 +405,8 @@ fn collect_attributes<'a>(trivia: &[Node<'a>]) -> Vec<Node<'a>> {
 /// - The trailing newline (part of the `doc_comment` node for line comments)
 ///   is stripped to match syn's `#[doc = " foo"]` value semantics.
 /// - `#[doc = "..."]` attributes: the literal's `string_content` text (sans
-///   surrounding quotes) is the value syn stores for the attribute form, so
-///   a `#[doc = " foo"]` line yields ` foo` - identical to the `/// foo`
+///   surrounding quotes) is the value syn stores for the attribute form.
+///   A `#[doc = " foo"]` line yields ` foo` - identical to the `/// foo`
 ///   form.
 ///
 /// List-form `#[doc(...)]` (e.g. `#[doc(hidden)]`) and non-`doc` attributes

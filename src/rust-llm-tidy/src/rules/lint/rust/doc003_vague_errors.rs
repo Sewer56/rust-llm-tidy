@@ -11,8 +11,8 @@ use crate::source::SourceItem;
 /// `DOC003` - `# Errors` section must name concrete error variants.
 ///
 /// Fires on `pub fn` returning `Result` when a `# Errors` section exists but
-/// none of its bullets reference a concrete variant (detected by the presence
-/// of a `::` path).
+/// none of its bullets reference a concrete variant. A variant is detected
+/// by the presence of a `::` path.
 ///
 /// # Arguments
 ///

@@ -3,8 +3,9 @@
 //! A [`DocRegion`] is a contiguous run of doc lines sharing one dialect.
 //!
 //! Producers - the lint module's own [`line_markers`] or an AST backend's
-//! doc-region walk - strip each line's comment marker and indent, keep
-//! its original line number, and group the lines into regions.
+//! doc-region walk - strip each line's comment marker and indent. Each
+//! line keeps its original line number, and the lines are grouped into
+//! regions.
 //!
 //! [`line_markers`]: super::line_markers
 
@@ -23,13 +24,13 @@ pub enum Dialect {
     /// Markdown prose: fences, indented code, exempt content, and bullet
     /// segmentation over the stripped text.
     Markdown,
-    /// XML doc comments: only the inner text of text nodes is measured,
-    /// tags and attribute values vanish, `<code>` and `<example>`
+    /// XML doc comments: only the inner text of text nodes is measured.
+    /// Tags and attribute values vanish. `<code>` and `<example>`
     /// subtrees are exempt, and paragraphs never join across tags.
     XmlDoc,
     /// Block doc comments (`/** ... */` style): leading `*` continuation
-    /// markers vanish, `@tag` lines cost only their remaining prose,
-    /// blank lines split paragraphs, and fenced or indented example
+    /// markers vanish, `@tag` lines cost only their remaining prose.
+    /// Blank lines split paragraphs, and fenced or indented example
     /// blocks are exempt.
     BlockDoc,
     /// Python docstrings: a `>>>` doctest example - its source line,
@@ -47,7 +48,7 @@ pub struct RegionLine {
     /// The stripped text: line ending, indent, and comment marker removed.
     pub text: String,
     /// Whether the line counts as indented code: a tab or 4-space lead in
-    /// the stripped text for marker languages, or a raw indent of at least
-    /// 4 spaces in marker-less files.
+    /// the stripped text for marker languages. Or a raw indent of at
+    /// least 4 spaces in marker-less files.
     pub indented: bool,
 }

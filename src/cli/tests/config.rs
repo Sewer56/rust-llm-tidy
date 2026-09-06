@@ -18,15 +18,15 @@ mod common;
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Default pipeline with `exclude: [reorder]` fixes/vis/lints but does
-/// not reorder (the input is reordered on a normal run; under `reorder` being
-/// disabled it must remain in input order).
+/// not reorder. The input is reordered on a normal run; under `reorder`
+/// being disabled it must remain in input order.
 #[test]
 fn all_excludes_reorder_rule() {
     let dir = temp_dir();
     fs::create_dir_all(&dir).unwrap();
     let tmp = dir.join("lib.rs");
     // Two top-level fns in NON-canonical order (canonical is caller before
-    // callee, per the reorder phase); here callee precedes caller so a normal
+    // callee, per the reorder phase). Here callee precedes caller so a normal
     // run would reorder them.
     fs::write(&tmp, "fn callee() {}\nfn caller() { callee(); }\n").unwrap();
     let cfg = dir.join(".rust-llm-tidy.yml");

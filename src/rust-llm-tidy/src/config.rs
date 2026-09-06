@@ -5,7 +5,7 @@
 //! processing, whitelist or blacklist specific lint/fix rules per path, and run
 //! external post-processing commands (e.g. `rustfmt`) on every processed file.
 //!
-//! All patterns are globs relative to the config file's directory and are
+//! All patterns are globs relative to the config file's directory. They are
 //! compiled with `literal_separator(true)`, so `*` does not cross `/` and
 //! `**` recurses across directories.
 //!
@@ -13,10 +13,11 @@
 //!
 //! # Hard-fail policy
 //!
-//! Any config error - bad YAML, bad glob syntax, unknown rule name, a
-//! `links` value below 1, a malformed `extensions`/`extra_extensions`
-//! entry, or a pattern matching zero files - causes [`load_and_compile`]
-//! to return `Err`.
+//! Any config error causes [`load_and_compile`] to return `Err`.
+//!
+//! Errors include bad YAML, bad glob syntax, unknown rule name, or a
+//! `links` value below 1. They also include a malformed
+//! `extensions`/`extra_extensions` entry or a pattern matching zero files.
 //!
 //! The CLI propagates that error as a non-zero exit on every command.
 //!

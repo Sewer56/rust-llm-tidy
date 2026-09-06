@@ -3,9 +3,9 @@
 //! A [`ReorderProfile`] is the per-language policy the reorder engine
 //! consumes instead of a hard-coded item-kind table.
 //!
-//! It assigns every parsed item an output phase, chooses the ordering
-//! strategy within each phase, ranks in-type members, and provides the
-//! grammar node-kind data the reference walk matches against.
+//! It assigns every parsed item an output phase and chooses the ordering
+//! strategy within each phase. It also ranks in-type members. It provides
+//! the grammar node-kind data the reference walk matches against.
 
 use super::toposort::TieBreak;
 use crate::source::{ItemKind, SourceItem};
@@ -55,8 +55,8 @@ pub enum PhaseStrategy {
 }
 
 /// The language-specific part of reference collection: which parse-tree
-/// nodes declare items, which identifier positions define names rather
-/// than use them, and which node shapes record a use.
+/// nodes declare items. It also covers which identifier positions define
+/// names rather than use them, and which node shapes record a use.
 ///
 /// [`ReferenceCollector`] orders items by who references whom, and
 /// finds references by walking a parse tree. Grammars name their nodes
@@ -116,8 +116,8 @@ pub struct DeclNamePosition {
 /// kind into a recorded use.
 ///
 /// The walk records one referenced path per match - the node itself, or
-/// the child in `path_field` - by probing the path's leftmost segment
-/// against the known item names.
+/// the child in `path_field`. It does this by probing the path's leftmost
+/// segment against the known item names.
 ///
 /// - `path_field`: the referenced path is this field's child; `None`
 ///   records the node itself.
@@ -207,9 +207,9 @@ impl ReferencePosition {
         }
     }
 
-    /// A wrapped shape: the child in `path_field` names the reference
-    /// and the node's children hold further references (a generic
-    /// type's type arguments), so the walk records, then recurses.
+    /// A wrapped shape: the child in `path_field` names the reference.
+    /// The node's children hold further references (a generic type's type
+    /// arguments), so the walk records, then recurses.
     pub const fn wrapping(kind: &'static str, path_field: &'static str) -> Self {
         Self {
             kind,

@@ -22,12 +22,13 @@ use std::fmt;
 
 /// A single edit applied by a transformation.
 ///
-/// Records are never mutated after construction, so owned
-/// text rides in `Box<str>`, operation codes ride as `&'static str` without a
+/// Records are never mutated after construction. Owned text therefore
+/// rides in `Box<str>`. Operation codes ride as `&'static str` without a
 /// heap allocation, and the kind is a byte-sized enum.
 ///
 /// Fields are declared so the 4-byte line field sits directly against the enum
-/// kind, giving 56 bytes total on 64-bit, down from 96 with `usize` + `String`.
+/// kind. This gives 56 bytes total on 64-bit, down from 96 with `usize` +
+/// `String`.
 ///
 /// # Remarks
 ///
@@ -35,8 +36,8 @@ use std::fmt;
 /// (`None` = the record has no specific line).
 ///
 /// The niche makes this 4 bytes - the same size as a plain `u32`, so the
-/// packed layout is unchanged - while the type guarantees a record can never
-/// report line 0 and serializes to `null` when there is no line.
+/// packed layout is unchanged. The type guarantees a record can never report
+/// line 0. It serializes to `null` when there is no line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Change {
     /// Optional 1-based line where the affected entity begins (`None` = no line).
@@ -58,8 +59,8 @@ pub struct Change {
 /// variants.
 ///
 /// The remaining variants are the fix-pass tags (`fence`, `link`, `table`)
-/// and the `extern crate` phrase the vis pass synthesizes, which is not an
-/// `ItemKind` (`extern` there means an `extern` block).
+/// and the `extern crate` phrase the vis pass synthesizes. That phrase is not
+/// an `ItemKind` (`extern` there means an `extern` block).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChangeKind {
     /// A parsed source item kind (e.g. `fn`, `struct`).
@@ -227,8 +228,8 @@ pub(crate) fn table_changes() -> Change {
 /// against the `source`.
 ///
 /// Visibility narrowing replaces a bare `pub` token on an item's own line with
-/// the floor visibility, so every narrowed item lands on exactly one line where
-/// `output` differs from `source`.
+/// the floor visibility. Every narrowed item therefore lands on exactly one
+/// line where `output` differs from `source`.
 ///
 /// A record is anchored at that line and names the item from the rewritten
 /// line. An already-tidy input (`output == source`) yields zero records.
@@ -261,9 +262,9 @@ pub(crate) fn vis_changes(source: &str, output: &str) -> Vec<Change> {
     changes
 }
 
-/// Extract the item kind and simple name from a narrowed output line, which
-/// begins with the floor visibility followed by the kind keyword and the item
-/// name.
+/// Extract the item kind and simple name from a narrowed output line. The
+/// line begins with the floor visibility followed by the kind keyword and the
+/// item name.
 ///
 /// Leading modifiers (`async`, `unsafe`, `default`, `extern`, and `const`
 /// before a kind keyword) are skipped so modifier-carrying items still produce

@@ -45,8 +45,8 @@ mod tests {
     /// same items, preamble, and trailer.
     ///
     /// The fixture covers a documented `pub fn` with parameters and a
-    /// `Result` return, a trait impl, a test module, and undecorated items,
-    /// so compared fields hold non-default values.
+    /// `Result` return. It also covers a trait impl, a test module, and
+    /// undecorated items. Compared fields hold non-default values.
     #[test]
     fn parse_should_match_local_parser_output() {
         let source = concat!(
@@ -94,9 +94,9 @@ mod tests {
     }
 
     /// The lint composition emits every item rule in code order per
-    /// item, then the text tier, so the sequence is not line-sorted:
-    /// `bare`'s DOC001 at line 6 follows the over-budget doc line's
-    /// TEXT002 at line 3 in source but not in output.
+    /// item, then the text tier. The sequence is not line-sorted.
+    /// In source, `bare`'s DOC001 at line 6 follows the over-budget
+    /// doc line's TEXT002 at line 3. In output, it does not.
     #[test]
     fn lint_orders_item_rules_before_the_text_tier() {
         let source = concat!(

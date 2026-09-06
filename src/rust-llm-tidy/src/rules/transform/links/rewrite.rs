@@ -8,9 +8,9 @@ use std::collections::{HashMap, HashSet};
 /// Append hoisted `[text]: url` definitions at the end of one comment block,
 /// each on a new line carrying the block's `prefix`.
 ///
-/// Ensures the block ends with a newline so the first definition starts on its
-/// own comment line (a trailing comment line without a newline still yields
-/// separate lines).
+/// Ensures the block ends with a newline. The first definition then starts
+/// on its own comment line (a trailing comment line without a newline still
+/// yields separate lines).
 ///
 /// Block definitions stay inside the comment; they never escape into
 /// surrounding code.
@@ -35,15 +35,15 @@ pub(super) fn append_block_definitions(
 }
 
 /// Append hoisted `[text]: url` definitions at the end of `buf`, each on its
-/// own line using the source's dominant line ending (`le`), so a CRLF
-/// document stays CRLF after hoisting.
+/// own line using the source's dominant line ending (`le`). A CRLF document
+/// stays CRLF after hoisting.
 ///
 /// Ensures the buffer ends with a newline so the first definition starts on
 /// its own line.
 ///
 /// Inserts a blank separator line first when the document otherwise ends in
-/// paragraph text: CommonMark forbids a link reference definition from
-/// interrupting a paragraph, so glued definitions parse as text.
+/// paragraph text. CommonMark forbids a link reference definition from
+/// interrupting a paragraph. Glued definitions parse as text.
 ///
 /// Documents already ending in a blank
 /// line or reference definition continue that block contiguously.

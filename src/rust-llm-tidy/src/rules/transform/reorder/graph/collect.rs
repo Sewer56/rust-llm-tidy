@@ -4,9 +4,10 @@
 //! `(item_index, referenced_item_index)` edges for every reference whose
 //! first segment matches a known top-level item name.
 //!
-//! All node-kind matching - which nodes declare items, which reference
-//! positions record a use, which identifier spots define names - comes
-//! from a [`ReferenceWalk`] supplied by the language's reorder profile.
+//! All node-kind matching comes from a [`ReferenceWalk`] supplied by the
+//! language's reorder profile. That covers which nodes declare items, which
+//! reference positions record a use, and which identifier spots define
+//! names.
 //!
 //! The same walk serves any grammar's tree.
 //!
@@ -16,23 +17,24 @@
 //! # Allocation strategy
 //!
 //! Identifiers are probed against the name map by writing each one into a
-//! single reused scratch [`String`] (via its `fmt::Write` impl), so the hot
-//! reference paths perform zero per-ident heap allocation.
+//! single reused scratch [`String`] (via its `fmt::Write` impl). As a
+//! result, the hot reference paths perform zero per-ident heap allocation.
 //!
 //! Edges are stored as item indices, not owned strings.
 //!
 //! # Walk model
 //!
 //! Only NAMED top-level items the walk data declares push an index onto the
-//! item stack; kinds the data omits are not pushed, so references inside
+//! item stack. Kinds the data omits are not pushed, so references inside
 //! them are ignored.
 //!
-//! Within a pushed item, every reference position the walk data declares -
-//! a bare identifier, a path shape, a wrapped type, a macro call - whose
-//! first segment names a top-level item records an edge.
+//! Within a pushed item, every reference position the walk data declares
+//! records an edge when its first segment names a top-level item. These
+//! positions are a bare identifier, a path shape, a wrapped type, and a
+//! macro call.
 //!
 //! A recorded path immediately followed by the walk's call marker counts as
-//! a macro call: an edge to a locally defined macro reverses, so the
+//! a macro call. An edge to a locally defined macro reverses, so the
 //! definition precedes its use.
 
 use super::profile::{ReferencePosition, ReferenceWalk};
@@ -41,9 +43,9 @@ use tree_sitter::{Node, Tree};
 
 /// Collects intra-file reference edges by walking a tree-sitter tree.
 ///
-/// Tracks which top-level item we are currently inside (`item_stack`, by index)
-/// and records `(referencer_index, referenced_index)` edges for every reference
-/// whose first segment matches a known top-level item name.
+/// Tracks which top-level item we are currently inside (`item_stack`, by index).
+/// It also records `(referencer_index, referenced_index)` edges for every
+/// reference whose first segment matches a known top-level item name.
 ///
 /// The `name_to_idx` map and `macro_names` set borrow `&str` slices from the
 /// parsed items (lifetime `'names`); they are only queried, never mutated.
@@ -131,9 +133,9 @@ impl<'names> ReferenceCollector<'names> {
         };
 
         match position.path_field {
-            // The referenced path is a field's child: a macro call
+            // The referenced path is a field's child. A macro call
             // records its called path once and never walks it again
-            // (re-walking it would double-record); the argument token
+            // (re-walking it would double-record). The argument token
             // tree is not scanned either.
             Some(field) => {
                 if let Some(path) = node.child_by_field_name(field) {
@@ -175,8 +177,8 @@ impl<'names> ReferenceCollector<'names> {
     }
 
     /// Record a reference edge from the current item to the item named by the
-    /// first segment of `node` (a path/type identifier), if it names a
-    /// top-level item other than the current one.
+    /// first segment of `node` (a path/type identifier). The edge is recorded
+    /// only if that item is a top-level item other than the current one.
     ///
     /// Macro calls to a local macro reverse the edge so the definition
     /// precedes its use.

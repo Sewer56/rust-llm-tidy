@@ -2,11 +2,11 @@
 //! doc-comment markup (`<summary>`, `<param name="...">`, ...).
 //!
 //! Only the inner text of text nodes is measured: tags vanish, attribute
-//! values (including `cref` and `name`) never count, and `<code>` and
+//! values (including `cref` and `name`) never count. `<code>` and
 //! `<example>` subtrees are exempt like code fences.
 //!
 //! A paragraph is a contiguous text run within one tag, so prose never
-//! joins across a tag boundary; a whitespace-only text node splits like
+//! joins across a tag boundary. A whitespace-only text node splits like
 //! a blank line.
 
 use super::region::DocRegion;
@@ -24,8 +24,8 @@ struct TagScan {
     /// Nesting depth of `<code>` and `<example>` subtrees; text inside
     /// them is exempt from both checks.
     exempt: usize,
-    /// Whether the open paragraph continues into the next text node:
-    /// true only when a text node reached the end of its line without a
+    /// Whether the open paragraph continues into the next text node.
+    /// True only when a text node reached the end of its line without a
     /// tag boundary after it.
     run_open: bool,
 }
@@ -120,7 +120,7 @@ fn scan_line(
 }
 
 /// Applies one closed tag to the scan state: `<code>` and `<example>`
-/// openings enter an exempt subtree, their closings leave it, and a
+/// openings enter an exempt subtree. Their closings leave it, and a
 /// self-closing tag opens nothing.
 fn close_tag(fragment: &str, scan: &mut TagScan) {
     let Some((name, closing, self_closing)) = tag_kind(fragment) else {

@@ -11,10 +11,11 @@
 //!
 //! # Reorder degradation
 //!
-//! The reorder permutation declines a source when the parse tree
-//! carries error nodes, the preprocessor region scan rejects the
-//! source, two top-level declarations share a row, or the text uses
-//! CR-styled line endings.
+//! The reorder permutation declines a source under any of four
+//! conditions. The parse tree carries error nodes, or the
+//! preprocessor region scan rejects the source. Two top-level
+//! declarations share a row, or the text uses CR-styled line
+//! endings.
 //!
 //! An unsafe or unrepresentable construct degrades to a no-op rather
 //! than a guessed rewrite.
