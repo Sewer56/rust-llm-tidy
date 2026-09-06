@@ -174,7 +174,7 @@ fn collect_item_entries(root: tree_sitter::Node<'_>) -> Vec<RawEntry<'_>> {
         } else if let Some(entry) = item_entry_for(child) {
             entries.push(RawEntry {
                 body: entry,
-                pending: std::mem::take(&mut pending),
+                pending: core::mem::take(&mut pending),
             });
         } else {
             // Unrecognized non-item top-level node (e.g. a stray

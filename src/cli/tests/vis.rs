@@ -5,10 +5,10 @@
 //! runs the built CLI binary against fixture files in `tests/fixtures/vis/`.
 
 use common::binary;
+use core::sync::atomic::{AtomicU64, Ordering};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 mod common;
 

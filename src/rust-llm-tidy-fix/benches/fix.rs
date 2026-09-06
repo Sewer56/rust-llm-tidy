@@ -43,16 +43,16 @@ fn fix_pass(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(canonical.len() as u64));
         group.bench_function(format!("{name}/aligned"), |bencher| {
             bencher.iter(|| {
-                let out = fix_tables(std::hint::black_box(&canonical), DOC_PREFIXES);
-                std::hint::black_box(out);
+                let out = fix_tables(core::hint::black_box(&canonical), DOC_PREFIXES);
+                core::hint::black_box(out);
             });
         });
 
         group.throughput(Throughput::Bytes(misaligned.len() as u64));
         group.bench_function(format!("{name}/misaligned"), |bencher| {
             bencher.iter(|| {
-                let out = fix_tables(std::hint::black_box(&misaligned), DOC_PREFIXES);
-                std::hint::black_box(out);
+                let out = fix_tables(core::hint::black_box(&misaligned), DOC_PREFIXES);
+                core::hint::black_box(out);
             });
         });
     }

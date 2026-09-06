@@ -25,7 +25,7 @@ fn lint_pass(c: &mut Criterion) {
             bencher.iter(|| {
                 let parsed = RustBackend.parse(source).expect("fixture must parse");
                 let diagnostics = RustBackend.lint(&parsed);
-                std::hint::black_box(diagnostics);
+                core::hint::black_box(diagnostics);
             });
         });
     }

@@ -488,7 +488,7 @@ mod tests {
     use super::*;
     use std::io::Write;
 
-    static COMPILE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    static COMPILE_COUNTER: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 
     /// Write a YAML config and a sibling matching file under a temp dir, then
     /// load+compile. Returns the `CompiledConfig`. The temp dir is NOT cleaned
@@ -497,7 +497,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "rlt-cfg-unit-{}-{}",
             std::process::id(),
-            COMPILE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed,),
+            COMPILE_COUNTER.fetch_add(1, core::sync::atomic::Ordering::Relaxed,),
         ));
         std::fs::create_dir_all(&dir).unwrap();
         for (name, body) in files {

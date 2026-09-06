@@ -82,7 +82,7 @@
 //! extension must pass.
 
 use anyhow::bail;
-use std::cmp::Ordering;
+use core::cmp::Ordering;
 use std::collections::HashSet;
 
 /// Data formats: no ops.
@@ -763,11 +763,11 @@ mod tests {
     /// Write `yaml` as a config and return the allowed list for it plus the
     /// given CLI `--extension` values.
     fn allowed_for(yaml: &str, cli_exts: &[&str]) -> Vec<String> {
-        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        static SEQ: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
             "rlt-langs-allow-{}-{}",
             std::process::id(),
-            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            SEQ.fetch_add(1, core::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let cfg_path = dir.join(".rust-llm-tidy.yml");

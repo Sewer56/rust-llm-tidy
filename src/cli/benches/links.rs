@@ -30,7 +30,7 @@ fn link_pass(c: &mut Criterion) {
         group.bench_function(*name, |bencher| {
             bencher.iter(|| {
                 let out = fix_links(source, DOC_PREFIXES, 1);
-                std::hint::black_box(out);
+                core::hint::black_box(out);
             });
         });
     }

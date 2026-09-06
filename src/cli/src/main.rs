@@ -225,7 +225,7 @@ pub(crate) fn fix_file(
     let mut out: String = source.clone();
     let mut change_records = Vec::new();
     if profile.op_enabled("tables", enabled, disabled) {
-        let prior = std::mem::take(&mut out);
+        let prior = core::mem::take(&mut out);
         match fix::fix_tables(&prior, profile.prefixes) {
             Cow::Owned(after) => {
                 change_records.push(changes::table_changes());
@@ -235,7 +235,7 @@ pub(crate) fn fix_file(
         }
     }
     if profile.op_enabled("fences", enabled, disabled) {
-        let prior = std::mem::take(&mut out);
+        let prior = core::mem::take(&mut out);
         let outcome = fix::fix_fences(&prior, profile.prefixes);
         match outcome.text {
             Cow::Owned(after) => {
@@ -246,7 +246,7 @@ pub(crate) fn fix_file(
         }
     }
     if profile.op_enabled("links", enabled, disabled) {
-        let prior = std::mem::take(&mut out);
+        let prior = core::mem::take(&mut out);
         let result = fix::fix_links(&prior, profile.prefixes, links_min_occurrences);
         match result {
             (Cow::Owned(after), pairs) => {
@@ -442,14 +442,14 @@ pub(crate) fn vis_file(
                 // re-export set would miss this file's own `pub use`, so narrow
                 // standalone with a per-file re-export guard instead.
                 let pf = ParsedFile::new(path.to_path_buf(), source.clone())?;
-                let per_file = collect_crate_reexports(std::iter::once(&pf));
+                let per_file = collect_crate_reexports(core::iter::once(&pf));
                 narrow_vis_in_tree(&source, None, &per_file)
             }
         }
         None => {
             // Standalone: build a per-file re-export guard from this file only.
             let pf = ParsedFile::new(path.to_path_buf(), source.clone())?;
-            let reexports = collect_crate_reexports(std::iter::once(&pf));
+            let reexports = collect_crate_reexports(core::iter::once(&pf));
             narrow_vis_in_tree(&source, None, &reexports)
         }
     }

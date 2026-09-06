@@ -77,6 +77,13 @@ try {
 
     Write-Host "Formatting..."
     Invoke-LoggedCommand "cargo" @("fmt", "--all", "--quiet")
+
+    Write-Host "Tidy..."
+    if (Get-Command rust-llm-tidy -ErrorAction SilentlyContinue) {
+        Invoke-LoggedCommand "rust-llm-tidy" @()
+    } else {
+        Write-Host "Skipping; rust-llm-tidy not installed. Install: cargo install rust-llm-tidy-cli"
+    }
 } finally {
     $env:RUSTDOCFLAGS = $originalRustdocFlags
     Set-Location $originalDir

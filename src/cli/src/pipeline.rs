@@ -550,9 +550,9 @@ fn process_one(
 #[cfg(test)]
 mod tests {
     use super::dedup_inputs;
+    use core::sync::atomic::{AtomicU64, Ordering};
     use std::fs;
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
 
     static TEST_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
 
