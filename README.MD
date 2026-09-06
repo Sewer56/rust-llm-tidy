@@ -225,28 +225,6 @@ Library entry points:
 See [architecture and migration] for module ownership, preview semantics and
 retired crate imports.
 
-## Git Hook (optional)
-
-Auto-tidy staged `.rs` files on commit (fix + reorder + vis + lints +
-rustfmt). One-time setup per clone:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-`pre-commit` is a dispatcher that runs every executable `*.sh` in
-`.githooks/pre-commit.d/` in lexicographic order - name files with a number
-prefix (`10-`, `20-`, ...) to fix the run order.
-
-Add hooks by dropping files there. Works on Linux, macOS, and Windows
-(Git for Windows).
-
-Bundled hooks, in run order:
-
-- `10-tidy-rust.sh` - runs `rust-llm-tidy` on staged `.rs` files (fix,
-  reorder, vis, lints), then `rustfmt` via the config `post_process` step. Uses
-  an installed `rust-llm-tidy` binary if present, else `cargo run`.
-
 ## GitHub Action
 
 [`rust-llm-tidy-action`] runs `rust-llm-tidy` in CI on every allowed
