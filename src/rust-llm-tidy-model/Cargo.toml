@@ -11,6 +11,9 @@ keywords = ["rust", "tree-sitter", "ast", "source", "model"]
 # categories (fixed list): https://crates.io/categories
 categories = ["development-tools"]
 
+[lints]
+workspace = true
+
 [dependencies]
 anyhow = "1"
 tree-sitter = "0.26"

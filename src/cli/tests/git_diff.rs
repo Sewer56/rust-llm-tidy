@@ -6,9 +6,9 @@
 //! without git skip rather than fail (CI always has git).
 
 use common::binary;
+use core::sync::atomic::{AtomicU64, Ordering};
 use std::fs;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 mod common;
 

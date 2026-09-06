@@ -41,7 +41,7 @@ fn reorder_pass(c: &mut Criterion) {
                     .expect("the Rust backend always reorders");
                 let output = emit(&parsed, &permutation).expect("emit must succeed");
                 safety::verify_line_preservation(source, &output).expect("lines must be preserved");
-                std::hint::black_box(output);
+                core::hint::black_box(output);
             });
         });
     }

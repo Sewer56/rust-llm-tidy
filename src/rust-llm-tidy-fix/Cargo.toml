@@ -12,6 +12,9 @@ keywords = ["markdown", "table", "fence", "fix"]
 # categories (fixed list): https://crates.io/categories
 categories = ["command-line-utilities"]
 
+[lints]
+workspace = true
+
 # Benchmark for the `fix_tables` pass over embedded real-world fixtures.
 # `harness = false` enables the criterion entry point in `benches/fix.rs`.
 [[bench]]

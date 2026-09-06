@@ -106,7 +106,7 @@ pub fn narrow_vis_in_tree<'a>(
 /// Capacity is preallocated with that slack to keep `replace_range` from
 /// reallocating.
 fn apply_edits(source: &str, mut edits: Vec<(usize, usize, Cow<'_, str>)>) -> String {
-    edits.sort_by_key(|b| std::cmp::Reverse(b.0));
+    edits.sort_by_key(|b| core::cmp::Reverse(b.0));
     let mut out = String::with_capacity(source.len() + edits.len() * 8);
     out.push_str(source);
     for (start, end, repl) in edits {
@@ -287,7 +287,7 @@ mod tests {
                 source: source.to_string(),
                 tree: parsed.syntax_tree().clone(),
             };
-            let reexports = collect_crate_reexports(std::iter::once(&file));
+            let reexports = collect_crate_reexports(core::iter::once(&file));
             let mut edits = Vec::new();
 
             super::walk(
@@ -321,7 +321,7 @@ mod tests {
     /// call it to cover inline narrowing, floors, and the re-export guard.
     fn narrow<'a>(src: &'a str) -> anyhow::Result<std::borrow::Cow<'a, str>> {
         let pf = parse(src);
-        let reexports = collect_crate_reexports(std::iter::once(&pf));
+        let reexports = collect_crate_reexports(core::iter::once(&pf));
         narrow_vis_in_tree(src, None, &reexports)
     }
 
@@ -477,7 +477,7 @@ mod tests {
         // f is re-exported somewhere in the crate -> must stay pub (soundness).
         // Build via the real builder so no test-only ctor is needed on ReexportSet.
         let reexports =
-            collect_crate_reexports(std::iter::once(&parse("pub use crate::foo::f;\n")));
+            collect_crate_reexports(core::iter::once(&parse("pub use crate::foo::f;\n")));
         let src = "pub fn f() {}\n";
         let out = narrow_vis_in_tree(src, Some("pub(crate)"), &reexports).unwrap();
         assert!(

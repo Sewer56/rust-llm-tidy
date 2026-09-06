@@ -243,7 +243,7 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
                         close_run(&mut run, &mut regions);
                         regions.push(DocRegion {
                             dialect: Dialect::BlockDoc,
-                            lines: std::mem::take(&mut block_lines),
+                            lines: core::mem::take(&mut block_lines),
                         });
                         state = State::Code;
                         seg_start = i + close.len();
@@ -466,7 +466,7 @@ fn heredoc_open(
     while matches!(bytes.get(j), Some(&b) if ident_byte(b)) {
         j += 1;
     }
-    let word = std::str::from_utf8(&bytes[word_start..j]).expect("ASCII identifier");
+    let word = core::str::from_utf8(&bytes[word_start..j]).expect("ASCII identifier");
     if let Some(q) = quote {
         if bytes.get(j) != Some(&q) {
             return None;

@@ -1,6 +1,7 @@
 //! The [`LanguageBackend`] contract and the extension registry that resolves
 //! a backend per source-file extension.
 
+use core::cmp::Ordering;
 use csharp::CSharpBackend;
 pub use csharp::CanThrowIndex;
 use python::PythonBackend;
@@ -8,7 +9,6 @@ use rust::RustBackend;
 use rust_llm_tidy_lint::Diagnostic;
 use rust_llm_tidy_model::parse::ParseResult;
 use rust_llm_tidy_reorder::reorder::Permutation;
-use std::cmp::Ordering;
 
 mod csharp;
 pub(crate) mod python;
@@ -81,7 +81,8 @@ pub trait LanguageBackend: Sync {
 
     /// Lint `parsed` using C# throw facts from `index` when supported.
     ///
-    /// Returns the same diagnostics as [`Self::lint`] for backends without indexed checks.
+    /// Returns the same diagnostics as [`Self::lint`] for backends
+    /// without indexed checks.
     fn lint_indexed(&self, parsed: &ParseResult, _index: &CanThrowIndex) -> Vec<Diagnostic> {
         self.lint(parsed)
     }

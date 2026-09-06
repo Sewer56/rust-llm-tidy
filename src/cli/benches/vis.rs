@@ -35,7 +35,7 @@ fn vis_crate_aware(c: &mut Criterion) {
                     let floor = tree.floor_for(std::path::Path::new(path));
                     let out =
                         narrow_vis_in_tree(src, floor, &reexports).expect("fixture must parse");
-                    std::hint::black_box(out);
+                    core::hint::black_box(out);
                 }
             });
         });

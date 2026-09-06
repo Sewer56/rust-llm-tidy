@@ -590,10 +590,10 @@ fn replay_lines(results: &[PerFileOut]) -> impl Iterator<Item = &str> {
 #[cfg(test)]
 mod tests {
     use super::dedup_inputs;
+    use core::sync::atomic::{AtomicU64, Ordering};
     use rust_llm_tidy_lint::{Diagnostic, Severity};
     use std::fs;
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
 
     static TEST_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
 

@@ -15,12 +15,12 @@
 
 use ahash::{AHashMap, AHashSet};
 pub use collect::ReferenceCollector;
+use core::ops::Range;
 pub use profile::{
     DeclNamePosition, PhaseContext, PhaseStrategy, ReferencePosition, ReferenceWalk, ReorderProfile,
 };
 use rust_llm_tidy_model::parse::{ItemKind, ParseResult, TypeMember, VisibilityTier};
 use std::collections::BTreeMap;
-use std::ops::Range;
 pub use toposort::{TieBreak, toposort};
 
 mod collect;

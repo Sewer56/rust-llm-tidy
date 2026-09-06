@@ -9,11 +9,11 @@
 //! `rust-llm-tidy-lint` crate.
 
 use crate::changes::Change;
+use core::num::NonZeroU32;
 use rust_llm_tidy_lint::{Diagnostic, Severity};
 use serde::Serialize;
 use std::borrow::Cow;
 use std::io::Write;
-use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
 /// A serializable record that is either a lint finding or a dry-run change

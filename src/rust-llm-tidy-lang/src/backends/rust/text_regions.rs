@@ -238,7 +238,7 @@ fn content_fragments<'a>(
     first: tree_sitter::Node<'a>,
 ) -> impl Iterator<Item = tree_sitter::Node<'a>> {
     let mut next = Some(first);
-    std::iter::from_fn(move || {
+    core::iter::from_fn(move || {
         while let Some(node) = next {
             next = node.next_named_sibling();
             if node.kind() == "string_content" {

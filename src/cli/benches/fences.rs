@@ -30,7 +30,7 @@ fn fence_pass(c: &mut Criterion) {
         group.bench_function(*name, |bencher| {
             bencher.iter(|| {
                 let out = fix_fences(source, DOC_PREFIXES);
-                std::hint::black_box(out);
+                core::hint::black_box(out);
             });
         });
     }

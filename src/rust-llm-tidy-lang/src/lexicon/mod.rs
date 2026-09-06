@@ -70,10 +70,10 @@
 //!   reject predicates, and the extension lookup.
 //! - `scan` - the fail-closed scanner.
 
+use core::cmp::Ordering;
 use families::{LEXED_EXTENSIONS, Lexicon};
 use rust_llm_tidy_lint::Diagnostic;
 use rust_llm_tidy_lint::check::run_region_checks;
-use std::cmp::Ordering;
 
 mod families;
 mod scan;
