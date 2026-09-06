@@ -12,6 +12,24 @@ use crate::text::measurement::{Document, StrippedLine};
 const ADJECTIVAL_PARTICIPLES: &[&str] = &["required", "deprecated"];
 /// Be-verbs whose immediate participle neighbor marks a passive voice.
 const BE_VERBS: &[&str] = &["is", "are", "was", "were", "be", "been", "being"];
+/// Valid participles ending in `en`; bare `en` words such as `open` and
+/// `ten` are state adjectives or nouns, not passives.
+const EN_PARTICIPLES: &[&str] = &[
+    "beaten",
+    "broken",
+    "chosen",
+    "driven",
+    "eaten",
+    "fallen",
+    "forgotten",
+    "given",
+    "hidden",
+    "proven",
+    "rewritten",
+    "risen",
+    "taken",
+    "written",
+];
 /// Participles that do not end in `ed` or `en` but still form passives.
 const IRREGULAR_PARTICIPLES: &[&str] = &[
     "built", "brought", "caught", "held", "kept", "left", "made", "met", "paid", "put", "run",
@@ -70,9 +88,8 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
 /// Whether `diag` is a TEXT007 narration-marker finding.
 ///
 /// Callers with the checked file's path (the pipeline lint pass) use
-/// this to suppress marker findings in release and migration notes
-/// while passive findings still fire there. This module never sees
-/// paths itself.
+/// this to suppress marker findings in release and migration notes;
+/// passive findings still fire there. This module never sees paths.
 pub(crate) fn is_narration_marker(diag: &Diagnostic) -> bool {
     diag.code == CODE_PASSIVE_NARRATION && diag.message.starts_with(NARRATION_MARKER_SUMMARY)
 }
@@ -184,7 +201,9 @@ fn is_participle(word: &str) -> bool {
     if matches_any(word, ADJECTIVAL_PARTICIPLES) {
         return false;
     }
-    ends_with_ci(word, "ed") || ends_with_ci(word, "en") || matches_any(word, IRREGULAR_PARTICIPLES)
+    ends_with_ci(word, "ed")
+        || matches_any(word, EN_PARTICIPLES)
+        || matches_any(word, IRREGULAR_PARTICIPLES)
 }
 
 /// Whether `word` ends with `suffix`, ASCII-case-insensitively.
@@ -282,6 +301,26 @@ mod tests {
     fn text_checks_silent_on_adjectival_participles() {
         assert!(one_line("The flag is required for streaming.").is_empty());
         assert!(one_line("This method is deprecated.").is_empty());
+    }
+
+    // Bare `en` words are state adjectives or nouns, never passives.
+    #[test]
+    fn text_checks_silent_on_non_participle_en_words() {
+        assert!(one_line("The door is open.").is_empty());
+        assert!(one_line("The count is ten.").is_empty());
+        assert!(one_line("The word is often misspelled.").is_empty());
+    }
+
+    // Controlled `en` participles after a be-verb still warn.
+    #[test]
+    fn text_checks_warn_on_en_participles() {
+        let found = one_line("The report was written by the tool.");
+        assert_eq!(found.len(), 1);
+        assert!(
+            found[0]
+                .message
+                .starts_with("passive construction: `was written`.")
+        );
     }
 
     // The passive summary quotes the matched be-verb and participle.
