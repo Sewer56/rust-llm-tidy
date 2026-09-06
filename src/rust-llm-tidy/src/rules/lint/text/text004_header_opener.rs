@@ -5,6 +5,9 @@ use crate::reporting::diagnostic::{Diagnostic, Severity};
 use crate::rules::registry::CODE_HEADER_OPENER;
 use crate::text::measurement::{Document, Paragraph, StrippedLine};
 
+/// Openers with more sentences than this fire TEXT004.
+const OPENER_SENTENCE_LIMIT: usize = 2;
+
 /// TEXT004 diagnostics for `doc`: one Warning per opener paragraph with
 /// three or more sentences.
 ///
@@ -25,8 +28,11 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
         }
 
         let sentences = sentence_count(&para.text);
-        if sentences > 2 {
-            let summary = format!("header opener has {sentences} sentences.");
+        if sentences > OPENER_SENTENCE_LIMIT {
+            let summary = format!(
+                "opener paragraph has {sentences} sentences; maximum is \
+                 {OPENER_SENTENCE_LIMIT}."
+            );
             diags.push(opener_diagnostic(para, &summary));
         }
     }
@@ -60,8 +66,13 @@ fn is_opener(doc: &Document, headings: &[usize], index: usize, para: &Paragraph)
 /// TEXT004 Warning for one opener paragraph, reported at its first line.
 fn opener_diagnostic(para: &Paragraph, summary: &str) -> Diagnostic {
     let bullets = [
-        "Reduce the opener to a single capability line.".to_string(),
-        "Move detail into bullets holding one fact each.".to_string(),
+        "Keep the opener brief so readers can find the main point quickly.".to_string(),
+        "Lead with the main point, ideally in one short sentence.".to_string(),
+        "Move supporting details below the opener without losing necessary \
+         information."
+            .to_string(),
+        "Use bullets for distinct facts, one fact per bullet.".to_string(),
+        "Keep a connected explanation in a separate short paragraph.".to_string(),
     ];
     Diagnostic {
         severity: Severity::Warning,
@@ -293,7 +304,8 @@ mod tests {
 
     // ── Diagnostic shape and message ──
 
-    // The summary reports the sentence count with the guidance bullets.
+    // The summary reports the sentence count against the limit, with the
+    // guidance bullets.
     #[test]
     fn text_checks_message_states_sentence_cause_and_guidance() {
         let source = "# T\n\nOne. Two. Three.\n";
@@ -301,9 +313,9 @@ mod tests {
         let found = codes(&diags, CODE_HEADER_OPENER);
         assert_eq!(found.len(), 1);
         let msg = &found[0].message;
-        assert!(msg.starts_with("header opener has 3 sentences.\n"));
-        assert!(msg.contains("single capability line"));
-        assert!(msg.contains("one fact"));
+        assert!(msg.starts_with("opener paragraph has 3 sentences; maximum is 2.\n"));
+        assert!(msg.contains("main point"));
+        assert!(msg.contains("one fact per bullet"));
     }
 
     // The sentence count itself is unit-pinned on the helper.
