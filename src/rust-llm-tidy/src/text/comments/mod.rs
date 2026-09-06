@@ -1,4 +1,4 @@
-//! Fail-closed comment lexicon: doc regions for the TEXT001/TEXT002 text
+//! Fail-closed comment lexicon: doc regions for the TEXT* text
 //! checks of the `//`, `#`, `--`, `;`, and `%` comment families.
 //!
 //! [`text_checks`] walks the raw source once, tracking line-comment
@@ -93,7 +93,7 @@ pub fn covers(ext: &str) -> bool {
     lexicon_for(ext).is_some()
 }
 
-/// Runs the TEXT001/TEXT002 text checks over `source`'s comments, as lexed
+/// Runs the TEXT* text checks over `source`'s comments, as lexed
 /// for `ext`'s comment family.
 ///
 /// Extensions without a lexicon entry and ambiguous sources (see the
@@ -107,8 +107,9 @@ pub fn covers(ext: &str) -> bool {
 ///
 /// # Returns
 ///
-/// Diagnostics in source order: TEXT001 per over-limit paragraph, then
-/// TEXT002 per over-limit line.
+/// Diagnostics grouped by rule, in source order within each group:
+/// TEXT001 per over-limit paragraph, then TEXT002 per over-limit line,
+/// then TEXT003 per over-limit sentence.
 pub fn text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
     match lexicon_for(ext).and_then(|lex| scan::scan(source, lex)) {
         Some(regions) => run_region_checks(regions),

@@ -3,7 +3,7 @@
 //! The parser emits shared source items with type and namespace members.
 //! Lint and ordering policies live under `crate::rules`.
 //!
-//! The TEXT001/TEXT002 text checks ride the same lint composition from
+//! The TEXT* text checks ride the same lint composition from
 //! [`text_regions`]' doc-region walk of the same parse.
 //!
 //! [`parse`]: parse::parse

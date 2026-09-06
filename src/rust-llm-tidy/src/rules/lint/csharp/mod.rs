@@ -13,10 +13,10 @@
 //! non-private throwing methods and constructors the closure flags.
 //!
 //! Every rule then runs over the collected facts in the same code order
-//! the Rust backend emits (DOC001 through DOC006, then TEST001).
+//! the Rust backend emits (DOC*, then TEST001).
 //!
-//! The text checks (TEXT001, TEXT002) follow from the same parse's doc
-//! regions.
+//! The text checks (TEXT*) follow from the same
+//! parse's doc regions.
 //!
 //! # Semantics
 //!
@@ -33,7 +33,7 @@
 //! - DOC006: placeholder markers (`TODO`/`FIXME`/`TBD`) in doc comments.
 //! - TEST001: `TestMethod`/`Test`/`Fact`/`Theory`-marked methods with
 //!   discouraged (`test_*`, `case_*`, `test` + digits) names.
-//! - TEXT001/TEXT002: `///` doc-comment prose measured with the XML doc
+//! - TEXT*: `///` doc-comment prose measured with the XML doc
 //!   dialect; findings carry original file lines. The dialect rules live
 //!   with the lint module's measuring core; see [`text_regions`]
 //!   producer.
@@ -89,8 +89,8 @@ impl Declaration<'_> {
 }
 
 /// Run every C# check over `parsed` and return all diagnostics in document
-/// order: the declaration checks first, then the text checks (TEXT001,
-/// TEXT002) over the same parse's doc regions.
+/// order: the declaration checks first, then the text checks (TEXT*)
+/// over the same parse's doc regions.
 ///
 /// Returns no diagnostics when the parse tree carries error nodes: a
 /// broken tree would report findings against misread declarations, so the

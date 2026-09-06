@@ -1,5 +1,5 @@
 //! The C# doc-region producer: `///` comment runs as XML-doc regions for
-//! the TEXT001/TEXT002 text checks.
+//! the TEXT* text checks.
 //!
 //! One depth-first walk collects every `///` comment node of the parse
 //! tree; consecutive comment rows group into one [`DocRegion`] per doc
@@ -17,7 +17,7 @@ use crate::rules::lint::run_region_checks;
 use crate::source::ParseResult;
 use crate::text::measurement::{Dialect, DocRegion, RegionLine};
 
-/// Runs the TEXT001/TEXT002 text checks over `parsed`'s `///` doc runs,
+/// Runs the TEXT* text checks over `parsed`'s `///` doc runs,
 /// measured with the XML doc dialect.
 ///
 /// The findings carry original 1-based file lines and ride the same lint
@@ -223,20 +223,21 @@ Last line.\";
     /// when joined stay silent inside their own tags.
     #[test]
     fn paragraphs_never_join_across_tags() {
-        let chunk = "filler text ".repeat(4);
-        let chunk = chunk.trim();
+        // Each chunk ends a sentence, so TEXT003 stays quiet and any
+        // diagnostic here would be the paragraph join the test denies.
+        let chunk = format!("{}.", "filler text ".repeat(4).trim());
         let doc_lines = [
             "<summary>",
-            chunk,
-            chunk,
-            chunk,
-            chunk,
+            &chunk,
+            &chunk,
+            &chunk,
+            &chunk,
             "</summary>",
             "<param name=\"x\">",
-            chunk,
-            chunk,
-            chunk,
-            chunk,
+            &chunk,
+            &chunk,
+            &chunk,
+            &chunk,
             "</param>",
         ];
         let stripped = doc_lines.join(" ");
@@ -253,7 +254,9 @@ Last line.\";
     /// paragraphs never join across the member between them.
     #[test]
     fn code_gaps_end_doc_runs() {
-        let line = "word ".repeat(14);
+        // Each line ends a sentence, keeping TEXT003 quiet; the join the
+        // test denies is the TEXT001 paragraph join.
+        let line = format!("{}.", "word ".repeat(14).trim());
         let run = format!("/// {line}\n/// {line}\n/// {line}\n");
         let source = format!("{run}public void A() {{ }}\n{run}public void B() {{ }}\n");
 

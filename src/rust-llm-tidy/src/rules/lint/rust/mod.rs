@@ -1,4 +1,4 @@
-//! The Rust item lint rules: DOC001-DOC006 and TEST001.
+//! The Rust item lint rules: DOC* and TEST001.
 //!
 //! One module per rule, named by lint code: [`doc001_missing_docs`]
 //! through [`test001_test_naming`]. Each rule is a pure function over a
@@ -143,7 +143,7 @@ fn is_pub_result_fn(item: &SourceItem) -> bool {
 /// Run every Rust item rule over `parsed` and return all diagnostics.
 ///
 /// Diagnostics are returned in source order (by item, then by rule in
-/// code order: DOC001-DOC006, then TEST001). The returned `Vec` is empty
+/// code order: DOC*, then TEST001). The returned `Vec` is empty
 /// when every item passes every rule.
 ///
 /// # Arguments

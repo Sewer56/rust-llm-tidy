@@ -1,5 +1,5 @@
-//! The text rules: TEXT001 and TEXT002 over one measured document,
-//! in source order.
+//! The text rules: TEXT001, TEXT002, and TEXT003 over one measured
+//! document, in source order.
 //!
 //! [`Document`] is the measured input from the plaintext pipeline.
 //!
@@ -10,14 +10,16 @@ use crate::text::measurement::Document;
 
 mod text001_paragraph_size;
 mod text002_line_length;
+mod text003_sentence_length;
 
-/// TEXT001 then TEXT002 diagnostics for one measured document.
+/// TEXT001, TEXT002, and TEXT003 diagnostics for one measured document.
 ///
 /// Called by the `run_text_checks` and `run_region_checks` entry points
 /// in [`crate::rules::registry`].
 pub(crate) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     let mut diags = text001_paragraph_size::diagnostics(doc);
     diags.extend(text002_line_length::diagnostics(doc));
+    diags.extend(text003_sentence_length::diagnostics(doc));
     diags
 }
 

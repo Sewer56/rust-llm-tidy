@@ -36,7 +36,7 @@ include:
       # - vis
 
       # Level 3: all documentation and test-name checks.
-      # `lints` enables DOCXXX, TEXTXXX, and TESTXXX codes together.
+      # `lints` enables the DOC*, TEXT*, and TEST* codes together.
       # Uncomment to enable the complete lint pass.
       # - lints
 
@@ -50,4 +50,5 @@ include:
       # - DOC006
       # - TEXT001
       # - TEXT002
+      # - TEXT003
       # - TEST001
