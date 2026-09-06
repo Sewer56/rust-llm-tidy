@@ -1,5 +1,7 @@
 After changes, find and run `.llm/verify.{sh,ps1}` to test + lint.
 Print all output.
+Use the local CLI, not global `rust-llm-tidy`.
+Invoke via `cargo run -p rust-llm-tidy-cli`.
 
 Performance:
 
