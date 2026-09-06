@@ -9,7 +9,9 @@
 //! Parsing is performed with tree-sitter (the `tree-sitter-rust` grammar),
 //! which yields byte offsets directly - no line/column conversion is needed.
 
-use self::classify::{PendingTrivia, classify_item, is_attachable, is_transparent_comment};
+use self::classify::{
+    PendingTrivia, classify_item, is_attachable, is_transparent_comment, result_error_type,
+};
 use crate::source::{ParseResult, SourceItem};
 pub(super) use classify::{doc_attribute_content, is_outer_doc};
 
@@ -136,22 +138,25 @@ fn build_items(raw: &[RawEntry<'_>], source: &str, line_starts: &[usize]) -> Vec
         let start_line = line_of(line_starts, attached_start);
 
         let class = classify_item(body, source, &entry.pending);
-        out.push(SourceItem::new(
-            start,
-            end,
-            start_line,
-            class.kind,
-            class.name,
-            class.impl_target,
-            class.is_test_module,
-            class.is_inline,
-            class.is_trait_impl,
-            class.visibility,
-            class.doc_comments,
-            class.returns_result,
-            class.params,
-            class.is_test_fn,
-        ));
+        out.push(
+            SourceItem::new(
+                start,
+                end,
+                start_line,
+                class.kind,
+                class.name,
+                class.impl_target,
+                class.is_test_module,
+                class.is_inline,
+                class.is_trait_impl,
+                class.visibility,
+                class.doc_comments,
+                class.returns_result,
+                class.params,
+                class.is_test_fn,
+            )
+            .with_result_error_type(result_error_type(body, source)),
+        );
         prev_end = end;
     }
     out

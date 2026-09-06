@@ -351,6 +351,28 @@ pub(super) fn is_transparent_comment(node: Node) -> bool {
     }
 }
 
+/// Final path segment of the `Result` return type's error argument.
+///
+/// `None` when:
+///
+/// - `body` has no return type.
+/// - The return type is not a generic type with at least two arguments.
+/// - The error argument is not a plain path (tuple, array, reference).
+///
+/// The caller gates on [`returns_result`].
+pub(super) fn result_error_type(body: Node<'_>, source: &str) -> Option<String> {
+    let rt = body.child_by_field_name("return_type")?;
+    if rt.kind() != "generic_type" {
+        return None;
+    }
+    let args = rt.child_by_field_name("type_arguments")?;
+    if args.named_child_count() < 2 {
+        return None;
+    }
+    let error = args.named_child(1)?;
+    last_type_segment(error, source).map(str::to_string)
+}
+
 /// True when a `line_comment`/`block_comment` node is an OUTER doc comment
 /// (`///` or `/** */`), i.e. it has an `outer` field.
 ///

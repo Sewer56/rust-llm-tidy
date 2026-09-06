@@ -20,6 +20,7 @@ mod doc003_vague_errors;
 mod doc004_missing_arguments;
 mod doc005_undocumented_param;
 mod doc006_placeholder;
+mod doc008_error_variant_order;
 mod test001_test_naming;
 
 /// Accepted rustdoc headers for documenting function parameters.
@@ -153,6 +154,9 @@ fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
     // Each item produces at most a handful of diagnostics; preallocating to the
     // item count can reduce regrowth on the common dirty-file path.
     let mut diags = Vec::with_capacity(parsed.items.len());
+    // DOC008 resolves the returned enum against same-file top-level enums,
+    // so it needs the sibling items, not just the item under check.
+    let enum_names = doc008_error_variant_order::top_level_enum_names(parsed);
     for item in &parsed.items {
         diags.extend(doc001_missing_docs::check(item));
         diags.extend(doc002_missing_errors_section::check(item));
@@ -160,6 +164,7 @@ fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
         diags.extend(doc004_missing_arguments::check(item));
         diags.extend(doc005_undocumented_param::check(item));
         diags.extend(doc006_placeholder::check(item));
+        diags.extend(doc008_error_variant_order::check(item, &enum_names));
         diags.extend(test001_test_naming::check(item));
     }
     diags
