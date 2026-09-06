@@ -11,7 +11,7 @@
 //! exempt.
 
 use super::region::DocRegion;
-use super::{Document, PendingParagraph, flush, measure_prose_line};
+use super::{Document, OpenFence, PendingParagraph, flush, measure_prose_line};
 
 /// Tag words whose first argument token is a name (`@param name`, `@throws
 /// IOException`): the tag and that name are exempt together.
@@ -34,7 +34,7 @@ pub(super) fn measure_region(
     region: DocRegion,
     doc: &mut Document,
     pending: &mut Option<PendingParagraph>,
-    in_fence: &mut bool,
+    open_fence: &mut Option<OpenFence>,
 ) {
     for line in region.lines {
         let mut text = strip_continuation(line.text);
@@ -46,10 +46,10 @@ pub(super) fn measure_region(
             // Drain the exempt prefix in place: the owned buffer moves
             // on to the measured line without a second allocation.
             text.replace_range(..prefix, "");
-            measure_prose_line(text, line.number, false, doc, pending, in_fence, false);
+            measure_prose_line(text, line.number, false, doc, pending, open_fence, false);
         } else {
             let indented = prose_is_indented(&text);
-            measure_prose_line(text, line.number, indented, doc, pending, in_fence, false);
+            measure_prose_line(text, line.number, indented, doc, pending, open_fence, false);
         }
     }
 }
