@@ -1,5 +1,5 @@
-//! The text rules: TEXT001, TEXT002, TEXT003, and TEXT004 over one
-//! measured document, in source order.
+//! The text rules: TEXT001 through TEXT005 over one measured document,
+//! in source order.
 //!
 //! [`Document`] is the measured input from the plaintext pipeline.
 //!
@@ -12,17 +12,19 @@ mod text001_paragraph_size;
 mod text002_line_length;
 mod text003_sentence_length;
 mod text004_header_opener;
+mod text005_fence_tag;
 
-/// TEXT001, TEXT002, TEXT003, and TEXT004 diagnostics for one measured
-/// document.
+/// TEXT001 through TEXT005 diagnostics for one measured document.
 ///
 /// Called by the `run_text_checks` and `run_region_checks` entry points
-/// in [`crate::rules::registry`].
+/// in [`crate::rules::registry`]. TEXT005 reads fence facts the prose
+/// tier alone records, so region tiers never emit it.
 pub(crate) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     let mut diags = text001_paragraph_size::diagnostics(doc);
     diags.extend(text002_line_length::diagnostics(doc));
     diags.extend(text003_sentence_length::diagnostics(doc));
     diags.extend(text004_header_opener::diagnostics(doc));
+    diags.extend(text005_fence_tag::diagnostics(doc));
     diags
 }
 

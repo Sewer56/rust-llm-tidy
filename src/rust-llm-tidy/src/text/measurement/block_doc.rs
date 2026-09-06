@@ -46,10 +46,10 @@ pub(super) fn measure_region(
             // Drain the exempt prefix in place: the owned buffer moves
             // on to the measured line without a second allocation.
             text.replace_range(..prefix, "");
-            measure_prose_line(text, line.number, false, doc, pending, in_fence);
+            measure_prose_line(text, line.number, false, doc, pending, in_fence, false);
         } else {
             let indented = prose_is_indented(&text);
-            measure_prose_line(text, line.number, indented, doc, pending, in_fence);
+            measure_prose_line(text, line.number, indented, doc, pending, in_fence, false);
         }
     }
 }

@@ -63,6 +63,7 @@ pub(super) fn measure_region(
                 doc,
                 pending,
                 in_fence,
+                false,
             );
         }
     }
