@@ -109,7 +109,8 @@ fn csharp_doc002_errors_on_untagged_throwers() {
     );
 }
 
-/// A loose caller has no foreign facts; vague tags warn without failing a paired invocation.
+/// A loose caller has no foreign facts; vague tags warn without failing a
+/// paired invocation.
 #[test]
 fn csharp_doc002_should_degrade_for_loose_files_and_keep_doc003_warning_exit() {
     let caller = super::temp_file("cs");
@@ -145,7 +146,8 @@ fn csharp_doc002_should_degrade_for_loose_files_and_keep_doc003_warning_exit() {
     assert!(!stderr.contains("error["), "{stderr}");
 }
 
-/// Explicit file pairs and project-scoped single inputs report the same cross-file error.
+/// Explicit file pairs and project-scoped single inputs report the same
+/// cross-file error.
 #[test]
 fn csharp_doc002_should_find_project_throwers_from_single_or_multiple_inputs() {
     let root = manifest_dir().join("tests/fixtures/doc/csharp/doc002_cross_file");
@@ -172,7 +174,8 @@ fn csharp_doc002_should_find_project_throwers_from_single_or_multiple_inputs() {
     }
 }
 
-/// Real member movement preserves the same current-source lint records as a fresh lint pass.
+/// Real member movement preserves the same current-source lint records as a
+/// fresh lint pass.
 #[test]
 fn csharp_doc002_should_refresh_diagnostic_positions_after_reorder() {
     let caller = super::temp_file("cs");

@@ -649,7 +649,7 @@ fn doc004_and_doc005_check_param_tags_against_real_parameters() {
     );
 }
 
-/// DOC006 fires on TODO/FIXME/TBD whole words in doc comments, not inside
+/// DOC006 fires on whole-word placeholders in doc comments, not inside
 /// longer words.
 #[test]
 fn doc006_flags_placeholder_words_only() {
@@ -716,7 +716,8 @@ fn first_item_doc_run_stays_attached_under_a_plain_banner() {
     );
 }
 
-/// Qualified calls propagate throw evidence through files without guessing value receivers.
+/// Qualified calls propagate throw evidence through files without guessing
+/// value receivers.
 #[test]
 fn indexed_lints_should_follow_resolvable_cross_file_chains() {
     let cases = [
@@ -815,7 +816,8 @@ fn indexed_lints_should_follow_resolvable_cross_file_chains() {
     }
 }
 
-/// Separate callers compose local hops with the same foreign evidence as a complete index.
+/// Separate callers compose local hops with the same foreign evidence as a
+/// complete index.
 #[test]
 fn indexed_lints_should_merge_separately_supplied_callers() {
     for (source, foreign_source) in [
@@ -849,7 +851,8 @@ fn indexed_lints_should_merge_separately_supplied_callers() {
     }
 }
 
-/// Concrete exception types suppress findings; vague tags retain warning severity across files.
+/// Concrete exception types suppress findings; vague tags retain warning
+/// severity across files.
 #[test]
 fn indexed_lints_should_respect_exception_tags() {
     let helper = parse("class T { void Helper() { throw new E(); } }");

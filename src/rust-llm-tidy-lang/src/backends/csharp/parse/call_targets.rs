@@ -5,11 +5,12 @@ use std::collections::HashSet;
 /// Qualify an extracted call `target` and simple `member` in `source`.
 ///
 /// - `caller_type`: owner of bare and `this` calls
-/// - `known_types`: eligible explicit receivers; `None` retains unresolved candidates
+/// - `known_types`: eligible explicit receivers; `None` keeps unresolved ones
 /// - `value_names`: declared values that suppress explicit receiver matches
 /// - `constructor`: whether the target names a constructed type
 ///
-/// Declared value receivers return `None`; supplied type sets also reject unknown types.
+/// Declared value receivers return `None`; supplied type sets reject
+/// unknown types.
 pub(in super::super) fn qualified_call_target<'a>(
     target: tree_sitter::Node<'_>,
     member: &'a str,
