@@ -5,6 +5,9 @@ use crate::reporting::diagnostic::{Diagnostic, Severity};
 use crate::rules::registry::CODE_SENTENCE_LENGTH;
 use crate::text::measurement::{Document, Paragraph};
 
+/// Characters that may close a sentence directly after its terminal
+/// punctuation without opening a new word.
+const CLOSERS: [char; 3] = ['"', '\'', ')'];
 /// Maximum sentence length in words before TEXT003 fires.
 const SENTENCE_LIMIT: usize = 25;
 /// Recommended sentence length in words, stated in the guidance.
@@ -40,13 +43,21 @@ fn paragraph_diagnostics(para: &Paragraph, diags: &mut Vec<Diagnostic>) {
     let mut at_word_start = true;
     // Index of the member line holding the current sentence's first word.
     let mut member = 0;
+    // Whether the sentence just ended, so adjacent closers like `")` are
+    // skipped instead of opening a new word.
+    let mut after_terminal = false;
 
     for (offset, ch) in para.text.char_indices() {
+        if after_terminal && CLOSERS.contains(&ch) {
+            continue;
+        }
+        after_terminal = false;
         match ch {
             '.' | '!' | '?' => {
                 finish_sentence(diags, para, sentence_start, words, &mut member);
                 words = 0;
                 at_word_start = true;
+                after_terminal = true;
             }
             ch if ch.is_whitespace() => at_word_start = true,
             _ => {
@@ -246,6 +257,36 @@ mod tests {
         assert_eq!(found[1].line, 2);
         assert!(
             found[1]
+                .message
+                .starts_with(&format!("sentence is {} words long.", SENTENCE_LIMIT + 1))
+        );
+    }
+
+    // Closers directly after terminal punctuation do not open a word, so
+    // `.")` neither splits nor starts the next sentence.
+    #[test]
+    fn text_checks_stay_silent_when_closers_follow_terminal_punctuation() {
+        let source = format!(
+            "/// ({SENTENCE_LIMIT} words.) \"{}.\" Next one.\n",
+            words(SENTENCE_LIMIT)
+        );
+        let diags = run_text_checks(&source, "rs");
+        assert!(codes(&diags, CODE_SENTENCE_LENGTH).is_empty());
+    }
+
+    // After a closer, subsequent words count into the next sentence as
+    // normal; only the adjacent closers are skipped.
+    #[test]
+    fn text_checks_count_words_after_closers_normally() {
+        let source = format!(
+            "/// (Short.) \"{})\" tail words here.\n",
+            words(SENTENCE_LIMIT - 2)
+        );
+        let diags = run_text_checks(&source, "rs");
+        let found = codes(&diags, CODE_SENTENCE_LENGTH);
+        assert_eq!(found.len(), 1);
+        assert!(
+            found[0]
                 .message
                 .starts_with(&format!("sentence is {} words long.", SENTENCE_LIMIT + 1))
         );
