@@ -37,6 +37,10 @@ Never measured:
 - Python `>>>` doctest examples: source lines, `...` continuations,
   and expected output, until the blank line ending the example.
 
+`TEXT005` applies to the markdown family tier only: fence info strings
+are recorded for whole-file markdown-family sources, never for Rust,
+C#, Python, or comment-marker regions.
+
 Python's producer and the marker families' comment lexicon fail closed:
 a file they cannot attribute safely produces no findings rather than
 guesses.
@@ -221,6 +225,54 @@ src/lib.rs:1: warning[TEXT004]: opener paragraph has 3 sentences; maximum is 2.
 ```
 
 `TEXT004` is warning-severity, so the run exits 0.
+
+## TEXT005 - fenced code block without a language tag
+
+A fenced code block whose opening fence has no info string, or one that
+is exactly `ignore`, is a warning in markdown-family files. The finding
+sits on the opening fence line.
+
+Closing fences and indented 4-space code blocks never fire.
+`ignore,foo`, `ignore no_run`, and `Ignore` carry a real tag and stay
+silent.
+
+Before:
+
+````md
+~~~
+cargo build
+~~~
+
+~~~ignore
+cargo test
+~~~
+````
+
+After:
+
+````md
+~~~text
+cargo build
+~~~
+
+~~~text,ignore
+cargo test
+~~~
+````
+
+### TEXT005 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include TEXT005 README.md
+README.md:1: warning[TEXT005]: fenced code block has no language tag.
+  - Tag the fence with its language, like ```text.
+  - Untagged blocks get no syntax highlighting. (file)
+README.md:5: warning[TEXT005]: fenced code block uses bare `ignore`.
+  - Name the language: ```rust,ignore hides but still tags.
+  - Bare `ignore` drops syntax highlighting and tooling. (file)
+```
+
+`TEXT005` is warning-severity, so the run exits 0.
 
 [`lints`]: ./lints.md
 

@@ -468,6 +468,67 @@ fn invalid_source_should_abort_with_error() {
 
 // ── Language tiers ────────────────────────────────────────────────
 
+/// TEXT005 end to end: the CLI warns once per untagged or bare-`ignore`
+/// opening fence in a markdown file, warnings keep the exit code 0, and
+/// `--exclude TEXT005` silences both findings.
+#[test]
+fn lints_warn_on_untagged_fences_and_exclude_silences_them() {
+    let source = "\
+intro
+
+```
+bare
+```
+
+```ignore
+hidden
+```
+";
+    // The opening fences sit on lines 3 and 7.
+    let file = temp_file_ext("md");
+    fs::write(&file, source).unwrap();
+
+    let out = run_command(&["--include", "lints"], &file);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        out.status.code().unwrap_or(-1),
+        0,
+        "warning-severity lints must keep exit 0: {stderr}"
+    );
+    assert!(
+        stderr.contains(":3: warning[TEXT005]: fenced code block has no language tag."),
+        "expected bare-fence warning at line 3: {stderr}"
+    );
+    assert!(
+        stderr.contains(":7: warning[TEXT005]: fenced code block uses bare `ignore`."),
+        "expected bare-ignore warning at line 7: {stderr}"
+    );
+    assert_eq!(
+        stderr
+            .lines()
+            .filter(|l| l.contains("warning[TEXT005]"))
+            .count(),
+        2,
+        "exactly two TEXT005 warnings expected: {stderr}"
+    );
+    let _ = fs::remove_file(&file);
+
+    let file = temp_file_ext("md");
+    fs::write(&file, source).unwrap();
+    let out = run_command(&["--include", "lints", "--exclude", "TEXT005"], &file);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        out.status.code().unwrap_or(-1),
+        0,
+        "excluded TEXT005 run must succeed: {stderr}"
+    );
+    assert!(
+        !stderr.contains("TEXT005"),
+        "--exclude TEXT005 must silence the fence warnings: {stderr}"
+    );
+    let _ = fs::remove_file(&file);
+}
+
 /// Markdown-family siblings (`.markdown`, `.txt`, `.text`, `.mdx`, and the
 /// uppercase `.TXT` variant) behave exactly like `.md` on identical input:
 /// same fixed bytes, same stderr records and lint findings, same exit code.
