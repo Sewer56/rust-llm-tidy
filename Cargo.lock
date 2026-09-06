@@ -767,7 +767,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "rust-llm-tidy-cli"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -815,7 +815,7 @@ dependencies = [
 
 [[package]]
 name = "rust-llm-tidy-lint"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "indoc",
  "rust-llm-tidy-model",
