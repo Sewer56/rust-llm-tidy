@@ -356,6 +356,7 @@ fn rs_diagnostics_match_direct_check_composition() {
                 let sev = match d.severity {
                     rust_llm_tidy_lint::Severity::Error => "error",
                     rust_llm_tidy_lint::Severity::Warning => "warning",
+                    rust_llm_tidy_lint::Severity::Hint => "hint",
                 };
                 (d.line, sev.to_string(), d.code.to_string())
             })

@@ -93,8 +93,8 @@ when there are no findings or changes, even when the run exits non-zero:
 
 Fields:
 
-- `severity` - `"error"` or `"warning"` for lint findings, `"success"` for
-  change records (applied or would-be changes)
+- `severity` - `"error"`, `"warning"`, or `"hint"` for lint findings,
+  `"success"` for change records (applied or would-be changes)
 - `line` - 1-based item start line, `null` when no specific line (link/table fixes)
 - `item_name` - item name, `null` when unnamed
 - `title` - friendly per-code title for lint findings, `null` for change
@@ -107,6 +107,9 @@ folded into the same document.
 
 See [dry-run change reporting] for
 the shared record format.
+
+Hint-severity findings never fail a run and print as their own group in
+text mode; see [hints].
 
 ### Operations
 
@@ -144,4 +147,5 @@ Licensed under Apache 2.0
 [ci-badge]: https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg
 [rust-llm-tidy-reorder]: ../rust-llm-tidy-reorder/README.MD
 [dry-run change reporting]: ../../docs/lints.md#change-reporting
+[hints]: ../../docs/lints.md#hints
 [docs/reorder.md]: ../../docs/reorder.md

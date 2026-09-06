@@ -20,9 +20,9 @@ use std::path::{Path, PathBuf};
 /// record, matching the documented JSON schema (`{ path, line, severity, code,
 /// message, item_kind, item_name, title }`).
 ///
-/// Lint findings use severity `error` or `warning`; change records use
-/// `success`. `item_name` is `null` when the item is unnamed, and `title` is
-/// `null` for change records.
+/// Lint findings use severity `error`, `warning`, or `hint`; change
+/// records use `success`. `item_name` is `null` when the item is unnamed, and
+/// `title` is `null` for change records.
 ///
 /// Text fields borrow from the projected record as [`Cow`], so a JSON run
 /// allocates nothing per record besides the one `path` string.
@@ -33,7 +33,7 @@ pub(crate) struct JsonRecord<'a> {
     /// Optional 1-based line number where the item starts; `null` when the
     /// record has no specific line (e.g. link/table fixes).
     line: Option<NonZeroU32>,
-    /// Lowercase `error`, `warning`, or `success`.
+    /// Lowercase `error`, `warning`, `hint`, or `success`.
     severity: &'static str,
     /// Stable rule or operation code, e.g. "DOC001", "FIX", "REORDER", "VIS".
     code: &'static str,
@@ -104,11 +104,42 @@ fn project_lint<'a>(path: &Path, d: &'a Diagnostic) -> JsonRecord<'a> {
         severity: match d.severity {
             Severity::Error => "error",
             Severity::Warning => "warning",
+            Severity::Hint => "hint",
         },
         code: d.code,
         message: Cow::Borrowed(d.message.as_ref()),
         item_kind: Cow::Borrowed(d.item_kind.as_ref()),
         item_name: d.item_name.as_deref().map(Cow::Borrowed),
         title: Some(d.title()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::project_lint;
+    use rust_llm_tidy_lint::{Diagnostic, Severity};
+    use std::path::Path;
+
+    /// A hint finding serializes with `severity: "hint"` and the
+    /// unchanged lint-record field set.
+    #[test]
+    fn project_lint_serializes_hint_severity() {
+        let finding = Diagnostic {
+            severity: Severity::Hint,
+            code: "DOC999",
+            message: String::from("consider pre-allocating the buffer"),
+            line: 3,
+            item_kind: String::from("fn"),
+            item_name: Some(String::from("load")),
+        };
+
+        let json = serde_json::to_string(&project_lint(Path::new("src/lib.rs"), &finding)).unwrap();
+
+        assert_eq!(
+            json,
+            "{\"path\":\"src/lib.rs\",\"line\":3,\"severity\":\"hint\",\
+             \"code\":\"DOC999\",\"message\":\"consider pre-allocating the buffer\",\
+             \"item_kind\":\"fn\",\"item_name\":\"load\",\"title\":\"DOC999\"}"
+        );
     }
 }

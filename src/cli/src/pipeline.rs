@@ -8,6 +8,9 @@
 //! immediately after re-emits them in input order, keeping stderr and JSON
 //! output byte-identical to a single-threaded run.
 //!
+//! Hint-severity lines buffer apart and replay as their own group after
+//! every other buffered line.
+//!
 //! That buffering is the price of deterministic ordering: nothing is printed
 //! until every file finishes, so a huge run holds all output (plus per-file
 //! results) in memory before the replay pass.
@@ -32,12 +35,16 @@ use std::path::{Path, PathBuf};
 ///
 /// Plaintext stderr lines are buffered (`printed`) instead of emitted inside
 /// the task so the replay pass can print them in input order; the structure
-/// mirrors the old inline loop's aggregation targets exactly.
+/// mirrors the old inline loop's aggregation targets, plus the `hints`
+/// replay group.
 struct PerFileOut {
     changes: Vec<(PathBuf, crate::changes::Change)>,
     diagnostics: Vec<(PathBuf, rust_llm_tidy_lint::Diagnostic)>,
     /// Plaintext stderr lines in the original loop's emission order.
     printed: Vec<String>,
+    /// Hint-severity plaintext lines, kept out of `printed` so the
+    /// replay pass can group them after every other buffered line.
+    hints: Vec<String>,
     error_count: usize,
     /// True when any op failed; the file then skips the rest of its ops and is
     /// never recorded as processed.
@@ -58,6 +65,35 @@ impl PerFileOut {
         }
         self.changes
             .extend(found.into_iter().map(|c| (path.to_path_buf(), c)));
+    }
+
+    /// Record one file's lint findings: count gating errors, buffer plaintext
+    /// lines, and retain the findings for the unified output document.
+    ///
+    /// Only `Severity::Error` findings count toward `error_count`, so
+    /// hints and warnings never fail a run on their own. In text mode
+    /// hint lines wait in `hints` for their separate replay group;
+    /// in JSON mode every finding reaches the document through
+    /// `diagnostics`.
+    fn record_diagnostics(
+        &mut self,
+        found: Vec<(PathBuf, rust_llm_tidy_lint::Diagnostic)>,
+        json_mode: bool,
+    ) {
+        for (p, d) in &found {
+            if matches!(d.severity, Severity::Error) {
+                self.error_count += 1;
+            }
+            if !json_mode {
+                let line = format!("{}:{}", p.display(), d);
+                if matches!(d.severity, Severity::Hint) {
+                    self.hints.push(line);
+                } else {
+                    self.printed.push(line);
+                }
+            }
+        }
+        self.diagnostics.extend(found);
     }
 
     /// Mark an op failure: buffer the error line and stop processing this file
@@ -172,12 +208,14 @@ pub(crate) fn run_pipeline(
         paths.iter().zip(results).map(lint_file).collect()
     };
 
-    // Sequential replay: emit plaintext lines in input order, then fold each
-    // file's results into the aggregate collections and counts.
+    // Sequential replay: emit plaintext lines in input order with hints
+    // as their own trailing group, then fold each file's results into the
+    // aggregate collections and counts.
+    for line in replay_lines(&results) {
+        eprintln!("{line}");
+    }
+
     for (path, out) in paths.iter().zip(results) {
-        for line in &out.printed {
-            eprintln!("{line}");
-        }
         error_count += out.error_count;
         changes.extend(out.changes);
         diagnostics.extend(out.diagnostics);
@@ -415,6 +453,7 @@ fn process_one(
         changes: Vec::new(),
         diagnostics: Vec::new(),
         printed: Vec::new(),
+        hints: Vec::new(),
         error_count: 0,
         failed: false,
         processed: false,
@@ -521,19 +560,7 @@ fn process_one(
             _ => disabled.clone(),
         };
         match super::check_file(path, &lint_disabled, index) {
-            Ok(found) => {
-                for (p, d) in &found {
-                    if matches!(d.severity, Severity::Error) {
-                        out.error_count += 1;
-                    }
-                    // Diagnostics are surfaced in the replay pass: either
-                    // printed to stderr (plaintext) or projected to JSON.
-                    if !json_mode {
-                        out.printed.push(format!("{}:{}", p.display(), d));
-                    }
-                }
-                out.diagnostics.extend(found);
-            }
+            Ok(found) => out.record_diagnostics(found, json_mode),
             Err(e) => {
                 out.fail(path, &e);
                 return out;
@@ -547,10 +574,24 @@ fn process_one(
     out
 }
 
+/// The plaintext replay order: every file's main lines in input order, then
+/// every hint line.
+///
+/// Hints replay as their own trailing group so they stay visible without
+/// interleaving with errors, warnings, and change records.
+fn replay_lines(results: &[PerFileOut]) -> impl Iterator<Item = &str> {
+    results
+        .iter()
+        .flat_map(|out| out.printed.iter())
+        .chain(results.iter().flat_map(|out| out.hints.iter()))
+        .map(String::as_str)
+}
+
 #[cfg(test)]
 mod tests {
     use super::dedup_inputs;
     use core::sync::atomic::{AtomicU64, Ordering};
+    use rust_llm_tidy_lint::{Diagnostic, Severity};
     use std::fs;
     use std::path::PathBuf;
 
@@ -608,6 +649,134 @@ mod tests {
         }
 
         cleanup(&dir);
+    }
+
+    /// `record_diagnostics` counts only error findings toward the gating
+    /// error count and routes hint lines to the separate replay group.
+    ///
+    /// This is the exit-policy seam for hints: hint-only and
+    /// hint-plus-warning mixes keep `error_count` at zero, so the
+    /// unchanged `error_count > 0` bail exits 0.
+    ///
+    /// Adding an error counts it once and fails the run through that error
+    /// alone.
+    #[test]
+    fn record_diagnostics_should_count_only_errors_and_group_hints() {
+        for (label, severities, expected_errors, expected_hints) in [
+            ("hint_only", vec![Severity::Hint], 0, 1),
+            (
+                "hint_and_warning",
+                vec![Severity::Hint, Severity::Warning],
+                0,
+                1,
+            ),
+            (
+                "hint_and_error",
+                vec![Severity::Hint, Severity::Error],
+                1,
+                1,
+            ),
+        ] {
+            let found: Vec<_> = severities
+                .into_iter()
+                .enumerate()
+                .map(|(i, severity)| finding(severity, i + 1))
+                .collect();
+            let expected_total = found.len();
+
+            let mut out = empty_out();
+            out.record_diagnostics(found, false);
+
+            assert_eq!(out.error_count, expected_errors, "{label}");
+            assert_eq!(out.hints.len(), expected_hints, "{label}");
+            assert_eq!(
+                out.printed.len(),
+                expected_total - expected_hints,
+                "{label}: non-hint lines keep the main output group"
+            );
+            // Every buffered hint line is a hint-shaped line, and no
+            // hint line leaks into the main group.
+            assert!(
+                out.hints.iter().all(|l| l.contains("hint[")),
+                "{label}: {:#?}",
+                out.hints
+            );
+            assert!(
+                !out.printed.iter().any(|l| l.contains("hint[")),
+                "{label}: {:#?}",
+                out.printed
+            );
+            // The unified document still receives every finding.
+            assert_eq!(out.diagnostics.len(), expected_total, "{label}");
+        }
+    }
+
+    /// In JSON mode a hint still reaches the unified output document
+    /// (`diagnostics`) and buffers no plaintext line in either group.
+    #[test]
+    fn record_diagnostics_should_keep_hints_in_the_json_document_only() {
+        let mut out = empty_out();
+        out.record_diagnostics(vec![finding(Severity::Hint, 3)], true);
+
+        assert_eq!(out.error_count, 0);
+        assert!(out.printed.is_empty() && out.hints.is_empty());
+        assert_eq!(out.diagnostics.len(), 1);
+        assert!(matches!(out.diagnostics[0].1.severity, Severity::Hint));
+    }
+
+    /// The replay emits every file's non-hint lines in input order, then
+    /// every hint line, so hints form the trailing group.
+    #[test]
+    fn replay_lines_should_print_hints_as_the_last_group() {
+        let mut first = empty_out();
+        first.printed.push("a.rs:1: error[DOC001]: e".to_string());
+        first.hints.push("a.rs:2: hint[DOC999]: h1".to_string());
+        let mut second = empty_out();
+        second
+            .printed
+            .push("b.rs:1: success[FIX]: fixed".to_string());
+        second.hints.push("b.rs:3: hint[DOC999]: h2".to_string());
+
+        let results = [first, second];
+        let lines: Vec<&str> = super::replay_lines(&results).collect();
+
+        assert_eq!(
+            lines,
+            vec![
+                "a.rs:1: error[DOC001]: e",
+                "b.rs:1: success[FIX]: fixed",
+                "a.rs:2: hint[DOC999]: h1",
+                "b.rs:3: hint[DOC999]: h2",
+            ]
+        );
+    }
+
+    /// One finding with the given severity and 1-based line number.
+    fn finding(severity: Severity, line: usize) -> (PathBuf, Diagnostic) {
+        (
+            PathBuf::from("src/lib.rs"),
+            Diagnostic {
+                severity,
+                code: "DOC999",
+                message: format!("finding {line}"),
+                line,
+                item_kind: "fn".to_string(),
+                item_name: None,
+            },
+        )
+    }
+
+    /// A fresh per-file accumulator for direct recording tests.
+    fn empty_out() -> super::PerFileOut {
+        super::PerFileOut {
+            changes: Vec::new(),
+            diagnostics: Vec::new(),
+            printed: Vec::new(),
+            hints: Vec::new(),
+            error_count: 0,
+            failed: false,
+            processed: false,
+        }
     }
 
     fn temp_dir() -> PathBuf {
