@@ -6,7 +6,7 @@ use crate::rules::registry::CODE_HEADER_OPENER;
 use crate::text::measurement::{Document, Paragraph, StrippedLine};
 
 /// TEXT004 diagnostics for `doc`: one Warning per opener paragraph with
-/// two or more sentences.
+/// three or more sentences.
 ///
 /// Openers:
 ///
@@ -25,7 +25,7 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
         }
 
         let sentences = sentence_count(&para.text);
-        if sentences > 1 {
+        if sentences > 2 {
             let summary = format!("header opener has {sentences} sentences.");
             diags.push(opener_diagnostic(para, &summary));
         }
@@ -115,14 +115,14 @@ mod tests {
 
     // ── Sentence count ──
 
-    // A two-sentence heading opener -> one Warning at the paragraph's
-    // first line; a one-sentence opener stays silent.
+    // A three-sentence heading opener -> one Warning at the paragraph's
+    // first line.
     #[test]
-    fn text_checks_warn_on_two_sentence_opener() {
+    fn text_checks_warn_on_three_sentence_opener() {
         let source = formatdoc! {"
             # Title
 
-            One. Two.
+            One. Two. Three.
         "};
         let diags = run_text_checks(&source, "md");
         let found = codes(&diags, CODE_HEADER_OPENER);
@@ -136,6 +136,15 @@ mod tests {
     #[test]
     fn text_checks_silent_on_one_sentence_opener() {
         let source = "# Title\n\nOne sentence.\n";
+        let diags = run_text_checks(source, "md");
+        assert!(codes(&diags, CODE_HEADER_OPENER).is_empty());
+    }
+
+    // A two-sentence opener stays at the limit: TEXT004 fires on three
+    // or more sentences only.
+    #[test]
+    fn text_checks_silent_on_two_sentence_opener() {
+        let source = "# Title\n\nOne. Two.\n";
         let diags = run_text_checks(source, "md");
         assert!(codes(&diags, CODE_HEADER_OPENER).is_empty());
     }
@@ -156,10 +165,11 @@ mod tests {
         assert!(codes(&diags, CODE_HEADER_OPENER).is_empty());
     }
 
-    // A boundary followed by an uppercase word splits: two sentences.
+    // A boundary followed by an uppercase word splits past the limit:
+    // three sentences.
     #[test]
     fn text_checks_split_at_terminator_before_uppercase() {
-        let source = "One. Two.";
+        let source = "One. Two. Three.";
         let diags = run_text_checks(source, "md");
         assert_eq!(codes(&diags, CODE_HEADER_OPENER).len(), 1);
     }
@@ -191,7 +201,7 @@ mod tests {
             ///
             /// # Errors
             ///
-            /// Fails. The input is malformed.
+            /// Fails. The input is malformed. It was rejected.
         "};
         let diags = run_text_checks(&source, "rs");
         let found = codes(&diags, CODE_HEADER_OPENER);
@@ -202,7 +212,7 @@ mod tests {
     // Adjacent headings yield one opener, checked once.
     #[test]
     fn text_checks_check_adjacent_headings_opener_once() {
-        let source = "# A\n\n# B\n\nOne. Two.\n";
+        let source = "# A\n\n# B\n\nOne. Two. Three.\n";
         let diags = run_text_checks(source, "md");
         let found = codes(&diags, CODE_HEADER_OPENER);
         assert_eq!(found.len(), 1);
@@ -222,7 +232,7 @@ mod tests {
     // A multi-sentence markdown file opener fires without any heading.
     #[test]
     fn text_checks_warn_on_multi_sentence_markdown_file_opener() {
-        let source = "One sentence. Another sentence.\n";
+        let source = "One sentence. Another sentence. A third sentence.\n";
         let diags = run_text_checks(source, "md");
         let found = codes(&diags, CODE_HEADER_OPENER);
         assert_eq!(found.len(), 1);
@@ -234,7 +244,7 @@ mod tests {
     #[test]
     fn text_checks_warn_on_multi_sentence_rust_module_opener() {
         let source = formatdoc! {"
-            //! Module opener. It has two sentences.
+            //! Module opener. It has three sentences. This is the third.
             //!
             //! # Section
             //!
@@ -248,14 +258,14 @@ mod tests {
 
     // ── Region openers (item docs) ──
 
-    // A later doc region's first paragraph is an opener: a two-sentence
-    // method doc fires at its own line.
+    // A later doc region's first paragraph is an opener: a
+    // three-sentence method doc fires at its own line.
     #[test]
-    fn text_checks_warn_on_two_sentence_method_opener() {
+    fn text_checks_warn_on_three_sentence_method_opener() {
         let source = formatdoc! {"
             /// Module opener.
 
-            /// Does a thing. It also does another.
+            /// Does a thing. It also does another. And a third.
             fn first() {{}}
 
             /// Later method opener.
@@ -285,12 +295,12 @@ mod tests {
     // The summary reports the sentence count with the guidance bullets.
     #[test]
     fn text_checks_message_states_sentence_cause_and_guidance() {
-        let source = "# T\n\nOne. Two.\n";
+        let source = "# T\n\nOne. Two. Three.\n";
         let diags = run_text_checks(source, "md");
         let found = codes(&diags, CODE_HEADER_OPENER);
         assert_eq!(found.len(), 1);
         let msg = &found[0].message;
-        assert!(msg.starts_with("header opener has 2 sentences.\n"));
+        assert!(msg.starts_with("header opener has 3 sentences.\n"));
         assert!(msg.contains("single capability line"));
         assert!(msg.contains("one fact"));
     }
