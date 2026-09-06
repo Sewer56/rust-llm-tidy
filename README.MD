@@ -32,9 +32,8 @@ cargo install rust-llm-tidy-cli
 `rust-llm-tidy` is a single command that runs the full pipeline (fix,
 reorder, vis, lints) by default on every allowed source file.
 
-Allowed by default: `.rs`, the markdown family (`.md`, `.markdown`, `.txt`,
-`.text`, `.mdx`), and the code languages allowed for table fixes and
-text lints.
+Which files run and which ops they get is decided by the language
+registry; data formats like `.json` are skipped.
 ```bash
 # Tidy a file in place
 rust-llm-tidy src/main.rs
@@ -68,17 +67,18 @@ Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
 
 #### Operations
 
-| Op        | Does                                    | Languages   | Mutates | Default on? |
-| --------- | --------------------------------------- | ----------- | ------- | ----------- |
-| `tables`  | align GFM tables                        | all allowed | yes     | yes         |
-| `fences`  | alternate nested fence delimiters       | markdown*   | yes     | markdown*   |
-| `links`   | hoist inline links to reference style   | markdown*   | yes     | markdown*   |
-| `reorder` | review-friendly item order              | `rs`, `cs`  | yes     | `rs`, `cs`  |
-| `vis`     | narrow bare `pub` in restricted modules | `rs`        | yes     | `rs`        |
-| `lints`   | run DOCXXX, TEXTXXX, TESTXXX checks     | all allowed | no      | yes         |
+| Op        | Does                                    | Languages         | Mutates |
+| --------- | --------------------------------------- | ----------------- | ------- |
+| `tables`  | align GFM tables                        | all allowed       | yes     |
+| `fences`  | alternate nested fence delimiters       | all allowed       | yes     |
+| `links`   | hoist inline links to reference style   | `md` family, `rs` | yes     |
+| `reorder` | review-friendly item order              | `rs`, `cs`        | yes     |
+| `vis`     | narrow bare `pub` in restricted modules | `rs`              | yes     |
+| `lints`   | run DOCXXX, TEXTXXX, TESTXXX checks     | all allowed       | no      |
 
-\* markdown*: the markdown family (`.md`, `.markdown`, `.txt`, `.text`,
-`.mdx`), plus languages that use markdown for doc comments.
+Every allowed op is on by default; `--include`/`--exclude` and the config
+narrow them. The `md` family is `.md`, `.markdown`, `.txt`, `.text`,
+`.mdx`.
 
 `lints` splits by language: `rs` and `cs` run every code; every other
 allowed language runs the text lints only.

@@ -16,13 +16,13 @@
 //!   `tables`, `fences`, `links` plus text-based `lints`
 //! - Rust (`rs`): every op - `tables`, `fences`, `links`, `reorder`, `vis`,
 //!   `lints` - with the `///`/`//!` doc prefixes
-//! - C# (`cs`): `tables` plus the AST ops `reorder`/`lints`; `fences` only
-//!   through an explicit include; no `links`
-//! - Python (`py`, `pyi`): like a code language (`tables` and `lints` by
-//!   default, `#` prefixes) but with its text checks sourced from the
-//!   tree-sitter-python backend's docstring walk
-//! - Code languages: `tables` and `lints` by default; `fences` only
-//!   through an explicit include; no `links`, no AST ops; tables
+//! - C# (`cs`): `tables`, `fences` plus the AST ops `reorder`/`lints`; no
+//!   `links`
+//! - Python (`py`, `pyi`): like a code language (`tables`, `fences`, and
+//!   `lints` by default, `#` prefixes) but with its text checks sourced
+//!   from the tree-sitter-python backend's docstring walk
+//! - Code languages: `tables`, `fences`, and `lints` by default; no
+//!   `links`, no AST ops; tables
 //!   inside comments realign with the language's marker re-applied
 //! - Unmapped extensions: `tables` only, no prefixes
 //! - Data formats (`ini`, `json`, `toml`, `yaml`, `yml`): no ops; never in
@@ -173,7 +173,7 @@ const LANG_ENTRIES: &[(&str, Profile)] = &[
 const CODE_DASH: Profile = Profile {
     ops: &["tables", "fences", "lints"],
     prefixes: &["--"],
-    default_ops: &["tables", "lints"],
+    default_ops: &["tables", "fences", "lints"],
     backend: false,
     text_lints: TextLints::Lexicon,
 };
@@ -181,7 +181,7 @@ const CODE_DASH: Profile = Profile {
 const CODE_HASH: Profile = Profile {
     ops: &["tables", "fences", "lints"],
     prefixes: &["#"],
-    default_ops: &["tables", "lints"],
+    default_ops: &["tables", "fences", "lints"],
     backend: false,
     text_lints: TextLints::Lexicon,
 };
@@ -189,7 +189,7 @@ const CODE_HASH: Profile = Profile {
 const CODE_PERCENT: Profile = Profile {
     ops: &["tables", "fences", "lints"],
     prefixes: &["%"],
-    default_ops: &["tables", "lints"],
+    default_ops: &["tables", "fences", "lints"],
     backend: false,
     text_lints: TextLints::Lexicon,
 };
@@ -197,7 +197,7 @@ const CODE_PERCENT: Profile = Profile {
 const CODE_SEMI: Profile = Profile {
     ops: &["tables", "fences", "lints"],
     prefixes: &[";"],
-    default_ops: &["tables", "lints"],
+    default_ops: &["tables", "fences", "lints"],
     backend: false,
     text_lints: TextLints::Lexicon,
 };
@@ -205,7 +205,7 @@ const CODE_SEMI: Profile = Profile {
 const CODE_SLASH: Profile = Profile {
     ops: &["tables", "fences", "lints"],
     prefixes: &["//"],
-    default_ops: &["tables", "lints"],
+    default_ops: &["tables", "fences", "lints"],
     backend: false,
     text_lints: TextLints::Lexicon,
 };
@@ -214,7 +214,7 @@ const CODE_SLASH: Profile = Profile {
 const C_SHARP: Profile = Profile {
     ops: &["tables", "fences", "reorder", "lints"],
     prefixes: &["///", "//"],
-    default_ops: &["tables", "reorder", "lints"],
+    default_ops: &["tables", "fences", "reorder", "lints"],
     backend: true,
     text_lints: TextLints::Ast,
 };
@@ -233,7 +233,7 @@ const MARKDOWN: Profile = Profile {
 const PYTHON: Profile = Profile {
     ops: &["tables", "fences", "lints"],
     prefixes: &["#"],
-    default_ops: &["tables", "lints"],
+    default_ops: &["tables", "fences", "lints"],
     backend: true,
     text_lints: TextLints::Ast,
 };
@@ -262,10 +262,6 @@ pub(crate) struct Profile {
     pub prefixes: &'static [&'static str],
     /// Ops that run when no explicit include list narrows the run; always a
     /// subset of `ops`.
-    ///
-    /// Code languages keep `fences` out of the defaults: comment and string
-    /// literals are indistinguishable without a parser, so `fences` needs an
-    /// explicit `--include fences` or config include.
     ///
     /// Their `lints` op runs by default through the fail-closed lexicon,
     /// which never measures string content or code lines.
@@ -312,8 +308,7 @@ impl Profile {
     /// Whitelist mode intersects the whitelist with the profile's `ops`;
     /// default mode runs the profile's `default_ops` minus the disabled
     /// names. Either way an op the profile never allows stays refused -
-    /// `links` outside the markdown family and Rust, or a default-run
-    /// `fences` on a code language.
+    /// `links` outside the markdown family and Rust.
     ///
     /// The AST ops (`reorder`, `vis`, parser-driven `lints`) additionally
     /// require [`Profile::backend`]; that gate applies where they dispatch.
@@ -632,11 +627,11 @@ mod tests {
         let none = None;
         let empty = rules(&[]);
 
-        // Default mode: code languages run tables and lints but never
-        // fences; the markdown family and Rust run every fix op.
+        // Default mode: code languages run their text ops; the markdown
+        // family and Rust run every fix op.
         assert!(profile_for("py").op_enabled("tables", &none, &empty));
         assert!(profile_for("py").op_enabled("lints", &none, &empty));
-        assert!(!profile_for("py").op_enabled("fences", &none, &empty));
+        assert!(profile_for("py").op_enabled("fences", &none, &empty));
         for ext in MD_FAMILY.iter().chain(["rs"].iter()) {
             for op in ["tables", "fences", "links"] {
                 assert!(
