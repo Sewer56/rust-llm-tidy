@@ -32,7 +32,7 @@ pub(crate) struct VisContext {
 /// plaintext lines to stderr (default output) or project them to JSON.
 ///
 /// The profile decides which passes run: parser-driven checks need a
-/// registered backend; text lints source TEXT001-TEXT003 per tier.
+/// registered backend; text lints source TEXT* per tier.
 ///
 /// - `path`: source file to check
 /// - `disabled`: diagnostic codes to suppress

@@ -1,4 +1,4 @@
-//! The Rust doc-region producer: TEXT001-TEXT003 regions for `rs` sources.
+//! The Rust doc-region producer: TEXT* regions for `rs` sources.
 //!
 //! `doc_regions` extracts three doc sources through one region list:
 //!
@@ -42,7 +42,7 @@ enum DocNode<'a> {
     },
 }
 
-/// Runs the TEXT001-TEXT003 text checks over `parsed`'s doc prose: the
+/// Runs the TEXT* text checks over `parsed`'s doc prose: the
 /// line-comment regions plus the parse tree's block and attribute doc
 /// regions, in source order.
 ///

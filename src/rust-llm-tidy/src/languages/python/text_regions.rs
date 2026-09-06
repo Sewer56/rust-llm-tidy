@@ -1,5 +1,5 @@
 //! The Python doc-region producer: docstring and `#`-comment regions for
-//! the TEXT001-TEXT003 text checks of `py` and `pyi` sources.
+//! the TEXT* text checks of `py` and `pyi` sources.
 //!
 //! `doc_regions` walks one tree-sitter-python parse in document order
 //! and emits two kinds of [`DocRegion`] for the lint module's measuring

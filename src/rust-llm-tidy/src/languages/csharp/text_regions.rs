@@ -1,5 +1,5 @@
 //! The C# doc-region producer: `///` comment runs as XML-doc regions for
-//! the TEXT001-TEXT003 text checks.
+//! the TEXT* text checks.
 //!
 //! One depth-first walk collects every `///` comment node of the parse
 //! tree; consecutive comment rows group into one [`DocRegion`] per doc
@@ -17,7 +17,7 @@ use crate::rules::lint::run_region_checks;
 use crate::source::ParseResult;
 use crate::text::measurement::{Dialect, DocRegion, RegionLine};
 
-/// Runs the TEXT001-TEXT003 text checks over `parsed`'s `///` doc runs,
+/// Runs the TEXT* text checks over `parsed`'s `///` doc runs,
 /// measured with the XML doc dialect.
 ///
 /// The findings carry original 1-based file lines and ride the same lint

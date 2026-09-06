@@ -74,7 +74,7 @@ Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
 | `links`   | hoist inline links to reference style   | `md` family, `rs` | yes     |
 | `reorder` | review-friendly item order              | `rs`, `cs`        | yes     |
 | `vis`     | narrow bare `pub` in restricted modules | `rs`              | yes     |
-| `lints`   | run DOCXXX, TEXTXXX, TESTXXX checks     | all allowed       | no      |
+| `lints`   | run DOC*, TEXT*, TEST* checks           | all allowed       | no      |
 
 Every allowed op is on by default; `--include`/`--exclude` and the config
 narrow them. The `md` family is `.md`, `.markdown`, `.txt`, `.text`,
@@ -162,8 +162,8 @@ Additionally:
 Globs are relative to the config file's directory and use `literal_separator`
 semantics (`*` does not cross `/`; `**` recurses).
 
-Rule names are the lint codes (`DOCXXX`, `TEXTXXX`, `TESTXXX`) plus the six
-ops: `tables`, `fences`, `links`, `reorder`, `vis`, `lints`.
+Rule names are the lint codes plus the six ops: `tables`, `fences`,
+`links`, `reorder`, `vis`, `lints`.
 
 The config is discovered automatically: `rust-llm-tidy` walks up from the
 current directory to the repo root (the first ancestor containing `.git`),

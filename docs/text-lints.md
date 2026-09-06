@@ -1,4 +1,4 @@
-# Text lints - TEXT001 to TEXT003
+# Text lints - the TEXT* family
 
 The text lints are `lints` sub-checks ([`lints`]) run on raw text:
 comment-stripped for programming languages, raw for markdown and text

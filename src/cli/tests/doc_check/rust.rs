@@ -311,7 +311,7 @@ fn rs_block_and_attribute_docs_fire_text_budgets() {
 }
 
 /// The CLI's rendered rs findings equal the Rust backend's lint
-/// composition over the same file: the item rules (DOC001-DOC006,
+/// composition over the same file: the item rules (DOC*,
 /// TEST001) plus the rs text checks (line comments plus `/** */` and
 /// `#[doc = "..."]` docs).
 ///

@@ -1,4 +1,4 @@
-//! Fail-closed comment lexicon: doc regions for the TEXT001-TEXT003 text
+//! Fail-closed comment lexicon: doc regions for the TEXT* text
 //! checks of the `//`, `#`, `--`, `;`, and `%` comment families.
 //!
 //! [`text_checks`] walks the raw source once, tracking line-comment
@@ -93,7 +93,7 @@ pub fn covers(ext: &str) -> bool {
     lexicon_for(ext).is_some()
 }
 
-/// Runs the TEXT001-TEXT003 text checks over `source`'s comments, as lexed
+/// Runs the TEXT* text checks over `source`'s comments, as lexed
 /// for `ext`'s comment family.
 ///
 /// Extensions without a lexicon entry and ambiguous sources (see the
