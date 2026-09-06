@@ -357,7 +357,7 @@ mod tests {
         }
     }
 
-    // A `>>>` doctest example inside a docstring stays quiet, prose
+    // A `>>>` doctest example inside a docstring stays exempt, prose
     // around it measures.
     #[test]
     fn doctest_lines_are_exempt() {
@@ -366,7 +366,9 @@ mod tests {
             "\"\"\"Loads the value.\n\n>>> value = load(key)\n>>> process({example})\n{example}\n\"\"\"\n"
         );
 
-        assert!(checks(&source).is_empty());
+        let diags = checks(&source);
+        assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
     }
 
     // ── Non-docstring strings stay quiet ──

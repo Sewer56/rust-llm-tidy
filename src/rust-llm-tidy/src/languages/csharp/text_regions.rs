@@ -132,7 +132,9 @@ mod tests {
 public string Load(string key) { return key; }
 ";
 
-        assert!(checks(source).is_empty());
+        let diags = checks(source);
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
+        assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
     }
 
     /// The marker-scanner false-positive class: a doc run whose
@@ -167,7 +169,7 @@ public string Load(string key) { return key; }
             doc_lines.join("\n/// ")
         );
 
-        assert!(checks(&source).is_empty());
+        assert!(codes(&checks(&source), CODE_PARAGRAPH_SIZE).is_empty());
     }
 
     /// `<code>` and `<example>` subtrees are exempt like code fences,
@@ -186,7 +188,9 @@ public string Load(string key) { return key; }
 public void Sample() { }
 ";
 
-        assert!(checks(source).is_empty());
+        let diags = checks(source);
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
+        assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
     }
 
     /// `////` rulers are ordinary comments, not XML docs: an over-80
@@ -198,7 +202,7 @@ public void Sample() { }
             "//// {ruler}\n/// <summary>Loads the value.</summary>\npublic int Load() => 1;\n"
         );
 
-        assert!(checks(&source).is_empty());
+        assert!(codes(&checks(&source), CODE_LINE_LENGTH).is_empty());
     }
 
     /// Verbatim string content is never a comment node: `///`-looking and
@@ -216,7 +220,9 @@ Last line.\";
 }
 ";
 
-        assert!(checks(source).is_empty());
+        let diags = checks(source);
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
+        assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
     }
 
     /// Prose never joins across tags: two texts that overflow the budget
@@ -247,7 +253,7 @@ Last line.\";
             doc_lines.join("\n/// ")
         );
 
-        assert!(checks(&source).is_empty());
+        assert!(codes(&checks(&source), CODE_PARAGRAPH_SIZE).is_empty());
     }
 
     /// A code gap between two `///` runs ends each run: the prose
@@ -264,7 +270,7 @@ Last line.\";
             line.trim().chars().count() * 6 > 240,
             "the joined runs must pass the paragraph budget"
         );
-        assert!(checks(&source).is_empty());
+        assert!(codes(&checks(&source), CODE_PARAGRAPH_SIZE).is_empty());
     }
 
     // ── True positives ──

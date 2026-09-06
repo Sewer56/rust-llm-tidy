@@ -237,10 +237,12 @@ mod tests {
         let midline = format!("x = 1; %{{ opener note\ny = 2 + {tail};\n%}}\n");
         let nonalone = format!("%{{ header note text\ny = 2 + {tail};\n%}}\n");
         for source in [midline, nonalone] {
+            let diags = text_checks(&source, "m");
             assert!(
-                text_checks(&source, "m").is_empty(),
+                codes(&diags, CODE_PARAGRAPH_SIZE).is_empty(),
                 "code after a non-alone `%{{` must never measure"
             );
+            assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
         }
 
         // An alone `%{` opens the block, and only an alone `%}` closes.

@@ -15,6 +15,7 @@ pub(crate) const CODE_TITLES: &[(&str, &str)] = &[
     (CODE_PARAGRAPH_SIZE, "oversized paragraph"),
     (CODE_LINE_LENGTH, "long line"),
     (CODE_SENTENCE_LENGTH, "long sentence"),
+    (CODE_HEADER_OPENER, "header opener shape"),
     (CODE_TEST_NAMING, "non-behavioral test name"),
 ];
 /// Selectable transformations and the lint group, in pipeline order.
@@ -33,10 +34,13 @@ pub const LINT_CODES: &[&str] = &[
     CODE_PARAGRAPH_SIZE,
     CODE_LINE_LENGTH,
     CODE_SENTENCE_LENGTH,
+    CODE_HEADER_OPENER,
     CODE_TEST_NAMING,
 ];
 /// Rule code for placeholder text in doc comments.
 pub const CODE_DOC_PLACEHOLDER: &str = "DOC006";
+/// Rule code for a misshapen header opener paragraph.
+pub const CODE_HEADER_OPENER: &str = "TEXT004";
 /// Rule code for an over-limit stripped doc line.
 pub const CODE_LINE_LENGTH: &str = "TEXT002";
 /// Rule code for a missing `# Arguments` section.
@@ -69,13 +73,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lint_codes_lists_all_ten_codes() {
+    fn lint_codes_lists_all_eleven_codes() {
         // `LINT_CODES` is the source of truth for CLI rule validation. It must
         // enumerate every code produced by the backends and the text rules.
         assert_eq!(
             LINT_CODES.len(),
-            10,
-            "LINT_CODES must list exactly ten codes: {LINT_CODES:?}"
+            11,
+            "LINT_CODES must list exactly eleven codes: {LINT_CODES:?}"
         );
         for code in [
             CODE_MISSING_DOCS,
@@ -87,6 +91,7 @@ mod tests {
             CODE_PARAGRAPH_SIZE,
             CODE_LINE_LENGTH,
             CODE_SENTENCE_LENGTH,
+            CODE_HEADER_OPENER,
             CODE_TEST_NAMING,
         ] {
             assert!(LINT_CODES.contains(&code), "LINT_CODES is missing {code}");
@@ -96,11 +101,11 @@ mod tests {
     /// The title table pairs every lint code with a non-empty title and
     /// holds no extra codes.
     #[test]
-    fn code_titles_cover_exactly_the_ten_lint_codes() {
+    fn code_titles_cover_exactly_the_eleven_lint_codes() {
         assert_eq!(
             CODE_TITLES.len(),
             LINT_CODES.len(),
-            "CODE_TITLES must pair exactly the ten lint codes"
+            "CODE_TITLES must pair exactly the eleven lint codes"
         );
         for code in LINT_CODES {
             let title =

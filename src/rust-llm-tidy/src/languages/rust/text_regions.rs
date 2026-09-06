@@ -350,7 +350,10 @@ mod tests {
             line.chars().count() * 4 + 3 > 240,
             "joined, the runs must pass the paragraph budget"
         );
-        assert!(checks(&source).is_empty(), "separate runs stay quiet");
+        assert!(
+            codes(&checks(&source), CODE_PARAGRAPH_SIZE).is_empty(),
+            "separate runs stay within the paragraph budget"
+        );
     }
 
     // ── Block docs ──
@@ -465,7 +468,10 @@ mod tests {
             line.chars().count() * 4 + 3 > 240,
             "joined, the four docs must pass the paragraph budget"
         );
-        assert!(checks(&source).is_empty());
+        assert!(
+            codes(&checks(&source), CODE_PARAGRAPH_SIZE).is_empty(),
+            "separate item docs stay within the paragraph budget"
+        );
     }
 
     /// Same-row doc attributes of one item join: their prose measures

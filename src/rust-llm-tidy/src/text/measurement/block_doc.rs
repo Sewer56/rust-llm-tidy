@@ -274,7 +274,8 @@ mod tests {
             (5, "More prose."),
         ]);
 
-        assert!(diags.is_empty(), "fenced example stays fully quiet");
+        assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
     }
 
     // A tab or 4-space lead after the `* ` separator is indented example
@@ -288,6 +289,7 @@ mod tests {
             (3, "More prose."),
         ]);
 
-        assert!(diags.is_empty(), "indented example stays fully quiet");
+        assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
+        assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
     }
 }

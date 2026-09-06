@@ -117,6 +117,7 @@ mod tests {
 
         // Hardcoded on purpose: deriving the sequence from the
         // composition would leave the assertion invariant under reorders.
+        // The doc line's single-sentence opener stays TEXT004-quiet.
         assert_eq!(
             order,
             [
