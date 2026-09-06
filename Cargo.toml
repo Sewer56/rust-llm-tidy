@@ -2,13 +2,18 @@
 [workspace]
 resolver = "2"
 members = [
-    "rust-llm-tidy-model",
-    "rust-llm-tidy-reorder",
-    "rust-llm-tidy-lint",
-    "rust-llm-tidy-fix",
-    "rust-llm-tidy-lang",
-    "cli",
+    "src/rust-llm-tidy-model",
+    "src/rust-llm-tidy-reorder",
+    "src/rust-llm-tidy-lint",
+    "src/rust-llm-tidy-fix",
+    "src/rust-llm-tidy-lang",
+    "src/cli",
 ]
+
+# Inherited by members via `[lints] workspace = true`.
+[workspace.lints.clippy]
+# Prefer `core` over `std` where both work.
+std_instead_of_core = "warn"
 
 # Profile Build
 [profile.profile]

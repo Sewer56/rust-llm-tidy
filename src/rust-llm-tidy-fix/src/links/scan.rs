@@ -66,7 +66,7 @@ pub(super) fn doc_block_key(prefix: &str) -> Option<&str> {
 #[inline]
 pub(super) fn inline_links(body: &str) -> impl Iterator<Item = InlineLink<'_>> {
     let mut next = 0usize;
-    std::iter::from_fn(move || {
+    core::iter::from_fn(move || {
         while let Some(relative) = body[next..].find('[') {
             let open = next + relative;
             if let Some((text, url, end)) = parse_inline_link(body, open) {
@@ -102,7 +102,7 @@ pub(super) fn line_segments(input: &str) -> impl Iterator<Item = (usize, &str)> 
     let mut start = 0usize;
     memchr_iter(b'\n', input.as_bytes())
         .map(|newline| newline + 1)
-        .chain(std::iter::once(input.len()))
+        .chain(core::iter::once(input.len()))
         .filter_map(move |end| {
             if end == start {
                 return None;

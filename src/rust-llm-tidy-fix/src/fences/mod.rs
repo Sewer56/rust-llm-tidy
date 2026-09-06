@@ -219,7 +219,7 @@ fn emit_fence(
 ) {
     output.push_str(prefix);
     output.push_str(lead);
-    output.extend(std::iter::repeat_n(marker, run_len));
+    output.extend(core::iter::repeat_n(marker, run_len));
     output.push_str(info);
     output.push_str(term);
 }

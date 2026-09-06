@@ -16,9 +16,9 @@
 //! [`link_changes`]. Vis records come from diffing the narrowed output against
 //! the source ([`vis_changes`]).
 
+use core::num::NonZeroU32;
 use rust_llm_tidy_model::parse::ItemKind;
 use std::fmt;
-use std::num::NonZeroU32;
 
 /// A single edit applied by a transformation.
 ///

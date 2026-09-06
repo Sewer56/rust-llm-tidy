@@ -10,9 +10,9 @@
 //! 2. CLI behavior tests: dry-run, in-place writes, directory traversal,
 //!    error handling, and idempotency.
 
+use core::sync::atomic::{AtomicU32, Ordering};
 use std::fs;
 use std::process::Command;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Run `rust-llm-tidy --include reorder --dry-run` against
 /// `<name>_before.<ext>` in `tests/fixtures/reorder/<lang>/`.
@@ -852,7 +852,7 @@ fn repo_corpus_dry_run_emits_zero_change_records() {
     // Guard against a vacuous pass: only this repository's root holds both
     // the workspace manifest and the tidy config, so the walk below covers
     // real files.
-    assert!(root.join("src").join("Cargo.toml").is_file());
+    assert!(root.join("Cargo.toml").is_file());
     assert!(root.join(".rust-llm-tidy.yml").is_file());
 
     let output = Command::new(binary())

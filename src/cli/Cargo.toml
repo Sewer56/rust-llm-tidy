@@ -11,6 +11,9 @@ keywords = ["cli", "rust", "reorder", "lint", "tidy"]
 # categories (fixed list): https://crates.io/categories
 categories = ["command-line-utilities"]
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "rust-llm-tidy"
 path = "src/main.rs"

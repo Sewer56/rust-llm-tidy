@@ -25,7 +25,7 @@ if [ "${#files[@]}" -eq 0 ]; then
 fi
 
 # Always use the local library via `cargo run` against this workspace.
-tidy=(cargo run --quiet --manifest-path src/Cargo.toml -p rust-llm-tidy-cli --)
+tidy=(cargo run --quiet --manifest-path Cargo.toml -p rust-llm-tidy-cli --)
 
 echo "rust-llm-tidy: running on ${#files[@]} staged file(s)"
 

@@ -48,6 +48,13 @@ run_cmd env RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no
 echo "Formatting..."
 run_cmd cargo fmt --all --quiet
 
+echo "Tidy..."
+if command -v rust-llm-tidy >/dev/null 2>&1; then
+  run_cmd rust-llm-tidy
+else
+  echo "Skipping; rust-llm-tidy not installed. Install: cargo install rust-llm-tidy-cli"
+fi
+
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "All checks passed!"
 else

@@ -565,7 +565,7 @@ mod tests {
         let tmp = std::env::temp_dir().join(format!(
             "rlt-vis-no-cargo-{}-{}.rs",
             std::process::id(),
-            std::sync::atomic::AtomicU64::new(0).load(std::sync::atomic::Ordering::Relaxed),
+            core::sync::atomic::AtomicU64::new(0).load(core::sync::atomic::Ordering::Relaxed),
         ));
         let _ = std::fs::write(&tmp, "pub fn f() {}\n");
         // Walk up from temp dir is unlikely to hit a Cargo.toml belonging to us.

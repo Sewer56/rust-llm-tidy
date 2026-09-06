@@ -7,10 +7,14 @@ on:
       - "*"
     paths:
       - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
   pull_request:
     branches: [main]
     paths:
       - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
   workflow_dispatch:
 
 
@@ -23,7 +27,7 @@ jobs:
         if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
         uses: actions-rust-lang/rustfmt@v1
         with:
-          manifest-path: src/Cargo.toml
+          manifest-path: Cargo.toml
 
   semver-checks:
     runs-on: ubuntu-latest
@@ -32,7 +36,7 @@ jobs:
       - name: Run semver check
         uses: Reloaded-Project/devops-cargo-semver-checks-action@v1
         with:
-          manifest-path: src/Cargo.toml
+          manifest-path: Cargo.toml
           feature-group: all-features
           rust-toolchain: stable
           rust-target: x86_64-unknown-linux-gnu
@@ -62,20 +66,18 @@ jobs:
       - name: Run Tests and Upload Coverage
         uses: Reloaded-Project/devops-rust-test-and-coverage@v1
         with:
-          rust-project-path: ./src
+          rust-project-path: ./
           upload-coverage: true
           codecov-token: ${{ secrets.CODECOV_TOKEN }}
           target: ${{ matrix.target }}
           use-cross: ${{ matrix.use-cross }}
       - name: Check documentation is valid
-        working-directory: src
         env:
           RUSTDOCFLAGS: "-D warnings"
         run: cargo doc --no-deps --workspace --all-features --document-private-items --target ${{ matrix.target }}
 
       - name: Run linter
         if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
-        working-directory: src
         run: cargo clippy --workspace --all-features --target ${{ matrix.target }} -- -D warnings
 
   build-cli:
@@ -108,7 +110,7 @@ jobs:
           build-library: false
           run-tests-and-coverage: false
           rust-project-path: src/cli
-          workspace-path: src
+          workspace-path: .
           use-cache: true
 
   publish-crate:

@@ -4,7 +4,7 @@
 //! contiguous table and returns the canonically aligned lines, or [`None`]
 //! when the lines are not a table or are already aligned.
 
-use std::iter::repeat_n;
+use core::iter::repeat_n;
 
 /// Per-column text alignment parsed from a GFM delimiter row.
 ///
