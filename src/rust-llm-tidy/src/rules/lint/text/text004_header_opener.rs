@@ -76,9 +76,10 @@ fn opener_diagnostic(para: &Paragraph, summary: &str) -> Diagnostic {
 /// Sentences in `text`: boundary count plus one.
 ///
 /// A boundary is `.`, `!`, or `?` followed by whitespace whose next
-/// non-whitespace char is not a lowercase ASCII letter; a terminator at
-/// the end of `text` closes the final sentence without adding a
-/// boundary.
+/// non-whitespace char is not a lowercase letter (Unicode-aware).
+///
+/// A terminator at the end of `text` closes the final sentence
+/// without adding a boundary.
 ///
 /// The count is conservative: it can under-count (miss violations) but
 /// never fabricate them, so `e.g.` before a lowercase word, decimals,
@@ -99,7 +100,7 @@ fn sentence_count(text: &str) -> usize {
             // Terminator at the end of the text: no new sentence follows.
             continue;
         };
-        if !next.is_ascii_lowercase() {
+        if !next.is_lowercase() {
             count += 1;
         }
     }
@@ -311,6 +312,9 @@ mod tests {
         assert_eq!(sentence_count("One."), 1);
         assert_eq!(sentence_count("One. Two."), 2);
         assert_eq!(sentence_count("e.g. like this."), 1);
+        // `ü` is lowercase Unicode but not ASCII: the abbreviation must
+        // still not split here.
+        assert_eq!(sentence_count("e.g. über configuration. It works."), 2);
         assert_eq!(sentence_count("See 3.5 miles."), 1);
         assert_eq!(sentence_count("See https://example.com/x."), 1);
         assert_eq!(sentence_count("One! Two? Three."), 3);
