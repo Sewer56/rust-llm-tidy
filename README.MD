@@ -123,17 +123,15 @@ See [change reporting] for the shared record format.
 
 #### Feature documentation
 
-| Feature              | Page                             |
-| -------------------- | -------------------------------- |
-| Reorder              | [docs/reorder.md]                |
-| Reorder for C#       | [docs/reorder/csharp.md]         |
-| Visibility narrowing | [docs/vis.md]                    |
-| Table alignment      | [docs/tables.md]                 |
-| Fence delimiters     | [docs/fences.md]                 |
-| Link hoisting        | [docs/links.md]                  |
-| Lints                | [docs/lints.md]                  |
-| Text lints           | [docs/text-lints.md]             |
-| Lints for C#         | [docs/languages/lints/csharp.md] |
+| Feature              | Page                 |
+| -------------------- | -------------------- |
+| Reorder              | [docs/reorder.md]    |
+| Visibility narrowing | [docs/vis.md]        |
+| Table alignment      | [docs/tables.md]     |
+| Fence delimiters     | [docs/fences.md]     |
+| Link hoisting        | [docs/links.md]      |
+| Lints                | [docs/lints.md]      |
+| Text lints           | [docs/text-lints.md] |
 
 ### Configuration
 
@@ -268,14 +266,12 @@ Licensed under [Apache 2.0].
 [Apache 2.0]: ./LICENSE
 [change reporting]: ./docs/lints.md#change-reporting
 [docs/reorder.md]: ./docs/reorder.md
-[docs/reorder/csharp.md]: ./docs/reorder/csharp.md
 [docs/vis.md]: ./docs/vis.md
 [docs/tables.md]: ./docs/tables.md
 [docs/fences.md]: ./docs/fences.md
 [docs/links.md]: ./docs/links.md
 [docs/lints.md]: ./docs/lints.md
 [docs/text-lints.md]: ./docs/text-lints.md
-[docs/languages/lints/csharp.md]: ./docs/languages/lints/csharp.md
 [`.rust-llm-tidy.example.yml`]: ./.rust-llm-tidy.example.yml
 
 [rust-llm-tidy]: ./src/rust-llm-tidy/README.MD
