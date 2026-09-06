@@ -15,9 +15,9 @@ use crate::source::{ItemKind, ParseResult, SourceItem};
 /// - a `# Errors` section exists on the item;
 /// - the error type's final path segment resolves to a top-level enum in
 ///   the same file;
-/// - the section's `[`Enum::Variant`]` links (short-reference form,
-///   path-qualified prefixes accepted) list that enum's variants in an
-///   order that decreases under Rust `str` ordering.
+/// - the section's `[`Enum::Variant`]` links (short-reference form or
+///   crate-root-qualified, e.g. `[`crate::Enum::Variant`]`) list that
+///   enum's variants in an order that decreases under Rust `str` ordering.
 ///
 /// Links to other enums, prose, and unresolved or non-enum error types
 /// never participate.
@@ -85,9 +85,16 @@ fn is_non_decreasing(variants: &[&str]) -> bool {
 
 /// Variants of `enum_name` linked on `line`, in document order.
 ///
-/// A participating link is a bracketed `[`path::Enum::Variant`]` reference
-/// whose second-to-last `::` segment is `enum_name`; the yielded variant is
-/// the last segment. Bracket contents without a `::` path are ignored.
+/// A participating link is a bracketed `[`Enum::Variant`]` reference
+/// (crate-root prefixes like `[`crate::Enum::Variant`]` allowed) whose
+/// second-to-last `::` segment is `enum_name`. The yielded variant is the
+/// last segment.
+///
+/// Excluded links:
+///
+/// - foreign qualified paths (`io::Error::V`), even when the enum name
+///   collides;
+/// - bracket contents without a `::` path.
 fn linked_variants<'a>(line: &'a str, enum_name: &'a str) -> impl Iterator<Item = &'a str> + 'a {
     line.split(']').filter_map(move |chunk| {
         let inner = chunk.rsplit_once('[')?.1;
@@ -105,7 +112,13 @@ fn link_variant<'a>(inner: &'a str, enum_name: &str) -> Option<&'a str> {
     let mut segments = inner.rsplit("::");
     let variant = segments.next()?;
     let linked_enum = segments.next()?;
-    (linked_enum == enum_name).then_some(variant)
+    // Only unqualified and crate-root-qualified links target a same-file
+    // enum; other prefixes (`io::Error::V`) are foreign enums.
+    let crate_rooted = matches!(
+        segments.next(),
+        None | Some("crate") | Some("self") | Some("super")
+    );
+    (linked_enum == enum_name && crate_rooted).then_some(variant)
 }
 
 #[cfg(test)]
@@ -165,8 +178,44 @@ mod tests {
 /// Loads.\n\
 ///\n/// # Errors\n///\n\
 /// Returns [Error::B] then [Error::A].\n\
-pub fn load() -> Result<(), std::io::Error> { Ok(()) }\n";
+pub fn load() -> Result<(), std::io::Error> { Ok(()) }}\n";
         assert!(lint(source).is_empty());
+    }
+
+    // Out-of-crate error type whose final segment collides with a local
+    // enum of the same name -> still exempt (foreign type).
+    #[test]
+    fn silent_when_out_of_crate_error_type_collides_with_local_enum() {
+        let source = concat!(
+            "/// Doc.\npub enum Error { NotFound, Denied }\n",
+            "/// Loads.\n///\n/// # Errors\n///\n",
+            "/// Returns [Error::Denied] then [Error::NotFound].\n",
+            "pub fn load() -> Result<(), std::io::Error> { Ok(()) }\n",
+        );
+        assert!(lint(source).is_empty());
+    }
+
+    // Crate-qualified error type from a nested module -> exempt; only a
+    // direct crate root can resolve to a same-file top-level enum.
+    #[test]
+    fn silent_when_error_type_uses_nested_crate_path() {
+        let source = concat!(
+            "/// Doc.\npub enum Error { NotFound, Denied }\n",
+            "/// Loads.\n///\n/// # Errors\n///\n",
+            "/// Returns [Error::Denied] then [Error::NotFound].\n",
+            "pub fn load() -> Result<(), crate::nested::Error> { Ok(()) }\n",
+        );
+        assert!(lint(source).is_empty());
+    }
+
+    // Qualified links to a foreign enum whose name collides with the
+    // returned local enum never participate in the ordering check.
+    #[test]
+    fn silent_when_foreign_qualified_links_collide_with_local_enum() {
+        let source = documented_fn(
+            "/// Returns [io::Error::B] then [io::Error::A].\n/// Also [crate::other::Error::B].",
+        );
+        assert!(lint(&source).is_empty());
     }
 
     // Non-enum error type (a struct) -> exempt.
