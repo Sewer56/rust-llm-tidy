@@ -29,6 +29,9 @@ const NARRATION_MARKERS: &[NarrationMarker] = &[
         display: "used to",
     },
 ];
+/// Summary prefix carried by every narration-marker diagnostic; the
+/// passive class opens with `passive construction:` instead.
+const NARRATION_MARKER_SUMMARY: &str = "past-behavior narration marker: ";
 
 /// One narration marker: its token sequence and display form.
 struct NarrationMarker {
@@ -64,6 +67,16 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     diags
 }
 
+/// Whether `diag` is a TEXT007 narration-marker finding.
+///
+/// Callers with the checked file's path (the pipeline lint pass) use
+/// this to suppress marker findings in release and migration notes
+/// while passive findings still fire there. This module never sees
+/// paths itself.
+pub(crate) fn is_narration_marker(diag: &Diagnostic) -> bool {
+    diag.code == CODE_PASSIVE_NARRATION && diag.message.starts_with(NARRATION_MARKER_SUMMARY)
+}
+
 /// One TEXT007 Warning; `summary` names the finding class and trigger.
 fn diagnostic(line: &StrippedLine, summary: &str) -> Diagnostic {
     let bullets = [
@@ -94,7 +107,7 @@ fn find_offense(line: &str) -> Option<String> {
         return Some(format!("passive construction: `{be} {participle}`."));
     }
     if let Some(marker) = find_narration_marker(line, &words) {
-        return Some(format!("past-behavior narration marker: `{marker}`."));
+        return Some(format!("{NARRATION_MARKER_SUMMARY}`{marker}`."));
     }
     None
 }

@@ -7,6 +7,7 @@
 
 use crate::reporting::diagnostic::Diagnostic;
 use crate::text::measurement::Document;
+pub(crate) use text007_passive_narration::is_narration_marker;
 
 mod text001_paragraph_size;
 mod text002_line_length;

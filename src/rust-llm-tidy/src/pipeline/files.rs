@@ -77,6 +77,10 @@ pub(crate) fn check_file(
     }
     diagnostics.retain(|d| !disabled.contains(d.code));
 
+    if is_release_or_migration_note(path) {
+        diagnostics.retain(|d| !check::is_narration_marker(d));
+    }
+
     Ok(diagnostics
         .into_iter()
         .map(|d| (path.to_path_buf(), d))
@@ -336,4 +340,18 @@ pub(crate) fn vis_file(
     }
 
     Ok(change_records)
+}
+
+/// Whether `path` is a release or migration note: a `CHANGELOG*` or
+/// `MIGRATION*` basename at any depth, or any path under a `releases`
+/// directory.
+///
+/// Narration-marker TEXT007 findings are suppressed there; passive
+/// findings in the same files still fire.
+fn is_release_or_migration_note(path: &Path) -> bool {
+    let named = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.starts_with("CHANGELOG") || n.starts_with("MIGRATION"));
+    named || path.components().any(|c| c.as_os_str() == "releases")
 }

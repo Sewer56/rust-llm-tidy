@@ -866,6 +866,51 @@ fn md_text001_suppressed_by_exclude() {
     );
 }
 
+/// An ordinarily named markdown file yields both TEXT007 classes, one
+/// per offending line.
+#[test]
+fn md_text007_marker_and_passive_fire_in_ordinary_file() {
+    let path = temp_named_file("notes.md", &text007_marker_and_passive_md());
+    let output = run_command(&["--include", "lints"], &path);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "TEXT007 warnings must not fail the run: {stderr}"
+    );
+    assert!(
+        stderr.contains(":1: warning[TEXT007]") && stderr.contains(":2: warning[TEXT007]"),
+        "both the narration marker and the passive construction must warn:\n{stderr}"
+    );
+}
+
+/// In release and migration notes, the narration-marker line yields no
+/// TEXT007 diagnostic while the passive line still warns.
+///
+/// Release notes are `CHANGELOG*` or `MIGRATION*` basenames, or any file
+/// under a `releases/` directory.
+#[test]
+fn md_text007_marker_suppressed_in_release_notes() {
+    for rel in ["CHANGELOG.md", "MIGRATION.md", "releases/notes.md"] {
+        let path = temp_named_file(rel, &text007_marker_and_passive_md());
+        let output = run_command(&["--include", "lints"], &path);
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success(),
+            "TEXT007 warnings in {rel} must not fail the run: {stderr}"
+        );
+        assert!(
+            !stderr.contains(":1: warning[TEXT007]"),
+            "the narration marker in {rel} must stay silent:\n{stderr}"
+        );
+        assert!(
+            stderr.contains(":2: warning[TEXT007]"),
+            "the passive construction in {rel} must still warn:\n{stderr}"
+        );
+    }
+}
+
 /// A three-sentence markdown heading opener warns with TEXT004 at the
 /// paragraph's first line.
 ///
@@ -1112,18 +1157,26 @@ fn rust_fixture_dir() -> std::path::PathBuf {
     fixture_dir().join("rust")
 }
 
-/// Create a numbered temporary directory.
-fn temp_dir() -> std::path::PathBuf {
-    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = std::process::id();
-    std::env::temp_dir().join(format!("rust-llm-tidy-lint-dir-{}-{}", pid, seq))
-}
-
 /// Writes `content` to a numbered temp `.md` file and returns its path.
 fn temp_md(content: &str) -> std::path::PathBuf {
     let path = temp_file("md");
     fs::write(&path, content).unwrap();
     path
+}
+
+/// Write `content` to `rel` (a relative path inside a fresh temp dir)
+/// and return the file's path; parent directories are created.
+fn temp_named_file(rel: &str, content: &str) -> std::path::PathBuf {
+    let path = temp_dir().join(rel);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, content).unwrap();
+    path
+}
+
+/// A markdown file whose line 1 carries a narration marker and line 2 a
+/// passive construction, so both TEXT007 classes are observable.
+fn text007_marker_and_passive_md() -> String {
+    format!("This no longer panics.\nErrors are returned by the scanner.\n")
 }
 
 /// The directory holding the Python lint fixtures.
@@ -1137,6 +1190,13 @@ fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
     cmd.args(["--no-config"]).args(args).arg(path);
     cmd.output()
         .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
+}
+
+/// Create a numbered temporary directory.
+fn temp_dir() -> std::path::PathBuf {
+    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    std::env::temp_dir().join(format!("rust-llm-tidy-lint-dir-{}-{}", pid, seq))
 }
 
 /// Create a numbered temporary file path with the given extension.
