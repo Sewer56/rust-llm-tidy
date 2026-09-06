@@ -104,7 +104,11 @@ fn diagnostic(line: &StrippedLine, summary: &str) -> Diagnostic {
 fn find_offense(line: &str) -> Option<String> {
     let words = alphabetic_words(line);
     if let Some((be, participle)) = find_passive(&words) {
-        return Some(format!("passive construction: `{be} {participle}`."));
+        return Some(format!(
+            "passive construction: `{} {}`.",
+            be.to_ascii_lowercase(),
+            participle.to_ascii_lowercase()
+        ));
     }
     if let Some(marker) = find_narration_marker(line, &words) {
         return Some(format!("{NARRATION_MARKER_SUMMARY}`{marker}`."));
@@ -112,12 +116,11 @@ fn find_offense(line: &str) -> Option<String> {
     None
 }
 
-/// Lowercased alphabetic runs of `line`, in order. Case-insensitive
-/// matching needs one lowercase copy per line, not per comparison.
-fn alphabetic_words(line: &str) -> Vec<String> {
+/// Alphabetic runs of `line`, in order, compared case-insensitively by
+/// the matchers so no lowercase copies are allocated.
+fn alphabetic_words(line: &str) -> Vec<&str> {
     line.split(|c: char| !c.is_alphabetic())
         .filter(|w| !w.is_empty())
-        .map(str::to_lowercase)
         .collect()
 }
 
@@ -125,47 +128,55 @@ fn alphabetic_words(line: &str) -> Vec<String> {
 ///
 /// Bare `was` is the fallback marker; clause-initial `before,` requires
 /// a line or clause start, so temporal `before validation` never fires.
-fn find_narration_marker(line: &str, words: &[String]) -> Option<String> {
+fn find_narration_marker(line: &str, words: &[&str]) -> Option<&'static str> {
     for marker in NARRATION_MARKERS {
-        if words
-            .windows(marker.tokens.len())
-            .any(|w| w == marker.tokens)
-        {
-            return Some(marker.display.to_string());
+        if words.windows(marker.tokens.len()).any(|w| {
+            w.iter()
+                .zip(marker.tokens)
+                .all(|(a, b)| a.eq_ignore_ascii_case(b))
+        }) {
+            return Some(marker.display);
         }
     }
-    if words.iter().any(|w| w == "previously") {
-        return Some("previously".to_string());
+    if words.iter().any(|w| w.eq_ignore_ascii_case("previously")) {
+        return Some("previously");
     }
-    if words.iter().any(|w| w == "now") {
-        return Some("now".to_string());
+    if words.iter().any(|w| w.eq_ignore_ascii_case("now")) {
+        return Some("now");
     }
     if has_clause_initial_before_comma(line) {
-        return Some("before,".to_string());
+        return Some("before,");
     }
-    words.iter().any(|w| w == "was").then(|| "was".to_string())
+    words
+        .iter()
+        .any(|w| w.eq_ignore_ascii_case("was"))
+        .then_some("was")
 }
 
 /// A be-verb immediately followed by a past participle, if any.
 ///
 /// Adjectival participles such as `required` and `deprecated` are
 /// accepted and never fire.
-fn find_passive(words: &[String]) -> Option<(String, String)> {
+fn find_passive<'a>(words: &'a [&'a str]) -> Option<(&'a str, &'a str)> {
     words.windows(2).find_map(|pair| {
-        matches_any(&pair[0], BE_VERBS)
-            .then(|| pair[1].clone())
+        matches_any(pair[0], BE_VERBS)
+            .then(|| pair[1])
             .filter(|next| is_participle(next))
-            .map(|next| (pair[0].clone(), next))
+            .map(|next| (pair[0], next))
     })
 }
 
 /// Whether `line` contains `before,` at a line, sentence, or clause
-/// start.
+/// start, matched ASCII-case-insensitively without copying the line.
 fn has_clause_initial_before_comma(line: &str) -> bool {
-    let lower = line.to_lowercase();
-    let mut prefixes = lower.split("before,");
-    prefixes.next();
-    prefixes.any(is_clause_start)
+    let mut rest = line;
+    while let Some(pos) = find_before_comma_ci(rest) {
+        if is_clause_start(&rest[..pos]) {
+            return true;
+        }
+        rest = &rest[pos + "before,".len()..];
+    }
+    false
 }
 
 /// Whether `word` is a past-participle form.
@@ -183,6 +194,18 @@ fn ends_with_ci(word: &str, suffix: &str) -> bool {
     word.is_ascii()
         && word.len() > suffix.len()
         && word[word.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
+}
+
+/// Byte offset of the first ASCII-case-insensitive `before,` in `line`.
+fn find_before_comma_ci(line: &str) -> Option<usize> {
+    let bytes = line.as_bytes();
+    let needle = b"before,";
+    bytes
+        .windows(needle.len())
+        .enumerate()
+        .filter(|(i, _)| line.is_char_boundary(*i))
+        .find(|(_, w)| w.eq_ignore_ascii_case(needle))
+        .map(|(i, _)| i)
 }
 
 /// Whether the text before one `before,` occurrence ends a clause, so
