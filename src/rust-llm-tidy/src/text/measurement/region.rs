@@ -25,11 +25,13 @@ pub enum Dialect {
     /// segmentation over the stripped text.
     Markdown,
     /// XML doc comments: only the inner text of text nodes is measured.
+    ///
     /// Tags and attribute values vanish. `<code>` and `<example>`
     /// subtrees are exempt, and paragraphs never join across tags.
     XmlDoc,
     /// Block doc comments (`/** ... */` style): leading `*` continuation
     /// markers vanish, `@tag` lines cost only their remaining prose.
+    ///
     /// Blank lines split paragraphs, and fenced or indented example
     /// blocks are exempt.
     BlockDoc,

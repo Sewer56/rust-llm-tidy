@@ -269,10 +269,12 @@ fn csharp_member_reorder_matches_after_fixture() {
     );
 }
 
-/// A pure-CRLF `.cs` source still reorders - the accept side of the guard
-/// that declines lone-`\r` sources. The field hoists above the method with
-/// every newline still part of a `\r\n` pair. A second run emits zero
-/// records.
+/// A pure-CRLF `.cs` source still reorders.
+///
+/// - The guard accepts pure CRLF and declines lone-`\r` sources.
+/// - The field hoists above the method with every newline still part of
+///   a `\r\n` pair.
+/// - A second run emits zero records.
 #[test]
 fn csharp_reorder_on_pure_crlf_source_preserves_the_endings() {
     let source = "class C\r\n{\r\n    void M() {}\r\n    int F;\r\n}\r\n";
@@ -839,10 +841,12 @@ pub fn build(name: &str) -> Option<Config> {\n\
 
 // ── Corpus gate ────────────────────────────────────────────────────
 
-/// The repository corpus gate: a `--dry-run` over this repository's root
-/// exits 0 and emits zero change records. The repo config is active; the
-/// invocation is the same one CI's tidy job makes. Every tracked file is
-/// already tidy.
+/// The repository corpus gate checks that every tracked file is already tidy.
+///
+/// - A `--dry-run` over this repository's root exits 0 and emits zero
+///   change records.
+/// - The repo config is active.
+/// - The invocation is the same one CI's tidy job makes.
 #[test]
 fn repo_corpus_dry_run_emits_zero_change_records() {
     let root = manifest_dir()

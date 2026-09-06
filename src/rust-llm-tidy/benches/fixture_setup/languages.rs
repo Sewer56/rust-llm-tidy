@@ -217,9 +217,11 @@ pub const REORDER_FIXTURES: &[(&str, &str)] = &[
 ];
 
 /// Build the crate-aware context (module tree + crate-wide re-export set) for
-/// one embedded crate fixture. Parses each embedded source once. Called in the
-/// bench's setup (outside `iter`), so the hot loop measures only
-/// `narrow_vis_in_tree`.
+/// one embedded crate fixture.
+///
+/// - Parses each embedded source once.
+/// - Called in the bench's setup (outside `iter`), so the hot loop measures
+///   only `narrow_vis_in_tree`.
 ///
 /// # Arguments
 ///

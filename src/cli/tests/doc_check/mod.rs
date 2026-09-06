@@ -171,10 +171,11 @@ fn check_recursive_directory() {
 
 // ── Default-run text checks: every comment-marker family ─────────
 
-/// A default run (no rule selection) over a mixed-language fixture
-/// tree reports the over-budget comment paragraph in every
-/// comment-marker family. Each paragraph fires at its original line.
-/// The string content in each fixture stays unmeasured.
+/// A default run (no rule selection) checks a mixed-language fixture tree.
+///
+/// - Every comment-marker family reports its over-budget comment paragraph
+///   at its original line.
+/// - The string content in each fixture stays unmeasured.
 #[test]
 fn default_run_lints_comment_prose_in_every_comment_family() {
     let names = [

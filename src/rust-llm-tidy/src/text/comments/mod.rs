@@ -227,10 +227,9 @@ mod tests {
         }
     }
 
-    /// MATLAB block markers comment only alone on their lines: a
-    /// mid-line or non-alone `%{` is an ordinary `%` comment. The code
-    /// lines after it never measure. A mid-line `%}` does not close
-    /// a real block.
+    /// MATLAB block markers comment only alone on their lines. A
+    /// mid-line or non-alone `%{` is an ordinary `%` comment whose
+    /// code lines never measure; a mid-line `%}` never closes a block.
     #[test]
     fn matlab_block_markers_comment_only_alone() {
         let tail = "m".repeat(85);

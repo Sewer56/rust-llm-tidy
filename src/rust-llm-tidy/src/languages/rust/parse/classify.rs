@@ -332,7 +332,9 @@ pub(super) fn is_attachable(node: Node) -> bool {
 }
 
 /// True when `node` is a non-attachable comment: a plain `//`/`/* */` or an
-/// inner doc `//!`/`/** ! */`. These are transparent to attachment (neither
+/// inner doc `//!`/`/** ! */`.
+///
+/// These are transparent to attachment (neither
 /// attach to an item nor break the pending run of attachable trivia).
 pub(super) fn is_transparent_comment(node: Node) -> bool {
     if matches!(node.kind(), "line_comment" | "block_comment") {

@@ -3,11 +3,12 @@
 ## What it does
 
 When a fenced code block is nested inside another fenced block, the inner
-fence uses the opposite delimiter. The delimiter pair is ```` ``` ````
-vs ```` ~~~ ````. The outer block then does not close early.
+fence uses the opposite delimiter.
 
-Runs in markdown-family files and in the line comments and doc comments
-of allowed code languages.
+- The delimiter pair is ```` ``` ```` vs ```` ~~~ ````.
+- The outer block then does not close early.
+- Runs in markdown-family files and in the line comments and doc comments
+  of allowed code languages.
 
 ## Before
 

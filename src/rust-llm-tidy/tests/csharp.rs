@@ -9,9 +9,10 @@ use rust_llm_tidy::reporting::Severity;
 use rust_llm_tidy::rules::transform::reorder::emit;
 use rust_llm_tidy::source::ItemKind;
 
-/// A body that opens with blank lines still reorders. The blank lines
-/// travel with the first member. So the profile applies exactly as it
-/// does without them.
+/// A body that opens with blank lines still reorders.
+///
+/// The blank lines travel with the first member. So the profile applies
+/// exactly as it does without them.
 #[test]
 fn blank_lines_after_the_opening_brace_still_reorder() {
     let class_source = concat!(
@@ -122,9 +123,10 @@ fn bodies_with_same_line_members_stay_whole() {
 }
 
 /// Top-level conditionals parse as single opaque items with their own
-/// region ids (their first line is a directive line). Each forms a
-/// singleton region run that never moves. The whole fixture reorders to
-/// itself.
+/// region ids (their first line is a directive line).
+///
+/// Each forms a singleton region run that never moves. The whole fixture
+/// reorders to itself.
 #[test]
 fn conditional_items_never_move_and_the_fixture_is_a_noop() {
     let source = include_str!("fixtures/csharp/region_fixture.cs");
@@ -973,10 +975,12 @@ fn namespace_body_hoists_nested_usings_above_its_types() {
     );
 }
 
-/// A type nested inside a reordering body moves as one member. Its
-/// own members keep their source order even where a nested-body sort
-/// would move them. The callee precedes its caller. The property
-/// trails the methods inside the nested type.
+/// A type nested inside a reordering body moves as one member.
+///
+/// - Its own members keep their source order even where a nested-body
+///   sort would move them.
+/// - The callee precedes its caller.
+/// - The property trails the methods inside the nested type.
 #[test]
 fn nested_type_moves_whole_while_the_enclosing_body_reorders() {
     let source = concat!(
@@ -1049,9 +1053,11 @@ fn nested_type_moves_whole_while_the_enclosing_body_reorders() {
 
 // ── Parse shape ──────────────────────────────────────────────────
 
-/// The parse fixture classifies every top-level declaration: usings, the
-/// file-scoped namespace, and the documented class. They appear in
-/// document order. The class's members are typed per the member table.
+/// The parse fixture classifies every top-level declaration: usings,
+/// the file-scoped namespace, and the documented class.
+///
+/// They appear in document order. The class's members are typed per
+/// the member table.
 #[test]
 fn parse_classifies_top_level_items_and_members() {
     let source = include_str!("fixtures/csharp/parse_fixture.cs");

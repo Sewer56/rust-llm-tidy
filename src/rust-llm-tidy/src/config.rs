@@ -61,9 +61,10 @@ pub struct CompiledConfig {
 #[derive(Debug, Deserialize, Default)]
 #[serde(deny_unknown_fields)] // Reject hallucinated config keys at parse time.
 pub struct Config {
-    /// Whitelist: for matched paths, run ONLY these rules. Mutually exclusive
-    /// with `exclude` (both present -> config-load error). Empty/absent = not
-    /// whitelist mode.
+    /// Whitelist: for matched paths, run ONLY these rules.
+    ///
+    /// - Mutually exclusive with `exclude` (both present -> config-load error).
+    /// - Empty/absent = not whitelist mode.
     #[serde(default)]
     pub include: Vec<RuleGroup>,
     /// Blacklist: for matched paths, never run these rules. Mutually exclusive
@@ -488,8 +489,11 @@ mod tests {
     static COMPILE_COUNTER: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 
     /// Write a YAML config and a sibling matching file under a temp dir, then
-    /// load+compile. Returns the `CompiledConfig`. The temp dir is NOT cleaned
-    /// up here so callers can exercise `policy_for` on existing files.
+    /// load+compile.
+    ///
+    /// - Returns the `CompiledConfig`.
+    /// - The temp dir is NOT cleaned up here so callers can exercise `policy_for`
+    ///   on existing files.
     fn compile(yaml: &str, files: &[(&str, &str)]) -> CompiledConfig {
         let dir = std::env::temp_dir().join(format!(
             "rlt-cfg-unit-{}-{}",

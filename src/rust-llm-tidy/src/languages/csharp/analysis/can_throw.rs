@@ -227,8 +227,11 @@ impl CanThrowIndex {
     }
 
     /// Scan `decl` with a reused cursor, excluding nested callable bodies.
-    /// `caller` addresses its graph position; `names` bounds same-file matches.
-    /// `values` rejects declared value receivers before retaining qualified candidates.
+    ///
+    /// - `caller` addresses its graph position.
+    /// - `names` bounds same-file matches.
+    /// - `values` rejects declared value receivers before retaining qualified
+    ///   candidates.
     fn scan_member<'a>(
         &mut self,
         decl: &Declaration<'a>,

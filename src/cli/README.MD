@@ -139,9 +139,11 @@ the library.
 
 ## Ordering Rules
 
-The algorithm orders top-level items across phases. Within most phases, an item
-comes before any item it references; alphabetical order breaks ties. See
-[docs/reorder.md] for an annotated 10-phase example.
+The algorithm orders top-level items across phases.
+
+- Within most phases, an item comes before any item it references;
+  alphabetical order breaks ties.
+- See [docs/reorder.md] for an annotated 10-phase example.
 
 ## License
 

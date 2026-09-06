@@ -43,9 +43,11 @@ guesses.
 
 ## TEXT001 - oversized paragraph
 
-A paragraph of doc text over 240 chars is an error. A bullet over
-240 chars warns instead and recommends one checkable action of at most 160
-chars. Nested bullets are separate paragraphs.
+A paragraph of doc text over 240 chars is an error.
+
+- A bullet over 240 chars warns instead and recommends one checkable action
+  of at most 160 chars.
+- Nested bullets are separate paragraphs.
 
 Code blocks, tables, headings, signature lines, and link definitions are
 exempt as whole lines and end a paragraph.
@@ -210,9 +212,12 @@ pub fn load() {}
 
 ```text
 $ rust-llm-tidy --no-config --include TEXT004 src/lib.rs
-src/lib.rs:1: warning[TEXT004]: header opener has 3 sentences.
-  - Reduce the opener to a single capability line.
-  - Move detail into bullets holding one fact each. (file)
+src/lib.rs:1: warning[TEXT004]: opener paragraph has 3 sentences; maximum is 2.
+  - Keep the opener brief so readers can find the main point quickly.
+  - Lead with the main point, ideally in one short sentence.
+  - Move supporting details below the opener without losing necessary information.
+  - Use bullets for distinct facts, one fact per bullet.
+  - Keep a connected explanation in a separate short paragraph. (file)
 ```
 
 `TEXT004` is warning-severity, so the run exits 0.

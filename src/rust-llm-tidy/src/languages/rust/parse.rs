@@ -194,7 +194,7 @@ fn collect_item_entries(root: tree_sitter::Node<'_>) -> Vec<RawEntry<'_>> {
 /// Built with a single SIMD-accelerated `memchr` scan.
 fn line_start_offsets(source: &str) -> Vec<usize> {
     let bytes = source.as_bytes();
-    // Heuristic preallocation. Capacity = bytes/D; no regrowth when the file's
+    // Heuristic preallocation: capacity = bytes/D; no regrowth when the file's
     // average bytes/line >= D. Measured across 3820 Rust files (~1.25M lines):
     //
     //   D=24 -> ~93% no regrow, D=21 -> ~96%, D=20 -> ~97%.

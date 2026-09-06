@@ -46,8 +46,10 @@ fn all_excludes_reorder_rule() {
         "pipeline should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    // Default pipeline runs fix/reorder/vis/lints. With `reorder` disabled, the
-    // non-canonical input order (callee before caller) must be preserved.
+    // Default pipeline runs fix/reorder/vis/lints.
+    //
+    // With `reorder` disabled, the non-canonical input order (callee before caller)
+    // must be preserved.
     // Without the disable, it would reorder to caller-before-callee.
     let actual = fs::read_to_string(&tmp).unwrap();
     assert!(

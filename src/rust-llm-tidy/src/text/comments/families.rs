@@ -338,7 +338,9 @@ pub(super) enum Heredoc {
 pub(super) enum Reject {
     /// Ruby percent literals (`%w[]`, `%Q(...)`): arbitrary delimiters.
     PercentLiteral,
-    /// PostgreSQL dollar-quoted strings (`$$ ... $$`, `$tag$ ... $tag$`).
+    /// PostgreSQL dollar-quoted strings.
+    ///
+    /// Forms: `$$ ... $$` and `$tag$ ... $tag$`.
     DollarQuote,
     /// Lua long strings and level-`=` comments (`[[`, `[=[`).
     LongBracket,

@@ -271,17 +271,17 @@ pub(crate) fn resolve_vis_context(
     }
 }
 
-/// Narrow visibility in a single source file. With a [`VisContext`] (crate
-/// root discovered) the file's tree floor + crate-wide re-export guard apply.
-/// This holds only when the file is a node in the resolved crate module tree.
+/// Narrow visibility in a single source file.
 ///
-/// A file outside that tree (e.g. an integration test, example, bench, or a
-/// fixture under `tests/`) is narrowed standalone. The crate-wide re-export
-/// set is built only from the crate `src/` dir and would miss the file's own
-/// `pub use`.
-///
-/// Without a [`VisContext`] (no crate root) every file narrows standalone with
-/// `floor = None` and a per-file re-export guard.
+/// - With a [`VisContext`] (crate root discovered), the file's tree floor and
+///   crate-wide re-export guard apply only to nodes in the resolved crate
+///   module tree.
+/// - Files outside that tree (e.g. an integration test, example, bench, or a
+///   fixture under `tests/`) are narrowed standalone. The crate-wide re-export
+///   set is built only from the crate `src/` dir and would miss the file's own
+///   `pub use`.
+/// - Without a [`VisContext`] (no crate root), every file narrows standalone with
+///   `floor = None` and a per-file re-export guard.
 pub(crate) fn vis_file(
     path: &Path,
     dry_run: bool,

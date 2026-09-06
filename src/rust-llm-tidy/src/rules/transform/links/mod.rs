@@ -532,10 +532,9 @@ after
 
     #[test]
     fn bracket_text_link_untouched() {
-        // A repeated link whose text contains `[`/`]` bytes, or whose open
-        // `[` is escaped, has no valid hoisted label. The escaped form is
-        // literal `\[x](u)` text, never a link. The input comes back
-        // byte-identical in both engines.
+        // Repeated links with `[`/`]` in their text have no valid hoisted label;
+        // escaped `\[x](u)` is literal text, never a link.
+        // Both engines return these inputs byte-identical.
         for input in [
             "[text [x]](u) and [text [x]](u)\n",
             "[\\[x\\]](u) and [\\[x\\]](u)\n",
@@ -1222,9 +1221,9 @@ pub fn f() {
 
     #[test]
     fn empty_prefix_family_hoists_doc_marker_lines_as_markdown() {
-        // With no marker family, `///` lines are plain paragraph text. The
-        // links hoist in markdown context. The definition lands in the
-        // trailing block, not inside a comment.
+        // Without a marker family, `///` lines are plain paragraph text,
+        // so links hoist in markdown context.
+        // The definition lands in the trailing block, not inside a comment.
         let input = "/// see [A](http://x) and [A](http://x)\n";
         let expected = "/// see [A] and [A]\n\n[A]: http://x\n";
         let (out, pairs) = fix_links(input, &[], 1);

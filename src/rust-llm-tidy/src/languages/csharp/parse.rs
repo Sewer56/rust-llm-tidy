@@ -9,8 +9,9 @@
 //!
 //! # Spans
 //!
-//! Spans follow the source module's back-to-back layout. Each item's
-//! `end` is the byte after its trailing newline. Every non-first
+//! Spans follow the source module's back-to-back layout.
+//!
+//! Each item's `end` is the byte after its trailing newline. Every non-first
 //! item's `start` is the previous item's `end`.
 //!
 //! The blank lines and comments preceding an item travel with it.
@@ -316,7 +317,9 @@ fn body_list(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
 }
 
 /// Build the member list of one `declaration_list` body, tiling spans
-/// back-to-back. The first member starts right after the opening
+/// back-to-back.
+///
+/// The first member starts right after the opening
 /// brace's newline. Later members start at the previous member's
 /// end.
 ///

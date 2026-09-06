@@ -135,8 +135,9 @@ impl<'names> ReferenceCollector<'names> {
         match position.path_field {
             // The referenced path is a field's child. A macro call
             // records its called path once and never walks it again
-            // (re-walking it would double-record). The argument token
-            // tree is not scanned either.
+            // (re-walking it would double-record).
+            //
+            // The argument token tree is not scanned either.
             Some(field) => {
                 if let Some(path) = node.child_by_field_name(field) {
                     self.record_ref(path, source);

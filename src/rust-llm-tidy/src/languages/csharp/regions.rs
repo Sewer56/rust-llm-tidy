@@ -57,8 +57,9 @@ enum LexState {
     /// `@$"..."` string.
     InterpVerbatim,
     /// Inside an interpolation hole `{ ... }` of an interpolated string:
-    /// the hole's expression is walked by brace depth. `verbatim` records
-    /// which literal text the hole returns to.
+    /// the hole's expression is walked by brace depth.
+    ///
+    /// `verbatim` records which literal text the hole returns to.
     InterpHole {
         /// The literal text the hole returns to on its closing `}`.
         verbatim: bool,
@@ -181,8 +182,9 @@ fn lex_line(mut state: LexState, line: &str) -> Option<LexState> {
                 }
             }
             // Regular strings and char literals cannot span lines. Their
-            // closing quote or the line's end leaves code state. Escapes
-            // keep the scan inside the literal; only the matching quote
+            // closing quote or the line's end leaves code state.
+            //
+            // Escapes keep the scan inside the literal; only the matching quote
             // closes it.
             LexState::String => {
                 if bytes[i] == b'\\' && bytes.get(i + 1).is_some() {
@@ -519,8 +521,9 @@ mod tests {
         assert_eq!(scan_ids(source), vec![0, 0, 0, 0, 1, 1, 2]);
     }
 
-    /// Interpolated raw strings reject the whole scan. Their holes can
-    /// hold nested literals with quote runs the raw scan cannot safely
+    /// Interpolated raw strings reject the whole scan.
+    ///
+    /// Their holes can hold nested literals with quote runs the raw scan cannot safely
     /// attribute. Callers therefore degrade reordering to a no-op.
     ///
     /// The directive pair inside the literal is balanced and sits at
@@ -582,8 +585,9 @@ mod tests {
         }
     }
 
-    /// A hole reaching the line's end rejects the scan. A multi-line hole
-    /// cannot be told apart from an unterminated one. Carrying hole
+    /// A hole reaching the line's end rejects the scan.
+    ///
+    /// A multi-line hole cannot be told apart from an unterminated one. Carrying hole
     /// state across lines could swallow real directives.
     #[test]
     fn scan_rejects_interpolation_holes_reaching_line_end() {

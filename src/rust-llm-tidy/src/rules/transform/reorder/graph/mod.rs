@@ -348,8 +348,9 @@ fn emit_macro_definitions(
     let def_order = dependency_order(parsed, &defs, edges, TieBreak::Alphabetical);
 
     // Group invocations by macro name. Invocations whose name has no
-    // matching definition emit last in source order. This case is
-    // unreachable: the profile routes an invocation to this phase only
+    // matching definition emit last in source order.
+    //
+    // This case is unreachable: the profile routes an invocation to this phase only
     // when a local definition shares its name.
     let def_names: AHashSet<&str> = def_order
         .iter()

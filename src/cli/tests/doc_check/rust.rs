@@ -395,9 +395,11 @@ fn rs_long_doc_comment_warns_text002() {
 }
 
 /// Rust doc sentences over the word budget warn with TEXT003 at their
-/// start lines. The wrapped sentence reports where its first word sits,
-/// and the 25-word sentence stays silent. Warnings keep the exit code
-/// at 0.
+/// start lines.
+///
+/// - The wrapped sentence reports where its first word sits.
+/// - The 25-word sentence stays silent.
+/// - Warnings keep the exit code at 0.
 #[test]
 fn rs_long_doc_sentences_warn_text003() {
     let (stderr, exit) = run_rust_fixture("text-003_sentence_budgets.rs");
@@ -446,12 +448,13 @@ fn rs_text004_selectable_by_include_code() {
 }
 
 /// Rust doc openers with three or more sentences warn with TEXT004 at
-/// each opener's first line: the module doc's heading-following paragraph
-/// and the item doc's first paragraph fire.
+/// each opener's first line.
 ///
-/// The one-sentence module opener, the two-sentence opener at the limit,
-/// and the one-sentence item opener stay silent, and warnings keep the
-/// exit code at 0.
+/// - The module doc's heading-following paragraph and the item doc's
+///   first paragraph fire.
+/// - The one-sentence module opener and one-sentence item opener stay silent.
+/// - The two-sentence opener stays silent at the limit.
+/// - Warnings keep the exit code at 0.
 #[test]
 fn rs_three_sentence_doc_openers_warn_text004() {
     let (stderr, exit) = run_rust_fixture("text-004_header_openers.rs");
