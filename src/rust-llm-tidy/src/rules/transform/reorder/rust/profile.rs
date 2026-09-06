@@ -362,8 +362,9 @@ mod tests {
     }
 
     /// Duplicate `macro_rules!` names (a later definition shadows the
-    /// earlier one) attach the shared invocation to exactly one definition,
-    /// so the order never repeats an index and the permutation validates.
+    /// earlier one) attach the shared invocation to exactly one definition.
+    /// The order therefore never repeats an index and the permutation
+    /// validates.
     #[test]
     fn duplicate_macro_names_emit_the_invocation_once() {
         // Source order: 0 = macro m, 1 = macro m (shadowing), 2 = m!().
@@ -430,9 +431,9 @@ mod tests {
 
     // ── Engine: mod phases through the profile ────────────────────────
 
-    /// A file-based `#[cfg(test)] mod x;` declaration stays in the mod phase,
-    /// keeping its source position among file-based mods instead of moving to
-    /// the end (rustfmt owns its alphabetical placement).
+    /// A file-based `#[cfg(test)] mod x;` declaration stays in the mod phase.
+    /// It keeps its source position among file-based mods instead of moving
+    /// to the end (rustfmt owns its alphabetical placement).
     #[test]
     fn file_based_test_mod_stays_in_mod_phase() {
         // Source order: zeta(0), test_helpers(1), alpha(2).
@@ -559,7 +560,7 @@ mod tests {
     }
 
     /// Walk shapes: a generic type records its base type and every type
-    /// argument; a scoped path records only its first segment; a macro
+    /// argument. A scoped path records only its first segment. A macro
     /// call's arguments are never walked.
     #[test]
     fn walk_shapes_record_bases_type_arguments_and_first_segments_only() {
@@ -632,8 +633,8 @@ mod tests {
     }
 
     /// Walk data drives declaration matching: a walk declaring `mod_item`
-    /// as a declaration kind records references inside a mod body that the
-    /// Rust walk (which skips mods) ignores.
+    /// as a declaration kind records references inside a mod body. The
+    /// Rust walk (which skips mods) ignores those references.
     #[test]
     fn walk_data_drives_declaration_matching() {
         let source = "mod m { fn f() { g(); } }\nfn g() {}\n";

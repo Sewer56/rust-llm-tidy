@@ -272,8 +272,8 @@ mod tests {
     }
 
     /// Include targets survive quote style, spaced equals signs, paired
-    /// elements, prefixed names, backslashes, and malformed tails, while
-    /// commented-out references and MSBuild-variable includes stay out of scope.
+    /// elements, prefixed names, backslashes, and malformed tails.
+    /// Commented-out references and MSBuild-variable includes stay out of scope.
     #[test]
     fn scope_should_read_xml_includes_and_skip_commented_or_variable_references() {
         let root = std::env::temp_dir().join(format!("rlt-csharp-xml-{}", std::process::id()));

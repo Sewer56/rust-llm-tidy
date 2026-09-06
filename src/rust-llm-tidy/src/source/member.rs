@@ -9,7 +9,7 @@ use crate::source::kind::ItemKind;
 /// byte span for in-type member reordering.
 ///
 /// Language backends whose reorder profiles enable member reordering emit
-/// members alongside the enclosing type item; the Rust parse emits none
+/// members alongside the enclosing type item. The Rust parse emits none
 /// because Rust reorders top-level items only.
 ///
 /// Spans follow the top-level item rules: they tile the type body

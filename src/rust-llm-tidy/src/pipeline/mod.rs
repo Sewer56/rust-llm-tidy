@@ -360,7 +360,7 @@ fn process_one(
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let profile = crate::languages::registry::profile_for(ext);
     // A fix op qualifies its file for post-processing whenever the profile
-    // allows it; an AST op additionally needs the profile's `backend` tier
+    // allows it. An AST op additionally needs the profile's `backend` tier
     // and a backend registered in the language registry (Rust today).
     let backend = crate::languages::backend_for(ext);
     let ast_op_on = |op: &str| {

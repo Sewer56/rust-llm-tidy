@@ -173,8 +173,8 @@ fn check_recursive_directory() {
 
 /// A default run (no rule selection) over a mixed-language fixture
 /// tree reports the over-budget comment paragraph in every
-/// comment-marker family at its original line; the string content in
-/// each fixture stays unmeasured.
+/// comment-marker family. Each paragraph fires at its original line.
+/// The string content in each fixture stays unmeasured.
 #[test]
 fn default_run_lints_comment_prose_in_every_comment_family() {
     let names = [
@@ -498,7 +498,7 @@ fn json_output_combines_with_dry_run() {
 }
 
 /// One `--output-mode json --dry-run` document carries every lint finding and
-/// every recorded change together, even when error-severity lints bail the run
+/// every recorded change together. Error-severity lints still bail the run
 /// non-zero after the document is written.
 #[test]
 fn json_output_merges_lints_and_changes_in_one_document() {
@@ -793,8 +793,8 @@ fn md_text001_suppressed_by_exclude() {
 }
 
 /// Python docstring prose fires the text budgets with original file
-/// lines: TEXT001 errors on the module docstring's over-budget paragraph
-/// and TEXT002 warns on a function docstring's over-long line.
+/// lines: TEXT001 errors on the module docstring's over-budget
+/// paragraph. TEXT002 warns on a function docstring's over-long line.
 ///
 /// The non-docstring triple-quoted payload and the `>>>` doctest example
 /// stay quiet.

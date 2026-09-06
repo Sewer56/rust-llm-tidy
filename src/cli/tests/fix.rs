@@ -13,7 +13,7 @@ use std::process::Command;
 mod common;
 
 /// The byte-exact output of the fix on [`INTRA_DOC_REPRO_SOURCE`]: every link
-/// is hoisted and a `[text]: url` definition is duplicated inside each comment
+/// is hoisted. A `[text]: url` definition is duplicated inside each comment
 /// that uses it, never at EOF, with a blank comment line before the
 /// definitions.
 const INTRA_DOC_REPRO_FIXED: &str = "\
@@ -67,7 +67,7 @@ pub struct Config;
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Default all-pass `fix` on a file where only the table changes: the later
-/// fence/link passes are no-ops and restore `prior`, so the earlier table fix
+/// fence/link passes are no-ops and restore `prior`. So the earlier table fix
 /// must survive and produce one record plus a byte-identical write.
 #[test]
 fn fix_default_passes_borrowed_restore_preserves_earlier_change() {
@@ -205,8 +205,9 @@ fn fix_idempotent_on_after_fixtures() {
     }
 }
 
-/// An in-place fix run reports the same change records as its dry-run twin and
-/// writes the file, so identical stderr change lines accompany a modified file.
+/// An in-place fix run reports the same change records as its dry-run twin
+/// and writes the file. Identical stderr change lines therefore accompany a
+/// modified file.
 #[test]
 fn fix_in_place_reports_same_records_and_writes() {
     let before = fixture_dir().join("multi_md_before.md");
@@ -511,7 +512,7 @@ fn fix_recursive_directory_collects_md_and_rs() {
 }
 
 /// A JavaScript indexed call `items[i](count)` reads like an inline link but
-/// is call syntax: even an explicit `--include links` leaves the file
+/// is call syntax. Even an explicit `--include links` leaves the file
 /// byte-unchanged with zero records.
 #[test]
 fn js_indexed_call_stays_unchanged_even_with_links_included() {
@@ -648,8 +649,8 @@ fn links_global_min_two_suppresses_single_use_rs() {
 }
 
 /// Pipe-bearing lines that never form a GFM table stay byte-unchanged under
-/// the default run: Haskell guard runs, SQL `||` concatenation, and Lua
-/// comment notes without a delimiter row.
+/// the default run. Cases include Haskell guard runs, SQL `||` concatenation,
+/// and Lua comment notes without a delimiter row.
 #[test]
 fn non_table_pipe_lines_stay_byte_unchanged() {
     for name in [
@@ -760,8 +761,8 @@ fn table_fixtures_realign_with_marker_and_indent_kept() {
 }
 
 /// A GFM table inside a Python string literal is re-padded by the default
-/// run: a whitespace-only change inside the literal (the words and the
-/// quotes stay identical), one record, and a second run is a no-op.
+/// run. The change inside the literal is whitespace-only: the words and the
+/// quotes stay identical. It yields one record, and a second run is a no-op.
 #[test]
 fn table_inside_a_python_string_literal_is_repadded() {
     let expected = fs::read_to_string(fixture_dir().join("table_string_literal_after.py")).unwrap();

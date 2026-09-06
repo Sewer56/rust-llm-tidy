@@ -1,7 +1,7 @@
 //! Cross-file module-tree resolver for crate-aware visibility narrowing.
 //!
 //! Maps `mod foo;` file references to source files (edition path rules +
-//! `#[path]` overrides), distinguishes inline `mod foo {}` (no file), and
+//! `#[path]` overrides). It distinguishes inline `mod foo {}` (no file), and
 //! propagates each file's effective floor visibility root -> leaf.
 //!
 //! Crate-root discovery uses `cargo metadata --no-deps` (the CLI narrows each
@@ -24,9 +24,10 @@ enum ModChild {
     },
 }
 
-/// A resolved cross-file module tree: maps each source file to its effective
-/// floor visibility (the most-restrictive `mod` visibility on the path from the
-/// crate root) and exposes per-file lookup used by `narrow_vis_in_tree`.
+/// A resolved cross-file module tree. It maps each source file to its
+/// effective floor visibility (the most-restrictive `mod` visibility on the
+/// path from the crate root). It also exposes per-file lookup used by
+/// `narrow_vis_in_tree`.
 pub struct ModuleTree {
     /// Canonicalized file path -> effective floor visibility text
     /// (e.g. `"pub(crate)"`), or `None` at the crate root.
@@ -58,7 +59,7 @@ impl ModuleTree {
 /// equals `root`.
 ///
 /// Floors propagate root -> leaf: a `mod` with restricted visibility sets the
-/// floor for its (transitive) descendants; bare `pub` / private `mod`
+/// floor for its (transitive) descendants. Bare `pub` / private `mod`
 /// inherits the ancestor floor.
 ///
 /// Matches the inline `walk()` "innermost restricted ancestor wins" semantics

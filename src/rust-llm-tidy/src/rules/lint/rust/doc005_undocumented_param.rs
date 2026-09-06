@@ -11,8 +11,8 @@ use crate::source::SourceItem;
 /// `DOC005` - `# Arguments` section must mention every parameter name.
 ///
 /// Fires on `pub fn` with parameters when an `# Arguments`/`# Parameters`
-/// section exists but at least one parameter name is not mentioned anywhere in
-/// the section body.
+/// section exists. The section body must not omit any parameter name; the
+/// rule fires when at least one is missing from it.
 ///
 /// # Arguments
 ///

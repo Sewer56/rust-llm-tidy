@@ -23,7 +23,7 @@
 //! - DOC001: non-private documentable declarations (`public`, `internal`,
 //!   `protected`-family modifiers) need a `///` doc comment.
 //! - DOC002: a non-private method or constructor that can throw needs
-//!   an `<exception>` tag (error severity); throwing includes calls to
+//!   an `<exception>` tag (error severity). Throwing includes calls to
 //!   same-file members and indexed qualified members that throw.
 //! - DOC003: non-private can-throw members whose `<exception>` tags
 //!   all lack a concrete `cref` type.
@@ -89,12 +89,12 @@ impl Declaration<'_> {
 }
 
 /// Run every C# check over `parsed` and return all diagnostics in document
-/// order: the declaration checks first, then the text checks (TEXT*)
+/// order. The declaration checks run first, then the text checks (TEXT*)
 /// over the same parse's doc regions.
 ///
 /// Returns no diagnostics when the parse tree carries error nodes: a
-/// broken tree would report findings against misread declarations, so the
-/// whole pass degrades to silence.
+/// broken tree would report findings against misread declarations. The
+/// whole pass therefore degrades to silence.
 pub(crate) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
     run_indexed(parsed, None)
 }

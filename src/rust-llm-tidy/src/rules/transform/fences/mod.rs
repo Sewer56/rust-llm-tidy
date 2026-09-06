@@ -2,14 +2,14 @@
 //!
 //! [`fix_fences`] scans `input` for fenced code blocks. When one fence
 //! directly contains another, it rewrites the inner fence's marker to the
-//! opposite character (backticks <-> tildes) so a nested fence cannot close
-//! the outer block early.
+//! opposite character (backticks <-> tildes). A nested fence can then never
+//! close the outer block early.
 //!
 //! The outer (depth-0) marker is always preserved.
 //!
 //! This mirrors the doc-comment handling of [`super::fix_tables`]: a
-//! leading comment prefix from the caller's marker family is stripped, the
-//! fence is processed, and the prefix is re-applied.
+//! leading comment prefix from the caller's marker family is stripped. Then
+//! the fence is processed, and the prefix is re-applied.
 //!
 //! Rust callers pass the `///` / `//!` doc markers; an empty family handles
 //! plain markdown.
@@ -39,7 +39,7 @@ struct OpenFence {
 /// Rewrite nested markdown fences to alternate markers for one line-comment
 /// prefix family.
 ///
-/// Comment lines are recognized by the markers in `prefixes`: the matched
+/// Comment lines are recognized by the markers in `prefixes`. The matched
 /// marker, its indent, and one separating space (when present) are preserved
 /// on every rewritten delimiter line.
 ///
@@ -104,8 +104,9 @@ pub fn fix_fences<'a>(input: &'a str, prefixes: &[&str]) -> FixOutcome<'a> {
         pos += segment.len();
 
         // Cheap candidate check: a line can only be a fence after
-        // [`strip_comment_prefix`] + trim if, ignoring leading whitespace, it
-        // begins with a marker run or a comment prefix from the family.
+        // [`strip_comment_prefix`] + trim. It qualifies if, ignoring leading
+        // whitespace, it begins with a marker run or a comment prefix from the
+        // family.
         //
         // The vast majority of lines (code, prose) fail this and are emitted
         // verbatim with no further work.
@@ -487,8 +488,8 @@ deep
         // must still be parsed.
         //
         // The candidate-check fast path uses the same `trim_start` whitespace
-        // notion as the full pipeline, so it cannot skip such a line (which
-        // would desync the nesting stack).
+        // notion as the full pipeline. It therefore cannot skip such a line
+        // (which would desync the nesting stack).
         let input = "\u{c}```text\n\u{c}```rust\n\u{c}```\n```\n";
         let expected = "\u{c}```text\n\u{c}~~~rust\n\u{c}~~~\n```\n";
         let out = fix_fences(input, DOC_PREFIXES);
@@ -508,9 +509,10 @@ deep
     }
 
     /// Reference: the exact `fix_fences` from commit bc51750 (eager allocation,
-    /// no candidate-check fast path), retained only to differential-test that
-    /// the optimized version produces byte-identical output and the same
-    /// `Cow` variant for every input.
+    /// no candidate-check fast path). It is retained only to differential-test
+    /// that the optimized version produces byte-identical output.
+    ///
+    /// It must also produce the same `Cow` variant for every input.
     ///
     /// It shares the module's `parse_fence` / `alternate` / `emit_fence` /
     /// `split_terminator` / `strip_comment_prefix` + [`DOC_PREFIXES`], all
@@ -599,8 +601,8 @@ deep
     #[test]
     fn optimized_matches_bc51750_reference() {
         // Broad differential corpus: ASCII + Unicode leading whitespace before
-        // fences (the fast-path risk area), doc-comment fences, tilde roots,
-        // run lengths, info strings, closers with leading ws, unbalanced and
+        // fences (the fast-path risk area) and doc-comment fences. It also
+        // covers tilde roots, run lengths, info strings, and unbalanced and
         // non-fence edge cases.
         let cases: &[&str] = &[
             "",
@@ -665,8 +667,10 @@ deep
     fn optimized_matches_reference_on_generated_inputs() {
         // Deterministic linear congruential generator (LCG; no external test
         // dependency) builds many inputs from a fence-flavoured fragment
-        // alphabet: ASCII and Unicode leading whitespace, doc prefixes,
+        // alphabet. It spans ASCII and Unicode whitespace, doc prefixes,
         // mixed markers, run lengths, and info strings.
+        //
+        // Every generated input is one fragment list.
         //
         // The optimized `fix_fences` must stay byte-identical to the bc51750
         // reference for every generated input.
@@ -729,10 +733,12 @@ deep
     #[test]
     fn crlf_doc_comment_fences_preserved() {
         // CRLF input with nested fences inside a `///` doc comment: only the
-        // inner backtick fence should flip to tildes; every line ending must
-        // stay `\r\n` (the pass only swaps marker chars, never line terminators
-        // - `split_inclusive('\n')` keeps `\r\n` in-segment and `emit_fence`
-        // reuses the segment's terminator).
+        // inner backtick fence should flip to tildes. Every line ending must
+        // also stay `\r\n`: the pass only swaps marker chars, never line
+        // terminators.
+        //
+        // `split_inclusive('\n')` keeps `\r\n` in-segment and `emit_fence`
+        // reuses the segment's terminator.
         let input = "/// ```text\r\n/// ```rust\r\n/// inner\r\n/// ```\r\n/// ```\r\n";
         let expected = "/// ```text\r\n/// ~~~rust\r\n/// inner\r\n/// ~~~\r\n/// ```\r\n";
         let out = fix_fences(input, DOC_PREFIXES);
@@ -779,7 +785,7 @@ deep
     #[test]
     fn prefix_family_fences_flip_inner_marker_and_keep_prefix() {
         // Nested fences inside each line-comment family: the inner backtick
-        // fence flips to tildes with the marker kept on every line, each
+        // fence flips to tildes with the marker kept on every line. Each
         // flipped delimiter anchors its own line, and the pass is idempotent.
         for (marker, label) in PREFIX_FAMILIES {
             let input = format!(
@@ -843,8 +849,8 @@ deep
     #[test]
     fn fence_family_with_overlapping_markers_strips_longest_first() {
         // A `["///", "//"]` family (doc plus plain markers) still strips the
-        // full `///` marker; stripping only `//` would leave a `/` on the body
-        // and no fence would be recognized.
+        // full `///` marker. Stripping only `//` would leave a `/` on the
+        // body, and no fence would be recognized.
         let input = "/// ```text\n/// ```rust\n/// ```\n/// ```\n";
         let expected = "/// ```text\n/// ~~~rust\n/// ~~~\n/// ```\n";
         let out = fix_fences(input, &["///", "//"]);

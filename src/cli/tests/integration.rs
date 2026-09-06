@@ -243,7 +243,7 @@ fn all_after_fixtures_should_be_idempotent_on_rerun() {
 }
 
 /// An in-place reorder of `reorder_cs_before.cs` writes the `_after`
-/// fixture byte-for-byte: members land in the profile order, the caller
+/// fixture byte-for-byte: members land in the profile order. The caller
 /// precedes its callee, and the trailing `using` hoists to the pinned
 /// using block.
 #[test]
@@ -270,8 +270,8 @@ fn csharp_member_reorder_matches_after_fixture() {
 }
 
 /// A pure-CRLF `.cs` source still reorders - the accept side of the guard
-/// that declines lone-`\r` sources: the field hoists above the method with
-/// every newline still part of a `\r\n` pair, and a second run emits zero
+/// that declines lone-`\r` sources. The field hoists above the method with
+/// every newline still part of a `\r\n` pair. A second run emits zero
 /// records.
 #[test]
 fn csharp_reorder_on_pure_crlf_source_preserves_the_endings() {
@@ -840,8 +840,9 @@ pub fn build(name: &str) -> Option<Config> {\n\
 // ── Corpus gate ────────────────────────────────────────────────────
 
 /// The repository corpus gate: a `--dry-run` over this repository's root
-/// (repo config active, the same invocation CI's tidy job makes) exits 0
-/// and emits zero change records - every tracked file is already tidy.
+/// exits 0 and emits zero change records. The repo config is active; the
+/// invocation is the same one CI's tidy job makes. Every tracked file is
+/// already tidy.
 #[test]
 fn repo_corpus_dry_run_emits_zero_change_records() {
     let root = manifest_dir()
@@ -1113,7 +1114,7 @@ fn binary() -> std::path::PathBuf {
     }
 
     // Fallback for direct runs: the test binary lives in `<profile>/deps/`
-    // (stable) or the build-out dir (newer Cargo); both sit under the
+    // (stable) or the build-out dir (newer Cargo). Both sit under the
     // `<profile>` dir that holds the peer binary.
     let mut dir = std::env::current_exe()
         .expect("current_exe must resolve")

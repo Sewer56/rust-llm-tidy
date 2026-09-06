@@ -113,8 +113,9 @@ pub const FENCE_FIXTURES: &[(&str, &str)] = &[
 /// Link-hoist benchmark fixtures: `(name, source)` pairs, named by link state.
 ///
 /// Under always-hoist, every eligible inline link (single-use and intra-doc
-/// included) becomes `[text]` plus a `[text]: url` definition - one trailing
-/// block in Markdown, duplicated per using doc comment in `doc/*`.
+/// included) becomes `[text]` plus a `[text]: url` definition. The result
+/// is one trailing block in Markdown, duplicated per using doc comment in
+/// `doc/*`.
 ///
 /// `doc/noop` (reference-style only) is the borrowed no-op, still exercising
 /// the tally.

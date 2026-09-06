@@ -1,6 +1,6 @@
 //! Parses Rust items with spans, attached comments, and preamble/trailer offsets.
 //!
-//! This module orchestrates parsing: it splits source text into top-level
+//! This module orchestrates parsing. It splits source text into top-level
 //! items with byte spans (comment-pinning prefix comments/attributes to each
 //! item), classifies them, and exposes the data model.
 //!
@@ -15,9 +15,9 @@ pub(super) use classify::{doc_attribute_content, is_outer_doc};
 
 mod classify;
 
-/// A raw top-level item entry: the item body node (or the wrapping
-/// `expression_statement` for a top-level macro invocation) plus its pending
-/// attachable trivia (attributes + outer doc comments).
+/// A raw top-level item entry: the item body node plus its pending attachable
+/// trivia (attributes + outer doc comments). The item body node is the
+/// wrapping `expression_statement` for a top-level macro invocation.
 struct RawEntry<'a> {
     /// Node whose byte range covers the item body (incl. trailing `;` for
     /// macro invocations wrapped in `expression_statement`).
@@ -33,7 +33,7 @@ struct RawEntry<'a> {
 /// precede an item are pinned to it (comment-pinning).
 ///
 /// Spans are laid back-to-back so each item carries the blank lines and `//`
-/// comments preceding it when reordered: each item's `end` is the byte after
+/// comments preceding it when reordered. Each item's `end` is the byte after
 /// its trailing newline, and every non-first item's `start` is the previous
 /// item's `end`.
 ///
@@ -79,7 +79,7 @@ pub(crate) fn parse_source(source: &str) -> anyhow::Result<ParseResult> {
 /// Assign each item a span that carries the blank lines and `//` comments
 /// preceding it, so reordering preserves that whitespace.
 ///
-/// Spans are laid back-to-back: each item's `start` is the previous item's
+/// Spans are laid back-to-back. Each item's `start` is the previous item's
 /// `end` (`preamble_end` for the first), and each `end` is the byte after the
 /// item's trailing newline.
 ///
@@ -98,8 +98,8 @@ pub(crate) fn parse_source(source: &str) -> anyhow::Result<ParseResult> {
 ///
 /// `start_line` uses the item's attached-trivia start (the first preceding
 /// `#[...]` attribute or `///` doc comment) so diagnostic line numbers point at
-/// the real leading docs/attrs; with no attached trivia it falls back to the
-/// item body start.
+/// the real leading docs/attrs. With no attached trivia, it falls back to
+/// the item body start.
 fn build_items(raw: &[RawEntry<'_>], source: &str, line_starts: &[usize]) -> Vec<SourceItem> {
     let source_len = source.len();
     let mut out = Vec::with_capacity(raw.len());
@@ -115,8 +115,8 @@ fn build_items(raw: &[RawEntry<'_>], source: &str, line_starts: &[usize]) -> Vec
         let attached_start = entry.pending.attached_start().unwrap_or(body_start);
 
         // Gap-anchored start: the first item seeds with its attached_start
-        // (= preamble_end); later items chain from the previous item's end so
-        // the inter-item gap falls inside this item's span.
+        // (= preamble_end). Later items chain from the previous item's end
+        // so the inter-item gap falls inside this item's span.
         let start = if first {
             first = false;
             attached_start
@@ -152,7 +152,7 @@ fn build_items(raw: &[RawEntry<'_>], source: &str, line_starts: &[usize]) -> Vec
     out
 }
 
-/// Walk the `source_file` children in byte order and collect one [`RawEntry`]
+/// Walk the `source_file` children in byte order. Collect one [`RawEntry`]
 /// per recognized top-level item, attaching the contiguous run of preceding
 /// attributes and outer doc comments to each.
 ///
@@ -211,7 +211,7 @@ fn line_start_offsets(source: &str) -> Vec<usize> {
 
 /// If `node` is a recognized top-level item, return the body node to classify.
 ///
-/// Top-level macro invocations are wrapped in `expression_statement`; the
+/// Top-level macro invocations are wrapped in `expression_statement`. The
 /// body node returned is the `expression_statement` (so its byte range covers
 /// the trailing `;`), with classification reading the inner `macro_invocation`.
 fn item_entry_for(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
@@ -266,7 +266,7 @@ mod tests {
     use crate::source::ItemKind;
 
     /// Gap-anchored spans: each non-first item's `start` is the previous
-    /// item's `end`, `end` includes the trailing newline, and `start_line`
+    /// item's `end`, `end` includes the trailing newline. `start_line`
     /// tracks the attached-trivia start (the SYN body start when no attached
     /// attrs/docs precede it).
     #[test]

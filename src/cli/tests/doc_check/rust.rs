@@ -2,8 +2,8 @@
 //! `tests/fixtures/doc/rust/`.
 //!
 //! Every test runs the built CLI binary with `--include lints` and asserts
-//! on its exit code and stderr diagnostics (the JSON-composition test
-//! asserts on stdout); the shared runner helpers live in `mod.rs`.
+//! on its exit code and stderr diagnostics. The JSON-composition test
+//! asserts on stdout. The shared runner helpers live in `mod.rs`.
 
 use super::{assert_has_diagnostic, run_command, run_rust_fixture, rust_fixture_dir, temp_file};
 use std::fs;
@@ -311,9 +311,11 @@ fn rs_block_and_attribute_docs_fire_text_budgets() {
 }
 
 /// The CLI's rendered rs findings equal the Rust backend's lint
-/// composition over the same file: the item rules (DOC*,
-/// TEST001) plus the rs text checks (line comments plus `/** */` and
-/// `#[doc = "..."]` docs).
+/// composition over the same file. That composition is the item rules
+/// (DOC*, TEST001) plus the rs text checks.
+///
+/// The rs text checks cover line comments plus `/** */` and
+/// `#[doc = "..."]` docs.
 ///
 /// rs dispatch adds nothing and drops nothing.
 #[test]

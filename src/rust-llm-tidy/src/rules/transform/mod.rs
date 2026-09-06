@@ -2,8 +2,8 @@
 //! after LLM editing.
 //!
 //! Each pass rewrites a class of formatting drift in Markdown and commented
-//! source in place, borrowing the input back unchanged when nothing needs
-//! fixing (so every pass is idempotent).
+//! source in place. Each pass borrows the input back unchanged when nothing
+//! needs fixing (so every pass is idempotent).
 //!
 //! # Passes
 //!

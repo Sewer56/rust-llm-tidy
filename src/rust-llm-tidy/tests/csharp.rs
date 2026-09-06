@@ -9,8 +9,8 @@ use rust_llm_tidy::reporting::Severity;
 use rust_llm_tidy::rules::transform::reorder::emit;
 use rust_llm_tidy::source::ItemKind;
 
-/// A body that opens with blank lines still reorders: the blank lines
-/// travel with the first member, so the profile applies exactly as it
+/// A body that opens with blank lines still reorders. The blank lines
+/// travel with the first member. So the profile applies exactly as it
 /// does without them.
 #[test]
 fn blank_lines_after_the_opening_brace_still_reorder() {
@@ -64,7 +64,7 @@ fn blank_lines_after_the_opening_brace_still_reorder() {
 }
 
 /// A type body whose members do not each occupy their own lines keeps its
-/// member order entirely: line-tiled spans cannot represent the body, so
+/// member order entirely. Line-tiled spans cannot represent the body, so
 /// the emitted output equals the source.
 #[test]
 fn bodies_with_same_line_members_stay_whole() {
@@ -122,8 +122,8 @@ fn bodies_with_same_line_members_stay_whole() {
 }
 
 /// Top-level conditionals parse as single opaque items with their own
-/// region ids (their first line is a directive line), so each forms a
-/// singleton region run that never moves; the whole fixture reorders to
+/// region ids (their first line is a directive line). Each forms a
+/// singleton region run that never moves. The whole fixture reorders to
 /// itself.
 #[test]
 fn conditional_items_never_move_and_the_fixture_is_a_noop() {
@@ -672,7 +672,7 @@ fn doc006_flags_placeholder_words_only() {
 // ── Doc-comment attachment through reorder ───────────────────────
 
 /// A `///` doc run above the first item stays attached to that item
-/// even under a plain `//` banner: a hoisted `using` lands after the
+/// even under a plain `//` banner. A hoisted `using` lands after the
 /// banner (the banner stays in the preamble) and before the item's doc
 /// run.
 ///
@@ -972,9 +972,9 @@ fn namespace_body_hoists_nested_usings_above_its_types() {
     );
 }
 
-/// A type nested inside a reordering body moves as one member and its
+/// A type nested inside a reordering body moves as one member. Its
 /// own members keep their source order even where a nested-body sort
-/// would move them: the callee precedes its caller and the property
+/// would move them. The callee precedes its caller. The property
 /// trails the methods inside the nested type.
 #[test]
 fn nested_type_moves_whole_while_the_enclosing_body_reorders() {
@@ -1018,8 +1018,8 @@ fn nested_type_moves_whole_while_the_enclosing_body_reorders() {
     );
 
     // The nested type stays whole: its callee keeps its source position
-    // before its caller, and its property stays after the methods -
-    // both would move under any nested-body sort.
+    // before its caller. Its property stays after the methods - both
+    // would move under any nested-body sort.
     let second = output.find("Second()").expect("nested callee survives");
     let first = output.find("First()").expect("nested caller survives");
     let tally = output
@@ -1049,8 +1049,8 @@ fn nested_type_moves_whole_while_the_enclosing_body_reorders() {
 // ── Parse shape ──────────────────────────────────────────────────
 
 /// The parse fixture classifies every top-level declaration: usings, the
-/// file-scoped namespace, and the documented class, in document order,
-/// with the class's members typed per the member table.
+/// file-scoped namespace, and the documented class. They appear in
+/// document order. The class's members are typed per the member table.
 #[test]
 fn parse_classifies_top_level_items_and_members() {
     let source = include_str!("fixtures/csharp/parse_fixture.cs");
@@ -1128,8 +1128,8 @@ fn parse_keeps_plain_comments_in_the_preamble() {
 }
 
 /// Item spans tile back-to-back: each `end` is the byte after the item's
-/// trailing newline and every later item's `start` is the previous
-/// `end`, so reordering carries inter-item comments and blank lines.
+/// trailing newline. Every later item's `start` is the previous `end`, so
+/// reordering carries inter-item comments and blank lines.
 ///
 /// The trailer starts exactly where the last item ends.
 #[test]
@@ -1231,7 +1231,7 @@ fn reorder_permutation_applies_profile_and_caller_first() {
 }
 
 /// Two top-level declarations on one row are unrepresentable for the
-/// top-level tiling: the whole reorder declines to a no-op with zero
+/// top-level tiling. The whole reorder declines to a no-op with zero
 /// records and byte-stable output, whatever the profile order would do.
 #[test]
 fn same_line_top_level_items_decline_the_whole_reorder() {

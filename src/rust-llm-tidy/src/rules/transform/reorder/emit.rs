@@ -195,8 +195,8 @@ impl core::fmt::Display for ReorderMove {
 /// Derive the list of moves between the input item order and `perm`.
 ///
 /// Only items that move to an *earlier* output position (`to < from`) are
-/// reported; items that merely shift to a later position to fill the gap are
-/// implied by the reported moves and omitted.
+/// reported. Items that merely shift to a later position to fill the gap
+/// are implied by the reported moves and omitted.
 ///
 /// An already-ordered input yields an empty list. The returned records are in
 /// reordered-output order, so `before` references the item that follows each
@@ -297,15 +297,15 @@ pub fn emit(parsed: &ParseResult, perm: &Permutation) -> Result<String> {
         let item = &parsed.items[idx];
         if let Some(member_order) = member_splice_order(perm, idx) {
             // Splice the type body: the head up to the first member and the
-            // tail after the last member stay fixed around the reordered
-            // member spans, which tile the body back-to-back.
+            // tail after the last member stay fixed. The reordered member
+            // spans tile the body back-to-back between them.
             //
             // Member slices are verbatim, so carried whitespace travels
             // with each member.
             let members = item.members();
-            // The permutation validated the member count it was built
-            // with; re-check it against the parsed members so a divergent
-            // count errors instead of indexing out of bounds.
+            // The permutation validated the member count it was built with.
+            // Re-check it against the parsed members so a divergent count
+            // errors instead of indexing out of bounds.
             ensure!(
                 member_order.len() == members.len(),
                 "member permutation length {} does not match item {} member count {}",
@@ -352,8 +352,8 @@ fn describe(item: &crate::source::SourceItem) -> String {
 }
 
 /// The member permutation to splice for item `idx`, or `None` when the item
-/// emits its plain slice (no attached member order, or an identity one,
-/// which must keep the original bytes).
+/// emits its plain slice. A plain slice means no attached member order, or an
+/// identity one, which must keep the original bytes.
 fn member_splice_order(perm: &Permutation, idx: usize) -> Option<&[usize]> {
     let order = perm.member_orders.get(&idx)?;
     let identity = order.iter().enumerate().all(|(pos, &member)| pos == member);
@@ -526,7 +526,7 @@ mod tests {
     }
 
     /// Member reordering round-trips: the type body splices members in the
-    /// profile order, every line survives, and the spliced order is
+    /// profile order and every line survives. The spliced order is
     /// idempotent (recomputing yields the identity member permutation).
     #[test]
     fn member_reorder_round_trips_through_emit() {

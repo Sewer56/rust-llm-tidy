@@ -2,8 +2,8 @@
 //! the TEXT* text checks.
 //!
 //! One depth-first walk collects every `///` comment node of the parse
-//! tree; consecutive comment rows group into one [`DocRegion`] per doc
-//! run, and each line keeps its original 1-based file line number.
+//! tree. Consecutive comment rows group into one [`DocRegion`] per doc
+//! run. Each line keeps its original 1-based file line number.
 //!
 //! String literals and code lines are never comment nodes, so their
 //! content is never measured.

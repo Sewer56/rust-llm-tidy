@@ -9,17 +9,17 @@
 /// [`super::strip_comment_prefix`] + Unicode `body.trim_start()` pipeline for
 /// one prefix family.
 ///
-/// This is a sound superset gate: it returns `true` for every line the pipeline
-/// would treat as a fence, plus a few extras the pipeline would emit verbatim
-/// (still correct).
+/// This is a sound superset gate. It returns `true` for every line the
+/// pipeline would treat as a fence. It also admits a few extras the pipeline
+/// would emit verbatim (still correct).
 ///
-/// The common case - an ASCII line whose first non-whitespace byte is not a
-/// marker run or one of the family's comment markers - short-circuits with a
-/// raw byte scan, so typical code and prose cost almost nothing.
+/// The common case short-circuits with a raw byte scan. That case is an ASCII
+/// line whose first non-whitespace byte is not a marker run or one of the
+/// family's comment markers. Typical code and prose cost almost nothing.
 ///
 /// Whitespace handled in two tiers to stay both exact and fast:
 /// - ASCII whitespace (`0x09..=0x0d` plus space `0x20` - the ASCII members of
-///   [`char::is_whitespace`]) is skipped directly; this covers the realistic
+///   [`char::is_whitespace`]) is skipped directly. This covers the realistic
 ///   indentation (spaces, tabs) and the ASCII oddities like form feed.
 /// - A leading non-ASCII byte (`>= 0x80`) may be Unicode whitespace (e.g.
 ///   NBSP, ideographic space) preceding a fence, so such lines defer to the
@@ -34,9 +34,9 @@ pub(super) fn is_fence_candidate(segment: &str, prefixes: &[&str]) -> bool {
         i += 1;
     }
     match bytes.get(i).copied() {
-        // ASCII first byte: a fence - after the pipeline's Unicode trim - can
-        // only start with a marker run or a comment prefix from the family,
-        // all ASCII.
+        // ASCII first byte: after the pipeline's Unicode trim, a fence can only
+        // start with a marker run or a comment prefix from the family. All of
+        // those are ASCII.
         Some(b) if b <= 0x7f => {
             b == b'`' || b == b'~' || prefixes.iter().any(|&p| segment[i..].starts_with(p))
         }

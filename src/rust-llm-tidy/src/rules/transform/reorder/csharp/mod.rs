@@ -13,17 +13,19 @@ mod profile;
 /// body.
 ///
 /// Returns `Ok(None)` when the source holds constructs the engine
-/// declines to reorder: parse-tree error nodes, a preprocessor region
-/// scan that rejects the source, two top-level declarations sharing
-/// a row, or CR-styled line endings.
+/// declines to reorder. Those constructs are parse-tree error nodes,
+/// a rejected preprocessor region scan, two top-level declarations
+/// sharing a row, or CR-styled line endings.
 ///
 /// The sharing-a-row and line-ending guards keep the span tiling
 /// honest: a degenerate span has no representable slice.
 ///
 /// The region scan runs twice - once in the parse to stamp ids, once
-/// here as the authority for degradation - because the shared parse
-/// result carries no ambiguity flag; the scan is one linear pass, far
-/// below the tree parse it accompanies.
+/// here as the authority for degradation. The shared parse result
+/// carries no ambiguity flag.
+///
+/// The scan is one linear pass, far below the tree parse it
+/// accompanies.
 pub(crate) fn reorder_permutation(parsed: &ParseResult) -> anyhow::Result<Option<Permutation>> {
     if parsed.syntax_tree().root_node().has_error() {
         return Ok(None);
@@ -41,9 +43,9 @@ pub(crate) fn reorder_permutation(parsed: &ParseResult) -> anyhow::Result<Option
     {
         return Ok(None);
     }
-    // A top-level pair sharing a row (either declaration's span
-    // reaching the next one's start row) is unrepresentable for the
-    // span tiling: the later item's span degenerates.
+    // A top-level pair sharing a row is unrepresentable for the span
+    // tiling. Sharing a row means either declaration's span reaches
+    // the next one's start row, so the later item's span degenerates.
     //
     // Degrade to a no-op rather than emitting a guessed rewrite or a
     // record for a move the bytes never perform.
@@ -107,14 +109,14 @@ pub(crate) fn reorder_permutation(parsed: &ParseResult) -> anyhow::Result<Option
     Ok(Some(permutation))
 }
 
-/// The top-level item order for the all-stable C# profile: region runs
-/// emit in source order, and within each run the `using` directives pin
-/// first while everything else keeps source order.
+/// The top-level item order for the all-stable C# profile. Region
+/// runs emit in source order. Within each run the `using` directives
+/// pin first while everything else keeps source order.
 ///
-/// The engine's [`compute_order`] would produce the same order, but it
-/// unconditionally collects reference edges for dependency phases this
-/// profile never uses; deriving the order directly skips that discarded
-/// full-tree walk.
+/// The engine's [`compute_order`] would produce the same order.
+/// However, it unconditionally collects reference edges for dependency
+/// phases this profile never uses. Deriving the order directly skips
+/// that discarded full-tree walk.
 ///
 /// [`compute_order`]: crate::rules::transform::reorder::graph::compute_order
 fn top_level_order(parsed: &ParseResult) -> Vec<usize> {

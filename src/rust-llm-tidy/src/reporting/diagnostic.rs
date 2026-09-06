@@ -1,8 +1,8 @@
 //! Diagnostic types emitted by documentation checks.
 //!
 //! A [`Diagnostic`] is a single finding: a severity, a stable rule code, a
-//! human-readable message, and a location (1-based line number plus the item
-//! kind and name that produced the finding).
+//! human-readable message, and a location. The location is a 1-based line
+//! number plus the item kind and name that produced the finding.
 
 use crate::rules::registry::title_for_code;
 
@@ -30,12 +30,12 @@ pub struct Diagnostic {
 /// the run.
 ///
 /// `Hint` severities are suggestions for a large language model or a human
-/// to investigate, such as a possible pre-allocation; they never fail a run
+/// to investigate, such as a possible pre-allocation. They never fail a run
 /// and surface separately from errors and warnings.
 ///
 /// # Remarks
 ///
-/// Adding `Hint` is additive, not free for every consumer: exhaustive
+/// Adding `Hint` is additive, not free for every consumer. Exhaustive
 /// downstream matches on this enum need a new arm, and strict severity
 /// parsers must accept the `hint` value.
 #[derive(Debug, Clone, PartialEq, Eq)]

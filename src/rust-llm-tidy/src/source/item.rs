@@ -1,9 +1,9 @@
 //! Data model for parsed source items.
 //!
 //! Holds the value types produced by parsing a source file: the kind,
-//! name, visibility, doc comments, and span of each top-level item, plus
-//! the container that bundles them with the original source text and
-//! preamble/trailer offsets.
+//! name, visibility, doc comments, and span of each top-level item.
+//! It also holds the container that bundles them with the original source
+//! text and preamble/trailer offsets.
 //!
 //! Items also carry the preprocessor region id and in-type members a
 //! language backend fills for reordering.
@@ -197,7 +197,7 @@ impl SourceItem {
     ///
     /// Returns `Some` for every item kind that carries a visibility modifier
     /// (fn, struct, enum, union, type, const, static, mod, trait, use, extern
-    /// crate), and `None` for kinds without one (impl, macro, macro
+    /// crate). Returns `None` for kinds without one (impl, macro, macro
     /// invocation, other).
     #[inline]
     pub fn visibility(&self) -> Option<VisibilityTier> {

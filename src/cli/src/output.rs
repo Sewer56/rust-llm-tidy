@@ -4,7 +4,7 @@
 //! on stderr (the default) or as a single JSON array on stdout.
 //!
 //! This module owns the serializable projection of lint findings and dry-run
-//! change records and the emit routine, keeping presentation separate from
+//! change records and the emit routine. It keeps presentation separate from
 //! library execution and its structured results.
 
 use core::num::NonZeroU32;
@@ -16,8 +16,8 @@ use std::io::Write;
 use std::path::Path;
 
 /// A serializable record that is either a lint finding or a dry-run change
-/// record, matching the documented JSON schema (`{ path, line, severity, code,
-/// message, item_kind, item_name, title }`).
+/// record. It matches the documented JSON schema (`{ path, line, severity,
+/// code, message, item_kind, item_name, title }`).
 ///
 /// Lint findings use severity `error`, `warning`, or `hint`; change
 /// records use `success`. `item_name` is `null` when the item is unnamed, and

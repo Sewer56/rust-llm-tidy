@@ -3,15 +3,15 @@
 //!
 //! [`text_checks`] walks the raw source once, tracking line-comment
 //! markers, block-comment pairs, and the family's multi-line string
-//! forms, and emits two kinds of [`DocRegion`] for the lint module's
+//! forms. It emits two kinds of [`DocRegion`] for the lint module's
 //! measuring core:
 //!
 //! - contiguous runs of standalone line comments, measured as markdown
 //!   prose with the full marker run (`///`, `##`, `;;;`) and one space
 //!   stripped;
 //! - every block comment (`/* */`, `--[[ ]]`, `{- -}`, `#| |#`, and
-//!   MATLAB's line-alone `%{ %}`), measured with the block doc dialect
-//!   (`*` continuations stripped, `@tag` names exempt).
+//!   MATLAB's line-alone `%{ %}`). It measures with the block doc
+//!   dialect (`*` continuations stripped, `@tag` names exempt).
 //!
 //! String content, heredoc payload, and code lines never measure: they
 //! are not comments. A trailing comment (code before the marker) is its
@@ -42,14 +42,14 @@
 //!
 //! An unterminated quote whose literal legally spans the line
 //! (script-family strings, or a backslash-newline continuation) carries
-//! its state: the lines until the closing quote stay string content.
+//! its state. The lines until the closing quote stay string content.
 //!
 //! A file ending inside a carried quote rejects the scan. Any other
 //! unterminated quote is invalid source and closes at the line's end:
 //! its desync never crosses the line.
 //!
 //! The word-start families (POSIX `#` rules, Ruby after a token) open
-//! comments only at the start of a word, so regex literals and mid-word
+//! comments only at the start of a word. Regex literals and mid-word
 //! markers stay code.
 //!
 //! Regex literals are otherwise unmodeled: a `//`-family pattern
@@ -169,7 +169,7 @@ mod tests {
 
     /// Standalone line-comment prose measures as one paragraph at the
     /// paragraph's first line, for every extension in the lexicon table
-    /// with that row's own family marker: a row wired to the wrong
+    /// with that row's own family marker. A row wired to the wrong
     /// lexicon stays silent, so pin all of them.
     #[test]
     fn line_comment_prose_measures_for_every_lexed_extension() {
@@ -195,9 +195,8 @@ mod tests {
     }
 
     /// The dash, semicolon, and percent families' block forms measure
-    /// with the block doc dialect:
-    /// SQL `/* */`, Lua `--[[ ]]`, Haskell and Elm `{- -}`, Lisp `#| |#`,
-    /// and MATLAB `%{ %}`.
+    /// with the block doc dialect. Forms: SQL `/* */`, Lua `--[[ ]]`,
+    /// Haskell and Elm `{- -}`, Lisp `#| |#`, and MATLAB `%{ %}`.
     #[test]
     fn dash_semi_percent_block_forms_measure_with_the_block_dialect() {
         for (ext, open, close) in [
@@ -229,9 +228,9 @@ mod tests {
     }
 
     /// MATLAB block markers comment only alone on their lines: a
-    /// mid-line or non-alone `%{` is an ordinary `%` comment (the code
-    /// lines after it never measure), and a mid-line `%}` does not
-    /// close a real block.
+    /// mid-line or non-alone `%{` is an ordinary `%` comment. The code
+    /// lines after it never measure. A mid-line `%}` does not close
+    /// a real block.
     #[test]
     fn matlab_block_markers_comment_only_alone() {
         let tail = "m".repeat(85);
@@ -380,8 +379,8 @@ mod tests {
     }
 
     /// Strings that legally span lines stay string content in the
-    /// dash and semicolon families too: Elm and Lisp native spans,
-    /// and a Haskell string gap (a `\` at the line's end).
+    /// dash and semicolon families too: Elm and Lisp native spans.
+    /// Also a Haskell string gap (a `\` at the line's end).
     #[test]
     fn spanned_dash_and_semi_strings_stay_quiet() {
         let payload: &str = "-- payload-looking span line padding far past both the line and paragraph budget limits\n";
@@ -687,9 +686,9 @@ mod tests {
     }
 
     /// The dash, semicolon, and percent families' unmodeled forms
-    /// reject the scan: SQL dollar quotes, Lua long brackets, Haskell
-    /// quasiquotes, nested block comments, Lisp reader semicolons,
-    /// TeX verbatim material, and the Erlang percent character.
+    /// reject the scan. Forms: SQL dollar quotes, Lua long brackets,
+    /// Haskell quasiquotes, nested block comments, Lisp semicolons,
+    /// TeX verbatim, Erlang percent.
     #[test]
     fn dash_semi_percent_ambiguities_fail_closed() {
         let cases = [

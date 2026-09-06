@@ -2,9 +2,9 @@
 //! `pyi` sources.
 //!
 //! Python registers no AST ops - it parses for the TEXT* text
-//! checks only, sourcing them from [`text_regions`]' docstring
-//! and `#`-comment walk of the same parse. Reorder declines every
-//! source.
+//! checks only. The checks source from [`text_regions`]'
+//! docstring and `#`-comment walk of the same parse. Reorder
+//! declines every source.
 //!
 //! [`text_regions`]: text_regions
 

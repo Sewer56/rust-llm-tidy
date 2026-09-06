@@ -8,8 +8,8 @@
 //! [`narrow_vis_in_tree`] rewrites each affected child's `pub` token to the
 //! most-restrictive enclosing module's visibility.
 //!
-//! This is a Rust-only API beside the backend's shared AST ops; it is not
-//! part of the [`LanguageBackend`] contract, and no other language has
+//! This is a Rust-only API beside the backend's shared AST ops. It is not
+//! part of the [`LanguageBackend`] contract. No other language has
 //! visibility narrowing.
 //!
 //! [`LanguageBackend`]: crate::languages::LanguageBackend
@@ -48,7 +48,8 @@ pub struct ParsedFile {
 ///
 /// Built by [`collect_crate_reexports`]. A glob (`pub use p::*`) in ANY file
 /// records `"*"`, which (soundness) disables narrowing for every named child
-/// across the crate - matching the per-file glob behavior at a crate scope.
+/// across the crate. This matches the per-file glob behavior at a crate
+/// scope.
 ///
 /// This is the conservative default for cross-file glob scope; a
 /// finer-grained per-module-path glob is left as future work.
@@ -98,7 +99,7 @@ impl ReexportSet {
 /// `collect_reexports` (private, same logic) but unions across all files.
 ///
 /// This is the hard-correctness gate's data source: a missed cross-file
-/// re-export turns a safe narrowing into a soundness bug, so the caller MUST
+/// re-export turns a safe narrowing into a soundness bug. The caller MUST
 /// pass every `.rs` file in the crate.
 ///
 /// # Arguments

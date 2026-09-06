@@ -10,12 +10,12 @@ use tree_sitter::Node;
 /// effective floor from a [`ModuleTree`]) plus a crate-wide re-export guard
 /// ([`ReexportSet`]).
 ///
-/// This is the sole entry point; a standalone file (no crate context) is
+/// This is the sole entry point. A standalone file (no crate context) is
 /// narrowed with `floor = None` and a per-file re-export set built by the
 /// caller.
 ///
 /// Top-level eligible items are narrowed to `floor` (if `Some`); inline `mod {}`
-/// bodies are then recursed by `walk()`, so a tighter inline floor still applies
+/// bodies are then recursed by `walk()`. A tighter inline floor still applies
 /// transitively.
 ///
 /// `crate_reexports` is consulted for every candidate (named match OR glob
@@ -40,9 +40,10 @@ use tree_sitter::Node;
 /// Visibility spans come straight from node byte offsets, so no line/column
 /// conversion or `proc_macro2` span hack is required.
 ///
-/// When no child needs narrowing (no restricted-visibility inline module with
-/// bare-`pub` children, or an idempotent re-run), the input is borrowed back
-/// unchanged ([`Cow::Borrowed`]) with zero allocation.
+/// When no child needs narrowing, the input is borrowed back unchanged
+/// ([`Cow::Borrowed`]) with zero allocation. This covers a file with no
+/// restricted-visibility inline module with bare-`pub` children, or an
+/// idempotent re-run.
 ///
 /// Otherwise the rewritten buffer is returned as [`Cow::Owned`].
 ///
@@ -238,8 +239,8 @@ fn narrow_if_eligible<'a, 'n>(
 /// other kinds (those are never narrowed).
 ///
 /// Returning the borrowed name node (rather than an owned [`String`]) lets the
-/// caller defer - and usually skip - the name allocation, since the name is
-/// only read by the rare re-export guard.
+/// caller defer - and usually skip - the name allocation. The name is only
+/// read by the rare re-export guard.
 #[inline]
 fn eligible_name<'a>(node: Node<'a>) -> Option<Node<'a>> {
     let name = node.child_by_field_name("name")?;
@@ -526,9 +527,10 @@ mod tests {
 
     #[test]
     fn crlf_line_endings_preserved_when_narrowing() {
-        // CRLF source: bare `pub fn f` inside a `pub(crate)` inline module is
-        // narrowed to `pub(crate) fn f` via a byte-range `replace_range` swap
-        // that touches only the `pub` token bytes, so every `\r\n` survives.
+        // CRLF source: bare `pub fn f` inside a `pub(crate)` inline module.
+        // It is narrowed to `pub(crate) fn f` via a byte-range
+        // `replace_range` swap that touches only the `pub` token bytes.
+        // Every `\r\n` survives.
         let src = "pub(crate) mod m {\r\n    pub fn f() {}\r\n}\r\n";
         let out = narrow(src).unwrap();
         let owned = out.into_owned();

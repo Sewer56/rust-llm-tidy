@@ -1,6 +1,6 @@
 //! Language registry: the single authority deciding which pipeline
-//! ops may run for a source-file extension, and which line-comment prefixes
-//! the fix passes strip around tables and fences.
+//! ops may run for a source-file extension. It also decides which
+//! line-comment prefixes the fix passes strip around tables and fences.
 //!
 //! Every allowed extension is governed by a [`Profile`]:
 //!
@@ -19,8 +19,8 @@
 //! - C# (`cs`): `tables`, `fences` plus the AST ops `reorder`/`lints`; no
 //!   `links`
 //! - Python (`py`, `pyi`): like a code language (`tables`, `fences`, and
-//!   `lints` by default, `#` prefixes) but with its text checks sourced
-//!   from the tree-sitter-python backend's docstring walk
+//!   `lints` by default, `#` prefixes). Its text checks are sourced from
+//!   the tree-sitter-python backend's docstring walk.
 //! - Code languages: `tables`, `fences`, and `lints` by default; no
 //!   `links`, no AST ops; tables
 //!   inside comments realign with the language's marker re-applied
@@ -41,12 +41,12 @@
 //!
 //! - [`TextLints::Prose`]: the markdown family measures the whole file
 //!   as prose, no parser needed.
-//! - [`TextLints::Ast`]: the language's backend parses the file and its
+//! - [`TextLints::Ast`]: the language's backend parses the file. Its
 //!   lint composition emits the text checks (`rs` from line-comment
 //!   regions, `cs` from XML doc regions, `py`/`pyi` from docstring and
 //!   `#`-comment regions).
 //! - [`TextLints::Lexicon`]: the language module's fail-closed comment
-//!   lexicon scans the raw source: line and block comments measure,
+//!   lexicon scans the raw source. Line and block comments measure,
 //!   string content and code lines never do, and ambiguous sources
 //!   produce no findings.
 //! - Every comment-marker code family (`//`, `#`, `--`, `;`, `%`)
@@ -266,7 +266,7 @@ pub(crate) struct Profile {
     /// Their `lints` op runs by default through the fail-closed lexicon,
     /// which never measures string content or code lines.
     pub default_ops: &'static [&'static str],
-    /// Whether an AST parser is registered for the extension; `reorder`
+    /// Whether an AST parser is registered for the extension. `reorder`
     /// and the parser-driven `lints` checks require this in addition to
     /// appearing in `ops`, as does the [`TextLints::Ast`] tier's doc-region
     /// producer.
@@ -328,7 +328,7 @@ impl Profile {
 /// The extensions one run allows.
 ///
 /// The base is the config `extensions:` key when non-empty (replacing the
-/// registry defaults wholesale), else [`DEFAULT_EXTENSIONS`]; the config
+/// registry defaults wholesale), else [`DEFAULT_EXTENSIONS`]. The config
 /// `extra_extensions:` key and the CLI `--extension` flag add on top.
 ///
 /// Built once per run; explicit paths, directory walks, and git-diff
@@ -336,7 +336,7 @@ impl Profile {
 /// across input modes.
 ///
 /// Appended entries may repeat the base or each other - membership checks
-/// are idempotent, and per-file op gating always re-resolves the profile
+/// are idempotent. Per-file op gating always re-resolves the profile
 /// from the file's own extension.
 pub(crate) fn allowed_extensions<'a>(
     config: Option<&'a crate::config::CompiledConfig>,
@@ -394,7 +394,7 @@ pub(crate) fn profile_for(ext: &str) -> &'static Profile {
 /// # Errors
 ///
 /// Returns an error when `ext` is empty, starts with a dot, or contains an
-/// inner dot, a path separator (`/` or `\`), or whitespace - none of those
+/// inner dot, a path separator (`/` or `\`), or whitespace. None of those
 /// can match a real path extension, so they fail the run instead of being
 /// silently ignored.
 pub(crate) fn validate_extension(ext: &str) -> anyhow::Result<()> {
@@ -575,7 +575,7 @@ mod tests {
     // ── Per-file op gating ──
 
     /// The `backend` column must agree with the lang-crate backend registry
-    /// per extension and per AST op: dispatch composes both tables, so a
+    /// per extension and per AST op: dispatch composes both tables. A
     /// language updated on only one side silently gains or loses AST ops.
     ///
     /// The Ast text tier additionally requires the column: its doc-region
@@ -619,8 +619,8 @@ mod tests {
         }
     }
 
-    /// Op gating intersects the rule selection with the profile: default
-    /// mode runs the profile defaults minus disabled names, whitelist mode
+    /// Op gating intersects the rule selection with the profile. Default
+    /// mode runs the profile defaults minus disabled names; whitelist mode
     /// intersects the whitelist with the allowed ops.
     #[test]
     fn op_enabled_combines_rule_selection_with_profile_ops() {
@@ -647,7 +647,7 @@ mod tests {
         assert!(!profile_for("json").op_enabled("tables", &none, &empty));
 
         // Whitelist mode: an explicit include reaches a code language's
-        // fences and every code family's text checks; links outside
+        // fences and every code family's text checks. Links outside
         // the markdown family and Rust stay refused, and so does an op
         // the profile never carries.
         //
@@ -668,10 +668,10 @@ mod tests {
         }
     }
 
-    /// Every registry extension resolves to exactly one text-lint tier:
-    /// markdown prose for the markdown family only,
-    /// `rs`/`cs`/`py`/`pyi` AST regions, and the lexicon tier for every
-    /// comment-marker code family.
+    /// Every registry extension resolves to exactly one text-lint tier.
+    /// Markdown prose covers the markdown family only. `rs`/`cs`/`py`/`pyi`
+    /// use AST regions, and every comment-marker code family uses the
+    /// lexicon tier.
     ///
     /// No registry extension is left without a producer, and nothing
     /// outside the markdown family falls through to whole-file
@@ -734,7 +734,7 @@ mod tests {
     }
 
     /// The Lexicon tier and the language module's lexicon table agree per
-    /// extension: a tier without a lexicon entry would silently emit
+    /// extension. A tier without a lexicon entry would silently emit
     /// nothing, and a lexicon entry without the tier would never run.
     #[test]
     fn lexicon_tiers_match_the_lang_crate_lexicon() {

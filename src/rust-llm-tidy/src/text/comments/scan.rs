@@ -59,8 +59,10 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
         let number = idx + 1;
 
         // Heredoc payload: string content until the closing delimiter
-        // line: exact for strict heredocs; after the lead its family
-        // permits (`\t` shells, any whitespace Ruby) for `<<~`/`<<-`.
+        // line. The terminator is exact for strict heredocs. After the
+        // lead its family permits (`\t` shells, any whitespace Ruby)
+        // for `<<~`/`<<-`.
+        //
         // A missing terminator fails the scan at the end.
         if let Some(pending) = heredocs.first() {
             let terminator = if pending.indented {
@@ -85,16 +87,16 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
         'chars: while i < bytes.len() {
             match state {
                 State::Code => {
-                    // Literal forms the family does not model reject the
-                    // scan before any marker claims the rest of the line
-                    // (SQL `$tag$`, Haskell `[q|`, TeX `\verb`).
+                    // Literal forms the family does not model reject the scan early.
+                    // This happens before any marker claims the rest of the line.
+                    // Rejected forms: SQL `$tag$`, Haskell `[q|`, TeX `\verb`.
                     if lex.rejects.iter().any(|reject| reject.opens(bytes, i)) {
                         return None;
                     }
                     // TeX: an odd-length backslash run before the marker
-                    // escapes it, so the marker prints literally; an
-                    // even-length run is `\\` commands and the marker
-                    // still comments.
+                    // escapes it, so the marker prints literally. An
+                    // even-length run is `\\` commands. The marker still
+                    // comments.
                     if lex.escaped_marker && bytes[i] == b'\\' {
                         let mut run = 1;
                         while bytes.get(i + run) == Some(&b'\\') {
@@ -325,7 +327,7 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
             State::Quote { double, carried } => {
                 // A quote continues onto the next line when the family's
                 // strings span lines or the line ends in a backslash
-                // continuation; a carried quote persists until it closes.
+                // continuation. A carried quote persists until it closes.
                 // Anything else closes here (invalid source; the desync
                 // stays line-local).
                 if !carried {

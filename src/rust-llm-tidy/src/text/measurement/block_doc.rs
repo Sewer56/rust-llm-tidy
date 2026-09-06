@@ -1,8 +1,8 @@
 //! The block doc dialect: measuring [`DocRegion`]s whose lines carry
 //! `/** ... */`-style block-comment content (Javadoc, JSDoc, Doxygen).
 //!
-//! The producer removes the `/*` and `*/` delimiters; this dialect then
-//! strips each line's leading `*` continuation marker and exempts the
+//! The producer removes the `/*` and `*/` delimiters. This dialect then
+//! strips each line's leading `*` continuation marker. It exempts the
 //! tag token (plus the name argument of name-taking tags like `@param`)
 //! from measurement.
 //!
@@ -60,9 +60,9 @@ fn prose_is_indented(text: &str) -> bool {
     text.starts_with('\t') || text.starts_with("    ")
 }
 
-/// Strips the line's `*` continuation marker in place: a maximal leading
+/// Strips the line's `*` continuation marker in place. A maximal leading
 /// `*` run vanishes when only whitespace (at most one space of it) or
-/// nothing follows, and a lone `*`-led word keeps one marker so `* - item`
+/// nothing follows. A lone `*`-led word keeps one marker so `* - item`
 /// stays a recognizable bullet.
 ///
 /// ```text
@@ -86,10 +86,10 @@ fn strip_continuation(mut text: String) -> String {
     text
 }
 
-/// The byte length of a tag line's exempt prefix: the tag token, the
-/// name argument of name-taking tags, an optional JSDoc `{type}` group,
-/// and the separating whitespace. Zero when the line does not start
-/// with `@` plus a tag word.
+/// The byte length of a tag line's exempt prefix. That prefix is the
+/// tag token, the name argument of name-taking tags, an optional JSDoc
+/// `{type}` group, and the separating whitespace. Zero when the line
+/// does not start with `@` plus a tag word.
 ///
 /// ```text
 /// "@param name parses the input"   -> exempt "@param name"
@@ -197,7 +197,7 @@ mod tests {
 
     // ── `@tag` lines ──
 
-    // The tag token and the name argument are exempt: a tag line whose
+    // The tag token and the name argument are exempt. A tag line whose
     // prose is short stays quiet even when the raw line is over budget.
     #[test]
     fn name_tags_exempt_tag_and_name_tokens() {
