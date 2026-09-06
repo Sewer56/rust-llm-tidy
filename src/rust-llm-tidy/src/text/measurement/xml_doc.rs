@@ -157,18 +157,8 @@ fn measure_segment(
         flush(pending, doc);
     }
     match pending.as_mut() {
-        Some(open) => {
-            open.len += trimmed.chars().count();
-            open.count += 1;
-        }
-        None => {
-            *pending = Some(PendingParagraph {
-                kind: ParagraphKind::Plain,
-                first_line: number,
-                len: trimmed.chars().count(),
-                count: 1,
-            });
-        }
+        Some(open) => open.push_member(number, trimmed),
+        None => *pending = Some(PendingParagraph::new(ParagraphKind::Plain, number, trimmed)),
     }
 }
 

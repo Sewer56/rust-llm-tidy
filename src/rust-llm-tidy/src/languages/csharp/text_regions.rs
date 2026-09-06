@@ -223,20 +223,21 @@ Last line.\";
     /// when joined stay silent inside their own tags.
     #[test]
     fn paragraphs_never_join_across_tags() {
-        let chunk = "filler text ".repeat(4);
-        let chunk = chunk.trim();
+        // Each chunk ends a sentence, so TEXT003 stays quiet and any
+        // diagnostic here would be the paragraph join the test denies.
+        let chunk = format!("{}.", "filler text ".repeat(4).trim());
         let doc_lines = [
             "<summary>",
-            chunk,
-            chunk,
-            chunk,
-            chunk,
+            &chunk,
+            &chunk,
+            &chunk,
+            &chunk,
             "</summary>",
             "<param name=\"x\">",
-            chunk,
-            chunk,
-            chunk,
-            chunk,
+            &chunk,
+            &chunk,
+            &chunk,
+            &chunk,
             "</param>",
         ];
         let stripped = doc_lines.join(" ");
@@ -253,7 +254,9 @@ Last line.\";
     /// paragraphs never join across the member between them.
     #[test]
     fn code_gaps_end_doc_runs() {
-        let line = "word ".repeat(14);
+        // Each line ends a sentence, keeping TEXT003 quiet; the join the
+        // test denies is the TEXT001 paragraph join.
+        let line = format!("{}.", "word ".repeat(14).trim());
         let run = format!("/// {line}\n/// {line}\n/// {line}\n");
         let source = format!("{run}public void A() {{ }}\n{run}public void B() {{ }}\n");
 

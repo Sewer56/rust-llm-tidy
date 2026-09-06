@@ -9,8 +9,8 @@
 //! Each region is measured with its dialect's rules, so markdown prose
 //! and XML doc comments feed the same measurement.
 //!
-//! Both budgets count the full line text, code spans, URLs, and link
-//! targets included; table rows, code blocks, and link reference
+//! The measured budgets count the full line text, code spans, URLs, and
+//! link targets included; table rows, code blocks, and link reference
 //! definitions are exempt.
 //!
 //! # Layers
@@ -47,27 +47,36 @@ pub(crate) struct Document {
     pub paragraphs: Vec<Paragraph>,
 }
 
-/// The paragraph under construction between boundary lines. `len` sums the
-/// member char counts without joining spaces; [`flush`] adds one joining
-/// space per extra member, derived from `count`.
+/// The paragraph under construction between boundary lines. Member texts
+/// accumulate joined with single spaces, exactly as [`flush`] publishes
+/// them.
 struct PendingParagraph {
     kind: ParagraphKind,
     /// 1-based line number of the paragraph's first member line.
     first_line: usize,
-    /// Summed char count of the member lines so far.
-    len: usize,
-    /// Number of member lines so far.
-    count: usize,
+    /// Member texts so far, joined with single spaces.
+    text: String,
+    /// Each member line's line number and byte offset in `text`, in
+    /// member order.
+    line_starts: Vec<(usize, usize)>,
 }
 
-/// A measured paragraph. `size` is the full member text joined with single
+/// A measured paragraph: the member lines' trimmed text joined with single
 /// spaces; exempt lines are never members, so they cost nothing.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Paragraph {
     /// 1-based line number of the paragraph's first member line.
     pub first_line: usize,
     pub kind: ParagraphKind,
+    /// Char count of `text`.
     pub size: usize,
+    /// The member lines' trimmed text joined with single spaces; the
+    /// sentence-length rule splits it into sentences.
+    pub text: Box<str>,
+    /// Each member line's line number and byte offset in `text`, in
+    /// member order; the sentence-length rule anchors findings at these
+    /// lines.
+    pub line_starts: Vec<(usize, usize)>,
 }
 
 /// A doc or comment line after prefix/indent stripping, with its 1-based
@@ -88,6 +97,25 @@ pub(crate) enum ParagraphKind {
     Plain,
     /// A bullet marker line plus its wrapped continuation lines.
     Bullet,
+}
+
+impl PendingParagraph {
+    /// Starts a paragraph whose first member line is `line` with `text`.
+    fn new(kind: ParagraphKind, line: usize, text: &str) -> Self {
+        Self {
+            kind,
+            first_line: line,
+            text: text.to_string(),
+            line_starts: vec![(line, 0)],
+        }
+    }
+
+    /// Appends one member line's trimmed `text` at `line`.
+    fn push_member(&mut self, line: usize, text: &str) {
+        self.text.push(' ');
+        self.line_starts.push((line, self.text.len()));
+        self.text.push_str(text);
+    }
 }
 
 /// Strips and segments `source` for the given file extension.
@@ -228,25 +256,18 @@ fn measure_prose_line(
         // A bullet ends the current paragraph and starts its own,
         // measured from the text after the bullet marker.
         flush(pending, doc);
-        *pending = Some(PendingParagraph {
-            kind: ParagraphKind::Bullet,
-            first_line: number,
-            len: content.chars().count(),
-            count: 1,
-        });
+        *pending = Some(PendingParagraph::new(
+            ParagraphKind::Bullet,
+            number,
+            content,
+        ));
     } else if let Some(open) = pending.as_mut() {
         // Continuation lines (next plain line or wrapped bullet tail)
         // join the current paragraph; only trimmed text counts.
-        open.len += trimmed.chars().count();
-        open.count += 1;
+        open.push_member(number, trimmed);
     } else {
         // Plain text with no paragraph open: start one at this line.
-        *pending = Some(PendingParagraph {
-            kind: ParagraphKind::Plain,
-            first_line: number,
-            len: trimmed.chars().count(),
-            count: 1,
-        });
+        *pending = Some(PendingParagraph::new(ParagraphKind::Plain, number, trimmed));
     }
     doc.lines.push(StrippedLine {
         number,
@@ -283,14 +304,16 @@ fn bullet_content(trimmed: &str) -> Option<&str> {
     }
 }
 
-/// Folds the accumulated member lengths into a finished paragraph, if any.
+/// Folds the accumulated member texts into a finished paragraph, if any.
 fn flush(pending: &mut Option<PendingParagraph>, doc: &mut Document) {
     if let Some(open) = pending.take() {
-        let joining_spaces = open.count.saturating_sub(1);
+        let size = open.text.chars().count();
         doc.paragraphs.push(Paragraph {
             first_line: open.first_line,
             kind: open.kind,
-            size: open.len + joining_spaces,
+            size,
+            text: open.text.into_boxed_str(),
+            line_starts: open.line_starts,
         });
     }
 }
@@ -447,6 +470,40 @@ mod tests {
         assert_eq!(doc.paragraphs.len(), 2);
         assert_eq!(paragraph_at(&doc, 1).unwrap().size, "one two".len());
         assert_eq!(paragraph_at(&doc, 3).unwrap().size, "three".len());
+    }
+
+    // ── Retained paragraph text ──
+
+    // The finished paragraph retains its joined full text and each member
+    // line's number with its start offset in that text.
+    #[test]
+    fn analyze_retains_paragraph_text_and_member_lines() {
+        let source = indoc! {"
+            /// one two
+            /// three
+
+            /// four
+        "};
+        let doc = analyze(source, "rs");
+        let first = paragraph_at(&doc, 1).unwrap();
+        assert_eq!(&*first.text, "one two three");
+        assert_eq!(first.size, "one two three".len());
+        assert_eq!(first.line_starts, vec![(1, 0), (2, 8)]);
+        assert_eq!(&*paragraph_at(&doc, 4).unwrap().text, "four");
+    }
+
+    // A bullet retains its text without the bullet marker, wrapped
+    // continuation included.
+    #[test]
+    fn analyze_retains_bullet_text_without_the_marker() {
+        let source = indoc! {"
+            /// - bullet start
+            ///   wrapped tail
+        "};
+        let doc = analyze(source, "rs");
+        let bullet = paragraph_at(&doc, 1).unwrap();
+        assert_eq!(&*bullet.text, "bullet start wrapped tail");
+        assert_eq!(bullet.line_starts, vec![(1, 0), (2, 13)]);
     }
 
     // ── Bullets ──
