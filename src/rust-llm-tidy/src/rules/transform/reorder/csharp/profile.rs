@@ -248,13 +248,13 @@ fn is_decl_name_position(node: tree_sitter::Node<'_>) -> bool {
 }
 
 /// The field name of `node` within its parent, if any.
-fn parent_field_name(
-    parent: tree_sitter::Node<'_>,
-    node: tree_sitter::Node<'_>,
-) -> Option<&'static str> {
+fn parent_field_name<'a>(
+    parent: tree_sitter::Node<'a>,
+    node: tree_sitter::Node<'a>,
+) -> Option<&'a str> {
     for i in 0..parent.child_count() {
-        if parent.child(i as u32) == Some(node) {
-            return parent.field_name_for_child(i as u32);
+        if parent.child(i) == Some(node) {
+            return parent.field_name_for_child(i);
         }
     }
     None

@@ -60,7 +60,7 @@ serde = { version = "1", features = ["derive"] }
 serde_yml = "0.0.13"
 smallvec = "1"
 tempfile = "3"
-tree-sitter = "0.26"
+tree-sitter = "0.27"
 tree-sitter-c-sharp = "0.23"
 tree-sitter-python = "0.25"
 tree-sitter-rust = "0.24"

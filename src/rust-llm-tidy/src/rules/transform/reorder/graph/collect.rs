@@ -260,11 +260,11 @@ fn is_decl_position(walk: &'static ReferenceWalk, node: Node) -> bool {
 }
 
 /// Field name of `node` within its parent, if any.
-fn parent_field_name(node: Node) -> Option<&'static str> {
+fn parent_field_name<'a>(node: Node<'a>) -> Option<&'a str> {
     let parent = node.parent()?;
     // Find the child index of `node` among the parent's children (named +
     // anonymous) and look up its field name.
-    let count = parent.child_count() as u32;
+    let count = parent.child_count();
     for i in 0..count {
         if parent.child(i) == Some(node) {
             return parent.field_name_for_child(i);

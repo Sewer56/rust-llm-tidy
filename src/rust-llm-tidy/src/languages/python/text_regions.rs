@@ -206,7 +206,7 @@ fn docstring_region(body: tree_sitter::Node<'_>, source: &str) -> Option<DocRegi
         return None;
     }
     let open = string.child(0)?;
-    let close = string.child(u32::try_from(count - 1).ok()?)?;
+    let close = string.child(count - 1)?;
     if open.kind() != "string_start" || close.kind() != "string_end" {
         return None;
     }

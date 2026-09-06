@@ -350,7 +350,7 @@ fn build_members(
         .windows(2)
         .any(|pair| pair[0].end_position().row >= pair[1].start_position().row)
         || decls.last().is_some_and(|last| {
-            list.child(list.child_count().saturating_sub(1) as u32)
+            list.child(list.child_count().saturating_sub(1))
                 .is_some_and(|brace| brace.start_position().row <= last.end_position().row)
         })
         || decls.first().is_some_and(|first| {
