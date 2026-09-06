@@ -10,12 +10,17 @@ use crate::source::{ItemKind, ParseResult, SourceItem};
 
 /// `DOC008` - `# Errors` variants must be listed in alphabetical order.
 ///
-/// Fires on `pub fn` returning `Result` when a `# Errors` section exists, the
-/// error type's final path segment resolves to a top-level enum in the same
-/// file, and the section's `[`Enum::Variant`]` links (short-reference form,
-/// path-qualified prefixes accepted) list that enum's variants in an order
-/// that decreases under Rust `str` ordering. Links to other enums, prose,
-/// and unresolved or non-enum error types never participate.
+/// Fires on `pub fn` returning `Result` when all of the following hold:
+///
+/// - a `# Errors` section exists on the item;
+/// - the error type's final path segment resolves to a top-level enum in
+///   the same file;
+/// - the section's `[`Enum::Variant`]` links (short-reference form,
+///   path-qualified prefixes accepted) list that enum's variants in an
+///   order that decreases under Rust `str` ordering.
+///
+/// Links to other enums, prose, and unresolved or non-enum error types
+/// never participate.
 ///
 /// # Arguments
 ///
@@ -91,7 +96,12 @@ fn linked_variants<'a>(line: &'a str, enum_name: &'a str) -> impl Iterator<Item 
 }
 
 /// The variant named by link content `inner` when it targets `enum_name`.
+///
+/// Surrounding backticks are trimmed first, so backticked forms like
+/// `` [`Enum::Variant`] `` and `` [`path::Enum::Variant`] `` participate
+/// like their plain counterparts.
 fn link_variant<'a>(inner: &'a str, enum_name: &str) -> Option<&'a str> {
+    let inner = inner.trim_matches('`');
     let mut segments = inner.rsplit("::");
     let variant = segments.next()?;
     let linked_enum = segments.next()?;
@@ -192,6 +202,20 @@ pub fn load() -> Result<(), Wrapper> { Ok(()) }\n";
             "/// Returns [Error::NotFound].\n/// See [Other::A] between.\n/// Then [Error::Denied].",
         );
         assert_eq!(lint(&source).len(), 1);
+    }
+
+    // Backticked short form participates; out of order -> error.
+    #[test]
+    fn fires_when_backticked_links_out_of_order() {
+        let source = documented_fn("/// Returns [`Error::NotFound`] then [`Error::Denied`].");
+        assert_eq!(lint(&source).len(), 1);
+    }
+
+    // Backticked and plain links compare by bare variant names.
+    #[test]
+    fn silent_when_backticked_and_plain_links_alphabetical() {
+        let source = documented_fn("/// Returns [`crate::Error::Denied`] then [Error::Denied].");
+        assert!(lint(&source).is_empty());
     }
 
     // No participating links at all -> not applicable.
