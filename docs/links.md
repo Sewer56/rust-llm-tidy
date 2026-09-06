@@ -84,3 +84,9 @@ In JSON mode the same records appear on stdout with `severity: "success"`
 See [Change reporting] for the shared format.
 
 [Change reporting]: ./lints.md#change-reporting
+
+## Library access
+
+Use `rust_llm_tidy::rules::transform::fix_links`.
+For complete processing and project context, see [library entry
+points](architecture.md#library-entry-points).

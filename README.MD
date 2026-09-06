@@ -205,22 +205,25 @@ Consider pinning `rust-llm-tidy` in CI for reproducible checks. When you want to
 update or enable new rules, upgrade the pinned version deliberately. This avoids
 unexpected lint failures after a tool update.
 
-## Crates
+## Library and CLI
 
-- [rust-llm-tidy-model]: Shared language-neutral model - top-level items with
-  spans, visibility, and doc comments; atomic I/O; line-multiset safety
-- [rust-llm-tidy-reorder]: Reordering library - the language-neutral
-  reference-graph ordering engine, driven by per-language profiles
-- [rust-llm-tidy-lint]: Shared lint core - `Diagnostic` shape, lint-code
-  registry, and TEXT001/TEXT002 text rules; see [docs/lints.md] for all
-  codes
-- [rust-llm-tidy-lang]: Per-language AST backends - the DOC/TEST item
-  rules, grammars, item parsing, per-language reorder policies, and the
-  visibility narrowing pass
-- [rust-llm-tidy-fix]: Markdown/doc-comment tidying - table realignment,
-  fence fixes, and link hoisting in markdown-family and comment-prefixed
-  files
-- [cli]: Unified command-line interface (fix, reorder, vis, lints)
+The workspace contains two crates:
+
+- [rust-llm-tidy]: everything else
+- [cli]: argument parsing, output rendering and exit status
+
+All lint and transform rules live in the library's `rules/` tree.
+The CLI calls the same public entry points as library consumers.
+
+Library entry points:
+
+- `tidy_source`: process in-memory source without filesystem or subprocess
+  access
+- `run`: process selected files with explicit write, Git-selection and
+  subprocess permissions
+
+See [architecture and migration] for module ownership, preview semantics and
+retired crate imports.
 
 ## Git Hook (optional)
 
@@ -272,18 +275,13 @@ We welcome contributions! See the [Contributing Guide] for details.
 
 Licensed under [Apache 2.0].
 
-[Crates.io]: https://crates.io/crates/rust-llm-tidy-reorder
-[Docs.rs]: https://docs.rs/rust-llm-tidy-reorder
+[Crates.io]: https://crates.io/crates/rust-llm-tidy
+[Docs.rs]: https://docs.rs/rust-llm-tidy
 [Crates.io CLI]: https://crates.io/crates/rust-llm-tidy-cli
 [Docs.rs CLI]: https://docs.rs/rust-llm-tidy-cli
 [CI]: https://github.com/Sewer56/rust-llm-tidy/actions
 [crates-badge]: https://img.shields.io/crates/v/rust-llm-tidy-cli.svg
 [ci-badge]: https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg
-[rust-llm-tidy-model]: ./src/rust-llm-tidy-model/README.MD
-[rust-llm-tidy-reorder]: ./src/rust-llm-tidy-reorder/README.MD
-[rust-llm-tidy-lint]: ./src/rust-llm-tidy-lint/README.MD
-[rust-llm-tidy-lang]: ./src/rust-llm-tidy-lang/README.MD
-[rust-llm-tidy-fix]: ./src/rust-llm-tidy-fix/README.MD
 [cli]: ./src/cli/README.MD
 [action README]: ./submodules/action/README.MD
 [`rust-llm-tidy-action`]: https://github.com/Sewer56/rust-llm-tidy-action
@@ -301,3 +299,6 @@ Licensed under [Apache 2.0].
 [docs/text-lints.md]: ./docs/text-lints.md
 [docs/languages/lints/csharp.md]: ./docs/languages/lints/csharp.md
 [`.rust-llm-tidy.example.yml`]: ./.rust-llm-tidy.example.yml
+
+[rust-llm-tidy]: ./src/rust-llm-tidy/README.MD
+[architecture and migration]: ./docs/architecture.md

@@ -1,0 +1,22 @@
+//! Rule selection for processing source already held in memory.
+
+/// Configure standalone source processing without filesystem or subprocess access.
+#[derive(Debug, Clone)]
+pub struct SourceOptions {
+    /// Rule or operation whitelist; an empty list uses language defaults.
+    pub include: Vec<String>,
+    /// Additional rule or operation exclusions.
+    pub exclude: Vec<String>,
+    /// Minimum repeated inline-link occurrences before hoisting; must be positive.
+    pub links_min_occurrences: usize,
+}
+
+impl Default for SourceOptions {
+    fn default() -> Self {
+        Self {
+            include: Vec::new(),
+            exclude: Vec::new(),
+            links_min_occurrences: 1,
+        }
+    }
+}

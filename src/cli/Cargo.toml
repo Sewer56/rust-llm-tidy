@@ -1,8 +1,8 @@
 [package]
 name = "rust-llm-tidy-cli"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
-description = "CLI for reordering and linting Rust source code. Intended for LLM use."
+description = "CLI for linting and tidying Rust, C#, and documentation source."
 repository = "https://github.com/Sewer56/rust-llm-tidy"
 license = "Apache-2.0"
 readme = "README.MD"
@@ -17,6 +17,7 @@ workspace = true
 [[bin]]
 name = "rust-llm-tidy"
 path = "src/main.rs"
+doc = false
 
 # Folder-rooted integration test. Cargo auto-discovers only `tests/*.rs` and
 # `tests/*/main.rs`, so the `mod.rs` root is declared explicitly here.
@@ -24,45 +25,12 @@ path = "src/main.rs"
 name = "doc_check"
 path = "tests/doc_check/mod.rs"
 
-# Benchmarks for the two CLI operations (lint and reorder) over embedded
-# real-world source fixtures. `harness = false` enables the criterion entry
-# point defined in each bench file.
-[[bench]]
-name = "lint"
-harness = false
-
-[[bench]]
-name = "reorder"
-harness = false
-
-[[bench]]
-name = "fences"
-harness = false
-
-[[bench]]
-name = "vis"
-harness = false
-
-[[bench]]
-name = "links"
-harness = false
-
 [dependencies]
-rust-llm-tidy-reorder = { path = "../rust-llm-tidy-reorder", version = "0.2.0" }
-rust-llm-tidy-lint = { path = "../rust-llm-tidy-lint", version = "0.4.0" }
-rust-llm-tidy-model = { path = "../rust-llm-tidy-model", version = "0.4.0" }
-rust-llm-tidy-fix = { path = "../rust-llm-tidy-fix", version = "0.4.0" }
-rust-llm-tidy-lang = { path = "../rust-llm-tidy-lang", version = "0.1.0" }
+rust-llm-tidy = { path = "../rust-llm-tidy", version = "0.1.0" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yml = "0.0.13"
-globset = "0.4"
-glob = "0.3"
-ignore = "0.4"
-rayon = "1.12"
-quick-xml = { version = "0.42.0", default-features = false }
 
 [dev-dependencies]
-criterion = "0.8"
+tempfile = "3"

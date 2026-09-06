@@ -105,3 +105,11 @@ public class OrderService
 Each member keeps the blank lines that preceded it in the source.
 
 [reorder]: ../reorder.md
+
+## Library access
+
+Use `rust_llm_tidy::tidy_source` with the `reorder` operation and `cs`
+extension.
+For complete processing and project context, see [library entry points].
+
+[library entry points]: ../architecture.md#library-entry-points

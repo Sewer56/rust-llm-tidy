@@ -35,13 +35,13 @@ fn main() {}
 
 ## Config
 
-The repo's own `src/rust-llm-tidy-fix/README.MD` keeps a nested-fence
+This page keeps a nested-fence
 before/after example that `fences` would corrupt, so it is excluded:
 
 ```yaml
 exclude:
   - paths:
-      - "src/rust-llm-tidy-fix/README.MD"
+      - "docs/fences.md"
     rules:
       - fences
 ```
@@ -80,3 +80,9 @@ In JSON mode the same record appears on stdout with `severity: "success"`:
 See [Change reporting] for the shared format.
 
 [Change reporting]: ./lints.md#change-reporting
+
+## Library access
+
+Use `rust_llm_tidy::rules::transform::fix_fences`.
+For complete processing and project context, see [library entry
+points](architecture.md#library-entry-points).

@@ -119,3 +119,10 @@ In JSON mode the same record appears on stdout with `severity: "success"`:
 See [Change reporting] for the shared format.
 [Change reporting]: ./lints.md#change-reporting
 [reorder for C#]: ./reorder/csharp.md
+
+## Library access
+
+Use `rust_llm_tidy::rules::transform::reorder`.
+For complete processing and project context, see [library entry points].
+
+[library entry points]: architecture.md#library-entry-points

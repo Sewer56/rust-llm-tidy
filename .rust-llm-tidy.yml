@@ -48,14 +48,15 @@ exclude:
   # for both.
   - paths:
       - "src/cli/tests/**"
-      - "src/cli/src/changes.rs"
+      - "src/rust-llm-tidy/tests/**"
+      - "src/rust-llm-tidy/src/reporting/change.rs"
     rules:
       - links
   # The README has a nested-fence before+after example that `fix_fences`
   # would corrupt, and inline-code `[text](url)` examples that `fix_links`
   # hoists into a bogus `[text]: url` definition. Disable both ops here.
   - paths:
-      - "src/rust-llm-tidy-fix/README.MD"
+      - "docs/fences.md"
     rules:
       - fences
       - links
@@ -77,9 +78,9 @@ exclude:
   # break parsing. Only those two ops are disabled; reorder/vis/tables/lints
   # still apply.
   - paths:
-      - "src/rust-llm-tidy-fix/src/lib.rs"
-      - "src/rust-llm-tidy-fix/src/links/mod.rs"
-      - "src/rust-llm-tidy-fix/src/links/scan.rs"
+      - "src/rust-llm-tidy/src/rules/transform/mod.rs"
+      - "src/rust-llm-tidy/src/rules/transform/links/mod.rs"
+      - "src/rust-llm-tidy/src/rules/transform/links/scan.rs"
     rules:
       - links
       - fences
@@ -88,8 +89,8 @@ exclude:
   # literals (indoc/formatdoc); `fix_links` and `fix_tables` would rewrite
   # the literal contents and break the fixtures.
   - paths:
-      - "src/rust-llm-tidy-lint/src/check/rules/text/text001_paragraph_size.rs"
-      - "src/rust-llm-tidy-lint/src/check/rules/text/text002_line_length.rs"
+      - "src/rust-llm-tidy/src/rules/lint/text/text001_paragraph_size.rs"
+      - "src/rust-llm-tidy/src/rules/lint/text/text002_line_length.rs"
     rules:
       - links
       - tables
@@ -97,6 +98,8 @@ exclude:
   # table/fence fixers would rewrite them and break the parity test.
   - paths:
       - "src/cli/tests/integration.rs"
+      - "src/cli/tests/library_equivalence.rs"
+      - "src/rust-llm-tidy/tests/library.rs"
     rules:
       - tables
       - fences
@@ -110,7 +113,7 @@ exclude:
   # examples of what DOC006 detects; whole-word match flags the literal ref.
   # Only DOC006 disabled here; DOC001-DOC005 + TEST001 still run.
   - paths:
-      - "src/rust-llm-tidy-lang/src/backends/rust/lints/doc006_placeholder.rs"
+      - "src/rust-llm-tidy/src/rules/lint/rust/doc006_placeholder.rs"
       - "src/cli/tests/doc_check/**/*"
     rules:
       - DOC006
