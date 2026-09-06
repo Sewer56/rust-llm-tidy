@@ -1,0 +1,70 @@
+[package]
+name = "rust-llm-tidy"
+version = "0.1.0"
+edition = "2024"
+autobenches = false
+description = "Library for linting and tidying Rust, C#, and documentation source."
+repository = "https://github.com/Sewer56/rust-llm-tidy"
+license = "Apache-2.0"
+readme = "README.MD"
+include = ["src/**/*", "README.MD"]
+keywords = ["rust", "lint", "reorder", "markdown", "tidy"]
+categories = ["development-tools"]
+
+[lints]
+workspace = true
+
+[[test]]
+name = "cargo_permissions"
+harness = false
+
+[[bench]]
+name = "fix"
+harness = false
+
+# Benchmarks for library operations over embedded
+# real-world source fixtures. `harness = false` enables the criterion entry
+# point defined in each bench file.
+[[bench]]
+name = "lint"
+harness = false
+
+[[bench]]
+name = "reorder"
+harness = false
+
+[[bench]]
+name = "fences"
+harness = false
+
+[[bench]]
+name = "vis"
+harness = false
+
+[[bench]]
+name = "links"
+harness = false
+
+[dependencies]
+ahash = "0.8"
+anyhow = "1"
+cargo_metadata = "0.23"
+derive_more = { version = "2", features = ["constructor"] }
+glob = "0.3"
+globset = "0.4"
+ignore = "0.4"
+memchr = "2"
+quick-xml = { version = "0.42.0", default-features = false }
+rayon = "1.12"
+serde = { version = "1", features = ["derive"] }
+serde_yml = "0.0.13"
+smallvec = "1"
+tempfile = "3"
+tree-sitter = "0.26"
+tree-sitter-c-sharp = "0.23"
+tree-sitter-python = "0.25"
+tree-sitter-rust = "0.24"
+
+[dev-dependencies]
+criterion = "0.8"
+indoc = "2"

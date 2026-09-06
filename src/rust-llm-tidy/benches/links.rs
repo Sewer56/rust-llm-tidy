@@ -1,0 +1,38 @@
+//! Benchmarks for the `fix` link-hoist pass.
+//!
+//! Measures [`fix_links`] over each fixture with the Rust doc-marker family at
+//! threshold 1 (the CLI's fix-file link step minus file I/O). Links hoist to
+//! `[text]` with per-comment definitions in `doc/*`, a trailing block in
+//! Markdown.
+//!
+//! `doc/noop` (reference-style only) is borrowed back unchanged.
+//!
+//! [`fix_links`]: rust_llm_tidy::rules::transform::fix_links
+
+criterion_group!(benches, link_pass);
+
+criterion_main!(benches);
+
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use rust_llm_tidy::rules::transform::fix_links;
+
+#[path = "fixture_setup/languages.rs"]
+mod fixtures;
+
+/// The Rust doc-comment marker family the fixtures' links carry.
+const DOC_PREFIXES: &[&str] = &["///", "//!"];
+
+/// Benchmark [`fix_links`] per fixture.
+fn link_pass(c: &mut Criterion) {
+    let mut group = c.benchmark_group("links");
+    for (name, source) in fixtures::LINK_FIXTURES {
+        group.throughput(Throughput::Bytes(source.len() as u64));
+        group.bench_function(*name, |bencher| {
+            bencher.iter(|| {
+                let out = fix_links(source, DOC_PREFIXES, 1);
+                core::hint::black_box(out);
+            });
+        });
+    }
+    group.finish();
+}

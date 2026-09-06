@@ -2,11 +2,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "src/rust-llm-tidy-model",
-    "src/rust-llm-tidy-reorder",
-    "src/rust-llm-tidy-lint",
-    "src/rust-llm-tidy-fix",
-    "src/rust-llm-tidy-lang",
+    "src/rust-llm-tidy",
     "src/cli",
 ]
 

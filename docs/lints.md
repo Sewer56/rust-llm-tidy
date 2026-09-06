@@ -415,3 +415,10 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`TEST001`]: #test001---non-behavioral-test-name
 [lints for C#]: ./languages/lints/csharp.md
 [text lints]: ./text-lints.md
+
+## Library access
+
+Use `rust_llm_tidy::rules::lint`.
+For complete processing and project context, see [library entry points].
+
+[library entry points]: architecture.md#library-entry-points

@@ -4,17 +4,16 @@
 //! on stderr (the default) or as a single JSON array on stdout.
 //!
 //! This module owns the serializable projection of lint findings and dry-run
-//! change records and the emit routine, keeping the projection separate from
-//! the per-file pipeline and never touching the serde-free
-//! `rust-llm-tidy-lint` crate.
+//! change records and the emit routine, keeping presentation separate from
+//! library execution and its structured results.
 
-use crate::changes::Change;
 use core::num::NonZeroU32;
-use rust_llm_tidy_lint::{Diagnostic, Severity};
+use rust_llm_tidy::reporting::{Change, RunReport};
+use rust_llm_tidy::reporting::{Diagnostic, Severity};
 use serde::Serialize;
 use std::borrow::Cow;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// A serializable record that is either a lint finding or a dry-run change
 /// record, matching the documented JSON schema (`{ path, line, severity, code,
@@ -58,19 +57,66 @@ pub(crate) enum OutputMode {
     Json,
 }
 
+/// Render processing results before the entry point selects a failure exit code.
+pub(crate) fn emit_report(report: &RunReport, json: bool) -> anyhow::Result<()> {
+    let mut stderr = std::io::stderr().lock();
+    for warning in &report.warnings {
+        writeln!(stderr, "warning: {warning}")?;
+    }
+
+    if json {
+        for file in &report.files {
+            if let Some(error) = &file.failure {
+                writeln!(stderr, "error processing {}: {error}", file.path.display())?;
+            }
+        }
+        emit_json(report)?;
+    } else {
+        write_text(&mut stderr, report)?;
+    }
+
+    for failure in &report.post_process_failures {
+        let action = if failure.spawn_failed {
+            "failed to spawn"
+        } else {
+            "failed"
+        };
+        writeln!(
+            stderr,
+            "post_process `{}` {action} on {}: {}",
+            failure.command,
+            failure.path.display(),
+            failure.message
+        )?;
+    }
+    Ok(())
+}
+
 /// Emit every collected lint finding and dry-run change record as one JSON
 /// array on stdout.
 ///
 /// A run with neither findings nor changes emits `[]`. The document is printed
 /// before any error-count or processing-failure bail so downstream consumers
 /// receive all records together with the process exit code.
-pub(crate) fn emit_json(
-    diagnostics: &[(PathBuf, Diagnostic)],
-    changes: &[(PathBuf, Change)],
-) -> anyhow::Result<()> {
-    let mut records: Vec<JsonRecord<'_>> = Vec::with_capacity(diagnostics.len() + changes.len());
-    records.extend(diagnostics.iter().map(|(path, d)| project_lint(path, d)));
-    records.extend(changes.iter().map(|(path, c)| project_change(path, c)));
+pub(crate) fn emit_json(report: &RunReport) -> anyhow::Result<()> {
+    let count = report
+        .files
+        .iter()
+        .map(|file| file.diagnostics.len() + file.changes.len())
+        .sum();
+    let mut records: Vec<JsonRecord<'_>> = Vec::with_capacity(count);
+    records.extend(
+        report
+            .files
+            .iter()
+            .flat_map(|file| file.diagnostics.iter().map(|d| project_lint(&file.path, d))),
+    );
+    records.extend(
+        report
+            .files
+            .iter()
+            .flat_map(|file| file.changes.iter().map(|c| project_change(&file.path, c))),
+    );
     // Serialization to a String is infallible for these types; propagate any
     // error defensively rather than silently truncating stdout ownership.
     let doc = serde_json::to_string(&records)?;
@@ -114,11 +160,100 @@ fn project_lint<'a>(path: &Path, d: &'a Diagnostic) -> JsonRecord<'a> {
     }
 }
 
+/// Write changes and findings in file order, followed by the separate hint group.
+fn write_text(output: &mut impl Write, report: &RunReport) -> std::io::Result<()> {
+    for file in &report.files {
+        for change in &file.changes {
+            writeln!(output, "{}:{change}", file.path.display())?;
+        }
+        for diagnostic in &file.diagnostics {
+            if diagnostic.severity != Severity::Hint {
+                writeln!(output, "{}:{diagnostic}", file.path.display())?;
+            }
+        }
+        if let Some(error) = &file.failure {
+            writeln!(output, "error processing {}: {error}", file.path.display())?;
+        }
+    }
+
+    for file in &report.files {
+        for diagnostic in &file.diagnostics {
+            if diagnostic.severity == Severity::Hint {
+                writeln!(output, "{}:{diagnostic}", file.path.display())?;
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::project_lint;
-    use rust_llm_tidy_lint::{Diagnostic, Severity};
+    use rust_llm_tidy::reporting::{Diagnostic, Severity};
     use std::path::Path;
+
+    /// Rendering groups hints last while error counts remain severity-specific.
+    #[test]
+    fn report_should_render_hints_last_and_count_only_errors() {
+        use rust_llm_tidy::reporting::{FileReport, RunReport};
+
+        for (name, severity, errors) in [
+            ("hint_only", Severity::Hint, 0),
+            ("hint_and_warning", Severity::Warning, 0),
+            ("hint_and_error", Severity::Error, 1),
+        ] {
+            let diagnostic = |severity, line| Diagnostic {
+                severity,
+                code: "DOC999",
+                message: "finding".into(),
+                line,
+                item_kind: "fn".into(),
+                item_name: None,
+            };
+            let report = RunReport {
+                files: vec![
+                    FileReport {
+                        path: "a.rs".into(),
+                        diagnostics: vec![diagnostic(Severity::Hint, 1)],
+                        ..FileReport::default()
+                    },
+                    FileReport {
+                        path: "b.rs".into(),
+                        diagnostics: vec![diagnostic(severity, 2)],
+                        ..FileReport::default()
+                    },
+                ],
+                ..RunReport::default()
+            };
+            let mut rendered = Vec::new();
+
+            super::write_text(&mut rendered, &report).unwrap();
+            let text = String::from_utf8(rendered).unwrap();
+            let lines: Vec<_> = text.lines().collect();
+            let json: Vec<_> = report
+                .files
+                .iter()
+                .flat_map(|file| {
+                    file.diagnostics
+                        .iter()
+                        .map(|d| serde_json::to_value(project_lint(&file.path, d)).unwrap())
+                })
+                .collect();
+
+            assert_eq!(report.error_count(), errors, "{name}");
+            assert_eq!(report.ensure_success().is_err(), errors > 0, "{name}");
+            assert_eq!(lines.len(), 2, "{name}");
+            if name == "hint_only" {
+                assert!(lines[0].starts_with("a.rs:1: hint["));
+                assert!(lines[1].starts_with("b.rs:2: hint["));
+            } else {
+                assert!(lines[0].starts_with("b.rs:2:"));
+                assert!(lines[1].starts_with("a.rs:1: hint["));
+            }
+            assert_eq!(json.len(), 2);
+            assert_eq!(json[0]["severity"], "hint");
+        }
+    }
 
     /// A hint finding serializes with `severity: "hint"` and the
     /// unchanged lint-record field set.

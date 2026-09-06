@@ -318,7 +318,7 @@ fn rs_block_and_attribute_docs_fire_text_budgets() {
 /// rs dispatch adds nothing and drops nothing.
 #[test]
 fn rs_diagnostics_match_direct_check_composition() {
-    use rust_llm_tidy_lang::backends::LanguageBackend;
+    use rust_llm_tidy::languages::LanguageBackend;
 
     for name in [
         "doc001_missing_docs.rs",
@@ -348,15 +348,17 @@ fn rs_diagnostics_match_direct_check_composition() {
 
         // Path B: the Rust backend's lint composition called directly over
         // the same source.
-        let parsed = rust_llm_tidy_lang::RustBackend.parse(&source).unwrap();
-        let expected = rust_llm_tidy_lang::backends::rust::RustBackend.lint(&parsed);
+        let parsed = rust_llm_tidy::languages::RustBackend
+            .parse(&source)
+            .unwrap();
+        let expected = rust_llm_tidy::languages::rust::RustBackend.lint(&parsed);
         let expected: Vec<(usize, String, String)> = expected
             .iter()
             .map(|d| {
                 let sev = match d.severity {
-                    rust_llm_tidy_lint::Severity::Error => "error",
-                    rust_llm_tidy_lint::Severity::Warning => "warning",
-                    rust_llm_tidy_lint::Severity::Hint => "hint",
+                    rust_llm_tidy::reporting::Severity::Error => "error",
+                    rust_llm_tidy::reporting::Severity::Warning => "warning",
+                    rust_llm_tidy::reporting::Severity::Hint => "hint",
                 };
                 (d.line, sev.to_string(), d.code.to_string())
             })

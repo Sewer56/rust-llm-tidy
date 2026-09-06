@@ -4,7 +4,7 @@
 [![Docs.rs][docs-badge]][Docs.rs]
 [![CI][ci-badge]][CI]
 
-Command-line interface for [rust-llm-tidy-reorder].
+Command-line adapter for the [rust-llm-tidy library].
 
 <!-- 
     This README is displayed on crates.io & docs.rs
@@ -130,6 +130,13 @@ programs (e.g. `rustfmt`) on every processed file.
 Pass `--config <PATH>` to use an explicit config or `--no-config` to disable
 discovery. See the repository README for the full schema.
 
+## Library use
+
+Use `rust-llm-tidy` as a dependency for source buffers or complete file
+processing.
+The CLI owns only arguments, rendering and exit status; all processing lives in
+the library.
+
 ## Ordering Rules
 
 The algorithm orders top-level items across phases. Within most phases, an item
@@ -146,7 +153,7 @@ Licensed under Apache 2.0
 [crates-badge]: https://img.shields.io/crates/v/rust-llm-tidy-cli.svg
 [docs-badge]: https://docs.rs/rust-llm-tidy-cli/badge.svg
 [ci-badge]: https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg
-[rust-llm-tidy-reorder]: ../rust-llm-tidy-reorder/README.MD
+[rust-llm-tidy library]: ../rust-llm-tidy/README.MD
 [dry-run change reporting]: ../../docs/lints.md#change-reporting
 [hints]: ../../docs/lints.md#hints
 [docs/reorder.md]: ../../docs/reorder.md

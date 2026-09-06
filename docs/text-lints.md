@@ -123,3 +123,10 @@ README.md:1: warning[TEXT002]: line is 104 chars long.
 `TEXT002` is warning-severity, so the run exits 0.
 
 [`lints`]: ./lints.md
+
+## Library access
+
+Use `rust_llm_tidy::rules::lint::{run_text_checks, run_region_checks}`.
+For complete processing and project context, see [library entry points].
+
+[library entry points]: architecture.md#library-entry-points
