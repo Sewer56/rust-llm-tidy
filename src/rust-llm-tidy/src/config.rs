@@ -655,17 +655,16 @@ mod tests {
         // Sample lint codes (not every code is pinned here) plus the six
         // fix/operation names (including lints).
         for code in [
-            "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "TEXT001", "TEXT002",
-            "TEXT003", "TEXT004", "TEST001",
+            "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "DOC008", "TEXT001",
+            "TEXT002", "TEXT003", "TEXT004", "TEST001",
         ] {
             assert!(rules.contains(&code), "missing lint code {code}");
         }
-        for retired in ["DOC007", "DOC008"] {
-            assert!(
-                !rules.contains(&retired),
-                "retired code {retired} must not resolve as a rule name"
-            );
-        }
+        // DOC007 stays retired; DOC008 is now a live rule name (D1).
+        assert!(
+            !rules.contains(&"DOC007"),
+            "retired code DOC007 must not resolve as a rule name"
+        );
         for op in ["tables", "fences", "links", "reorder", "vis", "lints"] {
             assert!(rules.contains(&op), "missing fix/operation {op}");
         }
