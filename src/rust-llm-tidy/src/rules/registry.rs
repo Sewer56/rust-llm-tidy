@@ -17,6 +17,7 @@ pub(crate) const CODE_TITLES: &[(&str, &str)] = &[
     (CODE_SENTENCE_LENGTH, "long sentence"),
     (CODE_HEADER_OPENER, "header opener shape"),
     (CODE_FENCE_TAG, "untagged fenced code block"),
+    (CODE_VERBOSE_SYNONYMS, "verbose synonym"),
     (CODE_TEST_NAMING, "non-behavioral test name"),
 ];
 /// Selectable transformations and the lint group, in pipeline order.
@@ -38,6 +39,7 @@ pub const LINT_CODES: &[&str] = &[
     CODE_SENTENCE_LENGTH,
     CODE_HEADER_OPENER,
     CODE_FENCE_TAG,
+    CODE_VERBOSE_SYNONYMS,
     CODE_TEST_NAMING,
 ];
 /// Rule code for placeholder text in doc comments.
@@ -64,6 +66,8 @@ pub const CODE_TEST_NAMING: &str = "TEST001";
 pub const CODE_UNDOCUMENTED_PARAM: &str = "DOC005";
 /// Rule code for a vague `# Errors` section.
 pub const CODE_VAGUE_ERRORS: &str = "DOC003";
+/// Rule code for a discouraged verbose synonym in measured text.
+pub const CODE_VERBOSE_SYNONYMS: &str = "TEXT006";
 
 /// Friendly title for `code`, or `None` when `code` is not a lint code.
 pub(crate) fn title_for_code(code: &str) -> Option<&'static str> {
@@ -78,13 +82,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lint_codes_lists_all_twelve_codes() {
+    fn lint_codes_lists_all_thirteen_codes() {
         // `LINT_CODES` is the source of truth for CLI rule validation. It must
         // enumerate every code produced by the backends and the text rules.
         assert_eq!(
             LINT_CODES.len(),
-            12,
-            "LINT_CODES must list exactly twelve codes: {LINT_CODES:?}"
+            13,
+            "LINT_CODES must list exactly thirteen codes: {LINT_CODES:?}"
         );
         for code in [
             CODE_MISSING_DOCS,
@@ -98,6 +102,7 @@ mod tests {
             CODE_SENTENCE_LENGTH,
             CODE_HEADER_OPENER,
             CODE_FENCE_TAG,
+            CODE_VERBOSE_SYNONYMS,
             CODE_TEST_NAMING,
         ] {
             assert!(LINT_CODES.contains(&code), "LINT_CODES is missing {code}");
