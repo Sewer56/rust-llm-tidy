@@ -88,8 +88,8 @@ exclude:
   # literals (indoc/formatdoc); `fix_links` and `fix_tables` would rewrite
   # the literal contents and break the fixtures.
   - paths:
-      - "src/rust-llm-tidy-lint/src/check/rules/text/paragraph_length.rs"
-      - "src/rust-llm-tidy-lint/src/check/rules/text/line_length.rs"
+      - "src/rust-llm-tidy-lint/src/check/rules/text/text001_paragraph_size.rs"
+      - "src/rust-llm-tidy-lint/src/check/rules/text/text002_line_length.rs"
     rules:
       - links
       - tables

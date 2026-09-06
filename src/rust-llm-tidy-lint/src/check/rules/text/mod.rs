@@ -8,16 +8,16 @@
 use crate::check::plaintext::Document;
 use crate::diagnostic::Diagnostic;
 
-mod line_length;
-mod paragraph_length;
+mod text001_paragraph_size;
+mod text002_line_length;
 
 /// TEXT001 then TEXT002 diagnostics for one measured document.
 ///
 /// Called by the `run_text_checks` and `run_region_checks` entry points
 /// in [`crate::check`].
 pub(crate) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
-    let mut diags = paragraph_length::diagnostics(doc);
-    diags.extend(line_length::diagnostics(doc));
+    let mut diags = text001_paragraph_size::diagnostics(doc);
+    diags.extend(text002_line_length::diagnostics(doc));
     diags
 }
 
