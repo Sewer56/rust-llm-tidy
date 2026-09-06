@@ -37,6 +37,7 @@ Languages other than Rust and C# run the text lints only ([text lints]):
 | [`DOC006`]  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).                   |
 | [`TEXT001`] | Error    | A doc paragraph over 240 chars of full text (bullets warn).                       |
 | [`TEXT002`] | Warning  | A doc line over 80 chars of full text (code blocks, tables, link defs exempt).    |
+| [`TEXT003`] | Warning  | A doc sentence over 25 words (words join across wrapped lines).                   |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
 
 ## Examples
@@ -412,6 +413,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`DOC006`]: #doc006---placeholder-text
 [`TEXT001`]: ./text-lints.md#text001---oversized-paragraph
 [`TEXT002`]: ./text-lints.md#text002---long-line
+[`TEXT003`]: ./text-lints.md#text003---long-sentence
 [`TEST001`]: #test001---non-behavioral-test-name
 [lints for C#]: ./languages/lints/csharp.md
 [text lints]: ./text-lints.md

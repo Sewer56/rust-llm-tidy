@@ -1,4 +1,4 @@
-//! The Rust doc-region producer: TEXT001/TEXT002 regions for `rs` sources.
+//! The Rust doc-region producer: TEXT001-TEXT003 regions for `rs` sources.
 //!
 //! `doc_regions` extracts three doc sources through one region list:
 //!
@@ -42,7 +42,7 @@ enum DocNode<'a> {
     },
 }
 
-/// Runs the TEXT001/TEXT002 text checks over `parsed`'s doc prose: the
+/// Runs the TEXT001-TEXT003 text checks over `parsed`'s doc prose: the
 /// line-comment regions plus the parse tree's block and attribute doc
 /// regions, in source order.
 ///
@@ -52,8 +52,9 @@ enum DocNode<'a> {
 ///
 /// # Returns
 ///
-/// Diagnostics in source order: TEXT001 per over-limit paragraph, then
-/// TEXT002 per over-limit line.
+/// Diagnostics grouped by rule, in source order within each group:
+/// TEXT001 per over-limit paragraph, then TEXT002 per over-limit line,
+/// then TEXT003 per over-limit sentence.
 #[cfg(test)]
 pub(crate) fn text_checks(parsed: &ParseResult) -> Vec<Diagnostic> {
     run_region_checks(doc_regions(parsed))

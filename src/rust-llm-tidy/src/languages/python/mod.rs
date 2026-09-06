@@ -1,7 +1,7 @@
 //! The Python backend: the tree-sitter-python parse setup for `py` and
 //! `pyi` sources.
 //!
-//! Python registers no AST ops - it parses for the TEXT001/TEXT002 text
+//! Python registers no AST ops - it parses for the TEXT001-TEXT003 text
 //! checks only, sourcing them from [`text_regions`]' docstring
 //! and `#`-comment walk of the same parse. Reorder declines every
 //! source.

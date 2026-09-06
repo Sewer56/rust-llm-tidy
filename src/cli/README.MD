@@ -121,7 +121,7 @@ text mode; see [hints].
 | `links`   | hoist inline links to reference style              | yes     | yes         |
 | `reorder` | review-friendly item order                         | yes     | yes         |
 | `vis`     | narrow bare `pub` in restricted modules            | yes     | yes         |
-| `lints`   | run DOC001-DOC006, TEXT001-TEXT002, TEST001 checks | no      | yes         |
+| `lints`   | run DOC001-DOC006, TEXT001-TEXT003, TEST001 checks | no      | yes         |
 
 An optional YAML config file (`.rust-llm-tidy.yml`) may exclude files from
 processing, whitelist or blacklist specific rules per path, and run external

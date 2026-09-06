@@ -19,6 +19,7 @@ against misread declarations.
 | `DOC006`  | Warning  | A doc comment contains `TODO`, `FIXME`, or `TBD`.                                                |
 | `TEXT001` | Error    | An XML doc text paragraph over 240 chars of inner text.                                          |
 | `TEXT002` | Warning  | A doc line whose tag-stripped inner text exceeds 80 chars.                                       |
+| `TEXT003` | Warning  | A doc sentence whose tag-stripped inner text exceeds 25 words.                                   |
 | `TEST001` | Warning  | A `TestMethod`/`Test`/`Fact`/`Theory` method uses a `test_*`, `case_*`, or `test` + digits name. |
 
 Error-severity codes fail the run with a non-zero exit; warnings exit 0.
@@ -363,6 +364,61 @@ Loader.cs:3: warning[TEXT002]: line is 119 chars long.
   - Split it at the nearest idea change with a blank line.
   - Code spans, URLs, and link targets count.
   - Code blocks, table rows, and link definitions are exempt. (file)
+```
+
+### TEXT003 - long sentence
+
+A sentence over 25 words of tag-stripped inner text is a warning;
+wrapped `///` lines join into one sentence.
+
+Before:
+
+```csharp
+public class Loader
+{
+    /// <summary>
+    /// Loads the configured value from persistent storage, validates every
+    /// parsed field, resolves relative resource paths, retries transient
+    /// failures with bounded backoff, and logs one summary line.
+    /// </summary>
+    public int Load(string key)
+    {
+        return 1;
+    }
+}
+```
+
+After:
+
+```csharp
+public class Loader
+{
+    /// <summary>
+    /// Loads the configured value from persistent storage and validates
+    /// every parsed field.
+    /// </summary>
+    /// <remarks>
+    /// - Resolves relative resource paths.
+    /// - Retries transient failures with bounded backoff, then logs one
+    ///   summary line.
+    /// </remarks>
+    public int Load(string key)
+    {
+        return 1;
+    }
+}
+```
+
+#### TEXT003 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include TEXT003 Loader.cs
+Loader.cs:4: warning[TEXT003]: sentence is 26 words long.
+  - Keep sentences to 25 words or fewer.
+  - Long sentences can be harder to understand.
+  - Readers understand over 90% of the text when sentences contain 14 words or fewer.
+  - At 43 words per sentence, comprehension drops below 10%.
+  - Split this sentence where the idea changes. (file)
 ```
 
 ### TEST001 - non-behavioral test name

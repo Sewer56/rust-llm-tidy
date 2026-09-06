@@ -1,4 +1,4 @@
-# Text lints - TEXT001 and TEXT002
+# Text lints - TEXT001 to TEXT003
 
 The text lints are `lints` sub-checks ([`lints`]) run on raw text:
 comment-stripped for programming languages, raw for markdown and text
@@ -121,6 +121,54 @@ README.md:1: warning[TEXT002]: line is 104 chars long.
 ```
 
 `TEXT002` is warning-severity, so the run exits 0.
+
+## TEXT003 - long sentence
+
+A sentence over 25 words in measured doc prose is a warning.
+
+Sentences split at `.`, `!`, and `?`; a word is a whitespace-separated
+token.
+
+Code blocks, tables, headings, signature lines, and link definitions
+are exempt upstream, as for TEXT001 and TEXT002.
+
+Before:
+
+```rust
+/// Loads the configured data from disk, parses it, and validates every field
+/// against the schema before the loader resolves relative paths and retries
+/// transient failures with a bounded backoff policy.
+pub fn load() {}
+```
+
+After:
+
+```rust
+/// Loads the configured data from disk and parses it.
+///
+/// - Validates every field against the schema.
+/// - Resolves relative paths and retries transient failures with bounded
+///   backoff.
+pub fn load() {}
+```
+
+The split is naive: decimals like `3.5` or abbreviations like `e.g.`
+only shorten fragments, so misses are possible but fabricated reports
+are not.
+
+### TEXT003 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include TEXT003 src/lib.rs
+src/lib.rs:1: warning[TEXT003]: sentence is 30 words long.
+  - Keep sentences to 25 words or fewer.
+  - Long sentences can be harder to understand.
+  - Readers understand over 90% of the text when sentences contain 14 words or fewer.
+  - At 43 words per sentence, comprehension drops below 10%.
+  - Split this sentence where the idea changes. (file)
+```
+
+`TEXT003` is warning-severity, so the run exits 0.
 
 [`lints`]: ./lints.md
 
