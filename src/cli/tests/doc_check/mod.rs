@@ -10,6 +10,7 @@
 
 use common::binary;
 use core::sync::atomic::{AtomicU64, Ordering};
+use rstest::rstest;
 use std::fs;
 use std::process::Command;
 
@@ -709,6 +710,55 @@ fn json_output_reports_all_findings() {
     );
 }
 
+/// Each lexicon-family fixture fires exactly one comment paragraph,
+/// at its first prose line, and no line crosses the line budget.
+///
+/// The fixtures' quiet payloads (strings, heredocs, block strings,
+/// code) never measure.
+///
+/// Block-marker cases (`<# #>`, `(* *)`, `{- -}`) report at their
+/// first prose line, which follows the line-marker opening. Only
+/// `sh` differs: its `#!` shebang is itself a comment line, so the
+/// paragraph starts at line 1 like the rest.
+#[rstest]
+#[case::powershell("doc_text_lexicon_budgets.ps1", 2)]
+#[case::applescript("doc_text_lexicon_budgets.applescript", 2)]
+#[case::purescript("doc_text_lexicon_budgets.purs", 2)]
+#[case::ruby("doc_text_lexicon_budgets.rb", 1)]
+#[case::shell("doc_text_lexicon_budgets.sh", 1)]
+#[case::yaml("doc_text_lexicon_budgets.yaml", 1)]
+#[case::graphql("doc_text_lexicon_budgets.graphql", 1)]
+#[case::fish("doc_text_lexicon_budgets.fish", 1)]
+#[case::cmake("doc_text_lexicon_budgets.cmake", 1)]
+#[case::verilog("doc_text_lexicon_budgets.v", 1)]
+#[case::vhdl("doc_text_lexicon_budgets.vhd", 1)]
+#[case::toml("doc_text_lexicon_budgets.toml", 1)]
+#[case::ksh("doc_text_lexicon_budgets.ksh", 1)]
+#[case::latex_style("doc_text_lexicon_budgets.sty", 1)]
+#[case::scss("doc_text_lexicon_budgets.scss", 1)]
+fn lexicon_comment_prose_fires_once_at_its_first_line(#[case] name: &str, #[case] line: usize) {
+    let (stderr, exit) = run_lexicon_fixture(name);
+
+    assert_ne!(
+        exit, 0,
+        "{name}: the TEXT001 error must fail the run:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!("{name}:{line}: error[TEXT001]")),
+        "{name}: the comment paragraph must fire at its first prose line:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("TEXT001").count(),
+        1,
+        "{name}: exactly the comment paragraph, never the payload:\n{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("TEXT002").count(),
+        0,
+        "{name}: no doc line in the fixture crosses the line budget:\n{stderr}"
+    );
+}
+
 // ── Markdown lint dispatch ────────────────────────────────────────
 
 /// A clean markdown file passes lint dispatch with no diagnostics.
@@ -1030,30 +1080,6 @@ fn py_text_checks_measure_comments_not_strings() {
     );
 }
 
-/// Ruby `#` comments measure as prose - heading-shaped `##` lines
-/// included - while `<<` operators, heredoc payload, and code lines
-/// stay quiet.
-#[test]
-fn rb_lexicon_measures_comment_prose_only() {
-    let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.rb");
-
-    assert_ne!(exit, 0, "the TEXT001 error must fail the run:\n{stderr}");
-    assert!(
-        stderr.contains(":1: error[TEXT001]"),
-        "the comment paragraph must measure from its first line:\n{stderr}"
-    );
-    assert_eq!(
-        stderr.matches("TEXT001").count(),
-        1,
-        "exactly the comment paragraph, never payload or code:\n{stderr}"
-    );
-    assert_eq!(
-        stderr.matches("TEXT002").count(),
-        0,
-        "no doc line in the fixture crosses the line budget:\n{stderr}"
-    );
-}
-
 /// Run `rust-llm-tidy --include lints` on a Rust fixture and return its
 /// (stderr, exit_code).
 fn run_rust_fixture(name: &str) -> (String, i32) {
@@ -1063,25 +1089,6 @@ fn run_rust_fixture(name: &str) -> (String, i32) {
         String::from_utf8_lossy(&output.stderr).to_string(),
         output.status.code().unwrap_or(-1),
     )
-}
-
-/// Shell heredoc payload and `$#` parameter syntax stay quiet while the
-/// comment paragraph fires.
-#[test]
-fn sh_lexicon_ignores_heredoc_payload() {
-    let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.sh");
-
-    assert_ne!(exit, 0, "the TEXT001 error must fail the run:\n{stderr}");
-    assert_eq!(
-        stderr.matches("TEXT001").count(),
-        1,
-        "exactly the comment paragraph, never the heredoc payload:\n{stderr}"
-    );
-    assert_eq!(
-        stderr.matches("TEXT002").count(),
-        0,
-        "no doc line in the fixture crosses the line budget:\n{stderr}"
-    );
 }
 
 /// SQL `--` and `/* */` comment prose fires the text budgets at
@@ -1139,6 +1146,22 @@ fn text007_should_render_hints_when_checking_an_ordinary_file() {
     let records = records.as_array().unwrap();
     assert_eq!(records.len(), 2);
     assert!(records.iter().all(|record| record["severity"] == "hint"));
+}
+
+/// A YAML file with a block-scalar header fails closed: no findings at
+/// all, not even for a real over-budget comment line.
+#[test]
+fn yaml_block_scalar_probes_fail_closed() {
+    let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_probes.yaml");
+
+    assert_eq!(
+        exit, 0,
+        "the block-scalar probe fixture must be clean:\n{stderr}"
+    );
+    assert!(
+        stderr.is_empty(),
+        "a block-scalar YAML file must produce zero findings:\n{stderr}"
+    );
 }
 
 // ── Helpers ───────────────────────────────────────────────────────

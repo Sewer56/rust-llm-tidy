@@ -18,6 +18,12 @@ keeps its own paragraphs.
 | Python                  | module, class, and function docstrings; `#` comments                                                    |
 | Comment-marker families | line comments and the family's block forms (below)                                                      |
 
+The comment-marker families include `.yaml`, `.yml`, `.toml`, `.ps1`,
+`.graphql`, `.fish`, `.cmake`, `.applescript`, and `.v`.
+
+Reuse mappings such as `.bzl`, `.ksh`, `.vhd`, `.purs`, `.sty`, and
+`.scss` share the existing lexicons' markers.
+
 Block forms measured per family:
 
 - `//` family and sql: `/** */` and `/* */`.
@@ -25,6 +31,8 @@ Block forms measured per family:
 - hs and elm: `{- -}`.
 - el, lisp, scm: `#| |#`.
 - m: `%{ %}` alone on its line.
+- PowerShell (`ps1`, `psm1`, `psd1`): `<# #>`.
+- AppleScript: `(* *)`.
 
 Never measured:
 
@@ -37,9 +45,16 @@ Never measured:
 - Python `>>>` doctest examples: source lines, `...` continuations,
   and expected output, until the blank line ending the example.
 
-Python's producer and the marker families' comment lexicon fail closed:
-a file they cannot attribute safely produces no findings rather than
-guesses.
+Fail-closed cases: a file the producer or lexicon cannot attribute
+safely produces no findings rather than guesses.
+
+- Python: broken syntax (for example an unterminated string) yields no
+  tree, so no findings.
+- Marker families: unmodeled literal forms reject the scan: an
+  unterminated `sh` heredoc, a Ruby `%w[...]`, a nested `js` template
+  hole.
+- YAML block scalars (`|` and `>` headers): the whole scan rejects, so
+  a YAML file using one produces no findings at all.
 
 ## TEXT001 - oversized paragraph
 
