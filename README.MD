@@ -149,7 +149,7 @@ See [change reporting] for the shared record format.
 error). Omitting `paths` in an `include` or `exclude` group implies `["**"]`
 (all paths).
 
-Additionally:
+Also:
 
 - `extensions` - replaces the default allowed extensions when non-empty;
   empty or absent keeps the defaults.
