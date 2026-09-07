@@ -344,7 +344,7 @@ src/lib.rs:3: hint[TEXT006]: consider simpler wording.
 `TEXT006` has hint severity, so its findings do not fail the run.
 
 [wording dictionary]: ../src/rust-llm-tidy/src/rules/lint/text/text006_verbose_synonyms/suggestions.rs
-[module]: ../src/rust-llm-tidy/src/rules/lint/text/text007_passive_narration.rs
+[module]: ../src/rust-llm-tidy/src/rules/lint/text/text007_passive_narration/mod.rs
 
 ## TEXT007 - passive voice and past behaviour
 
@@ -370,7 +370,7 @@ Say what the code does, directly:
   Matching is case-insensitive; passive voice still produces hints.
 
 Edge-case exceptions are listed in the rule's module documentation:
-[`text007_passive_narration.rs`][module]
+[`text007_passive_narration/mod.rs`][module]
 
 Before:
 

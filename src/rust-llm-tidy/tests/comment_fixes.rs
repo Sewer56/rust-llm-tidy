@@ -181,10 +181,10 @@ fn links_should_count_occurrences_and_emit_definitions_per_run(
     #[case] next_prefix: &str,
     #[case] separator: &str,
 ) {
-    let repeated = std::iter::repeat_n(LINK, LINK_THRESHOLD)
+    let repeated = core::iter::repeat_n(LINK, LINK_THRESHOLD)
         .collect::<Vec<_>>()
         .join(" ");
-    let references = std::iter::repeat_n("[A]", LINK_THRESHOLD)
+    let references = core::iter::repeat_n("[A]", LINK_THRESHOLD)
         .collect::<Vec<_>>()
         .join(" ");
     let source = format!("//! {LINK}\n{separator}{next_prefix}{repeated}\n");

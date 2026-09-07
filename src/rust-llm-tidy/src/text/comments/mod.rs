@@ -70,19 +70,22 @@
 //!
 //! # Layout
 //!
-//! - `families` - the per-family lexical tables, the fail-closed
-//!   reject predicates, and the extension lookup.
+//! - `families` - the per-family lexical tables and the extension lookup.
+//! - `lexicon` - the shared lexicon types and fail-closed reject
+//!   predicates.
 //! - `scan` - the fail-closed scanner.
 //! - `yaml` - plain-scalar and comment token boundaries.
 
 use crate::reporting::Diagnostic;
 use crate::rules::lint::run_region_checks;
 use core::cmp::Ordering;
-use families::{LEXED_EXTENSIONS, Lexicon};
+use families::LEXED_EXTENSIONS;
+use lexicon::Lexicon;
 
 mod families;
 #[cfg(test)]
 mod lexical_safety_tests;
+mod lexicon;
 mod scan;
 mod yaml;
 

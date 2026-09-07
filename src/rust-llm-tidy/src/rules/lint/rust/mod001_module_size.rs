@@ -4,6 +4,8 @@
 //! `include_in_file_tests` is enabled. Files under a `tests/` directory are
 //! skipped unless `include_test_files` is enabled ([`is_tests_path`]).
 //!
+//! Warnings explain whether test-module regions and test files count.
+//!
 //! The rule is file-level, not item-level: it consumes the whole
 //! [`ParseResult`] plus the file's path and the per-run threshold. The
 //! pipeline therefore invokes it from `check_file` instead of the per-item
@@ -12,6 +14,7 @@
 use crate::reporting::Diagnostic;
 use crate::rules::lint::mod001_module_size::diagnostic;
 use crate::source::ParseResult;
+use core::fmt::Write;
 use std::path::Path;
 
 /// Warn when a Rust file exceeds its configured line budget.
@@ -54,7 +57,8 @@ pub(crate) fn check_with_options(
     }
 
     if include_in_file_tests {
-        return crate::rules::lint::mod001_module_size::check(&parsed.source, max_lines);
+        return crate::rules::lint::mod001_module_size::check(&parsed.source, max_lines)
+            .map(|finding| with_test_policy(finding, true, include_test_files));
     }
 
     let test_spans: Vec<(usize, usize)> = parsed
@@ -78,11 +82,15 @@ pub(crate) fn check_with_options(
     );
 
     (non_test_lines > max_lines).then(|| {
-        diagnostic(
-            non_test_lines,
-            crossing_line.unwrap_or(1),
-            max_lines,
-            " outside `#[cfg(test)]` mod regions",
+        with_test_policy(
+            diagnostic(
+                non_test_lines,
+                crossing_line.unwrap_or(1),
+                max_lines,
+                " outside `#[cfg(test)]` mod regions",
+            ),
+            false,
+            include_test_files,
         )
     })
 }
@@ -145,12 +153,39 @@ fn count_lines_outside_spans(
 }
 
 /// Whether `path` has a `tests` directory component (e.g.
-/// `tests/integration.rs`, `src/cli/tests/config.rs`).
+/// `tests/csharp/main.rs`, `src/cli/tests/config/main.rs`).
 ///
 /// A file named `tests.rs` is not a directory component and does not match.
 fn is_tests_path(path: &Path) -> bool {
     path.components()
         .any(|component| component.as_os_str() == std::ffi::OsStr::new("tests"))
+}
+
+/// Explain the effective Rust test-region and test-directory policies.
+fn with_test_policy(
+    mut finding: Diagnostic,
+    include_in_file_tests: bool,
+    include_test_files: bool,
+) -> Diagnostic {
+    let regions = if include_in_file_tests {
+        "counted"
+    } else {
+        "excluded"
+    };
+    let files = if include_test_files {
+        "checked"
+    } else {
+        "skipped"
+    };
+
+    write!(
+        finding.message,
+        "\n  - Test modules marked `#[cfg(test)]` at the file's top level are {regions}. \
+         Other lines count, including comments and blank lines.\n  \
+         - Rust files in `tests/` directories are {files}."
+    )
+    .expect("writing to a String cannot fail");
+    finding
 }
 
 #[cfg(test)]
