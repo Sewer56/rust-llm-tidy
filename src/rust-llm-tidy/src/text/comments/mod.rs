@@ -110,7 +110,7 @@ pub fn covers(ext: &str) -> bool {
 /// Diagnostics grouped by rule, in source order within each group.
 ///
 /// Rule order: TEXT001 paragraphs, TEXT002 lines, TEXT003 sentences,
-/// TEXT004 openers, TEXT005 fences.
+/// TEXT004 openers, TEXT005 fences, TEXT006 verbose synonyms.
 pub fn text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
     match lexicon_for(ext).and_then(|lex| scan::scan(source, lex)) {
         Some(regions) => run_region_checks(regions),

@@ -4,7 +4,7 @@
 //! per top-level declaration: using directives, namespaces, types,
 //! preprocessor directives, statements.
 //!
-//! Namespace and type bodies additionally carry [`TypeMember`] lists so
+//! Namespace and type bodies also carry [`TypeMember`] lists so
 //! the reorder engine can permute members.
 //!
 //! # Spans

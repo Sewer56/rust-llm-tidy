@@ -20,9 +20,10 @@ against misread declarations.
 | `TEXT001` | Error    | An XML doc text paragraph over 240 chars of inner text.                                          |
 | `TEXT002` | Warning  | A doc line whose tag-stripped inner text exceeds 80 chars.                                       |
 | `TEXT003` | Warning  | A doc sentence whose tag-stripped inner text exceeds 25 words.                                   |
+| `TEXT006` | Hint     | Shorter-wording suggestions for words, phrases, redundancies, and filler in doc text             |
 | `TEST001` | Warning  | A `TestMethod`/`Test`/`Fact`/`Theory` method uses a `test_*`, `case_*`, or `test` + digits name. |
 
-Error-severity codes fail the run with a non-zero exit; warnings exit 0.
+Errors fail the run with a non-zero exit; warnings and hints do not.
 
 ## Examples
 
@@ -423,6 +424,51 @@ Loader.cs:4: warning[TEXT003]: sentence is 26 words long.
   - At 43 words per sentence, comprehension drops below 10%.
   - Split this sentence where the idea changes. (file)
 ```
+
+### TEXT006 - verbose synonyms
+
+A measured `///` line can receive a shorter-wording hint for its inner text.
+
+The [TEXT006 rule] defines the shared dictionary and matching behavior.
+Hints show before/after guidance without changing the file.
+
+Before:
+
+```csharp
+public class Loader
+{
+    /// <summary>We utilize this loader in order to show values.</summary>
+    public int Load(string key)
+    {
+        return 1;
+    }
+}
+```
+
+After:
+
+```csharp
+public class Loader
+{
+    /// <summary>We use this loader to show values.</summary>
+    public int Load(string key)
+    {
+        return 1;
+    }
+}
+```
+
+#### TEXT006 CLI output
+
+```text
+$ cargo run -p rust-llm-tidy-cli -- --include TEXT006 Loader.cs
+Loader.cs:4: hint[TEXT006]: consider simpler wording.
+  - Before: `utilize`
+  - After: `use`
+  - Preserve meaning and adjust grammar to fit. (file)
+```
+
+[TEXT006 rule]: ../../text-lints.md#text006---verbose-synonyms
 
 ### TEST001 - non-behavioral test name
 

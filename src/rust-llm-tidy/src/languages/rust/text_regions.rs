@@ -57,6 +57,9 @@ enum DocNode<'a> {
 /// - TEXT001 per over-limit paragraph
 /// - TEXT002 per over-limit line
 /// - TEXT003 per over-limit sentence
+/// - TEXT004 per over-budget header opener
+/// - TEXT005 per untagged fence
+/// - TEXT006 per verbose-synonym line
 #[cfg(test)]
 pub(crate) fn text_checks(parsed: &ParseResult) -> Vec<Diagnostic> {
     run_region_checks(doc_regions(parsed))

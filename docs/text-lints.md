@@ -275,6 +275,56 @@ README.md:5: warning[TEXT005]: fenced code block uses bare `ignore`.
 
 `TEXT005` is warning-severity, so the run exits 0.
 
+## TEXT006 - verbose synonyms
+
+A measured doc line can receive a shorter-wording hint.
+
+- Words: `utilize` → `use`, `approximately` → `about`, `commence` → `start`
+- Phrases: `due to the fact that` → `because`, `in order to` → `to`
+- Redundancies: `each and every` → `each`, `absolutely essential` → `essential`
+- Framing: `it is worth noting that` → omit the opener and state the point
+- Context-sensitive terms: alternatives explain when technical wording
+  may be needed
+
+The [wording dictionary] contains the full list and each entry's guidance.
+
+Before:
+
+```text
+We utilize this helper in order to show the value.
+```
+
+After:
+
+```text
+We use this helper to show the value.
+```
+
+TEXT006 never edits files. `Before` and `After` show lowercase
+dictionary guidance, not rewritten lines. Check meaning and grammar before use.
+
+Matching rules:
+
+- Words: ASCII case-insensitive; listed forms only; alphanumeric/`_` boundaries.
+- Phrases: whitespace only between words; no punctuation, code, or line breaks.
+- Selection: first match per line; longest phrase wins ties.
+- Exemptions: inline code and fenced or indented code blocks.
+
+### TEXT006 CLI output
+
+```text
+$ cargo run -p rust-llm-tidy-cli -- --include TEXT006 src/lib.rs
+src/lib.rs:3: hint[TEXT006]: consider simpler wording.
+  - Before: `utilize`
+  - After: `use`
+  - Preserve meaning and adjust grammar to fit. (file)
+```
+
+`TEXT006` has hint severity, so its findings do not fail the run.
+
+[wording dictionary]: ../src/rust-llm-tidy/src/rules/lint/text/text006_verbose_synonyms/suggestions.rs
+
+
 [`lints`]: ./lints.md
 
 ## Library access

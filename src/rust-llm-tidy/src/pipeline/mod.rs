@@ -68,7 +68,7 @@ impl FileReport {
 /// Failures use [`anyhow::Error`] with the failing operation's context.
 ///
 /// - Unknown rule selection: an included or excluded name is not registered
-/// - Malformed extension: an additional extension cannot match a file suffix
+/// - Malformed extension: an extra extension cannot match a file suffix
 /// - Input discovery failure: a selected path is missing, unreadable, or Git
 ///   lookup fails
 /// - Project discovery failure: a C# project source directory cannot be
@@ -291,7 +291,7 @@ pub(crate) fn validate_selection(
 /// are unchanged.
 ///
 /// Canonicalization covers relative/absolute differences and symlinks. On
-/// Unix a `(dev, ino)` key additionally catches hardlinks, which
+/// Unix a `(dev, ino)` key also catches hardlinks, which
 /// canonicalization cannot (distinct paths, one inode).
 fn dedup_inputs(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut by_path: HashSet<PathBuf> = HashSet::new();
@@ -365,7 +365,7 @@ fn process_one(
     // A fix op qualifies its file for post-processing whenever the profile
     // allows it.
 
-    // An AST op additionally needs the profile's `backend` tier and a
+    // An AST op also needs the profile's `backend` tier and a
     // backend registered in the language registry (Rust today).
     let backend = crate::languages::backend_for(ext);
     let ast_op_on = |op: &str| {

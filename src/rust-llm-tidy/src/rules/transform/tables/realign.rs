@@ -90,7 +90,7 @@ pub(crate) fn realign_table(lines: &[&str]) -> Option<Vec<String>> {
     let ncols = header.len();
     let alignments = parse_delimiter_row(lines[1], ncols)?;
 
-    // Build the `body`, which is just string slices of all of the cells.
+    // Build the `body`, which is just string slices of all the cells.
     let nrows = lines.len() - 2;
     let mut body: Vec<&str> = Vec::with_capacity(nrows.saturating_mul(ncols));
     let mut row_buf: Vec<&str> = Vec::with_capacity(ncols + 2);

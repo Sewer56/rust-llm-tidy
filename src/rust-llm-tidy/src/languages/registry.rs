@@ -319,7 +319,7 @@ impl Profile {
     /// names. Either way an op the profile never allows stays refused -
     /// `links` outside the markdown family and Rust.
     ///
-    /// The AST ops (`reorder`, `vis`, parser-driven `lints`) additionally
+    /// The AST ops (`reorder`, `vis`, parser-driven `lints`) also
     /// require [`Profile::backend`]; that gate applies where they dispatch.
     pub(crate) fn op_enabled(
         &self,
@@ -590,7 +590,7 @@ mod tests {
     /// Dispatch composes both tables, and a language updated on only one
     /// side silently gains or loses AST ops.
     ///
-    /// The Ast text tier additionally requires the column: its doc-region
+    /// The Ast text tier also requires the column: its doc-region
     /// producer dispatches through the backend.
     ///
     /// `lints` allows both the parser-driven codes and the text checks, so
