@@ -264,6 +264,7 @@ fn eligible_name<'a>(node: Node<'a>) -> Option<Node<'a>> {
 #[cfg(test)]
 mod tests {
     use super::narrow_vis_in_tree;
+    use crate::languages::{LanguageBackend, rust::RustBackend};
     use crate::rules::transform::visibility::rust::{
         ParsedFile, ReexportSet, collect_crate_reexports,
     };
@@ -273,8 +274,6 @@ mod tests {
     /// including recovery syntax and re-export guards.
     #[test]
     fn tree_only_parse_should_match_backend_narrowed_output() {
-        use crate::languages::{LanguageBackend, rust::RustBackend};
-
         let cases = [
             ("no edits", "pub fn f() {}"),
             ("narrowing", "pub(crate) mod m { pub fn f() {} }"),

@@ -1,12 +1,13 @@
-//! The Rust item lint rules: DOC*, TEST001, and the file-level MOD001.
+//! The Rust lint rules: DOC*, TEST*, and MOD*.
 //!
 //! One module per rule, named by lint code: [`doc001_missing_docs`]
-//! through [`test001_test_naming`]. Most rules are pure functions over a
-//! [`SourceItem`] returning [`Vec<Diagnostic>`]; [`run_all`] runs every
-//! rule in code order.
+//! through [`test001_test_naming`].
 //!
-//! [`mod001_module_size`] is file-level instead: the pipeline runs it
-//! from `check_file`, outside [`run_all`].
+//! Most rules are pure functions over a [`SourceItem`] returning
+//! [`Vec<Diagnostic>`]; [`run_all`] runs every rule in code order.
+//!
+//! [`mod001_module_size`] is file-level instead: the
+//! pipeline runs it from `check_file`, outside [`run_all`].
 //!
 //! The C# backend's `lints` module implements the same codes over its own
 //! parse; both consume the shared code constants from
@@ -26,6 +27,7 @@ mod doc006_placeholder;
 mod doc008_error_variant_order;
 mod doc009_missing_module_docs;
 pub(crate) mod mod001_module_size;
+mod mod002_fn_local_use;
 mod test001_test_naming;
 
 /// Accepted rustdoc headers for documenting function parameters.
@@ -41,12 +43,13 @@ const ARGUMENTS_HEADERS: &[&str] = &[
     "# Param",
 ];
 
-/// Run Rust item checks followed by text checks over the same parse.
+/// Run Rust item checks, tree checks, and text checks over one parse.
 pub(crate) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
     let mut diagnostics = run_all(parsed);
     diagnostics.extend(crate::rules::lint::run_region_checks(
         crate::languages::rust::text_regions::doc_regions(parsed),
     ));
+    diagnostics.extend(mod002_fn_local_use::check(parsed));
     diagnostics
 }
 
@@ -149,7 +152,7 @@ fn is_pub_result_fn(item: &SourceItem) -> bool {
 /// Run every Rust rule over `parsed` and return all diagnostics.
 ///
 /// File-level diagnostics precede item diagnostics, which follow source
-/// order and then rule code order: DOC*, then TEST001. The returned
+/// order and then rule code order: DOC*, then TEST*. The returned
 /// `Vec` is empty when the file and every item pass every rule.
 ///
 /// # Arguments

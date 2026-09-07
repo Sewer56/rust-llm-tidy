@@ -9,6 +9,7 @@
 //! - Suffix boundary: end of name, `.`, `-`, `_`, or space
 //! - Exception: recognized non-prose source extensions, including `license.rs`
 
+use crate::languages::registry::{DEFAULT_EXTENSIONS, TextLints, profile_for};
 use anyhow::{Context, bail};
 use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
@@ -122,8 +123,6 @@ pub(crate) fn resolve_all(
 
 /// Identify conventional license filenames without hiding source implementations.
 pub(crate) fn is_license_document(path: &Path) -> bool {
-    use crate::languages::registry::{DEFAULT_EXTENSIONS, TextLints, profile_for};
-
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };

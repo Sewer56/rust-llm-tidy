@@ -25,6 +25,7 @@
 //! - `text004_header_opener`: TEXT004 three-sentence doc openers
 
 use crate::{run_command, rust_fixture_dir};
+use rust_llm_tidy::languages::LanguageBackend;
 use std::fs;
 
 mod doc001_missing_docs;
@@ -67,8 +68,6 @@ fn clean_file_no_diagnostics() {
 /// `lints` selection keeps the opt-in code off.
 #[test]
 fn rs_diagnostics_match_direct_check_composition() {
-    use rust_llm_tidy::languages::LanguageBackend;
-
     for name in [
         "doc001_missing_docs.rs",
         "text-001_text-002_block_attr_budgets.rs",

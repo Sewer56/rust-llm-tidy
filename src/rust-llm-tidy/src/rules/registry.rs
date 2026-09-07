@@ -30,6 +30,7 @@ pub(crate) const CODE_TITLES: &[(&str, &str)] = &[
     (CODE_TEXT008, "dense bullet list"),
     (CODE_TEST_NAMING, "non-behavioral test name"),
     (CODE_MODULE_SIZE, "oversized module"),
+    (CODE_MOD002, "fn-local `use` without `#[cfg]`"),
 ];
 /// Selectable transformations and the lint group, in pipeline order.
 pub const KNOWN_FIX_OPS: &[&str] = &["tables", "fences", "links", "reorder", "vis", "lints"];
@@ -57,6 +58,7 @@ pub const LINT_CODES: &[&str] = &[
     CODE_TEXT008,
     CODE_TEST_NAMING,
     CODE_MODULE_SIZE,
+    CODE_MOD002,
 ];
 /// Rule code for placeholder text in doc comments.
 pub const CODE_DOC_PLACEHOLDER: &str = "DOC006";
@@ -77,6 +79,9 @@ pub const CODE_MISSING_DOCS: &str = "DOC001";
 pub const CODE_MISSING_ERRORS: &str = "DOC002";
 /// Rule code for a module file without top-level docs.
 pub const CODE_MISSING_MODULE_DOCS: &str = "DOC009";
+/// Rule code for a `use` inside a function body without its own
+/// `#[cfg]` attribute.
+pub const CODE_MOD002: &str = "MOD002";
 /// Rule code for a source file over its language's line budget.
 pub const CODE_MODULE_SIZE: &str = "MOD001";
 /// Rule code for an over-limit paragraph of stripped doc text.
@@ -109,13 +114,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lint_codes_lists_all_eighteen_codes() {
+    fn lint_codes_lists_all_nineteen_codes() {
         // `LINT_CODES` is the source of truth for CLI rule validation. It must
         // enumerate every code produced by the backends and the text rules.
         assert_eq!(
             LINT_CODES.len(),
-            18,
-            "LINT_CODES must list exactly eighteen codes: {LINT_CODES:?}"
+            19,
+            "LINT_CODES must list exactly nineteen codes: {LINT_CODES:?}"
         );
         for code in [
             CODE_MISSING_DOCS,
@@ -136,6 +141,7 @@ mod tests {
             CODE_TEXT008,
             CODE_TEST_NAMING,
             CODE_MODULE_SIZE,
+            CODE_MOD002,
         ] {
             assert!(LINT_CODES.contains(&code), "LINT_CODES is missing {code}");
         }
