@@ -14,6 +14,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 mod buffer;
+mod comment_fixes;
 mod files;
 mod run_options;
 mod source_options;

@@ -348,40 +348,6 @@ fn empty_directory_should_run_cleanly() {
     assert!(stderr.is_empty(), "stderr should be empty on success");
 }
 
-/// `--extension` allows an extra extension additively: the file runs the
-/// tables-only unmapped profile, and without the flag the
-/// same file is a silent skip.
-#[test]
-fn extension_flag_allows_unmapped_extension_tables_only() {
-    let source = "| a | b |\n| --- | --- |\n| 1 | 22 |\n";
-
-    // Without the flag the explicit file is a silent skip.
-    let file = temp_file_ext("org");
-    fs::write(&file, source).unwrap();
-    let out = run_command(&["--json"], &file);
-    assert!(out.status.success());
-    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "[]");
-    assert_eq!(fs::read_to_string(&file).unwrap(), source);
-    let _ = fs::remove_file(&file);
-
-    // With the flag the file is allowed and its GFM table aligns.
-    let file = temp_file_ext("org");
-    fs::write(&file, source).unwrap();
-    let out = run_command(&["--extension", "org"], &file);
-    assert!(
-        out.status.success(),
-        "--extension org should allow the file: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stderr.contains("tables were aligned"),
-        "the unmapped profile must run tables: {stderr}"
-    );
-    assert_ne!(fs::read_to_string(&file).unwrap(), source);
-    let _ = fs::remove_file(&file);
-}
-
 /// Malformed `--extension` values fail the run with a non-zero exit.
 #[test]
 fn extension_flag_rejects_malformed_values() {
@@ -399,6 +365,31 @@ fn extension_flag_rejects_malformed_values() {
             "stderr should name the bad extension: {stderr}"
         );
     }
+    let _ = fs::remove_file(&file);
+}
+
+/// Unknown extensions remain unchanged with or without explicit selection.
+#[rstest::rstest]
+#[case::unselected(&[])]
+#[case::extension_selected(&["--extension", "org"])]
+#[case::tables_selected(&["--extension", "org", "--include", "tables"])]
+fn extension_flag_should_preserve_unknown_source(#[case] args: &[&str]) {
+    let source = "| a | b |\n| --- | --- |\n| 1 | 22 |\n";
+    let file = temp_file_ext("org");
+    fs::write(&file, source).unwrap();
+
+    let mut full_args = vec!["--json"];
+    full_args.extend_from_slice(args);
+    let out = run_command(&full_args, &file);
+
+    assert!(
+        out.status.success(),
+        "unknown extension should be a successful no-op: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "[]");
+    assert_eq!(fs::read_to_string(&file).unwrap(), source);
+
     let _ = fs::remove_file(&file);
 }
 

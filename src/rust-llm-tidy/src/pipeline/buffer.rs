@@ -15,6 +15,9 @@ use std::collections::HashSet;
 ///
 /// Transformations run in pipeline order; lint findings describe the final
 /// source.
+/// Text fixes process Markdown/plaintext documents or parser-verified standalone
+/// line-comment groups. Unsupported source and syntax-error trees skip text fixes;
+/// literals, block comments, and trailing comments remain unchanged.
 /// Rust visibility uses only local re-exports, and C# throw analysis uses only
 /// this buffer.
 /// Use [`crate::run`] for project-aware processing.
@@ -77,6 +80,7 @@ pub fn tidy_source<'a>(
     let profile = registry::profile_for(ext);
     let (mut text, mut changes) = fix_source(
         source,
+        ext,
         profile,
         &enabled,
         &disabled,
@@ -130,8 +134,108 @@ pub fn tidy_source<'a>(
     })
 }
 
-/// Apply enabled text transformations, preserving the no-change borrow.
+/// Apply text fixes to prose documents or verified standalone comment runs.
+///
+/// Unverified source remains borrowed, regardless of explicit rule selection.
 pub(super) fn fix_source<'a>(
+    source: &'a str,
+    ext: &str,
+    profile: &registry::Profile,
+    enabled: &Option<HashSet<String>>,
+    disabled: &HashSet<String>,
+    links_min_occurrences: usize,
+) -> (Cow<'a, str>, Vec<Change>) {
+    if profile.text_lints == registry::TextLints::Prose {
+        return fix_text(source, profile, enabled, disabled, links_min_occurrences);
+    }
+    if !["tables", "fences", "links"]
+        .iter()
+        .any(|op| profile.op_enabled(op, enabled, disabled))
+    {
+        return (Cow::Borrowed(source), Vec::new());
+    }
+
+    let runs = super::comment_fixes::comment_runs(source, ext, profile.prefixes);
+    let mut output: Option<String> = None;
+    let mut copied = 0;
+    let mut changes = Vec::new();
+
+    // Fix each verified run independently so links and fences cannot cross code.
+    for run in runs {
+        let (text, mut records) = fix_text(
+            &source[run.bytes.clone()],
+            profile,
+            enabled,
+            disabled,
+            links_min_occurrences,
+        );
+        if let Cow::Owned(text) = text {
+            // Copy untouched source verbatim, then splice in the rewritten comment run.
+            let out = output.get_or_insert_with(|| String::with_capacity(source.len()));
+            out.push_str(&source[copied..run.bytes.start]);
+            out.push_str(&text);
+            copied = run.bytes.end;
+
+            // Translate run-local fence anchors back to original source lines.
+            for record in &mut records {
+                if let Some(line) = record.line {
+                    record.line = u32::try_from(run.row)
+                        .ok()
+                        .and_then(|row| line.get().checked_add(row))
+                        .and_then(core::num::NonZeroU32::new);
+                }
+            }
+            changes.extend(records);
+        }
+    }
+
+    // Tables and identical link substitutions report once per file.
+    let mut table_reported = false;
+    let mut links_reported = HashSet::new();
+    changes.retain(|record| {
+        if record.kind == crate::reporting::ChangeKind::Table {
+            !core::mem::replace(&mut table_reported, true)
+        } else if record.kind == crate::reporting::ChangeKind::Link {
+            links_reported.insert(record.message.clone())
+        } else {
+            true
+        }
+    });
+    if let Some(mut output) = output {
+        output.push_str(&source[copied..]);
+        (Cow::Owned(output), changes)
+    } else {
+        (Cow::Borrowed(source), changes)
+    }
+}
+
+/// Reorder supported source and verify line preservation before returning
+/// changes.
+pub(super) fn reorder_source<'a>(
+    source: &'a str,
+    ext: &str,
+) -> anyhow::Result<(Cow<'a, str>, Vec<Change>)> {
+    let Some(backend) = backend_for(ext) else {
+        return Ok((Cow::Borrowed(source), Vec::new()));
+    };
+    let parsed = backend.parse(source)?;
+    let Some(permutation) = backend.reorder_permutation(&parsed)? else {
+        return Ok((Cow::Borrowed(source), Vec::new()));
+    };
+
+    let output = transform::reorder::emit(&parsed, &permutation)?;
+    crate::source::preservation::verify_line_preservation(source, &output)?;
+    let changes = change::reorder_changes(&parsed, &permutation);
+    let output = if output == source {
+        Cow::Borrowed(source)
+    } else {
+        Cow::Owned(output)
+    };
+    Ok((output, changes))
+}
+
+/// Run text engines on an already authorized document or comment run.
+fn fix_text<'a>(
     source: &'a str,
     profile: &registry::Profile,
     enabled: &Option<HashSet<String>>,
@@ -163,31 +267,6 @@ pub(super) fn fix_source<'a>(
         }
     }
     (output, changes)
-}
-
-/// Reorder supported source and verify line preservation before returning
-/// changes.
-pub(super) fn reorder_source<'a>(
-    source: &'a str,
-    ext: &str,
-) -> anyhow::Result<(Cow<'a, str>, Vec<Change>)> {
-    let Some(backend) = backend_for(ext) else {
-        return Ok((Cow::Borrowed(source), Vec::new()));
-    };
-    let parsed = backend.parse(source)?;
-    let Some(permutation) = backend.reorder_permutation(&parsed)? else {
-        return Ok((Cow::Borrowed(source), Vec::new()));
-    };
-
-    let output = transform::reorder::emit(&parsed, &permutation)?;
-    crate::source::preservation::verify_line_preservation(source, &output)?;
-    let changes = change::reorder_changes(&parsed, &permutation);
-    let output = if output == source {
-        Cow::Borrowed(source)
-    } else {
-        Cow::Owned(output)
-    };
-    Ok((output, changes))
 }
 
 /// Run standalone checks using the registered AST or text extraction mechanism.

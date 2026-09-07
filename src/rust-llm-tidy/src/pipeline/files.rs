@@ -98,8 +98,8 @@ pub(crate) fn check_file(
 /// Reads the source and applies the shared buffer transformation pipeline.
 ///
 /// Each pass is gated by the file's [`langs::Profile`] against the active
-/// rule selection. An op the profile never allows never runs. Every pass
-/// strips and re-applies the profile's comment prefixes.
+/// rule selection. Text fixes process whole Markdown/plaintext documents or
+/// parser-verified standalone line-comment groups, never arbitrary source.
 ///
 /// Writes the result back via [`io::atomic_write`] unless `--dry-run` is
 /// given.
@@ -126,8 +126,15 @@ pub(crate) fn fix_file(
 ) -> anyhow::Result<Vec<changes::Change>> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
-    let (out, change_records) =
-        super::buffer::fix_source(&source, profile, enabled, disabled, links_min_occurrences);
+    let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+    let (out, change_records) = super::buffer::fix_source(
+        &source,
+        ext,
+        profile,
+        enabled,
+        disabled,
+        links_min_occurrences,
+    );
     if !dry_run && out != source {
         io::atomic_write(path, &out)
             .with_context(|| format!("failed to write {}", path.display()))?;

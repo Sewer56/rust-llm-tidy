@@ -67,14 +67,14 @@ Global flags: `--dry-run`, `--config <PATH>`, `--no-config`, `--validate`,
 
 #### Operations
 
-| Op        | Does                                    | Languages         | Mutates |
-| --------- | --------------------------------------- | ----------------- | ------- |
-| `tables`  | align GFM tables                        | all allowed       | yes     |
-| `fences`  | alternate nested fence delimiters       | all allowed       | yes     |
-| `links`   | hoist inline links to reference style   | `md` family, `rs` | yes     |
-| `reorder` | review-friendly item order              | `rs`, `cs`        | yes     |
-| `vis`     | narrow bare `pub` in restricted modules | `rs`              | yes     |
-| `lints`   | run DOC*, TEXT*, TEST* checks           | all allowed       | no      |
+| Op        | Does                                    | Languages                            | Mutates |
+| --------- | --------------------------------------- | ------------------------------------ | ------- |
+| `tables`  | align GFM tables                        | `md` family, `rs`, `cs`, `py`, `pyi` | yes     |
+| `fences`  | alternate nested fence delimiters       | `md` family, `rs`, `cs`, `py`, `pyi` | yes     |
+| `links`   | hoist inline links to reference style   | `md` family, `rs`                    | yes     |
+| `reorder` | review-friendly item order              | `rs`, `cs`                           | yes     |
+| `vis`     | narrow bare `pub` in restricted modules | `rs`                                 | yes     |
+| `lints`   | run DOC*, TEXT*, TEST* checks           | all allowed                          | no      |
 
 Every allowed op is on by default; `--include`/`--exclude` and the config
 narrow them. The `md` family is `.md`, `.markdown`, `.txt`, `.text`,
@@ -82,6 +82,21 @@ narrow them. The `md` family is `.md`, `.markdown`, `.txt`, `.text`,
 
 `lints` splits by language: `rs` and `cs` run every code; every other
 allowed language runs the text lints only.
+
+#### Text transformation safety
+
+Table, fence, and link fixes use these boundaries:
+
+- **Markdown/plaintext:** the whole document, including examples
+- **Source code:** parser-verified comment lines only: Rust `///`/`//!`,
+  C# `///`/`//`, and Python `#`
+
+Comment lines must stand alone and share a marker and indentation.
+Code or blank lines separate groups; fixes never cross groups.
+
+Strings, docstrings, doc attributes, block comments, and trailing comments
+stay untouched. Unsupported languages and files with parse errors are skipped,
+even with `--include`. Links support only Rust and Markdown/plaintext.
 
 #### JSON output
 

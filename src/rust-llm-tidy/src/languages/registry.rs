@@ -2,7 +2,8 @@
 //! source-file extension.
 //!
 //! It also decides which line-comment prefixes the fix passes strip
-//! around tables and fences.
+//! within parser-verified comment runs. TEXT scanners own their lexicons
+//! independently of these transformation prefixes.
 //!
 //! Every allowed extension is governed by a [`Profile`]:
 //!
@@ -20,15 +21,12 @@
 //!   `lints` - with the `///`/`//!` doc prefixes
 //! - C# (`cs`): `tables`, `fences` plus the AST ops `reorder`/`lints`; no
 //!   `links`
-//! - Python (`py`, `pyi`): like a code language (`tables`, `fences`, and
-//!   `lints` by default, `#` prefixes). Its text checks are sourced from
-//!   the tree-sitter-python backend's docstring walk.
-//! - Code languages: `tables`, `fences`, and `lints` by default; no
-//!   `links`, no AST ops; tables inside comments realign with the
-//!   language's marker re-applied
-//! - Unmapped extensions: `tables` only, no prefixes
-//! - YAML and TOML: comment `lints` only; transformations cannot safely
-//!   distinguish comments from configuration values
+//! - Python (`py`, `pyi`): `tables`, `fences`, and `lints` by default,
+//!   with `#` prefixes. Its text checks use the backend's docstring and
+//!   comment regions.
+//! - Backendless code and configuration languages: comment `lints` only;
+//!   transformations require parser-verified comment runs
+//! - Unmapped extensions: no ops, even when explicitly selected
 //! - Data formats (`ini`, `json`): no ops; never in
 //!   [`DEFAULT_EXTENSIONS`]
 //!
@@ -114,140 +112,100 @@ pub(crate) const DEFAULT_EXTENSIONS: &[&str] = &{
     }
     out
 };
-/// Extensions outside the language tables: tables only, no prefixes.
+/// Extensions outside the language tables: no ops, even when selected.
 const UNMAPPED: Profile = Profile {
-    ops: &["tables"],
+    ops: &[],
     prefixes: &[],
-    default_ops: &["tables"],
+    default_ops: &[],
     backend: false,
     text_lints: TextLints::None,
 };
 /// Extension-to-profile table, sorted by extension (ASCII) so binary search
 /// applies. The sortedness test guards this invariant.
 const LANG_ENTRIES: &[(&str, Profile)] = &[
-    ("ada", CODE_DASH),
-    ("applescript", CODE_DASH),
-    ("bash", CODE_HASH),
-    ("bst", CODE_PERCENT),
-    ("bzl", CODE_HASH),
-    ("c", CODE_SLASH),
-    ("cc", CODE_SLASH),
-    ("clj", CODE_SEMI),
-    ("cljc", CODE_SEMI),
-    ("cls", CODE_PERCENT),
-    ("cmake", CODE_HASH),
-    ("conf", CODE_HASH),
-    ("cpp", CODE_SLASH),
+    ("ada", COMMENT_LINTS),
+    ("applescript", COMMENT_LINTS),
+    ("bash", COMMENT_LINTS),
+    ("bst", COMMENT_LINTS),
+    ("bzl", COMMENT_LINTS),
+    ("c", COMMENT_LINTS),
+    ("cc", COMMENT_LINTS),
+    ("clj", COMMENT_LINTS),
+    ("cljc", COMMENT_LINTS),
+    ("cls", COMMENT_LINTS),
+    ("cmake", COMMENT_LINTS),
+    ("conf", COMMENT_LINTS),
+    ("cpp", COMMENT_LINTS),
     ("cs", C_SHARP),
-    ("dart", CODE_SLASH),
-    ("el", CODE_SEMI),
-    ("elm", CODE_DASH),
-    ("erl", CODE_PERCENT),
-    ("fish", CODE_HASH),
-    ("go", CODE_SLASH),
-    ("gql", CODE_HASH),
-    ("gradle", CODE_SLASH),
-    ("graphql", CODE_HASH),
-    ("groovy", CODE_SLASH),
-    ("h", CODE_SLASH),
-    ("hpp", CODE_SLASH),
-    ("hs", CODE_DASH),
-    ("java", CODE_SLASH),
-    ("jl", CODE_HASH),
-    ("js", CODE_SLASH),
-    ("json5", CODE_SLASH),
-    ("jsonc", CODE_SLASH),
-    ("ksh", CODE_HASH),
-    ("kt", CODE_SLASH),
-    ("less", CODE_SLASH),
-    ("lisp", CODE_SEMI),
-    ("ltx", CODE_PERCENT),
-    ("lua", CODE_DASH),
-    ("m", CODE_PERCENT),
+    ("dart", COMMENT_LINTS),
+    ("el", COMMENT_LINTS),
+    ("elm", COMMENT_LINTS),
+    ("erl", COMMENT_LINTS),
+    ("fish", COMMENT_LINTS),
+    ("go", COMMENT_LINTS),
+    ("gql", COMMENT_LINTS),
+    ("gradle", COMMENT_LINTS),
+    ("graphql", COMMENT_LINTS),
+    ("groovy", COMMENT_LINTS),
+    ("h", COMMENT_LINTS),
+    ("hpp", COMMENT_LINTS),
+    ("hs", COMMENT_LINTS),
+    ("java", COMMENT_LINTS),
+    ("jl", COMMENT_LINTS),
+    ("js", COMMENT_LINTS),
+    ("json5", COMMENT_LINTS),
+    ("jsonc", COMMENT_LINTS),
+    ("ksh", COMMENT_LINTS),
+    ("kt", COMMENT_LINTS),
+    ("less", COMMENT_LINTS),
+    ("lisp", COMMENT_LINTS),
+    ("ltx", COMMENT_LINTS),
+    ("lua", COMMENT_LINTS),
+    ("m", COMMENT_LINTS),
     ("markdown", MARKDOWN),
     ("md", MARKDOWN),
     ("mdx", MARKDOWN),
-    ("mjs", CODE_SLASH),
-    ("nim", CODE_HASH),
-    ("php", CODE_SLASH),
-    ("pl", CODE_HASH),
-    ("proto", CODE_SLASH),
-    ("ps1", CODE_HASH),
-    ("psd1", CODE_HASH),
-    ("psm1", CODE_HASH),
-    ("purs", CODE_DASH),
+    ("mjs", COMMENT_LINTS),
+    ("nim", COMMENT_LINTS),
+    ("php", COMMENT_LINTS),
+    ("pl", COMMENT_LINTS),
+    ("proto", COMMENT_LINTS),
+    ("ps1", COMMENT_LINTS),
+    ("psd1", COMMENT_LINTS),
+    ("psm1", COMMENT_LINTS),
+    ("purs", COMMENT_LINTS),
     ("py", PYTHON),
     ("pyi", PYTHON),
-    ("r", CODE_HASH),
-    ("rb", CODE_HASH),
+    ("r", COMMENT_LINTS),
+    ("rb", COMMENT_LINTS),
     ("rs", RUST),
-    ("scala", CODE_SLASH),
-    ("scm", CODE_SEMI),
-    ("scss", CODE_SLASH),
-    ("sh", CODE_HASH),
-    ("sol", CODE_SLASH),
-    ("sql", CODE_DASH),
-    ("sty", CODE_PERCENT),
-    ("sv", CODE_SLASH),
-    ("swift", CODE_SLASH),
-    ("tex", CODE_PERCENT),
+    ("scala", COMMENT_LINTS),
+    ("scm", COMMENT_LINTS),
+    ("scss", COMMENT_LINTS),
+    ("sh", COMMENT_LINTS),
+    ("sol", COMMENT_LINTS),
+    ("sql", COMMENT_LINTS),
+    ("sty", COMMENT_LINTS),
+    ("sv", COMMENT_LINTS),
+    ("swift", COMMENT_LINTS),
+    ("tex", COMMENT_LINTS),
     ("text", MARKDOWN),
-    ("thrift", CODE_SLASH),
-    ("toml", CONFIG_LINTS),
-    ("ts", CODE_SLASH),
-    ("tsx", CODE_SLASH),
+    ("thrift", COMMENT_LINTS),
+    ("toml", COMMENT_LINTS),
+    ("ts", COMMENT_LINTS),
+    ("tsx", COMMENT_LINTS),
     ("txt", MARKDOWN),
-    ("v", CODE_SLASH),
-    ("vhd", CODE_DASH),
-    ("yaml", CONFIG_LINTS),
-    ("yml", CONFIG_LINTS),
-    ("zig", CODE_SLASH),
-    ("zsh", CODE_HASH),
+    ("v", COMMENT_LINTS),
+    ("vhd", COMMENT_LINTS),
+    ("yaml", COMMENT_LINTS),
+    ("yml", COMMENT_LINTS),
+    ("zig", COMMENT_LINTS),
+    ("zsh", COMMENT_LINTS),
 ];
-/// Code tier for `--`-comment languages.
-const CODE_DASH: Profile = Profile {
-    ops: &["tables", "fences", "lints"],
-    prefixes: &["--"],
-    default_ops: &["tables", "fences", "lints"],
-    backend: false,
-    text_lints: TextLints::Lexicon,
-};
-/// Code tier for `#`-comment languages.
-const CODE_HASH: Profile = Profile {
-    ops: &["tables", "fences", "lints"],
-    prefixes: &["#"],
-    default_ops: &["tables", "fences", "lints"],
-    backend: false,
-    text_lints: TextLints::Lexicon,
-};
-/// Code tier for `%`-comment languages.
-const CODE_PERCENT: Profile = Profile {
-    ops: &["tables", "fences", "lints"],
-    prefixes: &["%"],
-    default_ops: &["tables", "fences", "lints"],
-    backend: false,
-    text_lints: TextLints::Lexicon,
-};
-/// Code tier for `;`-comment languages.
-const CODE_SEMI: Profile = Profile {
-    ops: &["tables", "fences", "lints"],
-    prefixes: &[";"],
-    default_ops: &["tables", "fences", "lints"],
-    backend: false,
-    text_lints: TextLints::Lexicon,
-};
-/// Code tier for `//`-comment languages other than C#.
-const CODE_SLASH: Profile = Profile {
-    ops: &["tables", "fences", "lints"],
-    prefixes: &["//"],
-    default_ops: &["tables", "fences", "lints"],
-    backend: false,
-    text_lints: TextLints::Lexicon,
-};
-/// Configuration comments are linted without rewriting string values.
-const CONFIG_LINTS: Profile = Profile {
+/// Backendless languages: lint comments using the TEXT scanner's own lexicon.
+const COMMENT_LINTS: Profile = Profile {
     ops: &["lints"],
-    prefixes: &["#"],
+    prefixes: &[],
     default_ops: &["lints"],
     backend: false,
     text_lints: TextLints::Lexicon,
@@ -302,14 +260,11 @@ pub(crate) struct Profile {
     /// Line-comment markers stripped and re-applied around tables and
     /// fences, longest first.
     ///
-    /// A `///` marker must precede `//`; the list is empty when the tier
-    /// has no comment prefixes.
+    /// A `///` marker must precede `//`; the list is empty for prose and
+    /// profiles without transformations. TEXT scanners do not use this list.
     pub prefixes: &'static [&'static str],
     /// Ops that run when no explicit include list narrows the run; always a
     /// subset of `ops`.
-    ///
-    /// Their `lints` op runs by default through the fail-closed lexicon,
-    /// which never measures string content or code lines.
     pub default_ops: &'static [&'static str],
     /// Whether an AST parser is registered for the extension.
     ///
@@ -410,7 +365,7 @@ pub(crate) fn allowed_extensions<'a>(
 /// The profile governing `ext`, ASCII case-insensitively (`.MD` resolves like
 /// `.md`).
 ///
-/// Extensions outside the language table resolve to the tables-only
+/// Extensions outside the language table resolve to the no-op
 /// [`UNMAPPED`] profile, except the data formats, which resolve to the
 /// no-op [`DATA`] profile.
 ///
@@ -642,6 +597,41 @@ mod tests {
 
     // ── Per-file op gating ──
 
+    /// Explicit selection cannot enable operations outside a profile's capabilities.
+    #[rstest]
+    #[case::rust("rs", &["tables", "fences", "links", "reorder", "vis", "lints"])]
+    #[case::csharp("cs", &["tables", "fences", "reorder", "lints"])]
+    #[case::python("py", &["tables", "fences", "lints"])]
+    #[case::python_stub("pyi", &["tables", "fences", "lints"])]
+    #[case::markdown("md", &["tables", "fences", "links", "lints"])]
+    #[case::slash_comments("js", &["lints"])]
+    #[case::hash_comments("rb", &["lints"])]
+    #[case::dash_comments("sql", &["lints"])]
+    #[case::semicolon_comments("el", &["lints"])]
+    #[case::percent_comments("tex", &["lints"])]
+    #[case::toml("toml", &["lints"])]
+    #[case::yaml("yaml", &["lints"])]
+    #[case::unknown("org", &[])]
+    #[case::empty("", &[])]
+    #[case::data("json", &[])]
+    fn operations_should_respect_profile_capabilities(
+        #[case] ext: &str,
+        #[values(false, true)] explicit: bool,
+        #[case] expected: &[&str],
+    ) {
+        let profile = profile_for(ext);
+        let enabled = explicit.then(|| rules(crate::config::KNOWN_FIX_OPS));
+        let disabled = rules(&[]);
+
+        let actual: Vec<_> = crate::config::KNOWN_FIX_OPS
+            .iter()
+            .copied()
+            .filter(|op| profile.op_enabled(op, &enabled, &disabled))
+            .collect();
+
+        assert_eq!(actual, expected);
+    }
+
     /// The `backend` column must agree with the lang-crate backend registry
     /// per extension and per AST op.
     ///
@@ -698,7 +688,7 @@ mod tests {
         let none = None;
         let empty = rules(&[]);
 
-        // Default mode: code languages run their text ops; the markdown
+        // Default mode: Python runs its text ops; the markdown
         // family and Rust run every fix op.
         assert!(profile_for("py").op_enabled("tables", &none, &empty));
         assert!(profile_for("py").op_enabled("lints", &none, &empty));
@@ -811,6 +801,8 @@ mod tests {
                     TextLints::Lexicon,
                     ".{ext} must scan comments with the lexicon"
                 );
+                assert_eq!(profile_for(ext).ops, &["lints"], ".{ext}");
+                assert_eq!(profile_for(ext).default_ops, &["lints"], ".{ext}");
             }
         }
         for (ext, profile) in LANG_ENTRIES {

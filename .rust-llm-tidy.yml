@@ -21,7 +21,8 @@
 # (`DOC*`, `TEXT*`, `TEST*` families). The `lints` op groups them all.
 #
 # The `links` op hoists inline links `[text](url)` to `[text]` + a definition
-# (threshold 1 by default) in `.rs` doc comments and `.md`. Tune it per file:
+# (threshold 1 by default) in verified standalone `.rs` doc-comment groups
+# and whole markdown-family documents. Tune it per file:
 #   links:
 #     min_occurrences: 2        # hoist a pair only after this many uses; >= 1.
 #     by_extension: { rs: 2 }   # per-extension override; unknown keys are inert.
@@ -48,17 +49,13 @@ exclude_files:
 exclude:
   - paths: ['**/AGENTS.md']
     rules: [lints]
-  # Integration tests embed markdown (`[text](url)`) in Rust string literals;
-  # `fix_links` would emit a `[text]: url` definition outside the literal and
-  # break compilation. changes.rs's unit tests do the same, so disable `links`
-  # for both.
+  # Rust string fixtures are immutable to pipeline text fixes. This real doc
+  # comment illustrates `items[i](count)` syntax, which links would hoist.
   - paths:
-      - "src/cli/tests/**"
-      - "src/rust-llm-tidy/tests/**"
-      - "src/rust-llm-tidy/src/reporting/change.rs"
+      - "src/cli/tests/fix.rs"
     rules:
       - links
-  # The README has a nested-fence before+after example that `fix_fences`
+  # This page has a nested-fence before+after example that `fix_fences`
   # would corrupt, and inline-code `[text](url)` examples that `fix_links`
   # hoists into a bogus `[text]: url` definition. Disable both ops here.
   - paths:
@@ -79,10 +76,8 @@ exclude:
       - "docs/links.md"
     rules:
       - links
-  # rust-llm-tidy-fix's own docs/examples deliberately embed markdown-bracket
-  # and fence-heavy text; the links/fences ops rewrite those destructively and
-  # break parsing. Only those two ops are disabled; reorder/vis/tables/lints
-  # still apply.
+  # Real Rust doc comments contain literal link syntax and fence examples.
+  # Keep those examples unchanged; reorder/vis/tables/lints still apply.
   - paths:
       - "src/rust-llm-tidy/src/rules/transform/mod.rs"
       - "src/rust-llm-tidy/src/rules/transform/links/mod.rs"
@@ -90,30 +85,11 @@ exclude:
     rules:
       - links
       - fences
-  # The plaintext text-check tests embed doc-comment-shaped lines
-  # (`/// ... [text](url)`) and markdown table rows inside Rust string
-  # literals (indoc/formatdoc); `fix_links` and `fix_tables` would rewrite
-  # the literal contents and break the fixtures.
-  - paths:
-      - "src/rust-llm-tidy/src/rules/lint/text/text001_paragraph_size.rs"
-      - "src/rust-llm-tidy/src/rules/lint/text/text002_line_length.rs"
-    rules:
-      - links
-      - tables
   # Embedded fixtures intentionally contain openers that trigger TEXT004.
   - paths:
       - "src/rust-llm-tidy/src/rules/lint/text/text001_paragraph_size.rs"
       - "src/rust-llm-tidy/src/rules/lint/text/text004_header_opener.rs"
     rules: [TEXT004]
-  # integration.rs embeds before-state markdown fixtures in string literals;
-  # table/fence fixers would rewrite them and break the parity test.
-  - paths:
-      - "src/cli/tests/integration.rs"
-      - "src/cli/tests/library_equivalence.rs"
-      - "src/rust-llm-tidy/tests/library.rs"
-    rules:
-      - tables
-      - fences
   # .github holds plain markdown (workflows/templates) outside any Rust crate;
   # `vis` can't (and needn't) do crate-aware narrowing there.
   - paths:

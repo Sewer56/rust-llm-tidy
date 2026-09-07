@@ -5,10 +5,10 @@
 Pads GitHub-Flavored Markdown table columns to a consistent width so the
 pipe delimiters line up.
 
-- Runs in markdown-family files and in the line comments and doc comments
-  of allowed code languages.
 - Comment prefixes are stripped and re-applied, so rows keep their marker
   and indent.
+
+See [text transformation safety] for supported files and comment boundaries.
 
 ## Before
 
@@ -73,7 +73,10 @@ See [Change reporting] for the shared format.
 
 ## Library access
 
-Use `rust_llm_tidy::rules::transform::fix_tables`.
-For complete processing and project context, see [library entry points].
+`rust_llm_tidy::rules::transform::fix_tables` is a low-level text engine,
+not a safe arbitrary-source API.
+
+See [text transformation safety] and [library entry points].
 
 [library entry points]: architecture.md#library-entry-points
+[text transformation safety]: ../README.MD#text-transformation-safety

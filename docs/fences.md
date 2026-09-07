@@ -7,8 +7,8 @@ fence uses the opposite delimiter.
 
 - The delimiter pair is ```` ``` ```` vs ```` ~~~ ````.
 - The outer block then does not close early.
-- Runs in markdown-family files and in the line comments and doc comments
-  of allowed code languages.
+
+See [text transformation safety] for supported files and comment boundaries.
 
 ## Before
 
@@ -84,7 +84,10 @@ See [Change reporting] for the shared format.
 
 ## Library access
 
-Use `rust_llm_tidy::rules::transform::fix_fences` for this rule.
+`rust_llm_tidy::rules::transform::fix_fences` is a low-level text engine,
+not a safe arbitrary-source API.
 
-For complete processing and project context, see [library entry
-points](architecture.md#library-entry-points).
+See [text transformation safety] and [library entry points].
+
+[library entry points]: architecture.md#library-entry-points
+[text transformation safety]: ../README.MD#text-transformation-safety
