@@ -42,7 +42,7 @@ Languages other than Rust and C# run the text lints only ([text lints]):
 | [`TEXT003`] | Warning  | A doc sentence over 25 words (words join across wrapped lines).                   |
 | [`TEXT004`] | Warning  | A doc opener with 3+ sentences or over 160 chars (file, item, or heading).        |
 | [`TEXT005`] | Warning  | A fenced code block opens with no tag or bare `ignore` (all markdown prose).      |
-| [`TEXT006`] | Warning  | A doc line uses a verbose synonym (`utilize`, `demonstrate`, `in order to` etc.)  |
+| [`TEXT006`] | Hint     | A doc line has a shorter alternative for a word, phrase, or filler.               |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
 
 ## Examples
