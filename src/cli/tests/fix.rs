@@ -2,8 +2,10 @@
 //!
 //! Mirrors the helper pattern from `doc_check/mod.rs` (`run_command`,
 //! `manifest_dir`, `fixture_dir`; `binary` lives in the shared `common`
-//! module). Each test runs the built CLI binary against fixture files in
-//! `tests/fixtures/fix/`.
+//! module).
+//!
+//! Tests run the built CLI binary against fixtures in
+//! `tests/fixtures/fix/` and hermetic temporary source files.
 
 use common::binary;
 use core::sync::atomic::{AtomicU64, Ordering};
@@ -67,41 +69,107 @@ impl Builder {
 /// The assembled value; see [the Builder](crate::Builder).
 pub struct Config;
 ";
+/// Markdown that would need all three fixes if it were prose, not literal data.
+const LITERAL_MARKDOWN: &str = "\
+  | a | b |\n  |---|---|\n  | long value | c |\n\n\
+  \x20 [A](https://example.invalid)\n\n\
+  \x20 ~~~markdown\n  ~~~rust\n  code\n  ~~~\n  ~~~\n";
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// Default and explicitly selected fixes leave configuration data byte-exact.
+/// Verified doc comments still hoist links beside an untouched raw literal.
+#[rstest]
+fn cli_should_fix_doc_comments_when_a_raw_literal_is_adjacent(
+    #[values(false, true)] dry_run: bool,
+) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("input.rs");
+    let literal = format!("const PAYLOAD: &str = r#\"\n{LITERAL_MARKDOWN}\"#;\n");
+    let source = format!("/// See [A](https://example.invalid).\npub struct A;\n{literal}");
+    fs::write(&path, &source).unwrap();
+    let args: &[&str] = if dry_run {
+        &["--include", "links", "--dry-run", "--json"]
+    } else {
+        &["--include", "links", "--json"]
+    };
+
+    let output = run_command(args, &path);
+    let consumed = fs::read(&path).unwrap();
+
+    let expected = if dry_run {
+        source
+    } else {
+        format!("/// See [A].\n///\n/// [A]: https://example.invalid\npub struct A;\n{literal}")
+    };
+    assert_eq!(consumed, expected.as_bytes());
+    let records: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        records
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|record| record["code"] == "FIX")
+            .count(),
+        1,
+        "only the doc-comment link should report a fix: {records}"
+    );
+}
+
+/// Fixes leave configuration and literals byte-exact, including dry runs.
 #[rstest]
 #[case::toml("payload = \"\"\"\n", "\"\"\"\n", "toml")]
 #[case::yaml("payload: |\n", "", "yaml")]
 #[case::yml("payload: |\n", "", "yml")]
-fn cli_should_preserve_configuration_values(
+#[case::rust_raw("const PAYLOAD: &str = r#\"\n", "\"#;\n", "rs")]
+#[case::python_multiline("payload = \"\"\"\n", "\"\"\"\n", "py")]
+#[case::python_stub_multiline("payload = \"\"\"\n", "\"\"\"\n", "pyi")]
+#[case::csharp_verbatim("class C { string payload = @\"\n", "\"; }\n", "cs")]
+#[case::csharp_raw("class C { string payload = \"\"\"\n", "\"\"\"; }\n", "cs")]
+#[case::shell_heredoc("cat <<'PAYLOAD'\n", "PAYLOAD\n", "sh")]
+#[case::javascript_template("const payload = `\n", "`;\n", "js")]
+fn cli_should_preserve_configuration_and_literal_values(
     #[case] open: &str,
     #[case] close: &str,
     #[case] extension: &str,
     #[values(false, true)] explicit_fixes: bool,
+    #[values(false, true)] dry_run: bool,
 ) {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join(format!("input.{extension}"));
     let config = directory.path().join(".rust-llm-tidy.yml");
     fs::write(&config, "{}\n").unwrap();
-    let source = format!(
-        "{open}  | a | b |\n  |---|---|\n  | long value | c |\n\n\
-         \x20 ```markdown\n  ```rust\n  code\n  ```\n  ```\n{close}"
-    );
+    let source = format!("{open}{LITERAL_MARKDOWN}{close}");
     fs::write(&path, &source).unwrap();
+
     let mut command = Command::new(binary());
     command.arg("--config").arg(config).arg("--json");
     if explicit_fixes {
-        command.args(["--include", "tables", "--include", "fences"]);
+        command.args([
+            "--include",
+            "tables",
+            "--include",
+            "fences",
+            "--include",
+            "links",
+        ]);
+    }
+    if dry_run {
+        command.arg("--dry-run");
     }
 
     let output = command.arg(&path).output().unwrap();
-    let consumed = fs::read_to_string(path).unwrap();
+    let consumed = fs::read(path).unwrap();
 
-    assert!(output.status.success(), "{output:?}");
-    assert_eq!(consumed, source);
+    assert_eq!(consumed, source.as_bytes());
     let records: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(records, serde_json::json!([]));
+    // Default lint diagnostics, including TEXT warnings, do not authorize edits.
+    assert!(
+        records
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|record| record["code"] != "FIX"),
+        "literal data must not report fixes: {records}"
+    );
 }
 
 /// Default all-pass `fix` on a file where only the table changes.
@@ -734,128 +802,45 @@ fn non_table_pipe_lines_stay_byte_unchanged() {
 
 // ── Per-language table fixtures ────────────────────────────────────
 
-/// One before/after pair per comment-prefix family, the C# `///`/`//`
-/// profile, and a markdown-family `.txt`.
+/// Tables realign in verified comments and prose; unsupported sources stay exact.
 ///
-/// The default run realigns each table with its marker and indent kept,
-/// reports one record, and a second run emits zero records.
-#[test]
-fn table_fixtures_realign_with_marker_and_indent_kept() {
-    let pairs = [
-        (
-            "table_slash_comment_before.go",
-            "table_slash_comment_after.go",
-        ),
-        (
-            "table_xml_doc_comment_before.cs",
-            "table_xml_doc_comment_after.cs",
-        ),
-        (
-            "table_hash_comment_before.py",
-            "table_hash_comment_after.py",
-        ),
-        (
-            "table_dash_comment_before.sql",
-            "table_dash_comment_after.sql",
-        ),
-        (
-            "table_semi_comment_before.el",
-            "table_semi_comment_after.el",
-        ),
-        (
-            "table_percent_comment_before.tex",
-            "table_percent_comment_after.tex",
-        ),
-        // Markdown-family sibling: full default ops, `.md`-identical bytes.
-        ("table_txt_before.txt", "table_txt_after.txt"),
-    ];
+/// Changed tables retain their marker and indentation and report one fix.
+/// A second dry run leaves the consumed bytes intact and reports no fixes.
+#[rstest]
+#[case::go_preserved("table_slash_comment_before.go", "table_slash_comment_before.go")]
+#[case::csharp_realigned("table_xml_doc_comment_before.cs", "table_xml_doc_comment_after.cs")]
+#[case::python_realigned("table_hash_comment_before.py", "table_hash_comment_after.py")]
+#[case::sql_preserved("table_dash_comment_before.sql", "table_dash_comment_before.sql")]
+#[case::elisp_preserved("table_semi_comment_before.el", "table_semi_comment_before.el")]
+#[case::tex_preserved("table_percent_comment_before.tex", "table_percent_comment_before.tex")]
+#[case::prose_realigned("table_txt_before.txt", "table_txt_after.txt")]
+fn tables_should_follow_language_rewrite_boundaries(
+    #[case] before_name: &str,
+    #[case] expected_name: &str,
+) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join(before_name);
+    let source = fs::read(fixture_dir().join(before_name)).unwrap();
+    let expected = fs::read(fixture_dir().join(expected_name)).unwrap();
+    fs::write(&path, &source).unwrap();
 
-    for (before_name, after_name) in pairs {
-        let ext = before_name.rsplit_once('.').unwrap().1;
-        let expected = fs::read_to_string(fixture_dir().join(after_name)).unwrap();
-        let tmp = temp_file(ext);
-        fs::write(
-            &tmp,
-            fs::read_to_string(fixture_dir().join(before_name)).unwrap(),
-        )
-        .unwrap();
+    let output = run_command(&[], &path);
+    let consumed = fs::read(&path).unwrap();
 
-        let output = run_command(&[], &tmp);
-        assert!(
-            output.status.success(),
-            "{before_name}: default run should succeed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert_eq!(
-            fs::read_to_string(&tmp).unwrap(),
-            expected,
-            "{before_name}: default run must produce {after_name} byte-for-byte"
-        );
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert_eq!(
-            stderr.matches("success[FIX]").count(),
-            1,
-            "{before_name}: only the realigned table reports a record: {stderr}"
-        );
-
-        let second = run_command(&["--include", "tables", "--dry-run"], &tmp);
-        let _ = fs::remove_file(&tmp);
-        assert!(
-            second.status.success(),
-            "{before_name}: second run should succeed"
-        );
-        assert!(
-            String::from_utf8_lossy(&second.stderr).is_empty(),
-            "{before_name}: second run must emit zero change records"
-        );
-    }
-}
-
-/// A GFM table inside a Python string literal is re-padded by the default
-/// run.
-///
-/// - The change inside the literal is whitespace-only: the words and the
-///   quotes stay identical.
-/// - It yields one record.
-/// - A second run is a no-op.
-#[test]
-fn table_inside_a_python_string_literal_is_repadded() {
-    let expected = fs::read_to_string(fixture_dir().join("table_string_literal_after.py")).unwrap();
-    let tmp = temp_file("py");
-    fs::write(
-        &tmp,
-        fs::read_to_string(fixture_dir().join("table_string_literal_before.py")).unwrap(),
-    )
-    .unwrap();
-
-    let output = run_command(&[], &tmp);
-    assert!(
-        output.status.success(),
-        "default run should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        fs::read_to_string(&tmp).unwrap(),
-        expected,
-        "the string-embedded table must be re-padded to the after fixture"
-    );
+    assert_eq!(consumed, expected);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(
         stderr.matches("success[FIX]").count(),
-        1,
-        "exactly the re-padded table reports a record: {stderr}"
+        usize::from(source != expected),
+        "only a realigned table should report a fix: {stderr}"
     );
 
-    let second = run_command(&["--include", "tables", "--dry-run"], &tmp);
-    let _ = fs::remove_file(&tmp);
-    assert!(
-        second.status.success(),
-        "second run on the re-padded file should succeed"
-    );
-    assert!(
-        String::from_utf8_lossy(&second.stderr).is_empty(),
-        "second run must emit zero change records"
-    );
+    let second = run_command(&["--include", "tables", "--dry-run"], &path);
+    let second_consumed = fs::read(&path).unwrap();
+
+    assert!(second.status.success(), "{second:?}");
+    assert!(second.stderr.is_empty(), "{second:?}");
+    assert_eq!(second_consumed, expected);
 }
 
 /// The directory holding `fix` fixtures.
@@ -865,8 +850,12 @@ fn fixture_dir() -> std::path::PathBuf {
 
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
 fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join(".rust-llm-tidy.yml");
+    fs::write(&config, "{}\n").unwrap();
+
     let mut cmd = Command::new(binary());
-    cmd.args(["--no-config"]).args(args).arg(path);
+    cmd.arg("--config").arg(config).args(args).arg(path);
     cmd.output()
         .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
 }

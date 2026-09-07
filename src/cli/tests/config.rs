@@ -430,9 +430,9 @@ fn extensions_key_replaces_default_extensions() {
     let dir = temp_dir();
     fs::create_dir_all(&dir).unwrap();
     let cfg = dir.join(".rust-llm-tidy.yml");
-    fs::write(&cfg, "extensions: [\"log\"]\n").unwrap();
-    let log = dir.join("notes.log");
-    fs::write(&log, "| a | b |\n| --- | --- |\n| 1 | 22 |\n").unwrap();
+    fs::write(&cfg, "extensions: [\"txt\"]\n").unwrap();
+    let txt = dir.join("notes.txt");
+    fs::write(&txt, "| a | b |\n| --- | --- |\n| 1 | 22 |\n").unwrap();
     let md = dir.join("doc.md");
     fs::write(&md, "| a | b |\n| --- | --- |\n| 1 | 22 |\n").unwrap();
 
@@ -458,8 +458,8 @@ fn extensions_key_replaces_default_extensions() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("notes.log"),
-        "the listed .log file must be allowed and processed: {stderr}"
+        stderr.contains("notes.txt"),
+        "the listed .txt file must be allowed and processed: {stderr}"
     );
     assert!(
         !stderr.contains("doc.md"),
@@ -468,7 +468,7 @@ fn extensions_key_replaces_default_extensions() {
     assert_eq!(
         stderr.matches("tables were aligned").count(),
         1,
-        "only the .log table must be aligned: {stderr}"
+        "only the .txt table must be aligned: {stderr}"
     );
     let _ = fs::remove_dir_all(&dir);
 }
@@ -512,46 +512,6 @@ fn extra_extensions_compose_with_exclude_rules() {
     assert!(
         stderr.contains("y.py") && stderr.contains("tables were aligned"),
         "the sibling must still get its default table fix: {stderr}"
-    );
-    let _ = fs::remove_dir_all(&dir);
-}
-
-/// The `extra_extensions:` key adds extensions while the defaults keep
-/// working.
-#[test]
-fn extra_extensions_key_adds_to_default_extensions() {
-    let dir = temp_dir();
-    fs::create_dir_all(&dir).unwrap();
-    let cfg = dir.join(".rust-llm-tidy.yml");
-    fs::write(&cfg, "extra_extensions: [\"log\"]\n").unwrap();
-    let log = dir.join("notes.log");
-    fs::write(&log, "| a | b |\n| --- | --- |\n| 1 | 22 |\n").unwrap();
-    let md = dir.join("doc.md");
-    fs::write(&md, "| a | b |\n| --- | --- |\n| 1 | 22 |\n").unwrap();
-
-    let output = Command::new(binary())
-        .args(["--config", cfg.to_str().unwrap()])
-        .arg(&dir)
-        .output()
-        .expect("failed to spawn rust-llm-tidy");
-    assert!(
-        output.status.success(),
-        "run with extra_extensions key should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("notes.log"),
-        "the added .log file must be allowed and processed: {stderr}"
-    );
-    assert!(
-        stderr.contains("doc.md"),
-        "the default extensions must keep working: {stderr}"
-    );
-    assert_eq!(
-        stderr.matches("tables were aligned").count(),
-        2,
-        "both tables must be aligned: {stderr}"
     );
     let _ = fs::remove_dir_all(&dir);
 }
@@ -1105,6 +1065,53 @@ fn regular_command_hard_fails_on_non_matching_path() {
         !output.status.success(),
         "non-matching-path config must hard-fail, not warn"
     );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Unknown-extension selection cannot authorize table fixes; Markdown still fixes.
+#[rstest::rstest]
+#[case::extra_extension("extra_extensions: [log]\n")]
+#[case::custom_extensions("extensions: [log, md]\n")]
+fn tables_should_preserve_unknown_extensions_when_selected(#[case] yaml: &str) {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(&cfg, yaml).unwrap();
+
+    let source = "| a | b |\n| --- | --- |\n| 1 | 22 |\n";
+    let log = dir.join("notes.log");
+    fs::write(&log, source).unwrap();
+    let md = dir.join("doc.md");
+    fs::write(&md, source).unwrap();
+
+    let output = Command::new(binary())
+        .args(["--config", cfg.to_str().unwrap(), "--include", "tables"])
+        .arg(&dir)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+
+    assert!(
+        output.status.success(),
+        "run with extension selection should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("notes.log"),
+        "the unknown .log file must have no table change record: {stderr}"
+    );
+    assert!(
+        stderr.contains("doc.md"),
+        "the default extensions must keep working: {stderr}"
+    );
+    assert_eq!(
+        stderr.matches("tables were aligned").count(),
+        1,
+        "only the Markdown table must be aligned: {stderr}"
+    );
+    assert_eq!(fs::read_to_string(&log).unwrap(), source);
+    assert_ne!(fs::read_to_string(&md).unwrap(), source);
+
     let _ = fs::remove_dir_all(&dir);
 }
 

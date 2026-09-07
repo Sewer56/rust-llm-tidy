@@ -5,11 +5,10 @@
 Replaces every eligible inline link `[text](url)` with the reference form
 `[text]` plus a `[text]: url` definition.
 
-- Runs in `///` and `//!` doc comments and markdown-family files only.
+- Rust: definitions and occurrence thresholds stay within each comment group.
+- Markdown/plaintext: definitions collect at the end; fenced code is skipped.
 
-- Doc comments: each definition is duplicated into every comment using
-  the label, so `cargo doc` stays clean.
-- Markdown: definitions collect in one trailing block.
+See [text transformation safety] for supported files and comment boundaries.
 
 Eligible link text is non-blank and free of `[`/`]` bytes, and the open `[`
 must be unescaped (`\[x](u)` is literal text). Other links stay inline, e.g. a
@@ -37,16 +36,13 @@ see [A] and [A]
 
 ## Config
 
-The repo's own `src/cli/tests/**` embed markdown in Rust string literals.
-
-- `links` would emit a `[text]: url` line outside the literal and break
-  compilation.
-- `links` is excluded for those paths:
+Exclude files whose examples must keep inline link syntax:
 
 ```yaml
 exclude:
   - paths:
-      - "src/cli/tests/**"
+      # Hey that's this file!
+      - "docs/links.md"
     rules:
       - links
 ```
@@ -92,6 +88,10 @@ See [Change reporting] for the shared format.
 
 ## Library access
 
-Use `rust_llm_tidy::rules::transform::fix_links`.
-For complete processing and project context, see [library entry
-points](architecture.md#library-entry-points).
+`rust_llm_tidy::rules::transform::fix_links` is a low-level text engine,
+not a safe arbitrary-source API.
+
+See [text transformation safety] and [library entry points].
+
+[library entry points]: architecture.md#library-entry-points
+[text transformation safety]: ../README.MD#text-transformation-safety
