@@ -5,9 +5,8 @@
 //! [`SourceItem`] returning [`Vec<Diagnostic>`]; [`run_all`] runs every
 //! rule over every item in code order.
 //!
-//! [`mod001_module_size`] is file-level instead. The pipeline runs it
-//! from `check_file` with the file's path and the resolved threshold,
-//! keeping it outside [`run_all`] and the backend `lint` composition.
+//! [`mod001_module_size`] is file-level instead: the pipeline runs it
+//! from `check_file`, outside [`run_all`].
 //!
 //! The C# backend's `lints` module implements the same codes over its own
 //! parse; both consume the shared code constants from
