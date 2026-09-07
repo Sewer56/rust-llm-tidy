@@ -901,8 +901,14 @@ fn narration_should_follow_suppression_setting_when_checking_note_paths() {
     for (yaml, suppress) in [
         (None, true),
         (Some("{}\n"), true),
-        (Some("suppress_in_release_notes: true\n"), true),
-        (Some("suppress_in_release_notes: false\n"), false),
+        (
+            Some("passive_narration:\n  suppress_in_release_notes: true\n"),
+            true,
+        ),
+        (
+            Some("passive_narration:\n  suppress_in_release_notes: false\n"),
+            false,
+        ),
     ] {
         let dir = temp_dir();
         fs::create_dir_all(&dir).unwrap();
@@ -1110,11 +1116,11 @@ fn sql_lexicon_measures_comments_not_strings() {
 }
 
 /// An ordinarily named markdown file yields both TEXT007 classes, one
-/// per offending line.
+/// per offending line, when the opt-in code is explicitly included.
 #[test]
 fn text007_should_render_hints_when_checking_an_ordinary_file() {
     let path = temp_named_file("notes.md", &text007_marker_and_passive_md());
-    let output = run_command(&["--include", "lints"], &path);
+    let output = run_command(&["--include", "lints", "--include", "TEXT007"], &path);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(

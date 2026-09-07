@@ -37,8 +37,9 @@ pub(crate) struct VisContext {
 ///
 /// - `path`: source file to check
 /// - `disabled`: diagnostic codes to suppress
-/// - `suppress_in_release_notes`: suppress TEXT007 narration markers in
-///   release and migration notes
+/// - `suppress_in_release_notes`: the resolved
+///   `passive_narration.suppress_in_release_notes` setting; suppresses
+///   TEXT007 narration markers in release and migration notes
 /// - `index`: refreshed C# facts and cached parses for this run
 ///
 /// # Errors

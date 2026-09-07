@@ -4,23 +4,69 @@
 # `.rust-llm-tidy.yml`, or run:
 #
 #   rust-llm-tidy --config .rust-llm-tidy.example.yml
-#
-# `include` is whitelist mode: only listed rules run. New rules added by a
-# future rust-llm-tidy release stay disabled until added here. Otherwise, pin
-# the rust-llm-tidy version used by CI and upgrade it deliberately when you
-# want to review new or changed rules.
-#
+
+# ── Extensions ──
 # Allowed file extensions, matched case-insensitively.
-#
-# `extensions` replaces the defaults when non-empty. `extra_extensions`
+# `extensions` replaces the defaults when non-empty; `extra_extensions`
 # adds on top of the effective list.
-#
+
 # extensions:
 #   - rs
 #   - md
 # extra_extensions:
 #   - rst
 #   - vim
+
+# ── Passive narration (TEXT007) ──
+# TEXT007 is heuristic and prone to false positives.
+# `lints` alone keeps it off; enable it here or in the whitelist below.
+
+# passive_narration:
+#   enable: true                    # run the lint; default false.
+#   suppress_in_release_notes: true # keep narration markers out of
+#                                   # CHANGELOG*/MIGRATION*/releases/**
+#                                   # notes; passive voice still reports.
+
+# ── Link hoisting ──
+# The `links` op hoists inline links `[text](url)` to `[text]` plus a
+# definition. Effective threshold: `by_extension[ext]`, else
+# `min_occurrences`, else 1.
+
+# links:
+#   min_occurrences: 2        # hoist a pair only after this many uses; >= 1.
+#   by_extension: { rs: 2 }   # per-extension override; unknown keys are inert.
+
+# ── Post-processing ──
+# External commands run on every processed file; the file path is appended
+# as the last argument. `extensions` filters (empty = all). Skipped under
+# `--dry-run` and for excluded files; non-zero exit or spawn failure fails
+# the run.
+
+# post_process:
+#   - command: "rustfmt"
+#     args: ["--edition", "2024"]
+#     extensions: ["rs"]
+
+# ── Rule selection ──
+# Rule-selection keys (`include` and `exclude` are mutually exclusive):
+#   include:        whitelist - run ONLY these rules for matched paths.
+#                   A file matching no group runs nothing.
+#   exclude:        blacklist - never run these rules for matched paths.
+#   exclude_files:  skip ALL processing for matched files.
+#
+# Omitting `paths` in a group implies `["**"]` (all paths). Paths/globs are
+# relative to this file's directory and use glob semantics (`*` does not
+# cross `/`; `**` recurses).
+#
+# New rules added by a future release stay disabled until added here; pin
+# the version used by CI and upgrade deliberately instead.
+
+# exclude_files:
+#   - "**/generated/**"
+
+# exclude:
+#   - paths: ["**/tests/**"]
+#     rules: [reorder, vis]
 
 include:
   - paths: ["**"]
@@ -36,22 +82,24 @@ include:
       # - vis
 
       # Level 3: all documentation and test-name checks.
-      # `lints` enables the DOC*, TEXT*, and TEST* codes together.
+      # `lints` enables the DOC*, TEXT*, and TEST* codes together; the
+      # opt-in TEXT007 stays off (see above).
       # Uncomment to enable the complete lint pass.
       # - lints
 
       # Pin lint checks instead of enabling the whole `lints` group when
       # future lint additions must stay disabled until explicitly accepted.
-      # - DOC001
-      # - DOC002
-      # - DOC003
-      # - DOC004
-      # - DOC005
-      # - DOC006
-      # - TEXT001
-      # - TEXT002
-      # - TEXT003
-      # - TEXT004
-      # - TEXT005
-      # - TEXT006
-      # - TEST001
+      # - DOC001  # missing documentation
+      # - DOC002  # missing `# Errors` section
+      # - DOC003  # vague `# Errors` section
+      # - DOC004  # missing `# Arguments` section
+      # - DOC005  # undocumented parameter
+      # - DOC006  # placeholder text
+      # - TEXT001 # oversized paragraph
+      # - TEXT002 # long line
+      # - TEXT003 # long sentence
+      # - TEXT004 # header opener shape
+      # - TEXT005 # untagged fenced code block
+      # - TEXT006 # verbose synonym
+      # - TEXT007 # passive narration; opt-in
+      # - TEST001 # non-behavioral test name

@@ -151,9 +151,6 @@ error). Omitting `paths` in an `include` or `exclude` group implies `["**"]`
 
 Also:
 
-- `suppress_in_release_notes` - boolean, default `true`. Set `false` to
-  report TEXT007 narration markers in release and migration notes too.
-  Passive-voice checks still run. See [docs/text-lints.md].
 - `extensions` - replaces the default allowed extensions when non-empty;
   empty or absent keeps the defaults.
 - `extra_extensions` - added on top of the effective list (`extensions`
@@ -163,6 +160,9 @@ Also:
   Each entry has `command`, `args` (default empty), and `extensions`
   (default empty = all). File path appended as last arg.
   - Skipped under `--dry-run` and for excluded files.
+
+More keys and options (`links`, `passive_narration`): see the annotated
+[example config][`.rust-llm-tidy.example.yml`] and [docs/text-lints.md].
 
 Globs are relative to the config file's directory and use `literal_separator`
 semantics (`*` does not cross `/`; `**` recurses).

@@ -355,7 +355,9 @@ fn rs_block_and_attribute_docs_fire_text_budgets() {
 /// The rs text checks cover line comments plus `/** */` and
 /// `#[doc = "..."]` docs.
 ///
-/// rs dispatch adds nothing and drops nothing.
+/// rs dispatch adds nothing and drops nothing. TEXT007 is included
+/// explicitly because the backend composition runs it while the default
+/// `lints` selection keeps the opt-in code off.
 #[test]
 fn rs_diagnostics_match_direct_check_composition() {
     use rust_llm_tidy::languages::LanguageBackend;
@@ -369,7 +371,17 @@ fn rs_diagnostics_match_direct_check_composition() {
         let source = fs::read_to_string(&path).unwrap();
 
         // Path A: the CLI pipeline's rendered JSON findings.
-        let output = run_command(&["--include", "lints", "--output-mode", "json"], &path);
+        let output = run_command(
+            &[
+                "--include",
+                "lints",
+                "--include",
+                "TEXT007",
+                "--output-mode",
+                "json",
+            ],
+            &path,
+        );
         let stdout = String::from_utf8_lossy(&output.stdout);
         let rendered: Vec<(usize, String, String)> =
             serde_json::from_str::<serde_json::Value>(&stdout)

@@ -9,14 +9,43 @@
 //! - Otherwise, look for history wording, such as `before this change`.
 //! - Emit at most one hint per line; passive voice takes priority over history.
 //!
+//! # Exceptions
+//!
+//! Passive voice stays silent for:
+//!
+//! - Accepted adjectival participles: `required`, `deprecated`, `unnamed`,
+//!   and `outdated`.
+//! - State participles such as `sorted`, `selected`, `based on`, and
+//!   `concerned`, unless immediately followed by `by`.
+//! - Non-participles such as `red`, `seed`, and bare `open` or `ten`.
+//! - Relational `related to` and modal `supposed to`.
+//! - Compound auxiliaries glued to a hyphen, such as `soon-to-be removed`.
+//! - Conventional license wording: `licensed under`, `distributed in the
+//!   hope that`, `provided as is`, and `permitted provided`.
+//!
+//! Narration markers stay silent for:
+//!
+//! - Determiner modifiers such as `the currently selected item`, plus the
+//!   hyphenated `least-recently-used` cache policy.
+//! - Runtime states such as `currently active` and `currently running`.
+//! - Attributive present-time modifiers such as `now removed features` and
+//!   `very recently loaded data`.
+//! - Present intent: `for now`, `now to <verb>`, `We now need`, and a bare
+//!   value after `currently`, as in `currently 0.1.157`.
+//! - `no longer` before `than`, and temporal `before` as in
+//!   `before validation`; only clause-initial `Before,` matches.
+//!
 //! # Remarks
 //!
-//! - Punctuation interrupts phrases.
-//! - Exception lists and context checks allow common state descriptions
-//!   and runtime constraints.
-//! - This is a heuristic, not a grammar parser: hints need human judgment
-//!   and never rewrite the source.
-//! - By default, file processing suppresses history hints in release notes.
+//! - This heuristic has no grammatical context: it is prone to false
+//!   positives, its hints need human judgment, and it never rewrites source.
+//! - Punctuation interrupts phrases; matches are case-insensitive, and
+//!   digits and underscores extend a word.
+//! - Inline code, link targets, reference labels, autolinks, and HTTP URLs
+//!   stay opaque; backtick code spans carry across consecutive prose lines.
+//! - File processing runs this rule only when opted in: the config's
+//!   `passive_narration.enable` setting or an explicit `TEXT007` inclusion.
+//!   Narration markers stay suppressed in release notes by default.
 
 use super::bulleted;
 use crate::reporting::diagnostic::{Diagnostic, Severity};
@@ -28,7 +57,7 @@ mod prose;
 
 /// Participles accepted as adjectives after a be-verb; `is required` and
 /// `is deprecated` describe state, not voice.
-const ADJECTIVAL_PARTICIPLES: &[&str] = &["required", "deprecated", "unnamed"];
+const ADJECTIVAL_PARTICIPLES: &[&str] = &["required", "deprecated", "unnamed", "outdated"];
 /// Be-verbs whose immediate participle neighbor marks a passive voice.
 const BE_VERBS: &[&str] = &["is", "are", "was", "were", "be", "been", "being"];
 /// Ambiguous suffix matches commonly name adjectives, nouns, or base verbs.
@@ -182,6 +211,14 @@ const NARRATION_MARKERS: &[NarrationMarker] = &[
 /// Summary prefix carried by every narration-marker diagnostic; the
 /// passive class opens with `passive construction:` instead.
 const NARRATION_MARKER_SUMMARY: &str = "past-behavior narration marker: ";
+/// Words that cannot head a `marker + participle + noun` modifier; after
+/// them the participle stays predicate, as in `now returned to`.
+const NON_MODIFIER_HEADS: &[&str] = &[
+    "a", "an", "the", "to", "by", "in", "on", "at", "from", "with", "when", "while", "if", "and",
+    "or", "but", "than", "that", "which", "where", "who", "until", "before", "after", "since",
+    "as", "for", "per", "via", "into", "within", "without", "so", "yet", "nor", "because", "once",
+    "also", "then", "of", "only",
+];
 /// History and change-relative wording, including redundant present-time labels.
 const SINGLE_WORD_NARRATION_MARKERS: &[&str] = &[
     "previously",
@@ -196,14 +233,50 @@ const SINGLE_WORD_NARRATION_MARKERS: &[&str] = &[
 ];
 /// Common state descriptions are ambiguous without an explicit agent.
 const STATE_PARTICIPLES: &[&str] = &[
+    "aligned",
+    "allowed",
+    "associated",
+    "based",
     "bounded",
+    "cached",
     "closed",
+    "complicated",
+    "concerned",
+    "configured",
     "connected",
     "disabled",
     "disconnected",
     "enabled",
+    "experienced",
     "fixed",
+    "guaranteed",
+    "installed",
+    "intended",
+    "inverted",
+    "limited",
+    "linked",
+    "located",
+    "locked",
+    "mapped",
+    "needed",
+    "optimized",
+    "recommended",
+    "selected",
     "sorted",
+    "supported",
+    "unaffected",
+    "unchanged",
+    "uncompressed",
+    "undefined",
+    "unhandled",
+    "uninitialized",
+    "unsigned",
+    "unsorted",
+    "untested",
+    "untouched",
+    "unused",
+    "visited",
+    "zeroed",
 ];
 
 /// One narration marker: its token sequence and display form.
@@ -367,18 +440,93 @@ fn find_narration_marker(line: &str, words: &[prose::Word<'_>]) -> Option<&'stat
                 continue;
             }
 
+            // The hyphenated cache policy is a technical term, not history.
+            if word.text.eq_ignore_ascii_case("recently")
+                && index > 0
+                && words.get(index + 1).is_some_and(|next| {
+                    let previous = &words[index - 1];
+                    previous.text.eq_ignore_ascii_case("least")
+                        && next.text.eq_ignore_ascii_case("used")
+                        && &line[previous.offset + previous.text.len()..word.offset] == "-"
+                        && &line[word.offset + word.text.len()..next.offset] == "-"
+                })
+            {
+                continue;
+            }
+
+            // Present-time markers keep attributive and intent contexts that
+            // history markers such as `previously` still report.
+            let present_time = matches_any(marker, &["now", "currently", "recently"]);
+
             // A modifier of runtime data is not implementation history.
-            let modifies_participle = words.get(index + 1).is_some_and(|next| {
+            let modifies_state = words.get(index + 1).is_some_and(|next| {
                 prose::contiguous(line, &words[index..=index + 1])
-                    && (is_participle(next.text) || matches_any(next.text, ADJECTIVAL_PARTICIPLES))
+                    && (is_participle(next.text)
+                        || matches_any(next.text, ADJECTIVAL_PARTICIPLES)
+                        || matches_any(next.text, &["active", "available", "running", "known"]))
             });
             let follows_determiner = index > 0
                 && prose::contiguous(line, &words[index - 1..=index])
                 && matches_any(
                     words[index - 1].text,
-                    &["a", "an", "the", "any", "all", "each", "least", "most"],
+                    &[
+                        "a", "an", "the", "any", "all", "each", "least", "most", "no", "certain",
+                    ],
                 );
-            if !modifies_participle || !follows_determiner {
+
+            // `now removed features` and `very recently loaded data` modify
+            // a following noun rather than narrating a change.
+            let modifies_noun = present_time
+                && modifies_state
+                && words.get(index + 2).is_some_and(|head| {
+                    prose::contiguous(line, &words[index..=index + 2])
+                        && !matches_any(head.text, NON_MODIFIER_HEADS)
+                        && !ends_with_ci(head.text, "ly")
+                });
+
+            // `currently` also announces runtime states such as
+            // `currently active`.
+            let describes_runtime = word.text.eq_ignore_ascii_case("currently")
+                && words.get(index + 1).is_some_and(|next| {
+                    prose::contiguous(line, &words[index..=index + 1])
+                        && matches_any(
+                            next.text,
+                            &[
+                                "active",
+                                "available",
+                                "unavailable",
+                                "running",
+                                "supported",
+                                "unused",
+                                "interested",
+                            ],
+                        )
+                });
+
+            // `for now`, `now to <verb>`, and `now need` state present intent.
+            let present_intent = word.text.eq_ignore_ascii_case("now")
+                && ((index > 0
+                    && words[index - 1].text.eq_ignore_ascii_case("for")
+                    && prose::contiguous(line, &words[index - 1..=index]))
+                    || words.get(index + 1).is_some_and(|next| {
+                        prose::contiguous(line, &words[index..=index + 1])
+                            && matches_any(next.text, &["to", "need", "needs"])
+                    }));
+
+            // A bare value after `currently`, as in `currently 0.1.157`,
+            // reports current state rather than narrating a change.
+            let announces_value = word.text.eq_ignore_ascii_case("currently")
+                && words.get(index + 1).is_some_and(|next| {
+                    prose::contiguous(line, &words[index..=index + 1])
+                        && next.text.starts_with(|c: char| c.is_ascii_digit())
+                });
+
+            if !(modifies_state && follows_determiner
+                || modifies_noun
+                || describes_runtime
+                || present_intent
+                || announces_value)
+            {
                 return Some(marker);
             }
         }
@@ -402,14 +550,66 @@ fn find_passive<'a>(line: &str, words: &[prose::Word<'a>]) -> Option<(&'a str, &
     words.windows(2).enumerate().find_map(|(index, pair)| {
         let be = pair[0].text;
         let participle = pair[1].text;
+        if !prose::contiguous(line, pair)
+            || !matches_any(be, BE_VERBS)
+            || !is_participle(participle)
+            || (participle.eq_ignore_ascii_case("left")
+                && line[pair[1].offset + participle.len()..].starts_with("-to-right"))
+        {
+            return None;
+        }
+
         let has_agent = words.get(index + 2).is_some_and(|next| {
             next.text.eq_ignore_ascii_case("by")
                 && prose::contiguous(line, &words[index + 1..=index + 2])
         });
 
-        (prose::contiguous(line, pair)
-            && matches_any(be, BE_VERBS)
-            && is_participle(participle)
+        // These complements form relational or modal idioms, not action claims.
+        let state_idiom = words.get(index + 2).is_some_and(|next| {
+            prose::contiguous(line, &words[index + 1..=index + 2])
+                && next.text.eq_ignore_ascii_case("to")
+                && matches_any(participle, &["related", "supposed"])
+        });
+
+        // Match legal wording narrowly rather than exempting distribution actions.
+        let licensing_phrase = [
+            &["licensed", "under"][..],
+            &["distributed", "in", "the", "hope", "that"],
+            &["permitted", "provided"],
+        ]
+        .iter()
+        .any(|phrase| {
+            words
+                .get(index + 1..index + 1 + phrase.len())
+                .is_some_and(|tail| {
+                    prose::contiguous(line, tail)
+                        && tail
+                            .iter()
+                            .zip(*phrase)
+                            .all(|(word, expected)| word.text.eq_ignore_ascii_case(expected))
+                })
+        });
+
+        // A hyphen directly before `be` marks a compound such as
+        // `soon-to-be removed`; a real auxiliary never glues to a hyphen.
+        let compound_be = be.eq_ignore_ascii_case("be") && line[..pair[0].offset].ends_with('-');
+
+        // `provided "as is"` closes license grants; quotes may join the idiom.
+        let provided_as_is = participle.eq_ignore_ascii_case("provided") && {
+            let tail = line[pair[1].offset + participle.len()..]
+                .trim_start_matches([' ', '"', '\'', '(', '[']);
+            let bytes = tail.as_bytes();
+            let head = &bytes[..bytes.len().min(5)];
+            (head.eq_ignore_ascii_case(b"as is") || head.eq_ignore_ascii_case(b"as-is"))
+                && bytes
+                    .get(5)
+                    .is_none_or(|byte| !(byte.is_ascii_alphanumeric() || *byte == b'_'))
+        };
+
+        (!licensing_phrase
+            && !state_idiom
+            && !compound_be
+            && !provided_as_is
             && (!matches_any(participle, STATE_PARTICIPLES) || has_agent))
             .then_some((be, participle))
     })
@@ -480,6 +680,9 @@ mod tests {
             ("Errors are returned by the scanner.", "are returned"),
             ("The value was parsed by the loader.", "was parsed"),
             ("Links will be rewritten.", "be rewritten"),
+            ("The file is distributed to clients.", "is distributed"),
+            ("The module is initialized by the build.", "is initialized"),
+            ("The bytes are signed with a certificate.", "are signed"),
         ] {
             let found = one_line(source);
             assert_eq!(found.len(), 1, "{source:?}");
@@ -514,6 +717,26 @@ mod tests {
         assert!(one_line("The flag is required for streaming.").is_empty());
         assert!(one_line("This method is deprecated.").is_empty());
         assert!(one_line("Fix records are unnamed, so they omit the item name.").is_empty());
+        assert!(one_line("This is outdated.").is_empty());
+    }
+
+    #[test]
+    fn hints_should_allow_ambiguous_states_when_no_agent_follows() {
+        for participle in STATE_PARTICIPLES {
+            let state = format!("The values are {participle}.");
+            let action = format!("The values are {participle} by the scanner.");
+
+            let state_findings = one_line(&state);
+            let action_findings = one_line(&action);
+
+            assert!(state_findings.is_empty(), "{state}");
+            assert_eq!(action_findings.len(), 1, "{action}");
+            assert!(
+                action_findings[0]
+                    .message
+                    .starts_with("passive construction:")
+            );
+        }
     }
 
     // Bare `en` words are state adjectives or nouns, never passives.
@@ -736,6 +959,54 @@ mod tests {
             "Reject timestamps in the past.",
             "Evict the least recently used entry.",
             "Return the currently selected item.",
+            "The currently active loadout cannot change.",
+            "Lists the currently available library features.",
+            "Not currently available in the C# version.",
+            "Update the application you are currently running.",
+            "Lists currently supported architectures and their features.",
+            "Other bits are currently unused.",
+            "English is left-to-right and top-to-bottom.",
+            "This holds for all currently known versions.",
+            "Evict entries from the least-recently-used cache.",
+            "Use a typical setup for a certain recently released game.",
+            "I am currently interested in crash reports.",
+            "The user experience is unchanged.",
+            "Write operations are unaffected.",
+            "These items are unsorted and do not have a sort index.",
+            "Forking and merging is complicated.",
+            "Some users are experienced.",
+            "The columns are linked together.",
+            "The buffer is locked.",
+            "The nested model key is undefined.",
+            "The rejected promise is unhandled.",
+            "The input is untouched.",
+            "The pointers are aligned.",
+            "The offset is unsigned 32-bit.",
+            "The variable is uninitialized.",
+            // State participles sampled as false positives in local projects.
+            "The library is based on libusb.",
+            "The cell is selected.",
+            "The gh CLI is installed.",
+            "The flag value is inverted.",
+            "The policy is configured per profile.",
+            "The index the key is mapped to stays stable.",
+            "Delivery is guaranteed.",
+            "This node has been visited.",
+            "The new memory is zeroed.",
+            "Fast variants are optimized for lower latency.",
+            "The mods are associated with the game.",
+            "As far as loading mods is concerned, this works.",
+            // License wording embedded in ordinary source files.
+            "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND.",
+            "Redistribution and use are permitted provided that the notice stays.",
+            // Changelog templates and present-time marker uses.
+            "`Deprecated` marks soon-to-be removed features.",
+            "`Removed` marks now removed features.",
+            "Prefetch very recently loaded data.",
+            "For now, we're only testing estimated sizes.",
+            "Reload now to clear the gestures.",
+            "We now need to iterate the table.",
+            "Update the version (currently 0.1.157).",
             "Return true if the previous request was successful.",
             "Apply this patch to the input buffer.",
             "Track the bytes used to compute the checksum.",
@@ -794,6 +1065,41 @@ mod tests {
                 true,
             ),
             ("Errors are\nreturned by the scanner.", false),
+            ("This program is licensed under the MIT license.", false),
+            (
+                "This program IS DISTRIBUTED IN THE HOPE THAT it will be useful.",
+                false,
+            ),
+            ("The file is distributed in the output folder.", true),
+            ("The file is left to the caller.", true),
+            ("The collection is supposed to be read-only.", false),
+            ("The work is related to data management.", false),
+            ("The story is related by the narrator.", true),
+            ("The work is related. To continue, read the guide.", true),
+            ("The work is related to storage. Errors are returned.", true),
+            (
+                "The program is licensed. Under load, it returns errors.",
+                true,
+            ),
+            ("This is licensed under MIT. Errors are returned.", true),
+            // License grants with an agent or without the closing idiom still fire.
+            ("Credits are provided by the vendor.", true),
+            ("The notice is provided in each copy.", true),
+            // Compound auxiliaries glue to a hyphen; plain infinitives do not.
+            ("The feature will soon be removed.", true),
+            // Predicate participles after a present-time marker still fire.
+            ("The values are now sorted alphabetically.", true),
+            // Attributive history modifiers stay reportable.
+            ("Previously released versions ignored errors.", true),
+            ("The currently. Active parser returns errors.", true),
+            ("The currently `active` parser returns errors.", true),
+            ("The recently-rewritten parser returns errors.", true),
+            ("Use the least-recently-tested parser.", true),
+            ("Use the least. Recently-used cache.", true),
+            (
+                "Use the least-recently-used cache. Previously, this grew.",
+                true,
+            ),
         ] {
             for ext in ["md", "rs"] {
                 let input = if ext == "rs" {

@@ -323,6 +323,7 @@ src/lib.rs:3: hint[TEXT006]: consider simpler wording.
 `TEXT006` has hint severity, so its findings do not fail the run.
 
 [wording dictionary]: ../src/rust-llm-tidy/src/rules/lint/text/text006_verbose_synonyms/suggestions.rs
+[module]: ../src/rust-llm-tidy/src/rules/lint/text/text007_passive_narration.rs
 
 ## TEXT007 - passive voice and past behaviour
 
@@ -333,53 +334,22 @@ Say what the code does, directly:
   `The scanner returns errors.`
 - Past behaviour: `This no longer panics.` →
   `This returns an error.` (if accurate)
-- Time labels: `The parser currently rejects empty names.` →
-  `The parser rejects empty names.`
-
-Describe only current behaviour in active, present-tense language.
-Preserve conditions and guarantees rather than comparing old and new behaviour.
 
 ### Detection details
 
 - Checks each line; reports at most one hint, preferring passive voice.
 - Flags be-verbs followed by past participles, but allows state descriptions
   such as `is required` and `is deprecated`.
-- Allows common state participles such as `disconnected` and `sorted` unless
-  immediately followed by `by`; excludes non-participles such as `red` and `seed`.
-- Flags `no longer` except before `than`, and clause-initial `In the past,`.
-- Leaves bare `was` and `used to` alone: they also describe runtime events
-  and purpose.
-- Flags change references: `prior to this change`, `before this change`,
-  `after this change`, `with this change`.
-- Flags change nouns (`this change`, `this patch`, `this commit`, `this update`,
-  `this fix`) only before `adds`, `fixes`, `removes`, `introduces`, or `rejects`.
-- Flags history comparisons: `previous implementation`, `old implementation`,
-  `earlier versions`, `previous versions`.
-- Flags release history: `in earlier releases`, `in previous releases`,
-  `in prior releases`, `as of this release`, `as of this version`.
-- Flags implementation history: `earlier implementation`,
-  `prior implementation`, `original implementation`.
-- Flags behaviour history: `earlier behavior`, `previous behavior`,
-  `prior behavior`, `old behavior`, and their `behaviour` spelling variants.
-- Flags fix references: `before this fix`, `after this fix`, `with this fix`.
-- Prefers longer phrases over their contained phrases in diagnostic summaries.
-- Flags words: `previously`, `now`, `formerly`, `historically`, `originally`,
-  `recently`, `lately`, `currently`, and `anymore`.
-- Allows participial noun modifiers after determiners, such as
-  `the currently selected item` and `the least recently used entry`.
-- Flags clause-initial `Before,`.
-  Allows temporal uses such as `before validation`.
-- Matches words case-insensitively; digits and underscores extend a word.
-- Requires whitespace between phrase words; punctuation and excluded content
-  interrupt matches.
-- Skips inline code, link targets, reference labels, autolinks, and HTTP URLs.
-  Backtick code spans carry across consecutive prose lines until a matching run,
-  a blank line, a code block, or a source-line gap.
-- May flag harmless phrases such as `previously refuted findings` or
-  `recently accessed entries`. This heuristic does not infer grammatical context.
+- Flags history wording such as `no longer`, `previously`, and `prior to
+  this change`; allows temporal uses such as `before validation`.
+- This heuristic has no grammatical context: expect false positives and
+  treat every hint as a review suggestion, never a rewrite.
 - By default, allows past-behaviour wording in `CHANGELOG*` or `MIGRATION*`
   basenames at any depth and files under a `releases` directory.
   Matching is case-insensitive; passive voice still produces hints.
+
+Edge-case exceptions are listed in the rule's module documentation:
+[`text007_passive_narration.rs`][module]
 
 Before:
 
@@ -395,13 +365,30 @@ After:
 pub fn scan() {}
 ```
 
+### Opt-in
+
+TEXT007 is heuristic and prone to false positives, so file processing keeps
+it off unless a config opts in:
+
+```yaml
+passive_narration:
+  enable: true
+```
+
+- `enable` omitted or `false`: TEXT007 does not run
+- `enable: true`: report TEXT007 hints
+- `--include TEXT007` runs it regardless; the `lints` group alone keeps
+  it off
+- Pathless library text checks are unaffected and always include it
+
 ### Release-note suppression
 
-Set this top-level boolean in `.rust-llm-tidy.yml` to report narration
+Set this boolean under `passive_narration` to report narration
 markers in release and migration notes too:
 
 ```yaml
-suppress_in_release_notes: false
+passive_narration:
+  suppress_in_release_notes: false
 ```
 
 - Omitted or `true`: keep narration-marker suppression in those paths

@@ -33,6 +33,10 @@ impl FileReport {
 /// Inspect [`RunReport::ensure_success`] after consuming the report.
 /// Configuration discovery is explicit through [`crate::config`].
 ///
+/// The opt-in TEXT007 lint runs only when the config's
+/// `passive_narration.enable` setting is on or the selection names the
+/// code explicitly.
+///
 /// File previews leave each pass reading the original disk source; see
 /// [`tidy_source`] for final-buffer linting.
 /// Cargo project discovery requires `options.cargo_discovery`; otherwise
@@ -440,7 +444,19 @@ fn process_one(
                 .map(|c| c.to_string())
                 .chain(disabled.iter().cloned())
                 .collect(),
-            _ => disabled.clone(),
+            // TEXT007 is opt-in: it runs only when the config enables it or
+            // the selection names the code; `lints` alone does not.
+            _ => {
+                let opted_in = config.is_some_and(CompiledConfig::passive_narration)
+                    || enabled
+                        .as_ref()
+                        .is_some_and(|set| set.contains(check::CODE_PASSIVE_NARRATION));
+                let mut codes = disabled.clone();
+                if !opted_in {
+                    codes.insert(check::CODE_PASSIVE_NARRATION.to_string());
+                }
+                codes
+            }
         };
         let suppress_in_release_notes =
             config.is_none_or(CompiledConfig::suppress_in_release_notes);
