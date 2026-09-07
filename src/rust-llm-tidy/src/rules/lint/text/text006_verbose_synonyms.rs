@@ -19,16 +19,27 @@ mod suggestions;
 ///
 /// # Remarks
 ///
-/// Matching stays within a line. Hints use the dictionary's lowercase wording
-/// and need a meaning and grammar check; they never change the document.
+/// Matching stays within a line; an open code span carries into the
+/// region's next line. A line-number gap breaks the region and closes the
+/// span.
+///
+/// Hints use the dictionary's lowercase wording and need a meaning and
+/// grammar check; they never change the document.
 pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
+    let mut code_delimiter = 0;
+    let mut previous_number = 0;
     for line in &doc.lines {
         if line.in_code_block {
             continue;
         }
 
-        if let Some((before, after)) = first_suggestion(&line.text) {
+        if line.number != previous_number + 1 {
+            code_delimiter = 0;
+        }
+        previous_number = line.number;
+
+        if let Some((before, after)) = first_suggestion(&line.text, &mut code_delimiter) {
             diags.push(synonym_diagnostic(line, before, after));
         }
     }
@@ -38,10 +49,13 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
 /// Find a hint without allocating tokens or a masked copy of the line.
 ///
 /// Equal-length backtick runs open and close code spans. An unmatched opener
-/// exempts the rest of the line. The fixed dictionary bounds work per position.
-fn first_suggestion(text: &str) -> Option<(&'static str, &'static str)> {
+/// exempts the rest of the line and stays open in `code_delimiter` for the
+/// caller's next line. The fixed dictionary bounds work per position.
+fn first_suggestion(
+    text: &str,
+    code_delimiter: &mut usize,
+) -> Option<(&'static str, &'static str)> {
     let mut chars = text.char_indices().peekable();
-    let mut code_delimiter = 0;
     let mut previous_is_word = false;
     while let Some((offset, ch)) = chars.next() {
         if ch == '`' {
@@ -49,16 +63,16 @@ fn first_suggestion(text: &str) -> Option<(&'static str, &'static str)> {
             while chars.next_if(|&(_, next)| next == '`').is_some() {
                 run += 1;
             }
-            if code_delimiter == 0 {
-                code_delimiter = run;
-            } else if code_delimiter == run {
-                code_delimiter = 0;
+            if *code_delimiter == 0 {
+                *code_delimiter = run;
+            } else if *code_delimiter == run {
+                *code_delimiter = 0;
             }
             previous_is_word = false;
             continue;
         }
 
-        if code_delimiter == 0 && !previous_is_word && ch.is_ascii_alphabetic() {
+        if *code_delimiter == 0 && !previous_is_word && ch.is_ascii_alphabetic() {
             let initial = ch.to_ascii_lowercase() as u8;
             let entries = suggestions::SUGGESTIONS;
             let start = entries.partition_point(|(before, _)| before.as_bytes()[0] < initial);
@@ -313,6 +327,42 @@ mod tests {
             assert_eq!(found.len(), 1, "{source}");
             assert!(found[0].message.contains("Before: `prior to`"), "{source}");
         }
+    }
+
+    // A span left open at line end carries into the region's next line.
+    #[test]
+    fn hints_should_stay_silent_when_a_span_spans_lines() {
+        let source = "call `utilize this\nin order to` helpers.";
+
+        let diags = run_text_checks(source, "md");
+
+        assert!(codes(&diags, CODE_VERBOSE_SYNONYMS).is_empty());
+    }
+
+    // A span closed on a later line resumes prose matching on that line.
+    #[test]
+    fn hints_should_resume_when_a_span_closes_on_a_later_line() {
+        let source = "code `span stays\nopen` prior to this";
+
+        let diags = run_text_checks(source, "md");
+
+        let found = codes(&diags, CODE_VERBOSE_SYNONYMS);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].line, 2);
+        assert!(found[0].message.contains("Before: `prior to`"));
+    }
+
+    // A non-doc line ends the region: span state does not carry into the
+    // next region's lines.
+    #[test]
+    fn hints_should_reset_span_state_when_a_region_breaks() {
+        let source = "/// `utilize this\nlet x = 1;\n/// utilize this\n";
+
+        let diags = run_text_checks(source, "rs");
+
+        let found = codes(&diags, CODE_VERBOSE_SYNONYMS);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].line, 3);
     }
 
     // Both block forms are exempt in markdown and Rust doc comments.
