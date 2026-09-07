@@ -80,8 +80,9 @@ impl FileReport {
 ///
 /// # Remarks
 ///
-/// License documents are excluded for all path selections, even without a
-/// configuration; see [`crate::input`] for filename matching.
+/// License documents are excluded by default for all path selections. Set
+/// `exclude_license_documents: false` in config to disable this filter;
+/// see [`crate::input`] for filename matching.
 pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Result<RunReport> {
     validate_selection(&options.include, &options.exclude, &options.extensions)?;
 
@@ -90,6 +91,7 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
         &options.paths,
         options.git_changed,
         &allowed,
+        config.is_none_or(CompiledConfig::exclude_license_documents),
     )?);
     let mut report = RunReport::default();
     if paths.is_empty() {

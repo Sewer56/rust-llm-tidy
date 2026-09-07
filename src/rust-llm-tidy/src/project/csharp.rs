@@ -164,7 +164,7 @@ fn project_scope(inputs: &[PathBuf]) -> anyhow::Result<Vec<PathBuf>> {
             continue;
         };
         let mut sources = Vec::new();
-        paths::collect_project_files(dir, &["cs"], &mut sources, true)?;
+        paths::collect_project_files(dir, &["cs"], &mut sources, true, true)?;
         files.extend(sources.into_iter().filter_map(|p| p.canonicalize().ok()));
 
         for include in literal_project_includes(&source) {

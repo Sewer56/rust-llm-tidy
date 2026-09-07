@@ -41,6 +41,8 @@ pub struct CompiledConfig {
     config_dir: PathBuf,
     /// Matches `exclude_files` patterns.
     exclude_files_set: GlobSet,
+    /// Skip conventional license documents during discovery.
+    exclude_license_documents: bool,
     /// One group per `include` entry (whitelist mode).
     include_groups: Vec<CompiledRuleGroup>,
     /// One group per `exclude` entry (blacklist mode).
@@ -61,7 +63,7 @@ pub struct CompiledConfig {
 
 /// Raw serde view of `.rust-llm-tidy.yml`. Paths/globs are relative to the
 /// config file's directory.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)] // Reject hallucinated config keys at parse time.
 pub struct Config {
     /// Whitelist: for matched paths, run ONLY these rules.
@@ -77,6 +79,11 @@ pub struct Config {
     /// Skip ALL processing for files matching any pattern (was `exclude`).
     #[serde(default)]
     pub exclude_files: Vec<String>,
+    /// Skip conventional license documents during discovery. Default: `true`.
+    ///
+    /// Setting `false` retains extension filters and `exclude_files` rules.
+    #[serde(default = "default_true")]
+    pub exclude_license_documents: bool,
     /// External commands run on every processed file after rust-llm-tidy.
     #[serde(default)]
     pub post_process: Vec<PostProcessStep>,
@@ -188,6 +195,11 @@ pub struct RuleGroup {
 }
 
 impl CompiledConfig {
+    /// Whether discovery skips conventional license documents.
+    pub(crate) fn exclude_license_documents(&self) -> bool {
+        self.exclude_license_documents
+    }
+
     /// Whether to apply `passive_narration.suppress_in_release_notes`.
     pub(crate) fn suppress_in_release_notes(&self) -> bool {
         self.passive_narration.suppress_in_release_notes
@@ -277,6 +289,22 @@ impl CompiledConfig {
             policy.enabled = None;
         }
         policy
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            include: Vec::new(),
+            exclude: Vec::new(),
+            exclude_files: Vec::new(),
+            exclude_license_documents: true,
+            post_process: Vec::new(),
+            links: None,
+            extensions: Vec::new(),
+            extra_extensions: Vec::new(),
+            passive_narration: None,
+        }
     }
 }
 
@@ -479,6 +507,7 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
     Ok(CompiledConfig {
         config_dir,
         exclude_files_set,
+        exclude_license_documents: config.exclude_license_documents,
         include_groups,
         exclude_groups,
         post_process: config.post_process,
@@ -754,6 +783,19 @@ mod tests {
             .passive_narration()
         );
         assert!(compile("passive_narration:\n  enable: true\n", &[]).passive_narration());
+    }
+
+    /// YAML defaults keep license-document exclusion on until disabled.
+    #[test]
+    fn license_exclusion_should_default_to_enabled() {
+        assert!(Config::default().exclude_license_documents);
+        assert!(compile("{}\n", &[]).exclude_license_documents());
+        assert!(
+            compile("exclude_license_documents: true\n", &[]).exclude_license_documents()
+        );
+        assert!(
+            !compile("exclude_license_documents: false\n", &[]).exclude_license_documents()
+        );
     }
 
     // ── links.min_occurrences + links.by_extension ──

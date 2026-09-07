@@ -5,6 +5,13 @@
 #
 #   rust-llm-tidy --config .rust-llm-tidy.example.yml
 
+# ── License documents ──
+# Conventional LICENSE/LICENCE/COPYING documents are excluded by default.
+# Set false to allow normal discovery; extension filters, exclude_files,
+# and rule selection still apply.
+
+# exclude_license_documents: true
+
 # ── Extensions ──
 # Allowed file extensions, matched case-insensitively.
 # `extensions` replaces the defaults when non-empty; `extra_extensions`
