@@ -27,6 +27,13 @@
 #     min_occurrences: 2        # hoist a pair only after this many uses; >= 1.
 #     by_extension: { rs: 2 }   # per-extension override; unknown keys are inert.
 # Effective threshold: by_extension[ext] else min_occurrences else 1.
+#
+# The `module_size` key sets the MOD001 warning threshold: a `.rs` file whose
+# lines outside `#[cfg(test)]` mod regions exceed `max_lines` warns; files
+# under a `tests/` directory never warn.
+#   module_size:
+#     max_lines: 500            # non-test line budget per `.rs` file; >= 1.
+# Effective threshold: max_lines else 500.
 
 links:
   min_occurrences: 1
