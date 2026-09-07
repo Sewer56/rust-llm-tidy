@@ -174,7 +174,8 @@ src/lib.rs:1: warning[TEXT003]: sentence is 30 words long.
 
 ## TEXT004 - header opener shape
 
-An opener paragraph with three or more sentences is a warning.
+An opener paragraph with three or more sentences, or a plain opener over
+160 measured chars, is a warning.
 
 Openers are:
 
@@ -185,6 +186,9 @@ Openers are:
 - For consecutive heading lines, only the paragraph after the last
   heading; a heading with no following paragraph is never checked.
 
+Bullet openers check sentence count only; TEXT001 owns non-opener
+paragraphs.
+
 A sentence boundary is `.`, `!`, or `?` followed by whitespace.
 
 `e.g.` before a lowercase word, decimals, and URLs never split, so
@@ -193,18 +197,19 @@ misses are possible but fabricated reports are not.
 Before:
 
 ```rust
-/// Loads the configured data from disk. It parses every field. Then it
-/// validates the schema.
+/// Loads the configured data from disk and parses it into the schema,
+/// resolving relative paths against the configured base directory for
+/// every caller in the process.
 pub fn load() {}
 ```
 
 After:
 
 ```rust
-/// Loads the configured data from disk.
+/// Loads the configured data from disk and parses it.
 ///
-/// - Parses every field.
-/// - Validates the schema.
+/// - Resolves relative paths against the config directory.
+/// - Serves every caller in the process.
 pub fn load() {}
 ```
 
@@ -212,9 +217,10 @@ pub fn load() {}
 
 ```text
 $ rust-llm-tidy --no-config --include TEXT004 src/lib.rs
-src/lib.rs:1: warning[TEXT004]: opener paragraph has 3 sentences; maximum is 2.
+src/lib.rs:1: warning[TEXT004]: opener paragraph is 161 chars long; maximum is 160.
   - Keep the opener brief so readers can find the main point quickly.
   - Lead with the main point, ideally in one short sentence.
+  - Keep a plain opener to 160 measured chars or fewer.
   - Move supporting details below the opener without losing necessary information.
   - Use bullets for distinct facts, one fact per bullet.
   - Keep a connected explanation in a separate short paragraph. (file)
