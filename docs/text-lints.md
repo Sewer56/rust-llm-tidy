@@ -333,15 +333,25 @@ Say what the code does, directly:
   `The scanner returns errors.`
 - Past behaviour: `This no longer panics.` →
   `This returns an error.` (if accurate)
+- Time labels: `The parser currently rejects empty names.` →
+  `The parser rejects empty names.`
+
+Describe only current behaviour in active, present-tense language.
+Preserve conditions and guarantees rather than comparing old and new behaviour.
 
 ### Detection details
 
 - Checks each line; reports at most one warning, preferring passive voice.
 - Flags be-verbs followed by past participles, but allows state descriptions
   such as `is required` and `is deprecated`.
-- Flags `no longer`, `previously`, `used to`, `now`, bare `was`, and
-  clause-initial `Before,`. Allows temporal uses such as `before validation`.
-- May flag harmless phrases such as `previously refuted findings`.
+- Flags phrases: `no longer`, `used to`, `in the past`.
+- Flags words: `previously`, `now`, `formerly`, `historically`, `originally`,
+  `recently`, `lately`, `currently`, `anymore`, and bare `was`.
+- Flags clause-initial `Before,`.
+  Allows temporal uses such as `before validation`.
+- Matches alphabetic words case-insensitively, not substrings within words.
+- May flag harmless phrases such as `previously refuted findings` or
+  `recently accessed entries`. This heuristic does not infer grammatical context.
 - By default, allows past-behaviour wording in `CHANGELOG*` or `MIGRATION*`
   basenames at any depth and files under a `releases` directory.
   Matching is case-insensitive; passive voice still warns.
@@ -381,10 +391,11 @@ checks do not apply release-note suppression.
 ```text
 $ rust-llm-tidy --no-config --include TEXT007 src/lib.rs
 src/lib.rs:1: warning[TEXT007]: passive construction: `are returned`.
-  - State the current contract in active voice.
-  - Old behavior belongs in release or migration notes only for a genuine public-API compatibility concern.
-  - Confirm that obligation with the user rather than narrating.
-  - Private code, internals, tests, and helpers never carry old behavior. (file)
+  - State only current behavior in active, present-tense language.
+  - Remove change history, old/new comparisons, and time labels such as `now` or `currently`.
+  - Delete history-only sentences; do not invent replacement behavior.
+  - Check the implementation before rewriting; preserve exact conditions, guarantees, and limitations.
+  - Keep history out of comments and API docs, including internals, tests, and helpers. Use release or migration notes only for a genuine public-API compatibility concern. (file)
 ```
 
 `TEXT007` is warning-severity, so the run exits 0.

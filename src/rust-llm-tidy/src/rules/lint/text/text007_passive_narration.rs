@@ -35,8 +35,7 @@ const IRREGULAR_PARTICIPLES: &[&str] = &[
     "built", "brought", "caught", "held", "kept", "left", "made", "met", "paid", "put", "run",
     "said", "sent", "set", "taught", "told",
 ];
-/// Past-behavior narration markers, word-bounded, checked before the
-/// bare-`was` fallback.
+/// Word-bounded narration phrases checked before single-word markers.
 const NARRATION_MARKERS: &[NarrationMarker] = &[
     NarrationMarker {
         tokens: &["no", "longer"],
@@ -46,10 +45,26 @@ const NARRATION_MARKERS: &[NarrationMarker] = &[
         tokens: &["used", "to"],
         display: "used to",
     },
+    NarrationMarker {
+        tokens: &["in", "the", "past"],
+        display: "in the past",
+    },
 ];
 /// Summary prefix carried by every narration-marker diagnostic; the
 /// passive class opens with `passive construction:` instead.
 const NARRATION_MARKER_SUMMARY: &str = "past-behavior narration marker: ";
+/// History and change-relative wording, including redundant present-time labels.
+const SINGLE_WORD_NARRATION_MARKERS: &[&str] = &[
+    "previously",
+    "now",
+    "formerly",
+    "historically",
+    "originally",
+    "recently",
+    "lately",
+    "currently",
+    "anymore",
+];
 
 /// One narration marker: its token sequence and display form.
 struct NarrationMarker {
@@ -64,8 +79,8 @@ struct NarrationMarker {
 ///
 /// - Passive: a be-verb followed by a past participle, except accepted
 ///   adjectival participles.
-/// - Narration marker: `no longer`, `previously`, `used to`, `now`, bare
-///   `was`, or clause-initial `before,`.
+/// - Narration marker: a phrase in [`NARRATION_MARKERS`], a word in
+///   [`SINGLE_WORD_NARRATION_MARKERS`], bare `was`, or clause-initial `before,`.
 ///
 /// A line matching both classes reports the passive class only.
 pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
@@ -97,13 +112,18 @@ pub(crate) fn is_narration_marker(diag: &Diagnostic) -> bool {
 /// One TEXT007 Warning; `summary` names the finding class and trigger.
 fn diagnostic(line: &StrippedLine, summary: &str) -> Diagnostic {
     let bullets = [
-        "State the current contract in active voice.".to_string(),
-        "Old behavior belongs in release or migration notes only for a \
-         genuine public-API compatibility concern."
+        "State only current behavior in active, present-tense language.".to_string(),
+        "Remove change history, old/new comparisons, and time labels such as `now` or `currently`."
+             .to_string(),
+        "Delete history-only sentences; do not invent replacement behavior."
             .to_string(),
-        "Confirm that obligation with the user rather than narrating.".to_string(),
-        "Private code, internals, tests, and helpers never carry old behavior.".to_string(),
+        "Check the implementation before rewriting; preserve exact conditions, guarantees, and limitations."
+            .to_string(),
+        "Keep history out of comments and API docs, including internals, tests, and helpers. \
+         Use release or migration notes only for a genuine public-API compatibility concern."
+            .to_string(),
     ];
+
     Diagnostic {
         severity: Severity::Warning,
         code: CODE_PASSIVE_NARRATION,
@@ -143,8 +163,8 @@ fn alphabetic_words(line: &str) -> Vec<&str> {
 
 /// The first narration marker in the line, if any.
 ///
-/// Bare `was` is the fallback marker; clause-initial `before,` requires
-/// a line or clause start, so temporal `before validation` never fires.
+/// Phrase markers take precedence over single words. Bare `was` is the
+/// fallback; clause-initial `before,` excludes temporal `before validation`.
 fn find_narration_marker(line: &str, words: &[&str]) -> Option<&'static str> {
     for marker in NARRATION_MARKERS {
         if words.windows(marker.tokens.len()).any(|w| {
@@ -155,15 +175,18 @@ fn find_narration_marker(line: &str, words: &[&str]) -> Option<&'static str> {
             return Some(marker.display);
         }
     }
-    if words.iter().any(|w| w.eq_ignore_ascii_case("previously")) {
-        return Some("previously");
+
+    if let Some(marker) = SINGLE_WORD_NARRATION_MARKERS
+        .iter()
+        .find(|marker| words.iter().any(|word| word.eq_ignore_ascii_case(marker)))
+    {
+        return Some(marker);
     }
-    if words.iter().any(|w| w.eq_ignore_ascii_case("now")) {
-        return Some("now");
-    }
+
     if has_clause_initial_before_comma(line) {
         return Some("before,");
     }
+
     words
         .iter()
         .any(|w| w.eq_ignore_ascii_case("was"))
@@ -339,17 +362,38 @@ mod tests {
 
     // Each single-word and phrase marker warns once, naming the marker.
     #[test]
-    fn text_checks_warn_on_each_narration_marker() {
+    fn text_checks_should_name_marker_when_prose_narrates_behavior() {
         for (source, marker) in [
             ("This no longer panics.", "no longer"),
             ("The old path previously ran here.", "previously"),
             ("This flag used to default on.", "used to"),
             ("The cache is now bounded.", "now"),
             ("The value was large.", "was"),
+            (
+                "In the past, the cache grew without a bound.",
+                "in the past",
+            ),
+            ("The parser formerly accepted empty names.", "formerly"),
+            (
+                "Historically, the parser accepted empty names.",
+                "historically",
+            ),
+            ("The parser originally accepted empty names.", "originally"),
+            ("The parser recently gained a size limit.", "recently"),
+            ("Lately, the parser rejects empty names.", "lately"),
+            ("The parser currently rejects empty names.", "currently"),
+            ("The parser does not accept empty names anymore.", "anymore"),
+            ("FORMERLY, the cache grew without a bound.", "formerly"),
+            (
+                "IN THE PAST, the cache grew without a bound.",
+                "in the past",
+            ),
         ] {
             let found = one_line(source);
+
             assert_eq!(found.len(), 1, "{source:?}");
             assert_eq!(found[0].severity, Severity::Warning);
+            assert!(is_narration_marker(&found[0]), "{source:?}");
             assert!(
                 found[0]
                     .message
@@ -374,11 +418,23 @@ mod tests {
         assert!(one_line("Rewrite links before scanning.").is_empty());
     }
 
-    // Word boundaries keep embedded `now` and `was` silent.
+    // Embedded markers and general temporal vocabulary do not imply change history.
     #[test]
-    fn text_checks_silent_on_embedded_marker_words() {
-        assert!(one_line("Document the known anchors.").is_empty());
-        assert!(one_line("The swap module bounds the cache.").is_empty());
+    fn text_checks_should_stay_silent_when_words_describe_current_behavior() {
+        for source in [
+            "Document the known anchors.",
+            "The swap module bounds the cache.",
+            "Workers run concurrently.",
+            "The handler runs once per request.",
+            "Copy the old value into the new buffer.",
+            "Reject timestamps in the future or past.",
+            "Read the previous entry before validation.",
+            "Return the most recent entry.",
+        ] {
+            let found = one_line(source);
+
+            assert!(found.is_empty(), "{source:?}");
+        }
     }
 
     // Non-ASCII words after a be-verb never panic and never match.
@@ -402,15 +458,31 @@ mod tests {
         );
     }
 
-    // The guidance carries the card message, bulleted after the summary.
+    // Both finding classes guide the same current-behavior rewrite.
     #[test]
-    fn text_checks_message_carries_remediation_guidance() {
-        let found = one_line("Errors are returned by the scanner.");
-        let msg = &found[0].message;
-        assert!(msg.contains("State the current contract in active voice."));
-        assert!(msg.contains("genuine public-API compatibility concern"));
-        assert!(msg.contains("Confirm that obligation with the user"));
-        assert!(msg.contains("Private code, internals, tests, and helpers never carry old"));
+    fn text_checks_should_explain_current_behavior_rewrite_when_reporting() {
+        let expected = concat!(
+            "\n  - State only current behavior in active, present-tense language.",
+            "\n  - Remove change history, old/new comparisons, ",
+            "and time labels such as `now` or `currently`.",
+            "\n  - Delete history-only sentences; do not invent replacement behavior.",
+            "\n  - Check the implementation before rewriting; ",
+            "preserve exact conditions, guarantees, and limitations.",
+            "\n  - Keep history out of comments and API docs, ",
+            "including internals, tests, and helpers.",
+            " Use release or migration notes only for a genuine ",
+            "public-API compatibility concern.",
+        );
+
+        for source in [
+            "Errors are returned by the scanner.",
+            "The scanner formerly accepted empty names.",
+        ] {
+            let found = one_line(source);
+
+            assert_eq!(found.len(), 1, "{source:?}");
+            assert!(found[0].message.ends_with(expected), "{}", found[0].message);
+        }
     }
 
     // Comment lines and multi-line docs warn per measured source line.
