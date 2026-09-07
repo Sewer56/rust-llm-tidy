@@ -37,6 +37,7 @@ Languages other than Rust and C# run the text lints only ([text lints]):
 | [`DOC004`]  | Warning  | A `pub fn` with parameters has no `# Arguments` section.                          |
 | [`DOC005`]  | Warning  | A `# Arguments` section does not mention every parameter name.                    |
 | [`DOC006`]  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).                   |
+| [`DOC008`]  | Error    | An `# Errors` section lists enum variants out of alphabetical order.              |
 | [`TEXT001`] | Error    | A doc paragraph over 240 chars of full text (bullets warn).                       |
 | [`TEXT002`] | Warning  | A doc line over 80 chars of full text (code blocks, tables, link defs exempt).    |
 | [`TEXT003`] | Warning  | A doc sentence over 25 words (words join across wrapped lines).                   |
@@ -286,6 +287,66 @@ src/lib.rs:1: warning[DOC006]: doc comment contains placeholder text (TODO/FIXME
 
 `DOC006` is warning-severity, so the run exits 0.
 
+### DOC008 - error variants out of alphabetical order
+
+In `# Errors`, sort links to returned error variants by case-sensitive Rust
+`str` order.
+
+Only checks `` [`Enum::Variant`] `` links (path prefixes allowed)
+when the error type resolves to a top-level enum in the same file.
+
+Before:
+
+```rust
+/// Loads the configured data.
+///
+/// # Errors
+///
+/// - [`Error::NotFound`] when data cannot be loaded
+/// - [`Error::Denied`] when access is refused
+/// - [`Error::InvalidFormat`] when data has an unsupported format
+pub fn load() -> Result<(), Error> {
+    Ok(())
+}
+
+enum Error {
+    Denied,
+    InvalidFormat,
+    NotFound,
+}
+```
+
+After:
+
+```rust
+/// Loads the configured data.
+///
+/// # Errors
+///
+/// - [`Error::Denied`] when access is refused
+/// - [`Error::InvalidFormat`] when data has an unsupported format
+/// - [`Error::NotFound`] when data cannot be loaded
+pub fn load() -> Result<(), Error> {
+    Ok(())
+}
+
+enum Error {
+    Denied,
+    InvalidFormat,
+    NotFound,
+}
+```
+
+#### DOC008 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include DOC008 src/lib.rs
+src/lib.rs:1: error[DOC008]: `# Errors` lists variants of `Error` out of alphabetical order (fn `load`)
+Error: found 1 error(s)
+```
+
+`DOC008` is error-severity, so the run exits non-zero.
+
 ### TEST001 - non-behavioral test name
 
 Test-attributed functions should describe behavior, not use `test`, `test_*`,
@@ -437,6 +498,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`DOC004`]: #doc004---missing-arguments-section
 [`DOC005`]: #doc005---undocumented-parameter
 [`DOC006`]: #doc006---placeholder-text
+[`DOC008`]: #doc008---error-variants-out-of-alphabetical-order
 [`TEXT001`]: ./text-lints.md#text001---oversized-paragraph
 [`TEXT002`]: ./text-lints.md#text002---long-line
 [`TEXT003`]: ./text-lints.md#text003---long-sentence

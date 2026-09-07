@@ -9,6 +9,10 @@ pub(crate) const CODE_TITLES: &[(&str, &str)] = &[
     (CODE_MISSING_DOCS, "missing documentation"),
     (CODE_MISSING_ERRORS, "missing `# Errors` section"),
     (CODE_VAGUE_ERRORS, "vague `# Errors` section"),
+    (
+        CODE_ERROR_VARIANT_ORDER,
+        "error variants out of alphabetical order",
+    ),
     (CODE_MISSING_ARGUMENTS, "missing `# Arguments` section"),
     (CODE_UNDOCUMENTED_PARAM, "undocumented parameter"),
     (CODE_DOC_PLACEHOLDER, "placeholder text"),
@@ -31,6 +35,7 @@ pub const LINT_CODES: &[&str] = &[
     CODE_MISSING_DOCS,
     CODE_MISSING_ERRORS,
     CODE_VAGUE_ERRORS,
+    CODE_ERROR_VARIANT_ORDER,
     CODE_MISSING_ARGUMENTS,
     CODE_UNDOCUMENTED_PARAM,
     CODE_DOC_PLACEHOLDER,
@@ -44,6 +49,9 @@ pub const LINT_CODES: &[&str] = &[
 ];
 /// Rule code for placeholder text in doc comments.
 pub const CODE_DOC_PLACEHOLDER: &str = "DOC006";
+/// Rule code for `# Errors` bullets listing enum variants out of
+/// alphabetical order.
+pub const CODE_ERROR_VARIANT_ORDER: &str = "DOC008";
 /// Rule code for an untagged fenced code block.
 pub const CODE_FENCE_TAG: &str = "TEXT005";
 /// Rule code for a misshapen header opener paragraph.
@@ -82,18 +90,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lint_codes_lists_all_thirteen_codes() {
+    fn lint_codes_lists_all_fourteen_codes() {
         // `LINT_CODES` is the source of truth for CLI rule validation. It must
         // enumerate every code produced by the backends and the text rules.
         assert_eq!(
             LINT_CODES.len(),
-            13,
-            "LINT_CODES must list exactly thirteen codes: {LINT_CODES:?}"
+            14,
+            "LINT_CODES must list exactly fourteen codes: {LINT_CODES:?}"
         );
         for code in [
             CODE_MISSING_DOCS,
             CODE_MISSING_ERRORS,
             CODE_VAGUE_ERRORS,
+            CODE_ERROR_VARIANT_ORDER,
             CODE_MISSING_ARGUMENTS,
             CODE_UNDOCUMENTED_PARAM,
             CODE_DOC_PLACEHOLDER,

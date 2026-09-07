@@ -351,6 +351,39 @@ pub(super) fn is_transparent_comment(node: Node) -> bool {
     }
 }
 
+/// Final path segment of the `Result` return type's error argument.
+///
+/// `None` when:
+///
+/// - `body` has no return type.
+/// - The return type is not a generic type with at least two arguments.
+/// - The error argument is not a plain path (tuple, array, reference).
+///
+/// The caller gates on [`returns_result`].
+///
+/// Qualified error paths pointing at other modules also yield `None`:
+///
+/// - `std::io::Error` cannot name a same-file enum, even when its final
+///   segment collides with one.
+/// - Only a single crate-root prefix (`crate::Error`, `self::Error`,
+///   `super::Error`) can still resolve to a top-level enum.
+pub(super) fn result_error_type(body: Node<'_>, source: &str) -> Option<String> {
+    let rt = body.child_by_field_name("return_type")?;
+    if rt.kind() != "generic_type" {
+        return None;
+    }
+    let args = rt.child_by_field_name("type_arguments")?;
+    if args.named_child_count() < 2 {
+        return None;
+    }
+    let error = args.named_child(1)?;
+    let base = type_path_root(error);
+    if is_scoped_type(base) && !is_direct_crate_root(base, source) {
+        return None;
+    }
+    last_type_segment(error, source).map(str::to_string)
+}
+
 /// True when a `line_comment`/`block_comment` node is an OUTER doc comment
 /// (`///` or `/** */`), i.e. it has an `outer` field.
 ///
@@ -509,6 +542,31 @@ fn has_field(node: Node, field: &str) -> bool {
     node.child_by_field_name(field).is_some()
 }
 
+/// True when a scoped type's prefix is exactly one crate-root segment
+/// (`crate::Error`), so the final segment can still name a same-file
+/// top-level enum.
+///
+/// Longer prefixes (`crate::nested::Error`, `std::io::Error`) point at
+/// other modules and are rejected.
+fn is_direct_crate_root(node: Node<'_>, source: &str) -> bool {
+    let path = node.child_by_field_name("path");
+    let Some(path) = path else {
+        return false;
+    };
+    if !matches!(path.kind(), "type_identifier" | "identifier") {
+        return false;
+    }
+    matches!(
+        path.utf8_text(source.as_bytes()).ok(),
+        Some("crate") | Some("self") | Some("super")
+    )
+}
+
+/// True for path-qualified type nodes (`std::io::Error`).
+fn is_scoped_type(node: Node<'_>) -> bool {
+    matches!(node.kind(), "scoped_type_identifier" | "scoped_identifier")
+}
+
 /// True when the attrs contain a `#[test]` or `#[...::test]` attribute.
 ///
 /// Matching the last path segment covers both `#[test]` and framework variants
@@ -567,6 +625,17 @@ fn returns_result(body: Node<'_>, source: &str) -> bool {
         return false;
     };
     last_type_segment(rt, source) == Some("Result")
+}
+
+/// Root path node of a type node, unwrapping generic wrappers
+/// (`Vec<T>` -> `T`) so qualification can be inspected.
+fn type_path_root<'a>(node: Node<'a>) -> Node<'a> {
+    match node.kind() {
+        "generic_type" => node
+            .child_by_field_name("type")
+            .map_or(node, type_path_root),
+        _ => node,
+    }
 }
 
 /// First path segment of an `attribute` node's path (e.g. `cfg` in `#[cfg(...)]`).

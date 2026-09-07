@@ -91,6 +91,13 @@ pub struct SourceItem {
     /// `-> Result<...>` signature). `false` for non-fn items and fns that do
     /// not return `Result`.
     returns_result: bool,
+    /// Final path segment of the `Result` error type (the `E` in
+    /// `Result<T, E>`), owned. Used by DOC008 to resolve the documented
+    /// enum in the same file.
+    ///
+    /// `None` for non-fn items, non-`Result` fns, and error types that are
+    /// not a plain path.
+    result_error_type: Option<String>,
     /// Named parameter idents of a fn, excluding `self`/`&self`/`&mut self`.
     /// Empty for non-fn items.
     params: Vec<String>,
@@ -227,6 +234,16 @@ impl SourceItem {
         self.returns_result
     }
 
+    /// Final path segment of the `Result` error type, if any.
+    ///
+    /// `None` for non-fn items, fns not returning `Result`, and non-path
+    /// error types. This is a name only: resolving it to a type is the
+    /// caller's job (DOC008 matches it against same-file top-level enums).
+    #[inline]
+    pub fn result_error_type(&self) -> Option<&str> {
+        self.result_error_type.as_deref()
+    }
+
     /// Named parameter idents of a fn, excluding `self`/`&self`/`&mut self`.
     ///
     /// Empty for non-fn items. For fns with destructuring parameter patterns,
@@ -279,6 +296,13 @@ impl SourceItem {
         self
     }
 
+    /// Set the `Result` error type's final path segment
+    /// (see [`SourceItem::result_error_type`]).
+    pub fn with_result_error_type(mut self, error_type: Option<String>) -> Self {
+        self.result_error_type = error_type;
+        self
+    }
+
     #[allow(clippy::too_many_arguments)]
     /// Creates a new `SourceItem`.
     ///
@@ -316,6 +340,7 @@ impl SourceItem {
             visibility,
             doc_comments,
             returns_result,
+            result_error_type: None,
             params,
             is_test_fn,
             region: 0,
