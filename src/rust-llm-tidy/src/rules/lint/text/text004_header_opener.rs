@@ -3,13 +3,19 @@
 use super::bulleted;
 use crate::reporting::diagnostic::{Diagnostic, Severity};
 use crate::rules::registry::CODE_HEADER_OPENER;
-use crate::text::measurement::{Document, Paragraph, StrippedLine};
+use crate::text::measurement::{Document, Paragraph, ParagraphKind, StrippedLine};
 
+/// Plain openers with more measured chars than this fire TEXT004.
+///
+/// Tighter than TEXT001's paragraph limit so the lead stays scannable even
+/// when punctuation keeps the sentence count low. Bullet openers are exempt:
+/// a list opener should not hold only its first bullet to a tighter budget.
+const OPENER_CHAR_LIMIT: usize = 160;
 /// Openers with more sentences than this fire TEXT004.
 const OPENER_SENTENCE_LIMIT: usize = 2;
 
-/// TEXT004 diagnostics for `doc`: one Warning per opener paragraph with
-/// three or more sentences.
+/// TEXT004 diagnostics for `doc`: one Warning per opener paragraph that
+/// exceeds the sentence limit, or, when plain, the char limit.
 ///
 /// Openers:
 ///
@@ -28,11 +34,21 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
         }
 
         let sentences = sentence_count(&para.text);
-        if sentences > OPENER_SENTENCE_LIMIT {
-            let summary = format!(
-                "opener paragraph has {sentences} sentences; maximum is \
-                 {OPENER_SENTENCE_LIMIT}."
-            );
+        let over_sentences = sentences > OPENER_SENTENCE_LIMIT;
+        let over_chars = para.kind == ParagraphKind::Plain && para.size > OPENER_CHAR_LIMIT;
+        if over_sentences || over_chars {
+            let summary = if over_sentences {
+                format!(
+                    "opener paragraph has {sentences} sentences; maximum is \
+                     {OPENER_SENTENCE_LIMIT}."
+                )
+            } else {
+                format!(
+                    "opener paragraph is {} chars long; maximum is \
+                     {OPENER_CHAR_LIMIT}.",
+                    para.size
+                )
+            };
             diags.push(opener_diagnostic(para, &summary));
         }
     }
@@ -68,8 +84,9 @@ fn opener_diagnostic(para: &Paragraph, summary: &str) -> Diagnostic {
     let bullets = [
         "Keep the opener brief so readers can find the main point quickly.".to_string(),
         "Lead with the main point, ideally in one short sentence.".to_string(),
+        format!("Keep a plain opener to {OPENER_CHAR_LIMIT} measured chars or fewer."),
         "Move supporting details below the opener without losing necessary \
-         information."
+          information."
             .to_string(),
         "Use bullets for distinct facts, one fact per bullet.".to_string(),
         "Keep a connected explanation in a separate short paragraph.".to_string(),
@@ -300,6 +317,77 @@ mod tests {
         "};
         let diags = run_text_checks(&source, "rs");
         assert!(codes(&diags, CODE_HEADER_OPENER).is_empty());
+    }
+
+    // ── Char budget ──
+
+    // A one-sentence plain opener over the char limit warns with the char
+    // cause: sentence count alone would let a dense lead pass.
+    #[test]
+    fn text_checks_warn_on_oversized_one_sentence_opener() {
+        let source = formatdoc! {"
+            # Title
+
+            Loads the configured data from disk and parses it into the \
+            schema while resolving every relative path against the \
+            configured base directory for each caller in this process.
+        "};
+        let diags = run_text_checks(&source, "md");
+        let found = codes(&diags, CODE_HEADER_OPENER);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].line, 3);
+        assert!(found[0].message.starts_with("opener paragraph is 1"),);
+        assert!(found[0].message.contains("chars long; maximum is 160.\n"));
+    }
+
+    // A bullet opener is exempt from the char budget: only the sentence
+    // limit applies, so a list opener's first bullet is not singled out.
+    #[test]
+    fn text_checks_skip_char_budget_on_bullet_opener() {
+        let source = formatdoc! {"
+            # Title
+
+            - Loads the configured data from disk and parses it into the \
+            schema while resolving relative paths against the configured \
+            base directory for every caller
+        "};
+        let diags = run_text_checks(&source, "md");
+        assert!(codes(&diags, CODE_HEADER_OPENER).is_empty());
+    }
+
+    // A non-opener paragraph over the char limit stays silent: the budget
+    // shapes headers, not body prose (TEXT001 owns that).
+    #[test]
+    fn text_checks_skip_char_budget_on_non_opener_paragraph() {
+        let source = formatdoc! {"
+            # Title
+
+            Lead sentence.
+
+            Loads the configured data from disk and parses it into the \
+            schema while resolving relative paths against the configured \
+            base directory for every caller.
+        "};
+        let diags = run_text_checks(&source, "md");
+        assert!(codes(&diags, CODE_HEADER_OPENER).is_empty());
+    }
+
+    // A two-sentence opener over the char limit reports the char cause
+    // once, not both causes.
+    #[test]
+    fn text_checks_report_char_cause_once_on_two_sentence_opener() {
+        let source = formatdoc! {"
+            # Title
+
+            Loads the configured data from disk and parses it. It also \
+            resolves every relative path against the configured base \
+            directory for each caller in this whole process.
+        "};
+        let diags = run_text_checks(&source, "md");
+        let found = codes(&diags, CODE_HEADER_OPENER);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].message.contains("chars long; maximum is 160."));
+        assert!(!found[0].message.contains("sentences; maximum"));
     }
 
     // ── Diagnostic shape and message ──
