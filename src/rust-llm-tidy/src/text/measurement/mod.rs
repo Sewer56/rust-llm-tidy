@@ -266,7 +266,9 @@ fn measure_prose_line(
     let fence = fence_delimiter(trimmed);
     let in_code_block = open_fence.is_some() || fence.is_some() || indented;
     let exempt = if let Some(open) = open_fence.as_ref() {
-        if closes_fence(open, fence, trimmed) {
+        // An indented line is indented code, not a fence delimiter, so
+        // only an unindented delimiter can close the open fence.
+        if !indented && closes_fence(open, fence, trimmed) {
             *open_fence = None;
         }
         true
