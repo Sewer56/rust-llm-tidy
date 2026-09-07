@@ -16,6 +16,9 @@ pub(super) struct CommentRun {
 /// Unsupported grammars, parse failures, and syntax-error trees authorize no
 /// edits. Block comments, inline comments, and documentation literals are not
 /// rewrite boundaries. Marker or indentation changes start a separate run.
+///
+/// Runs are returned in ascending source order and never overlap; only
+/// touching ranges with the same prefix merge into one run.
 pub(super) fn comment_runs(source: &str, ext: &str, prefixes: &[&str]) -> Vec<CommentRun> {
     // Only a complete, error-free parse can authorize source edits.
     let Some(language) = backend_for(ext).and_then(|backend| backend.language().ok()) else {
