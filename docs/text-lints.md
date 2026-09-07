@@ -345,6 +345,20 @@ Preserve conditions and guarantees rather than comparing old and new behaviour.
 - Flags be-verbs followed by past participles, but allows state descriptions
   such as `is required` and `is deprecated`.
 - Flags phrases: `no longer`, `used to`, `in the past`.
+- Flags change references: `prior to this change`, `before this change`,
+  `after this change`, `with this change`, `this change`, `this patch`,
+  `this commit`, `this update`.
+- Flags history comparisons: `previous implementation`, `old implementation`,
+  `earlier versions`, `previous versions`.
+- Flags release history: `in earlier releases`, `in previous releases`,
+  `in prior releases`, `as of this release`, `as of this version`.
+- Flags implementation history: `earlier implementation`,
+  `prior implementation`, `original implementation`.
+- Flags behaviour history: `earlier behavior`, `previous behavior`,
+  `prior behavior`, `old behavior`, and their `behaviour` spelling variants.
+- Flags fix references: `before this fix`, `after this fix`, `with this fix`,
+  `this fix`.
+- Prefers longer phrases over their contained phrases in diagnostic summaries.
 - Flags words: `previously`, `now`, `formerly`, `historically`, `originally`,
   `recently`, `lately`, `currently`, `anymore`, and bare `was`.
 - Flags clause-initial `Before,`.

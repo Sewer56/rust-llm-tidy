@@ -36,6 +36,7 @@ const IRREGULAR_PARTICIPLES: &[&str] = &[
     "said", "sent", "set", "taught", "told",
 ];
 /// Word-bounded narration phrases checked before single-word markers.
+/// Longer phrases precede their contained phrases for more specific diagnostics.
 const NARRATION_MARKERS: &[NarrationMarker] = &[
     NarrationMarker {
         tokens: &["no", "longer"],
@@ -48,6 +49,134 @@ const NARRATION_MARKERS: &[NarrationMarker] = &[
     NarrationMarker {
         tokens: &["in", "the", "past"],
         display: "in the past",
+    },
+    NarrationMarker {
+        tokens: &["prior", "to", "this", "change"],
+        display: "prior to this change",
+    },
+    NarrationMarker {
+        tokens: &["before", "this", "change"],
+        display: "before this change",
+    },
+    NarrationMarker {
+        tokens: &["after", "this", "change"],
+        display: "after this change",
+    },
+    NarrationMarker {
+        tokens: &["with", "this", "change"],
+        display: "with this change",
+    },
+    NarrationMarker {
+        tokens: &["this", "change"],
+        display: "this change",
+    },
+    NarrationMarker {
+        tokens: &["this", "patch"],
+        display: "this patch",
+    },
+    NarrationMarker {
+        tokens: &["this", "commit"],
+        display: "this commit",
+    },
+    NarrationMarker {
+        tokens: &["this", "update"],
+        display: "this update",
+    },
+    NarrationMarker {
+        tokens: &["previous", "implementation"],
+        display: "previous implementation",
+    },
+    NarrationMarker {
+        tokens: &["old", "implementation"],
+        display: "old implementation",
+    },
+    NarrationMarker {
+        tokens: &["earlier", "versions"],
+        display: "earlier versions",
+    },
+    NarrationMarker {
+        tokens: &["previous", "versions"],
+        display: "previous versions",
+    },
+    NarrationMarker {
+        tokens: &["in", "earlier", "releases"],
+        display: "in earlier releases",
+    },
+    NarrationMarker {
+        tokens: &["in", "previous", "releases"],
+        display: "in previous releases",
+    },
+    NarrationMarker {
+        tokens: &["in", "prior", "releases"],
+        display: "in prior releases",
+    },
+    NarrationMarker {
+        tokens: &["earlier", "implementation"],
+        display: "earlier implementation",
+    },
+    NarrationMarker {
+        tokens: &["prior", "implementation"],
+        display: "prior implementation",
+    },
+    NarrationMarker {
+        tokens: &["original", "implementation"],
+        display: "original implementation",
+    },
+    NarrationMarker {
+        tokens: &["earlier", "behavior"],
+        display: "earlier behavior",
+    },
+    NarrationMarker {
+        tokens: &["previous", "behavior"],
+        display: "previous behavior",
+    },
+    NarrationMarker {
+        tokens: &["prior", "behavior"],
+        display: "prior behavior",
+    },
+    NarrationMarker {
+        tokens: &["old", "behavior"],
+        display: "old behavior",
+    },
+    NarrationMarker {
+        tokens: &["earlier", "behaviour"],
+        display: "earlier behaviour",
+    },
+    NarrationMarker {
+        tokens: &["previous", "behaviour"],
+        display: "previous behaviour",
+    },
+    NarrationMarker {
+        tokens: &["prior", "behaviour"],
+        display: "prior behaviour",
+    },
+    NarrationMarker {
+        tokens: &["old", "behaviour"],
+        display: "old behaviour",
+    },
+    NarrationMarker {
+        tokens: &["before", "this", "fix"],
+        display: "before this fix",
+    },
+    NarrationMarker {
+        tokens: &["after", "this", "fix"],
+        display: "after this fix",
+    },
+    NarrationMarker {
+        tokens: &["with", "this", "fix"],
+        display: "with this fix",
+    },
+    NarrationMarker {
+        tokens: &["this", "fix"],
+        display: "this fix",
+    },
+    NarrationMarker {
+        tokens: &["as", "of", "this", "release"],
+        display: "as of this release",
+    },
+    NarrationMarker {
+        tokens: &["as", "of", "this", "version"],
+        display: "as of this version",
     },
 ];
 /// Summary prefix carried by every narration-marker diagnostic; the
@@ -370,6 +499,94 @@ mod tests {
             ("The cache is now bounded.", "now"),
             ("The value was large.", "was"),
             (
+                "Prior to this change, input could panic.",
+                "prior to this change",
+            ),
+            ("Before this change, the cache grew.", "before this change"),
+            (
+                "After this change, names must be nonempty.",
+                "after this change",
+            ),
+            (
+                "With this change, callers receive an error.",
+                "with this change",
+            ),
+            ("This change adds validation.", "this change"),
+            ("This patch fixes error handling.", "this patch"),
+            ("This commit removes the fallback.", "this commit"),
+            ("This update introduces validation.", "this update"),
+            (
+                "The previous implementation copied input.",
+                "previous implementation",
+            ),
+            (
+                "Unlike the old implementation, this borrows input.",
+                "old implementation",
+            ),
+            ("Earlier versions accepted empty names.", "earlier versions"),
+            ("Previous versions ignored errors.", "previous versions"),
+            ("THIS PATCH fixes error handling.", "this patch"),
+            (
+                "In earlier releases, empty input could panic.",
+                "in earlier releases",
+            ),
+            (
+                "In previous releases, empty input could panic.",
+                "in previous releases",
+            ),
+            (
+                "In prior releases, empty input could panic.",
+                "in prior releases",
+            ),
+            (
+                "The earlier implementation copied input.",
+                "earlier implementation",
+            ),
+            (
+                "The prior implementation copied input.",
+                "prior implementation",
+            ),
+            (
+                "The original implementation copied input.",
+                "original implementation",
+            ),
+            ("This preserves the earlier behavior.", "earlier behavior"),
+            ("This preserves the previous behavior.", "previous behavior"),
+            ("This preserves the prior behavior.", "prior behavior"),
+            ("This preserves the old behavior.", "old behavior"),
+            ("This preserves the earlier behaviour.", "earlier behaviour"),
+            (
+                "This preserves the previous behaviour.",
+                "previous behaviour",
+            ),
+            ("This preserves the prior behaviour.", "prior behaviour"),
+            ("This preserves the old behaviour.", "old behaviour"),
+            (
+                "Before this fix, empty input could panic.",
+                "before this fix",
+            ),
+            (
+                "After this fix, empty input returns an error.",
+                "after this fix",
+            ),
+            (
+                "With this fix, empty input returns an error.",
+                "with this fix",
+            ),
+            ("This fix rejects empty input.", "this fix"),
+            (
+                "As of this release, names must be nonempty.",
+                "as of this release",
+            ),
+            (
+                "As of this version, names must be nonempty.",
+                "as of this version",
+            ),
+            (
+                "BEFORE THIS FIX, empty input could panic.",
+                "before this fix",
+            ),
+            (
                 "In the past, the cache grew without a bound.",
                 "in the past",
             ),
@@ -430,6 +647,23 @@ mod tests {
             "Reject timestamps in the future or past.",
             "Read the previous entry before validation.",
             "Return the most recent entry.",
+            "Retry until the queue is empty.",
+            "Return an error if the key already exists.",
+            "Return an error instead of panicking.",
+            "Accept no more than ten entries.",
+            "Reject any longer names.",
+            "This commitment lasts until shutdown.",
+            "This updater validates names.",
+            "This changes the buffer size.",
+            "This patchwork contains several regions.",
+            "This fixture contains empty names.",
+            "Read the snapshot as of this timestamp.",
+            "The flag tracks whether the state changed from idle to active.",
+            "The flag tracks whether the state changed to active.",
+            "This operation replaces the old value.",
+            "This operation replaces the previous entry.",
+            "Accept aliases for backward compatibility.",
+            "Accept aliases for backwards compatibility.",
         ] {
             let found = one_line(source);
 
