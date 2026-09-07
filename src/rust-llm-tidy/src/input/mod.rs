@@ -1,6 +1,12 @@
 //! Path resolution utilities: expanding directories, collecting files by
 //! extension, and resolving the effective input list (explicit paths or git
 //! diff).
+//!
+//! Discovery excludes license documents independently of configuration:
+//!
+//! - Names: `LICENSE`, `LICENCE`, or `COPYING`, ASCII case-insensitive
+//! - Suffix boundary: end of name, `.`, `-`, `_`, or space
+//! - Exception: recognized non-prose source extensions, including `license.rs`
 
 use anyhow::{Context, bail};
 use ignore::WalkBuilder;
@@ -80,6 +86,7 @@ pub(crate) fn collect_project_files(
         let path = entry.path();
         if entry.file_type().is_some_and(|ft| ft.is_file())
             && ext_in(path.extension().and_then(|e| e.to_str()), exts)
+            && !is_license_document(path)
         {
             out.push(path.to_path_buf());
         }
@@ -102,6 +109,30 @@ pub(crate) fn resolve_all(inputs: &[PathBuf], exts: &[&str]) -> anyhow::Result<V
     Ok(paths)
 }
 
+/// Identify conventional license filenames without hiding source implementations.
+pub(crate) fn is_license_document(path: &Path) -> bool {
+    use crate::languages::registry::{DEFAULT_EXTENSIONS, TextLints, profile_for};
+
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let conventional = ["LICENSE", "LICENCE", "COPYING"].iter().any(|prefix| {
+        name.get(..prefix.len())
+            .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
+            && name
+                .as_bytes()
+                .get(prefix.len())
+                .is_none_or(|next| matches!(next, b'.' | b'-' | b'_' | b' '))
+    });
+    if !conventional {
+        return false;
+    }
+
+    let extension = path.extension().and_then(|ext| ext.to_str());
+    !ext_in(extension, DEFAULT_EXTENSIONS)
+        || extension.is_some_and(|ext| matches!(profile_for(ext).text_lints, TextLints::Prose))
+}
+
 /// ASCII case-insensitive extension membership check.
 ///
 /// Returns `true` when `ext` (a path extension without the leading dot) matches
@@ -122,7 +153,7 @@ pub(crate) fn ext_in(ext: Option<&str>, exts: &[&str]) -> bool {
 /// for deterministic ordering.
 fn resolve_paths(path: &Path, exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
     if path.is_file() {
-        if ext_in(path.extension().and_then(|e| e.to_str()), exts) {
+        if ext_in(path.extension().and_then(|e| e.to_str()), exts) && !is_license_document(path) {
             return Ok(vec![path.to_path_buf()]);
         }
         return Ok(Vec::new());
@@ -149,6 +180,31 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
+
+    #[test]
+    fn license_documents_should_match_delimited_names_but_preserve_source_files() {
+        for (name, expected) in [
+            ("LICENSE", true),
+            ("licence", true),
+            ("COPYING", true),
+            ("nested/LiCeNsE.MD", true),
+            ("LICENSE-MIT.txt", true),
+            ("LICENCE_APACHE.markdown", true),
+            ("COPYING notice.text", true),
+            ("LICENSE.spdx", true),
+            ("license.rs", false),
+            ("LICENSE-MIT.RS", false),
+            ("licence.py", false),
+            ("COPYING.cs", false),
+            ("licenses.md", false),
+            ("licenced.md", false),
+            ("copyingcat.txt", false),
+            ("my-LICENSE.md", false),
+            ("LICENSE/guide.md", false),
+        ] {
+            assert_eq!(is_license_document(Path::new(name)), expected, "{name}");
+        }
+    }
 
     /// Deletes the temp dir on drop so a panicked test cannot leak it.
     struct TempDir(PathBuf);

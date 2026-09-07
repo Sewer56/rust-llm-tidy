@@ -7,6 +7,75 @@ use std::fs;
 // Construction and core behavior.
 
 #[test]
+fn run_should_preserve_license_documents_when_selecting_files_or_directories() {
+    let directory = tempfile::tempdir().unwrap();
+    let prose = "Read [guide](https://example.com).\n";
+    let source = "pub fn load() {}\n";
+    let licenses = [
+        "LICENSE",
+        "LiCeNsE.MD",
+        "LICENCE-MIT.txt",
+        "COPYING_notice.md",
+    ];
+    let controls = ["licenses.md", "copyingcat.txt", "guide.md"];
+    let mut inputs = Vec::new();
+    for name in licenses
+        .iter()
+        .chain(&controls)
+        .chain(["license.rs"].iter())
+    {
+        inputs.push(directory.path().join(name));
+    }
+
+    for explicit in [false, true] {
+        for path in &inputs {
+            fs::write(
+                path,
+                if path.ends_with("license.rs") {
+                    source
+                } else {
+                    prose
+                },
+            )
+            .unwrap();
+        }
+        let options = RunOptions {
+            paths: if explicit {
+                inputs.clone()
+            } else {
+                vec![directory.path().into()]
+            },
+            include: vec!["links".into(), "DOC001".into()],
+            apply: true,
+            ..RunOptions::default()
+        };
+
+        let report = run(&options, None).unwrap();
+
+        assert_eq!(report.files.len(), controls.len() + 1);
+        for name in licenses {
+            assert_eq!(
+                fs::read_to_string(directory.path().join(name)).unwrap(),
+                prose
+            );
+        }
+        for name in controls {
+            assert_ne!(
+                fs::read_to_string(directory.path().join(name)).unwrap(),
+                prose
+            );
+        }
+        let rust = report
+            .files
+            .iter()
+            .find(|file| file.path.ends_with("license.rs"))
+            .unwrap();
+        assert!(rust.processed);
+        assert_eq!(rust.diagnostics[0].code, "DOC001");
+    }
+}
+
+#[test]
 fn run_should_process_nothing_with_default_options() {
     let report = run(&RunOptions::default(), None).unwrap();
 

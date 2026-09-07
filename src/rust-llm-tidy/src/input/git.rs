@@ -42,7 +42,7 @@ pub fn changed_files(exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
     let mut paths = Vec::new();
     for line in changed_lines(&root)? {
         let p = root.join(line);
-        if matches_ext(&p, exts) && p.is_file() {
+        if matches_ext(&p, exts) && !super::is_license_document(&p) && p.is_file() {
             paths.push(p);
         }
     }

@@ -77,6 +77,11 @@ impl FileReport {
 ///   lookup fails
 /// - Project discovery failure: a C# project source directory cannot be
 ///   traversed
+///
+/// # Remarks
+///
+/// License documents are excluded for all path selections, even without a
+/// configuration; see [`crate::input`] for filename matching.
 pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Result<RunReport> {
     validate_selection(&options.include, &options.exclude, &options.extensions)?;
 

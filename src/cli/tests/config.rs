@@ -123,6 +123,42 @@ fn check_excludes_doc001_rule() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn cli_should_preserve_license_prose_when_no_configuration_exists() {
+    let dir = temp_dir();
+    fs::create_dir_all(dir.join(".git")).unwrap();
+    let license = dir.join("LICENSE-MIT.md");
+    let guide = dir.join("licenses.md");
+    let source = "Read [guide](https://example.com).\n";
+
+    for explicit in [false, true] {
+        fs::write(&license, source).unwrap();
+        fs::write(&guide, source).unwrap();
+        let paths = if explicit {
+            vec![&license, &guide]
+        } else {
+            vec![&dir]
+        };
+
+        let output = Command::new(binary())
+            .current_dir(&dir)
+            .args(["--include", "links"])
+            .args(paths)
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(fs::read_to_string(&license).unwrap(), source);
+        assert_ne!(fs::read_to_string(&guide).unwrap(), source);
+    }
+
+    fs::remove_dir_all(dir).unwrap();
+}
+
 // ── flag exclusivity ──
 
 /// `--config` and `--no-config` are mutually exclusive; supplying both
