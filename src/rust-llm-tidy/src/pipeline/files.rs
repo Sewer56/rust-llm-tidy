@@ -13,6 +13,7 @@ use crate::rules::transform::visibility::rust::{
 use crate::source::preservation as safety;
 use anyhow::Context;
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -36,6 +37,8 @@ pub(crate) struct VisContext {
 ///
 /// - `path`: source file to check
 /// - `disabled`: diagnostic codes to suppress
+/// - `suppress_in_release_notes`: suppress TEXT007 narration markers in
+///   release and migration notes
 /// - `index`: refreshed C# facts and cached parses for this run
 ///
 /// # Errors
@@ -43,6 +46,7 @@ pub(crate) struct VisContext {
 pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
+    suppress_in_release_notes: bool,
     index: Option<&csharp_index::CSharpIndex>,
 ) -> anyhow::Result<Vec<(PathBuf, crate::reporting::Diagnostic)>> {
     let source =
@@ -77,7 +81,7 @@ pub(crate) fn check_file(
     }
     diagnostics.retain(|d| !disabled.contains(d.code));
 
-    if is_release_or_migration_note(path) {
+    if suppress_in_release_notes && is_release_or_migration_note(path) {
         diagnostics.retain(|d| !check::is_narration_marker(d));
     }
 
@@ -346,12 +350,16 @@ pub(crate) fn vis_file(
 /// `MIGRATION*` basename at any depth, or any path under a `releases`
 /// directory.
 ///
-/// Narration-marker TEXT007 findings are suppressed there; passive
-/// findings in the same files still fire.
+/// Matching is case-insensitive and independent of the config directory.
 fn is_release_or_migration_note(path: &Path) -> bool {
-    let named = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .is_some_and(|n| n.starts_with("CHANGELOG") || n.starts_with("MIGRATION"));
-    named || path.components().any(|c| c.as_os_str() == "releases")
+    fn lower(s: &OsStr) -> String {
+        s.to_string_lossy().to_lowercase()
+    }
+
+    let file = path.file_name().map(lower);
+    let named = file.is_some_and(|n| n.starts_with("changelog") || n.starts_with("migration"));
+    named
+        || path
+            .components()
+            .any(|c| lower(c.as_os_str()) == "releases")
 }

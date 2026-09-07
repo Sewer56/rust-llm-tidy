@@ -54,11 +54,13 @@ pub struct CompiledConfig {
     /// Additions from the `extra_extensions:` key, allowed on top of the
     /// effective base list.
     extra_extensions: Vec<String>,
+    /// Whether release-note paths suppress TEXT007 narration markers.
+    suppress_in_release_notes: bool,
 }
 
 /// Raw serde view of `.rust-llm-tidy.yml`. Paths/globs are relative to the
 /// config file's directory.
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)] // Reject hallucinated config keys at parse time.
 pub struct Config {
     /// Whitelist: for matched paths, run ONLY these rules.
@@ -88,6 +90,14 @@ pub struct Config {
     /// (`extensions` when non-empty, else the defaults).
     #[serde(default)]
     pub extra_extensions: Vec<String>,
+    /// Suppress TEXT007 narration markers in release and migration notes.
+    ///
+    /// - Default: `true`
+    /// - Paths: `CHANGELOG*` or `MIGRATION*` basenames at any depth, or files
+    ///   under a `releases` directory (case-insensitive)
+    /// - Passive-voice findings: unaffected
+    #[serde(default = "default_true")]
+    pub suppress_in_release_notes: bool,
 }
 
 /// Runtime policy for a single file: whether to skip it entirely, which ops are
@@ -158,6 +168,11 @@ pub struct RuleGroup {
 }
 
 impl CompiledConfig {
+    /// Whether to apply [`Config::suppress_in_release_notes`].
+    pub(crate) fn suppress_in_release_notes(&self) -> bool {
+        self.suppress_in_release_notes
+    }
+
     /// Borrow the post-processing steps so the pipeline can run them after the
     /// per-file loop.
     pub fn post_process_steps(&self) -> &[PostProcessStep] {
@@ -237,6 +252,21 @@ impl CompiledConfig {
             policy.enabled = None;
         }
         policy
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            include: Vec::new(),
+            exclude: Vec::new(),
+            exclude_files: Vec::new(),
+            post_process: Vec::new(),
+            links: None,
+            extensions: Vec::new(),
+            extra_extensions: Vec::new(),
+            suppress_in_release_notes: default_true(),
+        }
     }
 }
 
@@ -434,6 +464,7 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         links: config.links,
         extensions: config.extensions,
         extra_extensions: config.extra_extensions,
+        suppress_in_release_notes: config.suppress_in_release_notes,
     })
 }
 
@@ -487,6 +518,10 @@ fn compile_glob_set(patterns: &[String], _config_dir: &Path) -> anyhow::Result<G
 /// (always hoist).
 fn default_one() -> usize {
     1
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[cfg(test)]
@@ -668,6 +703,16 @@ mod tests {
         for op in ["tables", "fences", "links", "reorder", "vis", "lints"] {
             assert!(rules.contains(&op), "missing fix/operation {op}");
         }
+    }
+
+    /// Rust construction and YAML defaults both preserve narration suppression.
+    #[test]
+    fn suppression_should_default_to_enabled() {
+        let config = Config::default();
+        let compiled = compile("{}\n", &[]);
+
+        assert!(config.suppress_in_release_notes);
+        assert!(compiled.suppress_in_release_notes());
     }
 
     // ── links.min_occurrences + links.by_extension ──

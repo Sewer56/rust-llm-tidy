@@ -342,8 +342,9 @@ Say what the code does, directly:
 - Flags `no longer`, `previously`, `used to`, `now`, bare `was`, and
   clause-initial `Before,`. Allows temporal uses such as `before validation`.
 - May flag harmless phrases such as `previously refuted findings`.
-- Allows past-behaviour wording in `CHANGELOG*`, `MIGRATION*`, and
-  `releases/**`, but still checks passive voice.
+- By default, allows past-behaviour wording in `CHANGELOG*` or `MIGRATION*`
+  basenames at any depth and files under a `releases` directory.
+  Matching is case-insensitive; passive voice still warns.
 
 Before:
 
@@ -358,6 +359,22 @@ After:
 /// The scanner returns errors.
 pub fn scan() {}
 ```
+
+### Release-note suppression
+
+Set this top-level boolean in `.rust-llm-tidy.yml` to report narration
+markers in release and migration notes too:
+
+```yaml
+suppress_in_release_notes: false
+```
+
+- Omitted or `true`: keep narration-marker suppression in those paths
+- `false`: report narration markers there, just as in ordinary files
+- Passive-voice checks and rule inclusion/exclusion: unchanged
+
+This setting has no CLI flag. File processing applies it; pathless text
+checks do not apply release-note suppression.
 
 ### TEXT007 CLI output
 

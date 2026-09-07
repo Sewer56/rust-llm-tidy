@@ -1163,6 +1163,31 @@ fn validate_ok_on_valid_config() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Non-boolean suppression values fail config validation.
+#[test]
+fn validation_should_reject_suppression_when_value_is_not_boolean() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+
+    for value in ["\"false\"", "0", "[]", "null"] {
+        fs::write(&cfg, format!("suppress_in_release_notes: {value}\n")).unwrap();
+
+        let output = Command::new(binary())
+            .arg("--config")
+            .arg(&cfg)
+            .arg("--validate")
+            .output()
+            .unwrap();
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success(), "{value}: {stderr}");
+        assert!(stderr.contains("failed to parse YAML config"), "{stderr}");
+    }
+
+    fs::remove_dir_all(dir).unwrap();
+}
+
 // -- Helpers (mirrors fix.rs) -----------------------------------
 
 /// Create a numbered temporary directory.

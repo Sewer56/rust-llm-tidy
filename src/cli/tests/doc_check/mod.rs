@@ -884,33 +884,6 @@ fn md_text007_marker_and_passive_fire_in_ordinary_file() {
     );
 }
 
-/// In release and migration notes, the narration-marker line yields no
-/// TEXT007 diagnostic while the passive line still warns.
-///
-/// Release notes are `CHANGELOG*` or `MIGRATION*` basenames, or any file
-/// under a `releases/` directory.
-#[test]
-fn md_text007_marker_suppressed_in_release_notes() {
-    for rel in ["CHANGELOG.md", "MIGRATION.md", "releases/notes.md"] {
-        let path = temp_named_file(rel, &text007_marker_and_passive_md());
-        let output = run_command(&["--include", "lints"], &path);
-
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            output.status.success(),
-            "TEXT007 warnings in {rel} must not fail the run: {stderr}"
-        );
-        assert!(
-            !stderr.contains(":1: warning[TEXT007]"),
-            "the narration marker in {rel} must stay silent:\n{stderr}"
-        );
-        assert!(
-            stderr.contains(":2: warning[TEXT007]"),
-            "the passive construction in {rel} must still warn:\n{stderr}"
-        );
-    }
-}
-
 /// A three-sentence markdown heading opener warns with TEXT004 at the
 /// paragraph's first line.
 ///
@@ -938,6 +911,60 @@ fn md_three_sentence_heading_opener_warns_text004_without_failing() {
         1,
         "exactly the three-sentence opener, never the one-sentence one:\n{stderr}"
     );
+}
+
+/// Config controls narration suppression without hiding passive warnings.
+#[test]
+fn narration_should_follow_suppression_setting_when_checking_note_paths() {
+    for (yaml, suppress) in [
+        (None, true),
+        (Some("{}\n"), true),
+        (Some("suppress_in_release_notes: true\n"), true),
+        (Some("suppress_in_release_notes: false\n"), false),
+    ] {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(".git"), "").unwrap();
+        if let Some(yaml) = yaml {
+            fs::write(dir.join(".rust-llm-tidy.yml"), yaml).unwrap();
+        }
+
+        for (rel, is_note) in [
+            ("CHANGELOG.md", true),
+            ("MIGRATION.md", true),
+            ("releases/notes.md", true),
+            // Case variants match the same release-note paths.
+            ("ChangeLog.md", true),
+            ("migrationNotes.txt", true),
+            ("RELEASES/notes.md", true),
+            ("notes.md", false),
+        ] {
+            let path = dir.join(rel);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, text007_marker_and_passive_md()).unwrap();
+
+            let output = Command::new(binary())
+                .current_dir(&dir)
+                .args(["--include", "TEXT007"])
+                .arg(&path)
+                .output()
+                .unwrap();
+
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(output.status.success(), "{rel}, {yaml:?}: {stderr}");
+            assert_eq!(
+                stderr.contains(":1: warning[TEXT007]"),
+                !(suppress && is_note),
+                "narration in {rel}, {yaml:?}: {stderr}"
+            );
+            assert!(
+                stderr.contains(":2: warning[TEXT007]"),
+                "passive voice in {rel}, {yaml:?}: {stderr}"
+            );
+        }
+
+        fs::remove_dir_all(dir).unwrap();
+    }
 }
 
 /// Python docstring prose fires the text budgets with original file lines.

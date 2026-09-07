@@ -151,6 +151,9 @@ error). Omitting `paths` in an `include` or `exclude` group implies `["**"]`
 
 Also:
 
+- `suppress_in_release_notes` - boolean, default `true`. Set `false` to
+  report TEXT007 narration markers in release and migration notes too.
+  Passive-voice checks still run. See [docs/text-lints.md].
 - `extensions` - replaces the default allowed extensions when non-empty;
   empty or absent keeps the defaults.
 - `extra_extensions` - added on top of the effective list (`extensions`

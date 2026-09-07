@@ -442,7 +442,9 @@ fn process_one(
                 .collect(),
             _ => disabled.clone(),
         };
-        match files::check_file(path, &lint_disabled, index) {
+        let suppress_in_release_notes =
+            config.is_none_or(CompiledConfig::suppress_in_release_notes);
+        match files::check_file(path, &lint_disabled, suppress_in_release_notes, index) {
             Ok(found) => out
                 .diagnostics
                 .extend(found.into_iter().map(|(_, diagnostic)| diagnostic)),
