@@ -6,7 +6,6 @@ use crate::languages::registry as langs;
 use crate::project::csharp as csharp_index;
 use crate::reporting::change as changes;
 use crate::rules::lint as check;
-use crate::rules::lint::rust::mod001_module_size;
 use crate::rules::transform::visibility::rust::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
     discover_crate_root, narrow_vis_in_tree,
@@ -34,15 +33,15 @@ pub(crate) struct VisContext {
 /// plaintext lines to stderr (default output) or project them to JSON.
 ///
 /// The profile decides which passes run: parser-driven checks need a
-/// registered backend; text lints source TEXT* per tier.
+/// registered backend; text lints source TEXT* per tier. MOD001 counts whole
+/// eligible non-Rust files without requiring a parser.
 ///
 /// - `path`: source file to check
 /// - `disabled`: diagnostic codes to suppress
 /// - `suppress_in_release_notes`: the resolved
 ///   `passive_narration.suppress_in_release_notes` setting; suppresses
 ///   TEXT007 narration markers in release and migration notes
-/// - `module_size_max_lines`: the resolved `module_size.max_lines` budget
-///   for MOD001; 500 when unconfigured
+/// - `module_size`: resolved MOD001 eligibility and counting options
 /// - `index`: refreshed C# facts and cached parses for this run
 ///
 /// # Errors
@@ -51,7 +50,7 @@ pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
     suppress_in_release_notes: bool,
-    module_size_max_lines: usize,
+    module_size: crate::config::ModuleSizeConfig,
     index: Option<&csharp_index::CSharpIndex>,
 ) -> anyhow::Result<Vec<(PathBuf, crate::reporting::Diagnostic)>> {
     let source =
@@ -78,14 +77,29 @@ pub(crate) fn check_file(
         };
         // MOD001 is file-level: it needs the path and the threshold, which
         // never reach `LanguageBackend::lint`, so it runs at this seam.
-        if paths::ext_in(Some(ext), &["rs"]) && !disabled.contains(check::CODE_MODULE_SIZE) {
-            diagnostics.extend(mod001_module_size::check(
+        if profile.module_size == langs::ModuleSize::RustNonTest
+            && !disabled.contains(check::CODE_MODULE_SIZE)
+        {
+            diagnostics.extend(check::rust::mod001_module_size::check_with_options(
                 parsed,
                 path,
-                module_size_max_lines,
+                module_size.max_lines,
+                module_size.include_in_file_tests,
+                module_size.include_test_files,
             ));
         }
     }
+
+    if (profile.module_size == langs::ModuleSize::WholeFile
+        || (profile.module_size == langs::ModuleSize::NonCode && module_size.include_non_code))
+        && !disabled.contains(check::CODE_MODULE_SIZE)
+    {
+        diagnostics.extend(check::mod001_module_size::check(
+            &source,
+            module_size.max_lines,
+        ));
+    }
+
     match profile.text_lints {
         langs::TextLints::Prose => diagnostics.extend(check::run_text_checks(&source, ext)),
         langs::TextLints::Lexicon => {

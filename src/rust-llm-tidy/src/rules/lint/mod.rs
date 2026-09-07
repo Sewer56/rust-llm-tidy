@@ -1,4 +1,4 @@
-//! Run documentation checks over language facts and measured text.
+//! Run documentation and file-size checks over language facts and source text.
 
 use crate::reporting::Diagnostic;
 pub use crate::rules::registry::*;
@@ -6,6 +6,7 @@ pub use crate::text::measurement::{Dialect, DocRegion, RegionLine, line_marker_r
 pub(crate) use text::is_narration_marker;
 
 pub(crate) mod csharp;
+pub(crate) mod mod001_module_size;
 pub(crate) mod rust;
 pub(crate) mod text;
 

@@ -1,24 +1,24 @@
 //! `MOD001` - oversized module.
 //!
-//! [`check`] fires once per `.rs` file whose lines outside top-level
-//! `#[cfg(test)]` mod regions exceed the configured budget. Files under a
-//! `tests/` directory never fire ([`is_tests_path`]).
+//! [`check_with_options`] excludes top-level `#[cfg(test)]` mod regions unless
+//! `include_in_file_tests` is enabled. Files under a `tests/` directory are
+//! skipped unless `include_test_files` is enabled ([`is_tests_path`]).
 //!
 //! The rule is file-level, not item-level: it consumes the whole
 //! [`ParseResult`] plus the file's path and the per-run threshold. The
 //! pipeline therefore invokes it from `check_file` instead of the per-item
 //! `run_all` composition.
 
-use crate::reporting::{Diagnostic, Severity};
-use crate::rules::lint::CODE_MODULE_SIZE;
+use crate::reporting::Diagnostic;
+use crate::rules::lint::mod001_module_size::diagnostic;
 use crate::source::ParseResult;
 use std::path::Path;
 
-/// `MOD001` - warn when a module outgrows the non-test line budget.
+/// Warn when a Rust file exceeds its configured line budget.
 ///
 /// Counts every physical line of `parsed.source` (blank lines included),
-/// then subtracts every top-level `#[cfg(test)]`-gated `mod` item span,
-/// attributes through closing brace.
+/// then, unless `include_in_file_tests` is enabled, subtracts every top-level
+/// `#[cfg(test)]`-gated `mod` item span, attributes through closing brace.
 ///
 /// A line that shares a test-module span with production code still
 /// counts.
@@ -29,18 +29,32 @@ use std::path::Path;
 /// A `#[cfg(test)]` attribute on a non-`mod` item is not a module region;
 /// its lines count.
 ///
-/// The finding reports at the first line past the budget. It never fires
-/// for `path` under a `tests/` directory ([`is_tests_path`]).
+/// The finding reports at the first line past the budget. Files under a `tests/`
+/// directory are exempt unless `include_test_files` is enabled ([`is_tests_path`]).
 ///
 /// # Arguments
 ///
 /// - `parsed`: the file's parse facts; `source`, item spans, and item
 ///   start lines drive the count.
-/// - `path`: the file's path; a `tests` directory component skips the rule.
+/// - `path`: the file's path, checked for an exact `tests` directory component.
 /// - `max_lines`: the resolved `module_size.max_lines` budget.
-pub(crate) fn check(parsed: &ParseResult, path: &Path, max_lines: usize) -> Option<Diagnostic> {
-    if is_tests_path(path) {
+/// - `include_in_file_tests`: count the whole file instead of subtracting test
+///   regions; the message omits exclusions.
+/// - `include_test_files`: check Rust files under `tests/` using the same budget
+///   and inline-test policy as other Rust files.
+pub(crate) fn check_with_options(
+    parsed: &ParseResult,
+    path: &Path,
+    max_lines: usize,
+    include_in_file_tests: bool,
+    include_test_files: bool,
+) -> Option<Diagnostic> {
+    if !include_test_files && is_tests_path(path) {
         return None;
+    }
+
+    if include_in_file_tests {
+        return crate::rules::lint::mod001_module_size::check(&parsed.source, max_lines);
     }
 
     let test_spans: Vec<(usize, usize)> = parsed
@@ -63,18 +77,13 @@ pub(crate) fn check(parsed: &ParseResult, path: &Path, max_lines: usize) -> Opti
         max_lines,
     );
 
-    (non_test_lines > max_lines).then(|| Diagnostic {
-        severity: Severity::Warning,
-        code: CODE_MODULE_SIZE,
-        message: format!(
-            "module has {non_test_lines} lines outside `#[cfg(test)]` mod regions, \
-             over the {max_lines}-line budget (module_size.max_lines); move new code \
-             that is a separate thing to its own file, and plan new files as several \
-             modules up front rather than one growing module"
-        ),
-        line: crossing_line.unwrap_or(1),
-        item_kind: "file".to_string(),
-        item_name: None,
+    (non_test_lines > max_lines).then(|| {
+        diagnostic(
+            non_test_lines,
+            crossing_line.unwrap_or(1),
+            max_lines,
+            " outside `#[cfg(test)]` mod regions",
+        )
     })
 }
 
@@ -138,8 +147,7 @@ fn count_lines_outside_spans(
 /// Whether `path` has a `tests` directory component (e.g.
 /// `tests/integration.rs`, `src/cli/tests/config.rs`).
 ///
-/// Such files never fire MOD001 but stay open to every other code. A file
-/// named `tests.rs` is not a directory component and does not match.
+/// A file named `tests.rs` is not a directory component and does not match.
 fn is_tests_path(path: &Path) -> bool {
     path.components()
         .any(|component| component.as_os_str() == std::ffi::OsStr::new("tests"))
@@ -148,7 +156,14 @@ fn is_tests_path(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::reporting::Severity;
+    use crate::rules::lint::CODE_MODULE_SIZE;
     use rstest::rstest;
+
+    /// Exercise the default test-excluding policy in existing Rust cases.
+    fn check(parsed: &ParseResult, path: &Path, max_lines: usize) -> Option<Diagnostic> {
+        check_with_options(parsed, path, max_lines, false, false)
+    }
 
     /// Parse `source` with the Rust backend's parser.
     fn parse(source: &str) -> ParseResult {
@@ -178,9 +193,11 @@ mod tests {
         assert_eq!(diagnostic.item_kind, "file");
         assert!(diagnostic.item_name.is_none());
         assert!(
-            diagnostic.message.contains("separate thing")
-                && diagnostic.message.contains("up front"),
-            "the message must carry both guidance clauses: {}",
+            diagnostic.message.starts_with(
+                "file has 3 lines outside `#[cfg(test)]` mod regions, \
+                 over the 2-line budget (module_size.max_lines).\n"
+            ),
+            "the Rust warning must explain the test exclusion: {}",
             diagnostic.message
         );
     }

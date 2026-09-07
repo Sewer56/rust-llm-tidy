@@ -28,11 +28,14 @@
 #     by_extension: { rs: 2 }   # per-extension override; unknown keys are inert.
 # Effective threshold: by_extension[ext] else min_occurrences else 1.
 #
-# The `module_size` key sets the MOD001 warning threshold: a `.rs` file whose
-# lines outside `#[cfg(test)]` mod regions exceed `max_lines` warns; files
-# under a `tests/` directory never warn.
+# MOD001 checks code files by default. Options do not broaden file discovery.
 #   module_size:
-#     max_lines: 500            # non-test line budget per `.rs` file; >= 1.
+#     max_lines: 500            # counted line budget per file; >= 1.
+#     include_non_code: false  # also check selected config, data, and prose files
+#     include_in_file_tests: false # count Rust's #[cfg(test)] mod regions
+#     include_test_files: false # include Rust files under tests/ directories
+# Other languages always count inline tests and test files.
+# Unsupported extensions remain exempt even with include_non_code enabled.
 # Effective threshold: max_lines else 500.
 
 links:

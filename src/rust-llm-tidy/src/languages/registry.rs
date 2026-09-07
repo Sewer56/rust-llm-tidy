@@ -12,6 +12,7 @@
 //! - `default_ops`: ops that run when no include list narrows the run
 //! - `backend`: whether an AST parser is registered for the extension
 //! - `text_lints`: how the TEXT* text checks are sourced
+//! - `module_size`: which MOD001 line-count policy applies
 //!
 //! # Tiers
 //!
@@ -24,10 +25,10 @@
 //! - Python (`py`, `pyi`): `tables`, `fences`, and `lints` by default,
 //!   with `#` prefixes. Its text checks use the backend's docstring and
 //!   comment regions.
-//! - Backendless code and configuration languages: comment `lints` only;
-//!   transformations require parser-verified comment runs
+//! - Backendless code languages: comment and size `lints`
+//! - Configuration and document sources: comment `lints`; size is opt-in
 //! - Unmapped extensions: no ops, even when explicitly selected
-//! - Data formats (`ini`, `json`): no ops; never in
+//! - Data formats (`ini`, `json`): only MOD001 with `include_non_code`; never in
 //!   [`DEFAULT_EXTENSIONS`]
 //!
 //! `reorder` and the parser-driven `lints` checks require `backend` in
@@ -88,16 +89,17 @@ use anyhow::bail;
 use core::cmp::Ordering;
 use std::collections::HashSet;
 
-/// Data formats: no ops.
+/// Data formats: only the explicit non-code MOD001 opt-in can lint them.
 const DATA: Profile = Profile {
     ops: &[],
     prefixes: &[],
     default_ops: &[],
     backend: false,
     text_lints: TextLints::None,
+    module_size: ModuleSize::NonCode,
 };
 /// Data formats excluded by default, sorted; they resolve to the
-/// no-op [`DATA`] profile and never appear in [`DEFAULT_EXTENSIONS`].
+/// [`DATA`] profile and never appear in [`DEFAULT_EXTENSIONS`].
 const DATA_EXTENSIONS: &[&str] = &["ini", "json"];
 /// Extensions allowed by default: every language-table extension, sorted.
 ///
@@ -119,6 +121,7 @@ const UNMAPPED: Profile = Profile {
     default_ops: &[],
     backend: false,
     text_lints: TextLints::None,
+    module_size: ModuleSize::None,
 };
 /// Extension-to-profile table, sorted by extension (ASCII) so binary search
 /// applies. The sortedness test guards this invariant.
@@ -126,15 +129,15 @@ const LANG_ENTRIES: &[(&str, Profile)] = &[
     ("ada", COMMENT_LINTS),
     ("applescript", COMMENT_LINTS),
     ("bash", COMMENT_LINTS),
-    ("bst", COMMENT_LINTS),
+    ("bst", NON_CODE_COMMENTS),
     ("bzl", COMMENT_LINTS),
     ("c", COMMENT_LINTS),
     ("cc", COMMENT_LINTS),
     ("clj", COMMENT_LINTS),
     ("cljc", COMMENT_LINTS),
-    ("cls", COMMENT_LINTS),
+    ("cls", NON_CODE_COMMENTS),
     ("cmake", COMMENT_LINTS),
-    ("conf", COMMENT_LINTS),
+    ("conf", NON_CODE_COMMENTS),
     ("cpp", COMMENT_LINTS),
     ("cs", C_SHARP),
     ("dart", COMMENT_LINTS),
@@ -153,13 +156,13 @@ const LANG_ENTRIES: &[(&str, Profile)] = &[
     ("java", COMMENT_LINTS),
     ("jl", COMMENT_LINTS),
     ("js", COMMENT_LINTS),
-    ("json5", COMMENT_LINTS),
-    ("jsonc", COMMENT_LINTS),
+    ("json5", NON_CODE_COMMENTS),
+    ("jsonc", NON_CODE_COMMENTS),
     ("ksh", COMMENT_LINTS),
     ("kt", COMMENT_LINTS),
     ("less", COMMENT_LINTS),
     ("lisp", COMMENT_LINTS),
-    ("ltx", COMMENT_LINTS),
+    ("ltx", NON_CODE_COMMENTS),
     ("lua", COMMENT_LINTS),
     ("m", COMMENT_LINTS),
     ("markdown", MARKDOWN),
@@ -171,7 +174,7 @@ const LANG_ENTRIES: &[(&str, Profile)] = &[
     ("pl", COMMENT_LINTS),
     ("proto", COMMENT_LINTS),
     ("ps1", COMMENT_LINTS),
-    ("psd1", COMMENT_LINTS),
+    ("psd1", NON_CODE_COMMENTS),
     ("psm1", COMMENT_LINTS),
     ("purs", COMMENT_LINTS),
     ("py", PYTHON),
@@ -185,31 +188,23 @@ const LANG_ENTRIES: &[(&str, Profile)] = &[
     ("sh", COMMENT_LINTS),
     ("sol", COMMENT_LINTS),
     ("sql", COMMENT_LINTS),
-    ("sty", COMMENT_LINTS),
+    ("sty", NON_CODE_COMMENTS),
     ("sv", COMMENT_LINTS),
     ("swift", COMMENT_LINTS),
-    ("tex", COMMENT_LINTS),
+    ("tex", NON_CODE_COMMENTS),
     ("text", MARKDOWN),
     ("thrift", COMMENT_LINTS),
-    ("toml", COMMENT_LINTS),
+    ("toml", NON_CODE_COMMENTS),
     ("ts", COMMENT_LINTS),
     ("tsx", COMMENT_LINTS),
     ("txt", MARKDOWN),
     ("v", COMMENT_LINTS),
     ("vhd", COMMENT_LINTS),
-    ("yaml", COMMENT_LINTS),
-    ("yml", COMMENT_LINTS),
+    ("yaml", NON_CODE_COMMENTS),
+    ("yml", NON_CODE_COMMENTS),
     ("zig", COMMENT_LINTS),
     ("zsh", COMMENT_LINTS),
 ];
-/// Backendless languages: lint comments using the TEXT scanner's own lexicon.
-const COMMENT_LINTS: Profile = Profile {
-    ops: &["lints"],
-    prefixes: &[],
-    default_ops: &["lints"],
-    backend: false,
-    text_lints: TextLints::Lexicon,
-};
 /// C#: tables plus the backend-gated AST ops; no links - appended
 /// `[text]: url` definitions are invalid C#.
 const C_SHARP: Profile = Profile {
@@ -218,6 +213,7 @@ const C_SHARP: Profile = Profile {
     default_ops: &["tables", "fences", "reorder", "lints"],
     backend: true,
     text_lints: TextLints::Ast,
+    module_size: ModuleSize::WholeFile,
 };
 /// Markdown family: every text op plus text-based lints; no comment
 /// prefixes, so tables, fences, and links treat the file as plain markdown.
@@ -227,6 +223,12 @@ const MARKDOWN: Profile = Profile {
     default_ops: &["tables", "fences", "links", "lints"],
     backend: false,
     text_lints: TextLints::Prose,
+    module_size: ModuleSize::NonCode,
+};
+/// Static configuration and document sources retain comment lints.
+const NON_CODE_COMMENTS: Profile = Profile {
+    module_size: ModuleSize::NonCode,
+    ..COMMENT_LINTS
 };
 /// Python: `#` comments for the fix passes plus the tree-sitter-python
 /// backend's docstring-dialect text checks (docstrings and `#`
@@ -237,6 +239,7 @@ const PYTHON: Profile = Profile {
     default_ops: &["tables", "fences", "lints"],
     backend: true,
     text_lints: TextLints::Ast,
+    module_size: ModuleSize::WholeFile,
 };
 /// Rust: every op, with the `///`/`//!` doc markers longest first.
 const RUST: Profile = Profile {
@@ -245,6 +248,16 @@ const RUST: Profile = Profile {
     default_ops: &["tables", "fences", "links", "reorder", "vis", "lints"],
     backend: true,
     text_lints: TextLints::Ast,
+    module_size: ModuleSize::RustNonTest,
+};
+/// Backendless languages: lint comment prose and whole-file size.
+const COMMENT_LINTS: Profile = Profile {
+    ops: &["lints"],
+    prefixes: &[],
+    default_ops: &["lints"],
+    backend: false,
+    text_lints: TextLints::Lexicon,
+    module_size: ModuleSize::WholeFile,
 };
 
 /// One extension's profile data: the ops it may run and the comment
@@ -274,6 +287,21 @@ pub(crate) struct Profile {
     pub backend: bool,
     /// How the TEXT* text checks are sourced for this profile.
     pub text_lints: TextLints,
+    /// File-size counting policy, independent of text-lint or parser support.
+    pub module_size: ModuleSize,
+}
+
+/// Lines eligible for the MOD001 budget in one language profile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ModuleSize {
+    /// Unsupported extensions do not measure, even with the non-code opt-in.
+    None,
+    /// Supported configuration, data, or prose; measure only with the opt-in.
+    NonCode,
+    /// Count every physical line, including test files and inline tests.
+    WholeFile,
+    /// Exclude Rust test-module regions and files under `tests/` directories.
+    RustNonTest,
 }
 
 /// How a profile's TEXT* text checks are sourced.
@@ -365,9 +393,8 @@ pub(crate) fn allowed_extensions<'a>(
 /// The profile governing `ext`, ASCII case-insensitively (`.MD` resolves like
 /// `.md`).
 ///
-/// Extensions outside the language table resolve to the no-op
-/// [`UNMAPPED`] profile, except the data formats, which resolve to the
-/// no-op [`DATA`] profile.
+/// Unknown extensions resolve to [`UNMAPPED`]. Supported data formats resolve
+/// to [`DATA`], which permits MOD001 only with the non-code opt-in.
 ///
 /// # Arguments
 ///

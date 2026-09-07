@@ -1,7 +1,7 @@
 //! Coordinate file transformations, project facts and linting without terminal
 //! output.
 
-use crate::config::{CompiledConfig, DEFAULT_MODULE_SIZE_MAX_LINES, PostProcessStep};
+use crate::config::{CompiledConfig, ModuleSizeConfig, PostProcessStep};
 use crate::input as paths;
 use crate::reporting::{FileReport, PostProcessFailure, RunReport};
 use crate::rules::registry as check;
@@ -432,16 +432,23 @@ fn process_one(
             }
         }
     }
-    // Then lints (reports remaining doc gaps); a profile that allows no
-    // `lints` op skips the pass entirely.
+    // The non-code size opt-in admits supported data formats to MOD001 only.
+    let module_size = config.map_or_else(ModuleSizeConfig::default, CompiledConfig::module_size);
+    let non_code_size_on = module_size.include_non_code
+        && profile.module_size == crate::languages::registry::ModuleSize::NonCode
+        && !disabled.contains(check::CODE_MODULE_SIZE)
+        && enabled
+            .as_ref()
+            .is_none_or(|set| set.contains("lints") || set.contains(check::CODE_MODULE_SIZE));
     let lints_on = !disabled.contains("lints")
-        && match enabled {
-            Some(set) => {
-                (set.contains("lints") || check::LINT_CODES.iter().any(|c| set.contains(*c)))
-                    && profile.allows("lints")
-            }
-            None => profile.op_enabled("lints", enabled, disabled),
-        };
+        && (non_code_size_on
+            || match enabled {
+                Some(set) => {
+                    (set.contains("lints") || check::LINT_CODES.iter().any(|c| set.contains(*c)))
+                        && profile.allows("lints")
+                }
+                None => profile.op_enabled("lints", enabled, disabled),
+            });
     if lint_phase && lints_on {
         // In whitelist mode without `lints` in the set, only whitelisted
         // lint codes should run; disable the rest.
@@ -468,17 +475,11 @@ fn process_one(
         };
         let suppress_in_release_notes =
             config.is_none_or(CompiledConfig::suppress_in_release_notes);
-        // MOD001's budget resolves once per run like the links threshold:
-        // the configured value, else the 500-line default.
-        let module_size_max_lines = config.map_or(
-            DEFAULT_MODULE_SIZE_MAX_LINES,
-            CompiledConfig::module_size_max_lines,
-        );
         match files::check_file(
             path,
             &lint_disabled,
             suppress_in_release_notes,
-            module_size_max_lines,
+            module_size,
             index,
         ) {
             Ok(found) => out

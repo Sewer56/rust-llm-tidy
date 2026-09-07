@@ -68,7 +68,7 @@ pub const CODE_MISSING_ARGUMENTS: &str = "DOC004";
 pub const CODE_MISSING_DOCS: &str = "DOC001";
 /// Rule code for a missing `# Errors` section.
 pub const CODE_MISSING_ERRORS: &str = "DOC002";
-/// Rule code for a Rust module over the non-test line budget.
+/// Rule code for a source file over its language's line budget.
 pub const CODE_MODULE_SIZE: &str = "MOD001";
 /// Rule code for an over-limit paragraph of stripped doc text.
 pub const CODE_PARAGRAPH_SIZE: &str = "TEXT001";

@@ -154,17 +154,34 @@ pub struct LinkConfig {
     pub by_extension: BTreeMap<String, usize>,
 }
 
-/// Module-size threshold settings under the top-level `module_size` key.
+/// Select files and counted lines for MOD001 under the `module_size` key.
 ///
 /// The effective threshold is `max_lines`; an absent section or key keeps
-/// the default 500. Values must be `>= 1`.
+/// the default 500. `max_lines` must be `>= 1`.
 #[derive(Debug, Deserialize, Clone, Copy)]
 #[serde(deny_unknown_fields)] // Reject hallucinated `module_size` sub-keys at parse time.
 pub struct ModuleSizeConfig {
-    /// Maximum non-test lines per `.rs` file before MOD001 warns. Lines
-    /// inside top-level `#[cfg(test)]` mod regions do not count.
+    /// Maximum counted physical lines per eligible file before MOD001 warns.
     #[serde(default = "default_module_size_max_lines")]
     pub max_lines: usize,
+    /// Include supported configuration, data, and prose files selected for the run.
+    ///
+    /// Defaults to false: only code files are checked. Does not broaden discovery
+    /// or enable other operations for otherwise op-less formats.
+    #[serde(default)]
+    pub include_non_code: bool,
+    /// Count Rust's top-level `#[cfg(test)]` mod regions instead of excluding them.
+    ///
+    /// Defaults to false; independent of `include_test_files`.
+    /// Other languages always count all physical lines, including inline tests.
+    #[serde(default)]
+    pub include_in_file_tests: bool,
+    /// Include Rust files with an exact `tests` directory component in their path.
+    ///
+    /// Defaults to false. `include_in_file_tests` still controls test-module regions.
+    /// Other languages always include test files.
+    #[serde(default)]
+    pub include_test_files: bool,
 }
 
 /// Settings under the top-level `passive_narration` key for the opt-in
@@ -266,15 +283,16 @@ impl CompiledConfig {
         }
     }
 
-    /// Effective MOD001 module-size threshold: the maximum non-test lines a
-    /// `.rs` file may reach before it warns.
+    /// Effective MOD001 line budget.
     ///
     /// Lookup order: `module_size.max_lines`, else the default 500.
     pub fn module_size_max_lines(&self) -> usize {
-        match self.module_size {
-            Some(module_size) => module_size.max_lines,
-            None => DEFAULT_MODULE_SIZE_MAX_LINES,
-        }
+        self.module_size().max_lines
+    }
+
+    /// Resolve the file-size policy, retaining defaults for an absent section.
+    pub(crate) fn module_size(&self) -> ModuleSizeConfig {
+        self.module_size.unwrap_or_default()
     }
 
     /// Test-only accessor for the canonicalized config directory. Used by the
@@ -338,6 +356,17 @@ impl Default for Config {
             extensions: Vec::new(),
             extra_extensions: Vec::new(),
             passive_narration: None,
+        }
+    }
+}
+
+impl Default for ModuleSizeConfig {
+    fn default() -> Self {
+        Self {
+            max_lines: DEFAULT_MODULE_SIZE_MAX_LINES,
+            include_non_code: false,
+            include_in_file_tests: false,
+            include_test_files: false,
         }
     }
 }

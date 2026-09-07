@@ -127,6 +127,14 @@ fn check_excludes_doc001_rule() {
 #[rstest::rstest]
 #[case::configured_threshold("module_size:\n  max_lines: 300\n")]
 #[case::absent_section("exclude_files: []\n")]
+#[case::neither("module_size:\n  include_non_code: false\n  include_in_file_tests: false\n")]
+#[case::non_code_only("module_size:\n  include_non_code: true\n  include_in_file_tests: false\n")]
+#[case::inline_tests_only(
+    "module_size:\n  include_non_code: false\n  include_in_file_tests: true\n"
+)]
+#[case::both("module_size:\n  include_non_code: true\n  include_in_file_tests: true\n")]
+#[case::test_files_enabled("module_size:\n  include_test_files: true\n")]
+#[case::test_files_disabled("module_size:\n  include_test_files: false\n")]
 fn cli_should_accept_module_size_when_threshold_is_valid_or_absent(#[case] yaml: &str) {
     let dir = temp_dir();
     fs::create_dir_all(&dir).unwrap();
@@ -1389,7 +1397,10 @@ fn validation_should_reject_boolean_settings_when_value_is_not_boolean(
     #[case] value: &str,
     #[values(
         "exclude_license_documents",
-        "passive_narration:\n  suppress_in_release_notes"
+        "passive_narration:\n  suppress_in_release_notes",
+        "module_size:\n  include_non_code",
+        "module_size:\n  include_in_file_tests",
+        "module_size:\n  include_test_files"
     )]
     setting: &str,
 ) {
