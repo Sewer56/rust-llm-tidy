@@ -21,6 +21,9 @@ keeps its own paragraphs.
 The comment-marker families include `.yaml`, `.yml`, `.toml`, `.ps1`,
 `.graphql`, `.fish`, `.cmake`, `.applescript`, and `.v`.
 
+YAML and TOML run comment lints only. Table and fence fixes remain
+disabled, even when explicitly selected, to preserve configuration values.
+
 Reuse mappings such as `.bzl`, `.ksh`, `.vhd`, `.purs`, `.sty`, and
 `.scss` share the existing lexicons' markers.
 
@@ -53,8 +56,11 @@ safely produces no findings rather than guesses.
 - Marker families: unmodeled literal forms reject the scan: an
   unterminated `sh` heredoc, a Ruby `%w[...]`, a nested `js` template
   hole.
-- YAML block scalars (`|` and `>` headers): the whole scan rejects, so
-  a YAML file using one produces no findings at all.
+- YAML block scalars (`|` and `>` headers, including anchors and tags):
+  the whole scan rejects, so a file using one produces no findings.
+- CMake bracket arguments and bracket comments: the whole scan rejects.
+- PowerShell here-strings and interpolated `$()` subexpressions: the
+  whole scan rejects. Ordinary quoted strings use PowerShell escape rules.
 
 ## TEXT001 - oversized paragraph
 

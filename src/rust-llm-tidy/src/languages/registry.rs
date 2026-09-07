@@ -27,6 +27,8 @@
 //!   `links`, no AST ops; tables inside comments realign with the
 //!   language's marker re-applied
 //! - Unmapped extensions: `tables` only, no prefixes
+//! - YAML and TOML: comment `lints` only; transformations cannot safely
+//!   distinguish comments from configuration values
 //! - Data formats (`ini`, `json`): no ops; never in
 //!   [`DEFAULT_EXTENSIONS`]
 //!
@@ -191,14 +193,14 @@ const LANG_ENTRIES: &[(&str, Profile)] = &[
     ("tex", CODE_PERCENT),
     ("text", MARKDOWN),
     ("thrift", CODE_SLASH),
-    ("toml", CODE_HASH),
+    ("toml", CONFIG_LINTS),
     ("ts", CODE_SLASH),
     ("tsx", CODE_SLASH),
     ("txt", MARKDOWN),
     ("v", CODE_SLASH),
     ("vhd", CODE_DASH),
-    ("yaml", CODE_HASH),
-    ("yml", CODE_HASH),
+    ("yaml", CONFIG_LINTS),
+    ("yml", CONFIG_LINTS),
     ("zig", CODE_SLASH),
     ("zsh", CODE_HASH),
 ];
@@ -239,6 +241,14 @@ const CODE_SLASH: Profile = Profile {
     ops: &["tables", "fences", "lints"],
     prefixes: &["//"],
     default_ops: &["tables", "fences", "lints"],
+    backend: false,
+    text_lints: TextLints::Lexicon,
+};
+/// Configuration comments are linted without rewriting string values.
+const CONFIG_LINTS: Profile = Profile {
+    ops: &["lints"],
+    prefixes: &["#"],
+    default_ops: &["lints"],
     backend: false,
     text_lints: TextLints::Lexicon,
 };
@@ -730,8 +740,7 @@ mod tests {
         }
     }
 
-    /// Every new-mapping lexicon extension runs the full text-op set in
-    /// the default run, like the rest of the code tier.
+    /// Every new mapping measures comments by default.
     #[rstest]
     #[case::applescript("applescript")]
     #[case::bst("bst")]
@@ -763,16 +772,11 @@ mod tests {
     #[case::vhd("vhd")]
     #[case::yaml("yaml")]
     #[case::yml("yml")]
-    fn text_ops_should_run_by_default_for_new_mappings(#[case] ext: &str) {
+    fn lints_should_run_by_default_for_new_mappings(#[case] ext: &str) {
         let none = None;
         let empty = rules(&[]);
 
-        for op in ["tables", "fences", "lints"] {
-            assert!(
-                profile_for(ext).op_enabled(op, &none, &empty),
-                ".{ext}: {op} must run in the default run"
-            );
-        }
+        assert!(profile_for(ext).op_enabled("lints", &none, &empty));
     }
 
     /// Every registry extension resolves to exactly one text-lint tier.

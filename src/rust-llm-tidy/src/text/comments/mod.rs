@@ -38,7 +38,9 @@
 //!   (`#\;`, `?;`, `?\;`, `\;`), or TeX verbatim material (`\verb`,
 //!   verbatim-like environments);
 //! - a YAML block scalar (`|`, `>`, with `-`/`+`/digit modifiers at a
-//!   value position);
+//!   value position, including anchors and tags);
+//! - a CMake bracket argument or bracket comment;
+//! - a PowerShell here-string or interpolated subexpression;
 //! - a file ending inside an open block comment, backtick literal,
 //!   triple-quoted string, carried quote, or heredoc.
 //!
@@ -71,6 +73,7 @@
 //! - `families` - the per-family lexical tables, the fail-closed
 //!   reject predicates, and the extension lookup.
 //! - `scan` - the fail-closed scanner.
+//! - `yaml` - plain-scalar and comment token boundaries.
 
 use crate::reporting::Diagnostic;
 use crate::rules::lint::run_region_checks;
@@ -78,7 +81,10 @@ use core::cmp::Ordering;
 use families::{LEXED_EXTENSIONS, Lexicon};
 
 mod families;
+#[cfg(test)]
+mod lexical_safety_tests;
 mod scan;
+mod yaml;
 
 /// Whether `ext` has a lexicon entry: the `//`, `#`, `--`, `;`, and `%`
 /// comment families.
@@ -808,13 +814,6 @@ mod tests {
             let diags = text_checks(&plain, ext);
             let found = codes(&diags, CODE_PARAGRAPH_SIZE);
             assert_eq!(found.len(), 1, ".{ext}: the comment paragraph fires");
-
-            // An anchored header (`key: &a |`) is the documented
-            // limitation: unrecognized, so measurement continues.
-            let anchored = format!("key: &a |\n{}", long_comment("#"));
-            let diags = text_checks(&anchored, ext);
-            let found = codes(&diags, CODE_PARAGRAPH_SIZE);
-            assert_eq!(found.len(), 1, ".{ext}: only the real comment paragraph");
         }
     }
 

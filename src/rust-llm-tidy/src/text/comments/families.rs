@@ -79,6 +79,7 @@ pub(super) const LEXED_EXTENSIONS: &[(&str, &Lexicon)] = &[
 /// Ada: `--` comments only; apostrophes are attributes and character
 /// literals, never string delimiters.
 const DASH_ADA: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "--",
     block: None,
     triple: false,
@@ -95,6 +96,7 @@ const DASH_ADA: Lexicon = Lexicon {
 /// AppleScript: `--` comments and `(* *)` block comments; `"` strings
 /// are single-line and apostrophes are plain text.
 const DASH_APPLESCRIPT: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "--",
     block: Some(("(*", "*)")),
     triple: false,
@@ -111,6 +113,7 @@ const DASH_APPLESCRIPT: Lexicon = Lexicon {
 /// Elm: `--` and nestable `{- -}` comments; single-line `"` strings and
 /// `"""` multi-line strings.
 const DASH_ELM: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "--",
     block: Some(("{-", "-}")),
     triple: true,
@@ -126,6 +129,7 @@ const DASH_ELM: Lexicon = Lexicon {
 };
 /// Haskell: `--` and nestable `{- -}` comments; quasiquotes reject.
 const DASH_HS: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "--",
     block: Some(("{-", "-}")),
     triple: false,
@@ -141,6 +145,7 @@ const DASH_HS: Lexicon = Lexicon {
 };
 /// Lua: `--` and `--[[ ]]` comments; long brackets reject.
 const DASH_LUA: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "--",
     block: Some(("--[[", "]]")),
     triple: false,
@@ -157,6 +162,7 @@ const DASH_LUA: Lexicon = Lexicon {
 /// SQL: `--` and `/* */` comments; strings and quoted identifiers are
 /// single-line; dollar-quoted strings reject.
 const DASH_SQL: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "--",
     block: Some(("/*", "*/")),
     triple: false,
@@ -172,15 +178,16 @@ const DASH_SQL: Lexicon = Lexicon {
 };
 /// CMake: `#` comments; quoted arguments may span lines.
 const HASH_CMAKE: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "#",
     block: None,
     triple: false,
     backtick: false,
     template_holes: false,
     heredoc: Heredoc::None,
-    rejects: &[],
+    rejects: &[Reject::CmakeBracket],
     escaped_marker: false,
-    single_quotes: true,
+    single_quotes: false,
     multiline_quotes: true,
     word_start_comments: false,
     block_markers_alone: false,
@@ -188,6 +195,7 @@ const HASH_CMAKE: Lexicon = Lexicon {
 /// Fish: `#` comments at word start only, quotes span lines, and `<<`
 /// is always an operator (fish has no heredocs).
 const HASH_FISH: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "#",
     block: None,
     triple: false,
@@ -204,6 +212,7 @@ const HASH_FISH: Lexicon = Lexicon {
 /// GraphQL: `#` comments and `"""` block strings; apostrophes are
 /// plain text.
 const HASH_GRAPHQL: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "#",
     block: None,
     triple: true,
@@ -219,6 +228,7 @@ const HASH_GRAPHQL: Lexicon = Lexicon {
 };
 /// R and generic `#`-comment config formats: single-line strings only.
 const HASH_PLAIN: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "#",
     block: None,
     triple: false,
@@ -236,6 +246,7 @@ const HASH_PLAIN: Lexicon = Lexicon {
 /// comments, quotes span lines, and the backtick is an escape, never a
 /// literal.
 const HASH_POWERSHELL: Lexicon = Lexicon {
+    syntax: Syntax::PowerShell,
     line: "#",
     block: Some(("<#", "#>")),
     triple: false,
@@ -251,6 +262,7 @@ const HASH_POWERSHELL: Lexicon = Lexicon {
 };
 /// Ruby: opaque backtick literals, marked heredocs, percent literals.
 const HASH_RUBY: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "#",
     block: None,
     triple: false,
@@ -266,6 +278,7 @@ const HASH_RUBY: Lexicon = Lexicon {
 };
 /// Shells and Perl: backtick literals plus shell-style heredocs.
 const HASH_SCRIPT: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "#",
     block: None,
     triple: false,
@@ -281,6 +294,7 @@ const HASH_SCRIPT: Lexicon = Lexicon {
 };
 /// Julia, Nim: triple-quoted multi-line strings.
 const HASH_TRIPLE: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "#",
     block: None,
     triple: true,
@@ -297,6 +311,7 @@ const HASH_TRIPLE: Lexicon = Lexicon {
 /// YAML: `#` comments at word start only, quotes span lines; block
 /// scalars reject the scan.
 const HASH_YAML: Lexicon = Lexicon {
+    syntax: Syntax::Yaml,
     line: "#",
     block: None,
     triple: false,
@@ -312,6 +327,7 @@ const HASH_YAML: Lexicon = Lexicon {
 };
 /// Erlang: `%` comments; `'` atoms and `"` strings are single-line.
 const PERCENT_ERL: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "%",
     block: None,
     triple: false,
@@ -330,6 +346,7 @@ const PERCENT_ERL: Lexicon = Lexicon {
 ///
 /// The block markers count only alone on their lines.
 const PERCENT_MATLAB: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "%",
     block: Some(("%{", "%}")),
     triple: false,
@@ -346,6 +363,7 @@ const PERCENT_MATLAB: Lexicon = Lexicon {
 /// TeX: `%` comments; a backslash escapes the marker; verbatim
 /// material rejects.
 const PERCENT_TEX: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "%",
     block: None,
     triple: false,
@@ -362,6 +380,7 @@ const PERCENT_TEX: Lexicon = Lexicon {
 /// Common Lisp, Elisp, Scheme: `;` and nestable `#| |#` comments;
 /// reader and character semicolons reject.
 const SEMI_BLOCK: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: ";",
     block: Some(("#|", "|#")),
     triple: false,
@@ -378,6 +397,7 @@ const SEMI_BLOCK: Lexicon = Lexicon {
 /// Clojure: `;` comments; `"` strings span lines; `'` quotes values;
 /// `\;` is the semicolon character.
 const SEMI_PLAIN: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: ";",
     block: None,
     triple: false,
@@ -394,6 +414,7 @@ const SEMI_PLAIN: Lexicon = Lexicon {
 /// The `//` family: block comments, single-line strings, template
 /// literals with `${}` holes, and `"""`/`'''` text blocks.
 const SLASH: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "//",
     block: Some(("/*", "*/")),
     triple: true,
@@ -410,6 +431,7 @@ const SLASH: Lexicon = Lexicon {
 /// Verilog and SystemVerilog: the `//` family shape, but apostrophes
 /// are width-separator punctuation (`8'h00`), never string delimiters.
 const SLASH_VERILOG: Lexicon = Lexicon {
+    syntax: Syntax::Common,
     line: "//",
     block: Some(("/*", "*/")),
     triple: false,
@@ -426,6 +448,8 @@ const SLASH_VERILOG: Lexicon = Lexicon {
 
 /// The lexical forms one language group's scan tracks.
 pub(super) struct Lexicon {
+    /// Language-specific token boundaries and escape rules.
+    pub(super) syntax: Syntax,
     /// The line-comment marker.
     pub(super) line: &'static str,
     /// The block-comment open/close pair.
@@ -483,6 +507,8 @@ pub(super) enum Heredoc {
 /// whole scan rather than guessing at its payload.
 #[derive(Clone, Copy)]
 pub(super) enum Reject {
+    /// CMake bracket arguments and bracket comments, including `=` levels.
+    CmakeBracket,
     /// Ruby percent literals (`%w[]`, `%Q(...)`): arbitrary delimiters.
     PercentLiteral,
     /// PostgreSQL dollar-quoted strings.
@@ -505,10 +531,27 @@ pub(super) enum Reject {
     BlockScalar,
 }
 
+/// Token rules that cannot be expressed by comment and quote delimiters.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Syntax {
+    /// Shared code-family rules with backslash escapes.
+    Common,
+    /// YAML plain scalars and whitespace-separated comments.
+    Yaml,
+    /// PowerShell backtick escapes and literal single-quoted strings.
+    PowerShell,
+}
+
 impl Reject {
     /// Whether the bytes at `i` open this literal form.
     pub(super) fn opens(self, bytes: &[u8], i: usize) -> bool {
         match self {
+            Reject::CmakeBracket => {
+                let start = i + usize::from(bytes[i] == b'#');
+
+                bytes.get(start) == Some(&b'[')
+                    && bytes[start + 1..].iter().find(|&&b| b != b'=') == Some(&b'[')
+            }
             Reject::PercentLiteral => bytes[i] == b'%' && percent_literal(bytes, i),
             Reject::DollarQuote => {
                 bytes[i] == b'$' && bytes.get(ident_run_end(bytes, i + 1)) == Some(&b'$')
@@ -572,8 +615,8 @@ pub(super) fn ident_start(b: u8) -> bool {
 /// - after `key:` or a `-` sequence entry, with optional spaces;
 /// - alone on its line, heading a value on the following lines.
 ///
-/// An anchor between the colon and the indicator (`key: &a |`) is not
-/// recognized; callers treat that payload as plain mapping text.
+/// Anchors and tags may precede the indicator. Ambiguous header-shaped
+/// suffixes also reject rather than risk measuring scalar payload.
 fn block_scalar(bytes: &[u8], i: usize) -> bool {
     let mut j = i + 1;
     while matches!(bytes.get(j), Some(&b) if b.is_ascii_digit() || matches!(b, b'-' | b'+')) {
@@ -592,7 +635,7 @@ fn block_scalar(bytes: &[u8], i: usize) -> bool {
     while p > 0 && matches!(bytes[p - 1], b' ' | b'\t') {
         p -= 1;
     }
-    p == 0 || matches!(bytes[p - 1], b':' | b'-')
+    p == 0 || p < i || matches!(bytes[p - 1], b':' | b'-')
 }
 
 /// The index just past the identifier run starting at `j`.

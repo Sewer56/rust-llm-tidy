@@ -6,7 +6,7 @@
 //!
 //! [`DocRegion`]: crate::rules::lint::DocRegion
 
-use super::families::{Heredoc, Lexicon, comment_starts_word, ident_byte, ident_start};
+use super::families::{Heredoc, Lexicon, Syntax, comment_starts_word, ident_byte, ident_start};
 use crate::rules::lint::{Dialect, DocRegion, RegionLine};
 
 /// One queued heredoc: its delimiter and whether the terminator line
@@ -54,6 +54,7 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
     let mut block_opener = false;
     let mut state = State::Code;
     let mut heredocs: Vec<PendingHeredoc> = Vec::new();
+    let mut yaml_flow_depth = 0usize;
 
     for (idx, raw) in source.lines().enumerate() {
         let number = idx + 1;
@@ -88,6 +89,18 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
         'chars: while i < bytes.len() {
             match state {
                 State::Code => {
+                    // PowerShell escapes apply before comment and quote openers.
+                    // Here-strings need their own terminators; reject rather than guess.
+                    if lex.syntax == Syntax::PowerShell {
+                        if bytes[i] == b'`' {
+                            i += 1 + usize::from(bytes.get(i + 1).is_some());
+                            continue 'chars;
+                        }
+                        if bytes[i] == b'@' && matches!(bytes.get(i + 1), Some(b'"' | b'\'')) {
+                            return None;
+                        }
+                    }
+
                     // Literal forms the family does not model reject
                     // the scan early.
                     //
@@ -149,7 +162,11 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
                     // so regex literals and words like `a#b` stay
                     // code.
                     if bytes[i..].starts_with(lex.line.as_bytes())
-                        && (!lex.word_start_comments || comment_starts_word(bytes, i))
+                        && (if lex.syntax == Syntax::Yaml {
+                            super::yaml::comment_start(bytes, i)
+                        } else {
+                            !lex.word_start_comments || comment_starts_word(bytes, i)
+                        })
                     {
                         let text = &raw[i + lex.line.len()..];
                         let text = text.trim_start_matches(lex.line.as_bytes()[0] as char);
@@ -189,6 +206,19 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
                         }
                         break 'chars;
                     }
+
+                    if lex.syntax == Syntax::Yaml {
+                        match bytes[i] {
+                            b'[' | b'{' => yaml_flow_depth += 1,
+                            b']' | b'}' => yaml_flow_depth = yaml_flow_depth.saturating_sub(1),
+                            _ => {}
+                        }
+                        if let Some(end) = super::yaml::plain_end(bytes, i, yaml_flow_depth > 0) {
+                            i = end;
+                            continue 'chars;
+                        }
+                    }
+
                     // Multi-line triple-quoted strings before the
                     // single-quote forms.
                     if lex.triple {
@@ -274,7 +304,22 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
                 }
                 State::Quote { double, .. } => {
                     let quote = if double { b'"' } else { b'\'' };
-                    if bytes[i] == b'\\' && bytes.get(i + 1).is_some() {
+                    let escape = match lex.syntax {
+                        Syntax::PowerShell => double.then_some(b'`'),
+                        Syntax::Yaml => double.then_some(b'\\'),
+                        Syntax::Common => Some(b'\\'),
+                    };
+
+                    // Interpolated expressions may contain nested quotes.
+                    if lex.syntax == Syntax::PowerShell && double && bytes[i..].starts_with(b"$(") {
+                        return None;
+                    }
+
+                    if (Some(bytes[i]) == escape && bytes.get(i + 1).is_some())
+                        || (lex.syntax != Syntax::Common
+                            && !double
+                            && bytes[i..].starts_with(b"''"))
+                    {
                         i += 2;
                     } else {
                         if bytes[i] == quote {
