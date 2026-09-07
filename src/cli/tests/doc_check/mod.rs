@@ -1217,7 +1217,7 @@ fn temp_named_file(rel: &str, content: &str) -> std::path::PathBuf {
 /// A markdown file whose line 1 carries a narration marker and line 2 a
 /// passive construction, so both TEXT007 classes are observable.
 fn text007_marker_and_passive_md() -> String {
-    format!("This no longer panics.\nErrors are returned by the scanner.\n")
+    "This no longer panics.\nErrors are returned by the scanner.\n".to_string()
 }
 
 /// The directory holding the Python lint fixtures.

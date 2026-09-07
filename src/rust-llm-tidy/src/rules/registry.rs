@@ -94,13 +94,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lint_codes_lists_all_fourteen_codes() {
+    fn lint_codes_lists_all_fifteen_codes() {
         // `LINT_CODES` is the source of truth for CLI rule validation. It must
         // enumerate every code produced by the backends and the text rules.
         assert_eq!(
             LINT_CODES.len(),
-            14,
-            "LINT_CODES must list exactly fourteen codes: {LINT_CODES:?}"
+            15,
+            "LINT_CODES must list exactly fifteen codes: {LINT_CODES:?}"
         );
         for code in [
             CODE_MISSING_DOCS,
