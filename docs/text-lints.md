@@ -326,7 +326,7 @@ src/lib.rs:3: hint[TEXT006]: consider simpler wording.
 
 ## TEXT007 - passive voice and past behaviour
 
-Warns when docs may use passive voice or describe past behaviour.
+Suggests checking docs for passive voice or implementation history.
 Say what the code does, directly:
 
 - Passive: `Errors are returned by the scanner.` →
@@ -341,13 +341,18 @@ Preserve conditions and guarantees rather than comparing old and new behaviour.
 
 ### Detection details
 
-- Checks each line; reports at most one warning, preferring passive voice.
+- Checks each line; reports at most one hint, preferring passive voice.
 - Flags be-verbs followed by past participles, but allows state descriptions
   such as `is required` and `is deprecated`.
-- Flags phrases: `no longer`, `used to`, `in the past`.
+- Allows common state participles such as `disconnected` and `sorted` unless
+  immediately followed by `by`; excludes non-participles such as `red` and `seed`.
+- Flags `no longer` except before `than`, and clause-initial `In the past,`.
+- Leaves bare `was` and `used to` alone: they also describe runtime events
+  and purpose.
 - Flags change references: `prior to this change`, `before this change`,
-  `after this change`, `with this change`, `this change`, `this patch`,
-  `this commit`, `this update`.
+  `after this change`, `with this change`.
+- Flags change nouns (`this change`, `this patch`, `this commit`, `this update`,
+  `this fix`) only before `adds`, `fixes`, `removes`, `introduces`, or `rejects`.
 - Flags history comparisons: `previous implementation`, `old implementation`,
   `earlier versions`, `previous versions`.
 - Flags release history: `in earlier releases`, `in previous releases`,
@@ -356,19 +361,25 @@ Preserve conditions and guarantees rather than comparing old and new behaviour.
   `prior implementation`, `original implementation`.
 - Flags behaviour history: `earlier behavior`, `previous behavior`,
   `prior behavior`, `old behavior`, and their `behaviour` spelling variants.
-- Flags fix references: `before this fix`, `after this fix`, `with this fix`,
-  `this fix`.
+- Flags fix references: `before this fix`, `after this fix`, `with this fix`.
 - Prefers longer phrases over their contained phrases in diagnostic summaries.
 - Flags words: `previously`, `now`, `formerly`, `historically`, `originally`,
-  `recently`, `lately`, `currently`, `anymore`, and bare `was`.
+  `recently`, `lately`, `currently`, and `anymore`.
+- Allows participial noun modifiers after determiners, such as
+  `the currently selected item` and `the least recently used entry`.
 - Flags clause-initial `Before,`.
   Allows temporal uses such as `before validation`.
-- Matches alphabetic words case-insensitively, not substrings within words.
+- Matches words case-insensitively; digits and underscores extend a word.
+- Requires whitespace between phrase words; punctuation and excluded content
+  interrupt matches.
+- Skips inline code, link targets, reference labels, autolinks, and HTTP URLs.
+  Backtick code spans carry across consecutive prose lines until a matching run,
+  a blank line, a code block, or a source-line gap.
 - May flag harmless phrases such as `previously refuted findings` or
   `recently accessed entries`. This heuristic does not infer grammatical context.
 - By default, allows past-behaviour wording in `CHANGELOG*` or `MIGRATION*`
   basenames at any depth and files under a `releases` directory.
-  Matching is case-insensitive; passive voice still warns.
+  Matching is case-insensitive; passive voice still produces hints.
 
 Before:
 
@@ -404,15 +415,16 @@ checks do not apply release-note suppression.
 
 ```text
 $ rust-llm-tidy --no-config --include TEXT007 src/lib.rs
-src/lib.rs:1: warning[TEXT007]: passive construction: `are returned`.
+src/lib.rs:1: hint[TEXT007]: passive construction: `are returned`.
+  - Treat this as a heuristic suggestion; preserve valid state descriptions and runtime history.
   - State only current behavior in active, present-tense language.
   - Remove change history, old/new comparisons, and time labels such as `now` or `currently`.
-  - Delete history-only sentences; do not invent replacement behavior.
+  - Delete implementation-history-only sentences; do not invent replacement behavior.
   - Check the implementation before rewriting; preserve exact conditions, guarantees, and limitations.
-  - Keep history out of comments and API docs, including internals, tests, and helpers. Use release or migration notes only for a genuine public-API compatibility concern. (file)
+  - Keep implementation history out of comments and API docs, including internals, tests, and helpers. Use release or migration notes only for a genuine public-API compatibility concern. (file)
 ```
 
-`TEXT007` is warning-severity, so the run exits 0.
+`TEXT007` emits hints, grouped after warnings; hints alone exit 0.
 
 [`lints`]: ./lints.md
 

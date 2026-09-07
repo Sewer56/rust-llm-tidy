@@ -1,5 +1,22 @@
-//! TEXT007: passive constructions and past-behavior narration in
-//! comments and docs.
+//! Suggest clearer wording for passive voice and implementation history.
+//!
+//! # How it works
+//!
+//! - Read prose line by line; skip code blocks, tables, and link definitions.
+//! - Collect words outside inline code and link targets, keeping their positions.
+//! - Look for a be-verb (`is`, `are`, `was`) followed by a likely past
+//!   participle (`returned`, `parsed`, `written`), such as `are returned`.
+//! - Otherwise, look for history wording, such as `before this change`.
+//! - Emit at most one hint per line; passive voice takes priority over history.
+//!
+//! # Remarks
+//!
+//! - Punctuation interrupts phrases.
+//! - Exception lists and context checks allow common state descriptions
+//!   and runtime constraints.
+//! - This is a heuristic, not a grammar parser: hints need human judgment
+//!   and never rewrite the source.
+//! - By default, file processing suppresses history hints in release notes.
 
 use super::bulleted;
 use crate::reporting::diagnostic::{Diagnostic, Severity};
@@ -7,11 +24,18 @@ use crate::rules::registry::CODE_PASSIVE_NARRATION;
 use crate::text::measurement::is_link_reference_definition;
 use crate::text::measurement::{Document, StrippedLine};
 
+mod prose;
+
 /// Participles accepted as adjectives after a be-verb; `is required` and
 /// `is deprecated` describe state, not voice.
-const ADJECTIVAL_PARTICIPLES: &[&str] = &["required", "deprecated"];
+const ADJECTIVAL_PARTICIPLES: &[&str] = &["required", "deprecated", "unnamed"];
 /// Be-verbs whose immediate participle neighbor marks a passive voice.
 const BE_VERBS: &[&str] = &["is", "are", "was", "were", "be", "been", "being"];
+/// Ambiguous suffix matches commonly name adjectives, nouns, or base verbs.
+const ED_NON_PARTICIPLES: &[&str] = &[
+    "bed", "bleed", "breed", "creed", "feed", "greed", "hundred", "indeed", "naked", "need", "red",
+    "reed", "sacred", "seed", "shed", "shred", "speed", "steed", "tweed", "wed", "weed", "wicked",
+];
 /// Valid participles ending in `en`; bare `en` words such as `open` and
 /// `ten` are state adjectives or nouns, not passives.
 const EN_PARTICIPLES: &[&str] = &[
@@ -43,10 +67,6 @@ const NARRATION_MARKERS: &[NarrationMarker] = &[
         display: "no longer",
     },
     NarrationMarker {
-        tokens: &["used", "to"],
-        display: "used to",
-    },
-    NarrationMarker {
         tokens: &["in", "the", "past"],
         display: "in the past",
     },
@@ -65,22 +85,6 @@ const NARRATION_MARKERS: &[NarrationMarker] = &[
     NarrationMarker {
         tokens: &["with", "this", "change"],
         display: "with this change",
-    },
-    NarrationMarker {
-        tokens: &["this", "change"],
-        display: "this change",
-    },
-    NarrationMarker {
-        tokens: &["this", "patch"],
-        display: "this patch",
-    },
-    NarrationMarker {
-        tokens: &["this", "commit"],
-        display: "this commit",
-    },
-    NarrationMarker {
-        tokens: &["this", "update"],
-        display: "this update",
     },
     NarrationMarker {
         tokens: &["previous", "implementation"],
@@ -167,10 +171,6 @@ const NARRATION_MARKERS: &[NarrationMarker] = &[
         display: "with this fix",
     },
     NarrationMarker {
-        tokens: &["this", "fix"],
-        display: "this fix",
-    },
-    NarrationMarker {
         tokens: &["as", "of", "this", "release"],
         display: "as of this release",
     },
@@ -194,6 +194,17 @@ const SINGLE_WORD_NARRATION_MARKERS: &[&str] = &[
     "currently",
     "anymore",
 ];
+/// Common state descriptions are ambiguous without an explicit agent.
+const STATE_PARTICIPLES: &[&str] = &[
+    "bounded",
+    "closed",
+    "connected",
+    "disabled",
+    "disconnected",
+    "enabled",
+    "fixed",
+    "sorted",
+];
 
 /// One narration marker: its token sequence and display form.
 struct NarrationMarker {
@@ -201,7 +212,7 @@ struct NarrationMarker {
     display: &'static str,
 }
 
-/// TEXT007 diagnostics for `doc`: at most one Warning per measured line,
+/// TEXT007 diagnostics for `doc`: at most one Hint per measured line,
 /// in source order.
 ///
 /// Finding classes share the code:
@@ -209,12 +220,21 @@ struct NarrationMarker {
 /// - Passive: a be-verb followed by a past participle, except accepted
 ///   adjectival participles.
 /// - Narration marker: a phrase in [`NARRATION_MARKERS`], a word in
-///   [`SINGLE_WORD_NARRATION_MARKERS`], bare `was`, or clause-initial `before,`.
+///   [`SINGLE_WORD_NARRATION_MARKERS`], a change noun with a change verb,
+///   or clause-initial `before,`.
 ///
 /// A line matching both classes reports the passive class only.
+/// Code spans and link targets are opaque; punctuation interrupts phrases.
 pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
+    let mut code_delimiter = 0;
+    let mut previous_number = 0;
     for line in &doc.lines {
+        if line.number != previous_number + 1 || line.in_code_block || line.text.trim().is_empty() {
+            code_delimiter = 0;
+        }
+        previous_number = line.number;
+
         if line.in_code_block {
             continue;
         }
@@ -222,10 +242,11 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
         if trimmed.is_empty() || trimmed.starts_with('|') || is_link_reference_definition(trimmed) {
             continue;
         }
-        if let Some(summary) = find_offense(trimmed) {
+        if let Some(summary) = find_offense(trimmed, &mut code_delimiter) {
             diags.push(diagnostic(line, &summary));
         }
     }
+
     diags
 }
 
@@ -238,23 +259,25 @@ pub(crate) fn is_narration_marker(diag: &Diagnostic) -> bool {
     diag.code == CODE_PASSIVE_NARRATION && diag.message.starts_with(NARRATION_MARKER_SUMMARY)
 }
 
-/// One TEXT007 Warning; `summary` names the finding class and trigger.
+/// One TEXT007 Hint; `summary` names the finding class and trigger.
 fn diagnostic(line: &StrippedLine, summary: &str) -> Diagnostic {
     let bullets = [
+        "Treat this as a heuristic suggestion; preserve valid state descriptions and runtime history."
+            .to_string(),
         "State only current behavior in active, present-tense language.".to_string(),
         "Remove change history, old/new comparisons, and time labels such as `now` or `currently`."
              .to_string(),
-        "Delete history-only sentences; do not invent replacement behavior."
+        "Delete implementation-history-only sentences; do not invent replacement behavior."
             .to_string(),
         "Check the implementation before rewriting; preserve exact conditions, guarantees, and limitations."
             .to_string(),
-        "Keep history out of comments and API docs, including internals, tests, and helpers. \
+        "Keep implementation history out of comments and API docs, including internals, tests, and helpers. \
          Use release or migration notes only for a genuine public-API compatibility concern."
             .to_string(),
     ];
 
     Diagnostic {
-        severity: Severity::Warning,
+        severity: Severity::Hint,
         code: CODE_PASSIVE_NARRATION,
         message: bulleted(summary, &bullets),
         line: line.number,
@@ -267,9 +290,10 @@ fn diagnostic(line: &StrippedLine, summary: &str) -> Diagnostic {
 ///
 /// Returns `None` when the line holds neither a passive construction nor
 /// a narration marker.
-fn find_offense(line: &str) -> Option<String> {
-    let words = alphabetic_words(line);
-    if let Some((be, participle)) = find_passive(&words) {
+fn find_offense(line: &str, code_delimiter: &mut usize) -> Option<String> {
+    let words = prose::words(line, code_delimiter);
+
+    if let Some((be, participle)) = find_passive(line, &words) {
         return Some(format!(
             "passive construction: `{} {}`.",
             be.to_ascii_lowercase(),
@@ -282,78 +306,137 @@ fn find_offense(line: &str) -> Option<String> {
     None
 }
 
-/// Alphabetic runs of `line`, in order, compared case-insensitively by
-/// the matchers so no lowercase copies are allocated.
-fn alphabetic_words(line: &str) -> Vec<&str> {
-    line.split(|c: char| !c.is_alphabetic())
-        .filter(|w| !w.is_empty())
-        .collect()
-}
-
 /// The first narration marker in the line, if any.
 ///
-/// Phrase markers take precedence over single words. Bare `was` is the
-/// fallback; clause-initial `before,` excludes temporal `before validation`.
-fn find_narration_marker(line: &str, words: &[&str]) -> Option<&'static str> {
+/// Phrase markers take precedence over single words. Context checks skip
+/// common runtime descriptions; clause-initial `before,` still names history.
+fn find_narration_marker(line: &str, words: &[prose::Word<'_>]) -> Option<&'static str> {
     for marker in NARRATION_MARKERS {
-        if words.windows(marker.tokens.len()).any(|w| {
-            w.iter()
-                .zip(marker.tokens)
-                .all(|(a, b)| a.eq_ignore_ascii_case(b))
-        }) {
+        if words
+            .windows(marker.tokens.len())
+            .enumerate()
+            .any(|(index, w)| {
+                prose::contiguous(line, w)
+                    && w.iter()
+                        .zip(marker.tokens)
+                        .all(|(a, b)| a.text.eq_ignore_ascii_case(b))
+                    && match marker.display {
+                        "no longer" => !words
+                            .get(index + w.len())
+                            .is_some_and(|next| next.text.eq_ignore_ascii_case("than")),
+                        "in the past" => {
+                            is_clause_start(&line[..w[0].offset])
+                                && w.last().is_some_and(|last| {
+                                    line[last.offset + last.text.len()..].starts_with(',')
+                                })
+                        }
+                        _ => true,
+                    }
+            })
+        {
             return Some(marker.display);
         }
     }
 
-    if let Some(marker) = SINGLE_WORD_NARRATION_MARKERS
-        .iter()
-        .find(|marker| words.iter().any(|word| word.eq_ignore_ascii_case(marker)))
-    {
-        return Some(marker);
+    // Change nouns also name runtime data; require an implementation-change verb.
+    for phrase in words.windows(3) {
+        if phrase[0].text.eq_ignore_ascii_case("this")
+            && prose::contiguous(line, phrase)
+            && matches_any(
+                phrase[2].text,
+                &["adds", "fixes", "removes", "introduces", "rejects"],
+            )
+        {
+            for (noun, marker) in [
+                ("change", "this change"),
+                ("patch", "this patch"),
+                ("commit", "this commit"),
+                ("update", "this update"),
+                ("fix", "this fix"),
+            ] {
+                if phrase[1].text.eq_ignore_ascii_case(noun) {
+                    return Some(marker);
+                }
+            }
+        }
     }
 
-    if has_clause_initial_before_comma(line) {
-        return Some("before,");
+    for marker in SINGLE_WORD_NARRATION_MARKERS {
+        for (index, word) in words.iter().enumerate() {
+            if !word.text.eq_ignore_ascii_case(marker) {
+                continue;
+            }
+
+            // A modifier of runtime data is not implementation history.
+            let modifies_participle = words.get(index + 1).is_some_and(|next| {
+                prose::contiguous(line, &words[index..=index + 1])
+                    && (is_participle(next.text) || matches_any(next.text, ADJECTIVAL_PARTICIPLES))
+            });
+            let follows_determiner = index > 0
+                && prose::contiguous(line, &words[index - 1..=index])
+                && matches_any(
+                    words[index - 1].text,
+                    &["a", "an", "the", "any", "all", "each", "least", "most"],
+                );
+            if !modifies_participle || !follows_determiner {
+                return Some(marker);
+            }
+        }
     }
 
     words
         .iter()
-        .any(|w| w.eq_ignore_ascii_case("was"))
-        .then_some("was")
+        .any(|word| {
+            word.text.eq_ignore_ascii_case("before")
+                && line[word.offset + word.text.len()..].starts_with(',')
+                && is_clause_start(&line[..word.offset])
+        })
+        .then_some("before,")
 }
 
 /// A be-verb immediately followed by a past participle, if any.
 ///
 /// Adjectival participles such as `required` and `deprecated` are
 /// accepted and never fire.
-fn find_passive<'a>(words: &'a [&'a str]) -> Option<(&'a str, &'a str)> {
-    words.windows(2).find_map(|pair| {
-        matches_any(pair[0], BE_VERBS)
-            .then(|| pair[1])
-            .filter(|next| is_participle(next))
-            .map(|next| (pair[0], next))
+fn find_passive<'a>(line: &str, words: &[prose::Word<'a>]) -> Option<(&'a str, &'a str)> {
+    words.windows(2).enumerate().find_map(|(index, pair)| {
+        let be = pair[0].text;
+        let participle = pair[1].text;
+        let has_agent = words.get(index + 2).is_some_and(|next| {
+            next.text.eq_ignore_ascii_case("by")
+                && prose::contiguous(line, &words[index + 1..=index + 2])
+        });
+
+        (prose::contiguous(line, pair)
+            && matches_any(be, BE_VERBS)
+            && is_participle(participle)
+            && (!matches_any(participle, STATE_PARTICIPLES) || has_agent))
+            .then_some((be, participle))
     })
 }
 
-/// Whether `line` contains `before,` at a line, sentence, or clause
-/// start, matched ASCII-case-insensitively without copying the line.
-fn has_clause_initial_before_comma(line: &str) -> bool {
-    let mut rest = line;
-    while let Some(pos) = find_before_comma_ci(rest) {
-        if is_clause_start(&rest[..pos]) {
-            return true;
-        }
-        rest = &rest[pos + "before,".len()..];
-    }
-    false
+/// Whether the text before one `before,` occurrence ends a clause, so
+/// the marker itself starts a new clause.
+fn is_clause_start(prefix: &str) -> bool {
+    let trimmed = prefix
+        .trim()
+        .trim_start_matches(['-', '*', '+', '>', '#'])
+        .trim();
+    trimmed.is_empty()
+        || trimmed
+            .chars()
+            .last()
+            .is_some_and(|c| matches!(c, '.' | '!' | '?' | ';' | ':'))
 }
 
-/// Whether `word` is a past-participle form.
+/// Whether `word` resembles a participle rather than a known ambiguous word.
 fn is_participle(word: &str) -> bool {
     if matches_any(word, ADJECTIVAL_PARTICIPLES) {
         return false;
     }
-    ends_with_ci(word, "ed")
+    (word.bytes().all(|byte| byte.is_ascii_alphabetic())
+        && ends_with_ci(word, "ed")
+        && !matches_any(word, ED_NON_PARTICIPLES))
         || matches_any(word, EN_PARTICIPLES)
         || matches_any(word, IRREGULAR_PARTICIPLES)
 }
@@ -365,29 +448,6 @@ fn ends_with_ci(word: &str, suffix: &str) -> bool {
     word.is_ascii()
         && word.len() > suffix.len()
         && word[word.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
-}
-
-/// Byte offset of the first ASCII-case-insensitive `before,` in `line`.
-fn find_before_comma_ci(line: &str) -> Option<usize> {
-    let bytes = line.as_bytes();
-    let needle = b"before,";
-    bytes
-        .windows(needle.len())
-        .enumerate()
-        .filter(|(i, _)| line.is_char_boundary(*i))
-        .find(|(_, w)| w.eq_ignore_ascii_case(needle))
-        .map(|(i, _)| i)
-}
-
-/// Whether the text before one `before,` occurrence ends a clause, so
-/// the marker itself starts a new clause.
-fn is_clause_start(prefix: &str) -> bool {
-    let trimmed = prefix.trim().trim_start_matches(['-', '*', '+', '>', '#']);
-    trimmed.is_empty()
-        || trimmed
-            .chars()
-            .last()
-            .is_some_and(|c| matches!(c, '.' | '!' | '?' | ';' | ':'))
 }
 
 /// Whether `word` equals any entry of `words`, ASCII-case-insensitively.
@@ -413,9 +473,9 @@ mod tests {
 
     // ── TEXT007: passive constructions ──
 
-    // Each card fire example with a be-verb plus participle warns once.
+    // Each unambiguous be-verb plus participle produces one hint.
     #[test]
-    fn text_checks_warn_on_passive_fire_examples() {
+    fn hints_should_identify_passive_pairs_when_unambiguous() {
         for (source, pair) in [
             ("Errors are returned by the scanner.", "are returned"),
             ("The value was parsed by the loader.", "was parsed"),
@@ -423,7 +483,7 @@ mod tests {
         ] {
             let found = one_line(source);
             assert_eq!(found.len(), 1, "{source:?}");
-            assert_eq!(found[0].severity, Severity::Warning);
+            assert_eq!(found[0].severity, Severity::Hint);
             assert_eq!(found[0].line, 1);
             assert!(
                 found[0]
@@ -453,6 +513,7 @@ mod tests {
     fn text_checks_silent_on_adjectival_participles() {
         assert!(one_line("The flag is required for streaming.").is_empty());
         assert!(one_line("This method is deprecated.").is_empty());
+        assert!(one_line("Fix records are unnamed, so they omit the item name.").is_empty());
     }
 
     // Bare `en` words are state adjectives or nouns, never passives.
@@ -463,9 +524,9 @@ mod tests {
         assert!(one_line("The word is often misspelled.").is_empty());
     }
 
-    // Controlled `en` participles after a be-verb still warn.
+    // Controlled `en` participles after a be-verb still produce hints.
     #[test]
-    fn text_checks_warn_on_en_participles() {
+    fn hints_should_identify_passive_voice_when_using_en_participles() {
         let found = one_line("The report was written by the tool.");
         assert_eq!(found.len(), 1);
         assert!(
@@ -489,15 +550,13 @@ mod tests {
 
     // ── TEXT007: narration markers ──
 
-    // Each single-word and phrase marker warns once, naming the marker.
+    // Each single-word and phrase marker produces one hint naming the marker.
     #[test]
     fn text_checks_should_name_marker_when_prose_narrates_behavior() {
         for (source, marker) in [
             ("This no longer panics.", "no longer"),
             ("The old path previously ran here.", "previously"),
-            ("This flag used to default on.", "used to"),
             ("The cache is now bounded.", "now"),
-            ("The value was large.", "was"),
             (
                 "Prior to this change, input could panic.",
                 "prior to this change",
@@ -609,7 +668,7 @@ mod tests {
             let found = one_line(source);
 
             assert_eq!(found.len(), 1, "{source:?}");
-            assert_eq!(found[0].severity, Severity::Warning);
+            assert_eq!(found[0].severity, Severity::Hint);
             assert!(is_narration_marker(&found[0]), "{source:?}");
             assert!(
                 found[0]
@@ -664,11 +723,104 @@ mod tests {
             "This operation replaces the previous entry.",
             "Accept aliases for backward compatibility.",
             "Accept aliases for backwards compatibility.",
+            "The status indicator is red.",
+            "The next field is seed.",
+            "The client is disconnected.",
+            "The values are sorted.",
+            "The flag is disabled.",
+            "Keep the values as they are. Sorted input avoids allocation.",
+            "Call `Clock::now()` to read the clock.",
+            "Return `was_cached` for cache hits.",
+            "Read the [clock reference](https://example.test/now).",
+            "Accept keys no longer than ten bytes.",
+            "Reject timestamps in the past.",
+            "Evict the least recently used entry.",
+            "Return the currently selected item.",
+            "Return true if the previous request was successful.",
+            "Apply this patch to the input buffer.",
+            "Track the bytes used to compute the checksum.",
+            // Ambiguous markers are deliberately omitted even in historical prose.
+            "This flag used to default on.",
+            "The value was large.",
         ] {
             let found = one_line(source);
 
             assert!(found.is_empty(), "{source:?}");
         }
+    }
+
+    // Code and links interrupt phrases without hiding the prose that follows.
+    #[test]
+    fn hints_should_ignore_nonprose_and_boundaries_when_scanning_comments_and_markdown() {
+        for (source, expected) in [
+            ("Keep values as they are; sorted input helps.", false),
+            ("Keep values as they are! Sorted input helps.", false),
+            ("The value is `a field` returned to the caller.", false),
+            ("This is_red and was_cached.", false),
+            ("The key is red2.", false),
+            ("The key is type_returned.", false),
+            ("No. Longer names need validation.", false),
+            ("Read ``Clock::`now`()`` to get the clock.", false),
+            ("Read [docs](https://example.test/(now)).", false),
+            ("Read [docs](https://example.test/now\\)).", false),
+            ("Read [docs][now].", false),
+            ("Read <https://example.test/now>.", false),
+            ("Read https://example.test/now for details.", false),
+            ("Use <span id=\"now\">the clock</span>.", false),
+            ("Use `Before, the cache grew.` as input.", false),
+            (
+                "Use \\` as a delimiter. Errors are returned by the scanner.",
+                true,
+            ),
+            ("Use ``now ` currently`` as input.", false),
+            ("Read [docs](unterminated now", false),
+            ("Use <span>Errors are returned by the scanner.</span>", true),
+            ("Use `now` here. Errors are returned by the scanner.", true),
+            (
+                "Read [docs](https://example.test/now). This no longer panics.",
+                true,
+            ),
+            ("The values are sorted by the scanner.", true),
+            ("Errors ARE RETURNED by the scanner.", true),
+            ("Before, the cache grew.", true),
+            ("- Before, the cache grew.", true),
+            ("# In the past, the cache grew.", true),
+            ("`first\nClock::now()\nlast`", false),
+            ("`first\nlast` Errors are returned by the scanner.", true),
+            ("Errors are returned. `first\nClock::now()\nlast`", true),
+            ("`unclosed\n\nErrors are returned by the scanner.", true),
+            (
+                "`unclosed\n```rust\nClock::now();\n```\nErrors are returned.",
+                true,
+            ),
+            ("Errors are\nreturned by the scanner.", false),
+        ] {
+            for ext in ["md", "rs"] {
+                let input = if ext == "rs" {
+                    source.lines().map(|line| format!("/// {line}\n")).collect()
+                } else {
+                    source.to_string()
+                };
+
+                let diags = run_text_checks(&input, ext);
+                let found = codes(&diags, CODE_PASSIVE_NARRATION);
+
+                assert_eq!(found.len(), usize::from(expected), "{ext}: {source:?}");
+                assert!(found.iter().all(|diag| diag.severity == Severity::Hint));
+            }
+        }
+    }
+
+    // Source-code gaps end open inline code spans between comment regions.
+    #[test]
+    fn hints_should_resume_after_code_when_comment_regions_are_separate() {
+        let source = "/// `unclosed\nfn boundary() {}\n/// Errors are returned by the scanner.\n";
+
+        let diags = run_text_checks(source, "rs");
+        let found = codes(&diags, CODE_PASSIVE_NARRATION);
+
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].line, 3);
     }
 
     // Non-ASCII words after a be-verb never panic and never match.
@@ -696,13 +848,14 @@ mod tests {
     #[test]
     fn text_checks_should_explain_current_behavior_rewrite_when_reporting() {
         let expected = concat!(
+            "\n  - Treat this as a heuristic suggestion; preserve valid state descriptions and runtime history.",
             "\n  - State only current behavior in active, present-tense language.",
             "\n  - Remove change history, old/new comparisons, ",
             "and time labels such as `now` or `currently`.",
-            "\n  - Delete history-only sentences; do not invent replacement behavior.",
+            "\n  - Delete implementation-history-only sentences; do not invent replacement behavior.",
             "\n  - Check the implementation before rewriting; ",
             "preserve exact conditions, guarantees, and limitations.",
-            "\n  - Keep history out of comments and API docs, ",
+            "\n  - Keep implementation history out of comments and API docs, ",
             "including internals, tests, and helpers.",
             " Use release or migration notes only for a genuine ",
             "public-API compatibility concern.",

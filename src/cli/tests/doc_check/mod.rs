@@ -866,24 +866,6 @@ fn md_text001_suppressed_by_exclude() {
     );
 }
 
-/// An ordinarily named markdown file yields both TEXT007 classes, one
-/// per offending line.
-#[test]
-fn md_text007_marker_and_passive_fire_in_ordinary_file() {
-    let path = temp_named_file("notes.md", &text007_marker_and_passive_md());
-    let output = run_command(&["--include", "lints"], &path);
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        output.status.success(),
-        "TEXT007 warnings must not fail the run: {stderr}"
-    );
-    assert!(
-        stderr.contains(":1: warning[TEXT007]") && stderr.contains(":2: warning[TEXT007]"),
-        "both the narration marker and the passive construction must warn:\n{stderr}"
-    );
-}
-
 /// A three-sentence markdown heading opener warns with TEXT004 at the
 /// paragraph's first line.
 ///
@@ -913,7 +895,7 @@ fn md_three_sentence_heading_opener_warns_text004_without_failing() {
     );
 }
 
-/// Config controls narration suppression without hiding passive warnings.
+/// Config controls narration suppression without hiding passive hints.
 #[test]
 fn narration_should_follow_suppression_setting_when_checking_note_paths() {
     for (yaml, suppress) in [
@@ -953,12 +935,12 @@ fn narration_should_follow_suppression_setting_when_checking_note_paths() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             assert!(output.status.success(), "{rel}, {yaml:?}: {stderr}");
             assert_eq!(
-                stderr.contains(":1: warning[TEXT007]"),
+                stderr.contains(":1: hint[TEXT007]"),
                 !(suppress && is_note),
                 "narration in {rel}, {yaml:?}: {stderr}"
             );
             assert!(
-                stderr.contains(":2: warning[TEXT007]"),
+                stderr.contains(":2: hint[TEXT007]"),
                 "passive voice in {rel}, {yaml:?}: {stderr}"
             );
         }
@@ -1125,6 +1107,32 @@ fn sql_lexicon_measures_comments_not_strings() {
         1,
         "exactly the over-long comment line, never the string:\n{stderr}"
     );
+}
+
+/// An ordinarily named markdown file yields both TEXT007 classes, one
+/// per offending line.
+#[test]
+fn text007_should_render_hints_when_checking_an_ordinary_file() {
+    let path = temp_named_file("notes.md", &text007_marker_and_passive_md());
+    let output = run_command(&["--include", "lints"], &path);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "TEXT007 hints must not fail the run: {stderr}"
+    );
+    assert!(
+        stderr.contains(":1: hint[TEXT007]") && stderr.contains(":2: hint[TEXT007]"),
+        "both the narration marker and the passive construction must emit hints:\n{stderr}"
+    );
+
+    let output = run_command(&["--include", "TEXT007", "--json"], &path);
+    let records: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert!(output.status.success());
+    let records = records.as_array().unwrap();
+    assert_eq!(records.len(), 2);
+    assert!(records.iter().all(|record| record["severity"] == "hint"));
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
