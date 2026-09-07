@@ -121,9 +121,13 @@ fn run_should_respect_license_exclusion_when_selecting_files_or_directories(
     let report = run(&options, compiled.as_ref()).unwrap();
 
     let expected_license_count = if excluded { 0 } else { licenses.len() };
+    // Directory scans process the config file itself; `yml` is a
+    // default-on lexicon extension. Explicit runs list files, so the
+    // config never joins the input set.
+    let config_count = usize::from(config_yaml.is_some() && !explicit);
     assert_eq!(
         report.files.len(),
-        controls.len() + 1 + expected_license_count
+        controls.len() + 1 + expected_license_count + config_count
     );
     let rendered_control = fs::read_to_string(directory.path().join("guide.md")).unwrap();
     for name in controls {
