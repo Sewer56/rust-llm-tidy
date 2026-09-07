@@ -10,7 +10,7 @@ use crate::source::{ItemKind, ParseResult, SourceItem};
 
 /// `DOC008` - `# Errors` variants must be listed in alphabetical order.
 ///
-/// Fires on `pub fn` returning `Result` when all of the following hold:
+/// Fires on `pub fn` returning `Result` when all the following hold:
 ///
 /// - a `# Errors` section exists on the item;
 /// - the error type's final path segment resolves to a top-level enum in
