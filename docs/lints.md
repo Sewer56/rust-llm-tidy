@@ -289,16 +289,11 @@ src/lib.rs:1: warning[DOC006]: doc comment contains placeholder text (TODO/FIXME
 
 ### DOC008 - error variants out of alphabetical order
 
-An `# Errors` section must list the returned error enum's variants in
-alphabetical order (Rust `str` ordering, case-sensitive).
+In `# Errors`, sort links to returned error variants by case-sensitive Rust
+`str` order.
 
-Variants participate when linked as `[`Enum::Variant`]`, path-qualified
-prefixes accepted.
-
-The returned error type must resolve to a top-level enum in the same file;
-out-of-crate error types (such as `std::io::Error`), unresolved names, and
-non-enum error types are exempt. Prose and links to other enums never
-participate, and sections without participating links are not checked.
+Only checks `` [`Enum::Variant`] `` links (path prefixes allowed)
+when the error type resolves to a top-level enum in the same file.
 
 Before:
 
