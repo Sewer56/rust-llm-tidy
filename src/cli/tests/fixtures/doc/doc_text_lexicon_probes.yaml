@@ -1,0 +1,5 @@
+payload: |
+# even this real word-start comment line runs far past the eighty
+# character budget, but the block scalar header rejects the whole
+# scan so nothing in the file is measured at all
+key: value

@@ -121,9 +121,12 @@ fn run_should_respect_license_exclusion_when_selecting_files_or_directories(
     let report = run(&options, compiled.as_ref()).unwrap();
 
     let expected_license_count = if excluded { 0 } else { licenses.len() };
+    // Only directory scans can pick up the YAML config itself, since
+    // `.yml` files are scanned by default.
+    let config_count = usize::from(config_yaml.is_some() && !explicit);
     assert_eq!(
         report.files.len(),
-        controls.len() + 1 + expected_license_count
+        controls.len() + 1 + expected_license_count + config_count
     );
     let rendered_control = fs::read_to_string(directory.path().join("guide.md")).unwrap();
     for name in controls {
@@ -241,6 +244,20 @@ fn source_should_borrow_unchanged_output_when_rules_are_excluded() {
     }
 }
 
+#[rstest]
+#[case::toml("toml")]
+#[case::yaml("yaml")]
+#[case::yml("yml")]
+fn source_should_lint_configuration_comments_by_default(#[case] extension: &str) {
+    let source = "# This comment is long enough to exceed the configured line budget for documentation in configuration files.\n";
+
+    let report = tidy_source(source, extension, &SourceOptions::default()).unwrap();
+
+    assert_eq!(report.source, source);
+    assert!(report.changes.is_empty());
+    assert!(report.diagnostics.iter().any(|d| d.code == "TEXT002"));
+}
+
 #[test]
 fn source_should_match_applied_file_results_for_standalone_operations() {
     let directory = tempfile::tempdir().unwrap();
@@ -291,6 +308,53 @@ fn source_should_match_applied_file_results_for_standalone_operations() {
 }
 
 // Failures and execution permissions.
+
+#[rstest]
+#[case::toml("payload = \"\"\"\n", "\"\"\"\n", "toml")]
+#[case::yaml("payload: |\n", "", "yaml")]
+#[case::yml("payload: |\n", "", "yml")]
+fn source_should_preserve_configuration_values(
+    #[case] open: &str,
+    #[case] close: &str,
+    #[case] extension: &str,
+    #[values(false, true)] explicit_fixes: bool,
+) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join(format!("input.{extension}"));
+    let source = format!(
+        "{open}  | a | b |\n  |---|---|\n  | long value | c |\n\n\
+         \x20 ```markdown\n  ```rust\n  code\n  ```\n  ```\n{close}"
+    );
+    fs::write(&path, &source).unwrap();
+    let include = if explicit_fixes {
+        vec!["tables".into(), "fences".into()]
+    } else {
+        Vec::new()
+    };
+    let source_options = SourceOptions {
+        include: include.clone(),
+        ..SourceOptions::default()
+    };
+    let file_options = RunOptions {
+        paths: vec![path.clone()],
+        apply: true,
+        include,
+        ..RunOptions::default()
+    };
+
+    let buffer = tidy_source(&source, extension, &source_options).unwrap();
+    let files = run(&file_options, None).unwrap();
+    let consumed = fs::read_to_string(path).unwrap();
+
+    assert_eq!(consumed, source);
+    assert_eq!(buffer.source, consumed);
+    assert!(buffer.changes.is_empty());
+    assert!(buffer.diagnostics.is_empty());
+    assert_eq!(files.files.len(), 1);
+    assert_eq!(files.files[0].changes, buffer.changes);
+    assert_eq!(files.files[0].diagnostics, buffer.diagnostics);
+    files.ensure_success().unwrap();
+}
 
 #[test]
 fn source_should_reject_invalid_options() {

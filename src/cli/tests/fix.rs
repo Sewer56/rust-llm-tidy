@@ -7,6 +7,7 @@
 
 use common::binary;
 use core::sync::atomic::{AtomicU64, Ordering};
+use rstest::rstest;
 use std::fs;
 use std::process::Command;
 
@@ -67,6 +68,41 @@ impl Builder {
 pub struct Config;
 ";
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Default and explicitly selected fixes leave configuration data byte-exact.
+#[rstest]
+#[case::toml("payload = \"\"\"\n", "\"\"\"\n", "toml")]
+#[case::yaml("payload: |\n", "", "yaml")]
+#[case::yml("payload: |\n", "", "yml")]
+fn cli_should_preserve_configuration_values(
+    #[case] open: &str,
+    #[case] close: &str,
+    #[case] extension: &str,
+    #[values(false, true)] explicit_fixes: bool,
+) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join(format!("input.{extension}"));
+    let config = directory.path().join(".rust-llm-tidy.yml");
+    fs::write(&config, "{}\n").unwrap();
+    let source = format!(
+        "{open}  | a | b |\n  |---|---|\n  | long value | c |\n\n\
+         \x20 ```markdown\n  ```rust\n  code\n  ```\n  ```\n{close}"
+    );
+    fs::write(&path, &source).unwrap();
+    let mut command = Command::new(binary());
+    command.arg("--config").arg(config).arg("--json");
+    if explicit_fixes {
+        command.args(["--include", "tables", "--include", "fences"]);
+    }
+
+    let output = command.arg(&path).output().unwrap();
+    let consumed = fs::read_to_string(path).unwrap();
+
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(consumed, source);
+    let records: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(records, serde_json::json!([]));
+}
 
 /// Default all-pass `fix` on a file where only the table changes.
 ///

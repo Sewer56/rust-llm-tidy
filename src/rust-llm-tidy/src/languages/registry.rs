@@ -24,10 +24,12 @@
 //!   `lints` by default, `#` prefixes). Its text checks are sourced from
 //!   the tree-sitter-python backend's docstring walk.
 //! - Code languages: `tables`, `fences`, and `lints` by default; no
-//!   `links`, no AST ops; tables
-//!   inside comments realign with the language's marker re-applied
+//!   `links`, no AST ops; tables inside comments realign with the
+//!   language's marker re-applied
 //! - Unmapped extensions: `tables` only, no prefixes
-//! - Data formats (`ini`, `json`, `toml`, `yaml`, `yml`): no ops; never in
+//! - YAML and TOML: comment `lints` only; transformations cannot safely
+//!   distinguish comments from configuration values
+//! - Data formats (`ini`, `json`): no ops; never in
 //!   [`DEFAULT_EXTENSIONS`]
 //!
 //! `reorder` and the parser-driven `lints` checks require `backend` in
@@ -98,7 +100,7 @@ const DATA: Profile = Profile {
 };
 /// Data formats excluded by default, sorted; they resolve to the
 /// no-op [`DATA`] profile and never appear in [`DEFAULT_EXTENSIONS`].
-const DATA_EXTENSIONS: &[&str] = &["ini", "json", "toml", "yaml", "yml"];
+const DATA_EXTENSIONS: &[&str] = &["ini", "json"];
 /// Extensions allowed by default: every language-table extension, sorted.
 ///
 /// Derived from [`LANG_ENTRIES`], so it stays in lockstep with the registry;
@@ -124,11 +126,16 @@ const UNMAPPED: Profile = Profile {
 /// applies. The sortedness test guards this invariant.
 const LANG_ENTRIES: &[(&str, Profile)] = &[
     ("ada", CODE_DASH),
+    ("applescript", CODE_DASH),
     ("bash", CODE_HASH),
+    ("bst", CODE_PERCENT),
+    ("bzl", CODE_HASH),
     ("c", CODE_SLASH),
     ("cc", CODE_SLASH),
     ("clj", CODE_SEMI),
     ("cljc", CODE_SEMI),
+    ("cls", CODE_PERCENT),
+    ("cmake", CODE_HASH),
     ("conf", CODE_HASH),
     ("cpp", CODE_SLASH),
     ("cs", C_SHARP),
@@ -136,15 +143,25 @@ const LANG_ENTRIES: &[(&str, Profile)] = &[
     ("el", CODE_SEMI),
     ("elm", CODE_DASH),
     ("erl", CODE_PERCENT),
+    ("fish", CODE_HASH),
     ("go", CODE_SLASH),
+    ("gql", CODE_HASH),
+    ("gradle", CODE_SLASH),
+    ("graphql", CODE_HASH),
+    ("groovy", CODE_SLASH),
     ("h", CODE_SLASH),
     ("hpp", CODE_SLASH),
     ("hs", CODE_DASH),
     ("java", CODE_SLASH),
     ("jl", CODE_HASH),
     ("js", CODE_SLASH),
+    ("json5", CODE_SLASH),
+    ("jsonc", CODE_SLASH),
+    ("ksh", CODE_HASH),
     ("kt", CODE_SLASH),
+    ("less", CODE_SLASH),
     ("lisp", CODE_SEMI),
+    ("ltx", CODE_PERCENT),
     ("lua", CODE_DASH),
     ("m", CODE_PERCENT),
     ("markdown", MARKDOWN),
@@ -154,6 +171,11 @@ const LANG_ENTRIES: &[(&str, Profile)] = &[
     ("nim", CODE_HASH),
     ("php", CODE_SLASH),
     ("pl", CODE_HASH),
+    ("proto", CODE_SLASH),
+    ("ps1", CODE_HASH),
+    ("psd1", CODE_HASH),
+    ("psm1", CODE_HASH),
+    ("purs", CODE_DASH),
     ("py", PYTHON),
     ("pyi", PYTHON),
     ("r", CODE_HASH),
@@ -161,14 +183,24 @@ const LANG_ENTRIES: &[(&str, Profile)] = &[
     ("rs", RUST),
     ("scala", CODE_SLASH),
     ("scm", CODE_SEMI),
+    ("scss", CODE_SLASH),
     ("sh", CODE_HASH),
+    ("sol", CODE_SLASH),
     ("sql", CODE_DASH),
+    ("sty", CODE_PERCENT),
+    ("sv", CODE_SLASH),
     ("swift", CODE_SLASH),
     ("tex", CODE_PERCENT),
     ("text", MARKDOWN),
+    ("thrift", CODE_SLASH),
+    ("toml", CONFIG_LINTS),
     ("ts", CODE_SLASH),
     ("tsx", CODE_SLASH),
     ("txt", MARKDOWN),
+    ("v", CODE_SLASH),
+    ("vhd", CODE_DASH),
+    ("yaml", CONFIG_LINTS),
+    ("yml", CONFIG_LINTS),
     ("zig", CODE_SLASH),
     ("zsh", CODE_HASH),
 ];
@@ -209,6 +241,14 @@ const CODE_SLASH: Profile = Profile {
     ops: &["tables", "fences", "lints"],
     prefixes: &["//"],
     default_ops: &["tables", "fences", "lints"],
+    backend: false,
+    text_lints: TextLints::Lexicon,
+};
+/// Configuration comments are linted without rewriting string values.
+const CONFIG_LINTS: Profile = Profile {
+    ops: &["lints"],
+    prefixes: &["#"],
+    default_ops: &["lints"],
     backend: false,
     text_lints: TextLints::Lexicon,
 };
@@ -433,6 +473,7 @@ fn cmp_ext(a: &str, b: &str) -> Ordering {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
     use std::collections::BTreeSet;
 
     /// Build a rule set from names, for whitelist/blacklist gating cases.
@@ -448,12 +489,25 @@ mod tests {
     const CODE_FAMILIES: &[&[&str]] = &[
         &[
             "c", "h", "cpp", "cc", "hpp", "java", "js", "mjs", "ts", "tsx", "go", "swift", "kt",
-            "php", "dart", "scala", "zig",
+            "php", "dart", "scala", "zig", "gradle", "groovy", "proto", "thrift", "sol", "scss",
+            "less", "jsonc", "json5", "v", "sv",
         ],
-        &["rb", "sh", "bash", "zsh", "r", "pl", "jl", "nim", "conf"],
-        &["lua", "sql", "hs", "elm", "ada"],
+        &[
+            "rb", "sh", "bash", "zsh", "r", "pl", "jl", "nim", "conf", "toml", "bzl", "ksh",
+            "yaml", "yml", "ps1", "psm1", "psd1", "graphql", "gql", "fish", "cmake",
+        ],
+        &[
+            "lua",
+            "sql",
+            "hs",
+            "elm",
+            "ada",
+            "vhd",
+            "purs",
+            "applescript",
+        ],
         &["el", "lisp", "clj", "cljc", "scm"],
-        &["tex", "erl", "m"],
+        &["tex", "erl", "m", "sty", "cls", "ltx", "bst"],
     ];
 
     /// Assert `ext` resolves to `profile` so failures name the extension.
@@ -484,11 +538,15 @@ mod tests {
         }
     }
 
-    /// Data formats resolve to the no-op profile.
+    /// Data formats resolve to the no-op profile; `toml`/`yaml`/`yml`
+    /// left the data tier for the lexicon tier.
     #[test]
     fn data_formats_resolve_to_the_no_op_profile() {
         for ext in DATA_EXTENSIONS {
             assert_profile(ext, &DATA);
+        }
+        for ext in ["toml", "yaml", "yml"] {
+            assert_eq!(profile_for(ext).text_lints, TextLints::Lexicon, ".{ext}");
         }
     }
 
@@ -682,6 +740,45 @@ mod tests {
         }
     }
 
+    /// Every new mapping measures comments by default.
+    #[rstest]
+    #[case::applescript("applescript")]
+    #[case::bst("bst")]
+    #[case::bzl("bzl")]
+    #[case::cls("cls")]
+    #[case::cmake("cmake")]
+    #[case::fish("fish")]
+    #[case::gql("gql")]
+    #[case::gradle("gradle")]
+    #[case::graphql("graphql")]
+    #[case::groovy("groovy")]
+    #[case::json5("json5")]
+    #[case::jsonc("jsonc")]
+    #[case::ksh("ksh")]
+    #[case::less("less")]
+    #[case::ltx("ltx")]
+    #[case::proto("proto")]
+    #[case::ps1("ps1")]
+    #[case::psd1("psd1")]
+    #[case::psm1("psm1")]
+    #[case::purs("purs")]
+    #[case::scss("scss")]
+    #[case::sol("sol")]
+    #[case::sty("sty")]
+    #[case::sv("sv")]
+    #[case::thrift("thrift")]
+    #[case::toml("toml")]
+    #[case::v("v")]
+    #[case::vhd("vhd")]
+    #[case::yaml("yaml")]
+    #[case::yml("yml")]
+    fn lints_should_run_by_default_for_new_mappings(#[case] ext: &str) {
+        let none = None;
+        let empty = rules(&[]);
+
+        assert!(profile_for(ext).op_enabled("lints", &none, &empty));
+    }
+
     /// Every registry extension resolves to exactly one text-lint tier.
     ///
     /// Markdown prose covers the markdown family only. `rs`/`cs`/`py`/`pyi`
@@ -730,7 +827,7 @@ mod tests {
                     CODE_FAMILIES.iter().any(|exts| exts.contains(ext)),
                     ".{ext} is outside the lexicon families"
                 ),
-                // All 48 registry extensions carry a producer tier; the
+                // All 78 registry extensions carry a producer tier; the
                 // None tier belongs to data formats and unmapped
                 // extensions only, both outside the registry.
                 TextLints::None => panic!(

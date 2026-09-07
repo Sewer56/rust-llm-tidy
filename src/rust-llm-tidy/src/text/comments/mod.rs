@@ -37,6 +37,10 @@
 //! - a Lisp datum comment (`#;`) or semicolon character literal
 //!   (`#\;`, `?;`, `?\;`, `\;`), or TeX verbatim material (`\verb`,
 //!   verbatim-like environments);
+//! - a YAML block scalar (`|`, `>`, with `-`/`+`/digit modifiers at a
+//!   value position, including anchors and tags);
+//! - a CMake bracket argument or bracket comment;
+//! - a PowerShell here-string or interpolated subexpression;
 //! - a file ending inside an open block comment, backtick literal,
 //!   triple-quoted string, carried quote, or heredoc.
 //!
@@ -69,6 +73,7 @@
 //! - `families` - the per-family lexical tables, the fail-closed
 //!   reject predicates, and the extension lookup.
 //! - `scan` - the fail-closed scanner.
+//! - `yaml` - plain-scalar and comment token boundaries.
 
 use crate::reporting::Diagnostic;
 use crate::rules::lint::run_region_checks;
@@ -76,7 +81,10 @@ use core::cmp::Ordering;
 use families::{LEXED_EXTENSIONS, Lexicon};
 
 mod families;
+#[cfg(test)]
+mod lexical_safety_tests;
 mod scan;
+mod yaml;
 
 /// Whether `ext` has a lexicon entry: the `//`, `#`, `--`, `;`, and `%`
 /// comment families.
@@ -767,6 +775,187 @@ mod tests {
         assert_eq!(found[0].line, 3);
     }
 
+    // ── New language mappings ──
+
+    /// YAML: `#` after non-whitespace stays code, spanned strings never
+    /// measure, and any block-scalar indicator rejects the whole scan.
+    #[test]
+    fn yaml_markers_spanned_strings_and_block_scalars() {
+        let tail = "y".repeat(85);
+        let mid_word = format!("url: http://x/#frag-{tail}\n");
+        let span = format!("a: \"starts\n{}  ends\"\n", long_comment("#"));
+
+        // Headers: plain, chomping, explicit-indent, both orders, an
+        // alone-on-the-line indicator, and one with a trailing comment.
+        let headers = [
+            "key: |", "key: >", "key: |-", "key: >+", "key: |2", "key: >2-", "- |", "| # note",
+        ];
+
+        for ext in ["yaml", "yml"] {
+            assert!(
+                text_checks(&mid_word, ext).is_empty(),
+                ".{ext}: mid-token `#` must stay code"
+            );
+            assert!(
+                text_checks(&span, ext).is_empty(),
+                ".{ext}: spanned string content must stay quiet"
+            );
+            for header in headers {
+                let source = format!("{header}\n{}", long_comment("#"));
+                assert!(
+                    text_checks(&source, ext).is_empty(),
+                    ".{ext}: block scalar `{header}` must reject the scan"
+                );
+            }
+
+            // A `>` that is not a block-scalar header stays code and
+            // the later comment still measures.
+            let plain = format!("a: x > y\n{}", long_comment("#"));
+            let diags = text_checks(&plain, ext);
+            let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+            assert_eq!(found.len(), 1, ".{ext}: the comment paragraph fires");
+        }
+    }
+
+    /// PowerShell: `<# #>` blocks measure as one region and a
+    /// backtick-escaped `#` stays code.
+    #[test]
+    fn powershell_blocks_measure_and_backtick_escapes_stay_code() {
+        let source = format!("{}\nquiet = 1\n", long_block("<#", "#>"));
+        let tail = "b".repeat(85);
+        let escaped = format!("Write-Host `#{tail}\n");
+        for ext in ["ps1", "psm1", "psd1"] {
+            let diags = text_checks(&source, ext);
+            let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+            assert_eq!(found.len(), 1, ".{ext}: the block paragraph fires");
+            assert_eq!(found[0].line, 2, ".{ext}: the first prose line");
+            assert!(
+                text_checks(&escaped, ext).is_empty(),
+                ".{ext}: a backtick-escaped `#` must stay code"
+            );
+        }
+    }
+
+    /// GraphQL: `"""` block strings stay quiet and apostrophes open no
+    /// string, so the trailing comment still measures.
+    #[test]
+    fn graphql_triple_strings_skip_and_apostrophes_never_quote() {
+        let payload = long_comment("#");
+        let tail = "g".repeat(85);
+        let apostrophe = format!("f(x: String = 'a b'): Int # note {tail}\n");
+        for ext in ["graphql", "gql"] {
+            let source = format!("s: \"\"\"\n{payload}\"\"\"\n{}", long_comment("#"));
+            let diags = text_checks(&source, ext);
+            let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+            assert_eq!(found.len(), 1, ".{ext}: only the real comment paragraph");
+            assert_eq!(found[0].line, 8, ".{ext}: after the block string");
+
+            let diags = text_checks(&apostrophe, ext);
+            let found = codes(&diags, CODE_LINE_LENGTH);
+            assert_eq!(
+                found.len(),
+                1,
+                ".{ext}: the trailing comment after an apostrophe still measures"
+            );
+        }
+    }
+
+    /// Fish: `<<` is an operator (no heredocs) and spanned strings
+    /// never measure.
+    #[test]
+    fn fish_operators_survive_and_spanned_strings_stay_quiet() {
+        let source = format!("count << $list\n{}", long_comment("#"));
+        let diags = text_checks(&source, "fish");
+        let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+        assert_eq!(found.len(), 1, "the comment paragraph still fires");
+
+        let span = format!("set s \"starts\n{}  ends\"\n", long_comment("#"));
+        assert!(
+            text_checks(&span, "fish").is_empty(),
+            "spanned string content must stay quiet"
+        );
+    }
+
+    /// CMake: multiline quoted arguments carry their state, never
+    /// measuring the payload lines between the quotes.
+    #[test]
+    fn cmake_multiline_quoted_arguments_stay_quiet() {
+        let span = format!("set(x \"starts\n{}  ends\")\n", long_comment("#"));
+        assert!(
+            text_checks(&span, "cmake").is_empty(),
+            "quoted-argument payload must stay quiet"
+        );
+    }
+
+    /// AppleScript: `(* *)` blocks measure with the block dialect; the
+    /// `--` line comments are pinned by the exhaustive walker test.
+    #[test]
+    fn applescript_blocks_measure_with_the_block_dialect() {
+        let source = format!("{}\nquiet\n", long_block("(*", "*)"));
+        let diags = text_checks(&source, "applescript");
+        let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+        assert_eq!(found.len(), 1, "the block paragraph fires");
+        assert_eq!(found[0].line, 2, "the first prose line");
+    }
+
+    /// Verilog: width literals like `8'h00` open no quote state and
+    /// hide no trailing comment.
+    #[test]
+    fn verilog_width_literals_hide_no_trailing_comments() {
+        let tail = "h".repeat(85);
+        for ext in ["v", "sv"] {
+            let source = format!("logic [7:0] x = 8'h00; // note {tail}\n");
+            let diags = text_checks(&source, ext);
+            let found = codes(&diags, CODE_LINE_LENGTH);
+            assert_eq!(
+                found.len(),
+                1,
+                ".{ext}: the trailing comment still measures"
+            );
+        }
+    }
+
+    /// The reuse mappings pin one representative fact each.
+    ///
+    /// Facts: triple strings (`bzl`, `groovy`), a value-adjacent `#`
+    /// (`toml`), an apostrophe attribute (`vhd`), a `%` comment
+    /// (`bst`), and a `{- -}` block (`purs`).
+    #[test]
+    fn reuse_mappings_pin_one_fact_each() {
+        let tail = "n".repeat(85);
+        for (ext, marker) in [("bzl", "#"), ("groovy", "//")] {
+            let source = format!(
+                "s = \"\"\"\n{}\"\"\"\n{}",
+                long_comment(marker),
+                long_comment(marker)
+            );
+            let diags = text_checks(&source, ext);
+            let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+            assert_eq!(found.len(), 1, ".{ext}: only the real comment paragraph");
+        }
+
+        let trailing = [
+            ("toml", format!("key = \"v\"# note {tail}\n")),
+            ("vhd", format!("y := x'first; -- note {tail}\n")),
+            ("bst", format!("% note {tail}\n")),
+        ];
+        for (ext, source) in trailing {
+            let diags = text_checks(&source, ext);
+            let found = codes(&diags, CODE_LINE_LENGTH);
+            assert_eq!(
+                found.len(),
+                1,
+                ".{ext}: its family's comment still measures"
+            );
+        }
+
+        let source = format!("{}\nquiet\n", long_block("{-", "-}"));
+        let diags = text_checks(&source, "purs");
+        let found = codes(&diags, CODE_PARAGRAPH_SIZE);
+        assert_eq!(found.len(), 1, ".purs: the block paragraph fires");
+        assert_eq!(found[0].line, 2, ".purs: the first prose line");
+    }
+
     // ── Table coverage ──
 
     /// The table covers the five comment families case-insensitively and
@@ -775,6 +964,16 @@ mod tests {
     fn covers_matches_the_extension_table() {
         for (ext, _) in LEXED_EXTENSIONS {
             assert!(covers(ext), ".{ext} must be covered");
+        }
+        // The lookup binary-searches the table, so rows must stay
+        // ASCII-sorted.
+        for pair in LEXED_EXTENSIONS.windows(2) {
+            assert!(
+                pair[0].0 < pair[1].0,
+                "rows must sort ascending: {} before {}",
+                pair[0].0,
+                pair[1].0
+            );
         }
         assert!(covers("JS"), "lookup is case-insensitive");
         assert!(covers("SQL"), "dash-family lookup is case-insensitive");

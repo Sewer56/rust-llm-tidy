@@ -18,6 +18,15 @@ keeps its own paragraphs.
 | Python                  | module, class, and function docstrings; `#` comments                                                    |
 | Comment-marker families | line comments and the family's block forms (below)                                                      |
 
+The comment-marker families include `.yaml`, `.yml`, `.toml`, `.ps1`,
+`.graphql`, `.fish`, `.cmake`, `.applescript`, and `.v`.
+
+YAML and TOML run comment lints only. Table and fence fixes remain
+disabled, even when explicitly selected, to preserve configuration values.
+
+Reuse mappings such as `.bzl`, `.ksh`, `.vhd`, `.purs`, `.sty`, and
+`.scss` share the existing lexicons' markers.
+
 Block forms measured per family:
 
 - `//` family and sql: `/** */` and `/* */`.
@@ -25,6 +34,8 @@ Block forms measured per family:
 - hs and elm: `{- -}`.
 - el, lisp, scm: `#| |#`.
 - m: `%{ %}` alone on its line.
+- PowerShell (`ps1`, `psm1`, `psd1`): `<# #>`.
+- AppleScript: `(* *)`.
 
 Never measured:
 
@@ -37,9 +48,19 @@ Never measured:
 - Python `>>>` doctest examples: source lines, `...` continuations,
   and expected output, until the blank line ending the example.
 
-Python's producer and the marker families' comment lexicon fail closed:
-a file they cannot attribute safely produces no findings rather than
-guesses.
+Fail-closed cases: a file the producer or lexicon cannot attribute
+safely produces no findings rather than guesses.
+
+- Python: broken syntax (for example an unterminated string) yields no
+  tree, so no findings.
+- Marker families: unmodeled literal forms reject the scan: an
+  unterminated `sh` heredoc, a Ruby `%w[...]`, a nested `js` template
+  hole.
+- YAML block scalars (`|` and `>` headers, including anchors and tags):
+  the whole scan rejects, so a file using one produces no findings.
+- CMake bracket arguments and bracket comments: the whole scan rejects.
+- PowerShell here-strings and interpolated `$()` subexpressions: the
+  whole scan rejects. Ordinary quoted strings use PowerShell escape rules.
 
 ## TEXT001 - oversized paragraph
 
