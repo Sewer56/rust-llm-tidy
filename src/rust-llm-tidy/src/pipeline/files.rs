@@ -6,6 +6,7 @@ use crate::languages::registry as langs;
 use crate::project::csharp as csharp_index;
 use crate::reporting::change as changes;
 use crate::rules::lint as check;
+use crate::rules::lint::rust::mod001_module_size;
 use crate::rules::transform::visibility::rust::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
     discover_crate_root, narrow_vis_in_tree,
@@ -40,6 +41,8 @@ pub(crate) struct VisContext {
 /// - `suppress_in_release_notes`: the resolved
 ///   `passive_narration.suppress_in_release_notes` setting; suppresses
 ///   TEXT007 narration markers in release and migration notes
+/// - `module_size_max_lines`: the resolved `module_size.max_lines` budget
+///   for MOD001; 500 when unconfigured
 /// - `index`: refreshed C# facts and cached parses for this run
 ///
 /// # Errors
@@ -48,6 +51,7 @@ pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
     suppress_in_release_notes: bool,
+    module_size_max_lines: usize,
     index: Option<&csharp_index::CSharpIndex>,
 ) -> anyhow::Result<Vec<(PathBuf, crate::reporting::Diagnostic)>> {
     let source =
@@ -72,6 +76,15 @@ pub(crate) fn check_file(
             Some(index) => backend.lint_indexed(parsed, &index.index),
             None => backend.lint(parsed),
         };
+        // MOD001 is file-level: it needs the path and the threshold, which
+        // never reach `LanguageBackend::lint`, so it runs at this seam.
+        if paths::ext_in(Some(ext), &["rs"]) && !disabled.contains(check::CODE_MODULE_SIZE) {
+            diagnostics.extend(mod001_module_size::check(
+                parsed,
+                path,
+                module_size_max_lines,
+            ));
+        }
     }
     match profile.text_lints {
         langs::TextLints::Prose => diagnostics.extend(check::run_text_checks(&source, ext)),

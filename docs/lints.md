@@ -17,8 +17,8 @@ So `exclude: [{rules: [DOC001]}]` turns off just missing-docs and
 Which codes run depends on the language:
 
 - Rust: every code, read from a tree-sitter parse.
-- C#: every code, read from a tree-sitter parse, evaluated against XML
-  doc comments ([lints for C#]).
+- C#: every code except the Rust-only `MOD001`, read from a tree-sitter
+  parse, evaluated against XML doc comments ([lints for C#]).
 
 Languages other than Rust and C# run the text lints only ([text lints]):
 
@@ -46,6 +46,7 @@ Languages other than Rust and C# run the text lints only ([text lints]):
 | [`TEXT006`] | Hint     | A doc line has a shorter alternative for a word, phrase, or filler.               |
 | [`TEXT007`] | Hint     | A doc line may hold passive voice or implementation history.                      |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
+| [`MOD001`]  | Warning  | A `.rs` file's non-test lines exceed `module_size.max_lines` (default 500).       |
 
 ## Examples
 
@@ -380,6 +381,30 @@ src/lib.rs:1: warning[TEST001]: test function `test_foo` should use a behavioral
 
 `TEST001` is warning-severity, so the run exits 0.
 
+### MOD001 - oversized module
+
+Rust files over the module-size budget warn once per file.
+
+- The budget counts every physical line outside top-level `#[cfg(test)]`
+  mod regions, blank lines included.
+- The finding reports at the first line past the budget.
+- Files under a `tests/` directory never fire MOD001.
+
+Move new code that is a separate thing to its own file. Plan new files as
+several modules up front rather than one growing module.
+
+Tune the budget through the `module_size.max_lines` config key (default
+500).
+
+#### MOD001 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include MOD001 src/big.rs
+src/big.rs:501: warning[MOD001]: module has 612 lines outside `#[cfg(test)]` mod regions, over the 500-line budget (module_size.max_lines); move new code that is a separate thing to its own file, and plan new files as several modules up front rather than one growing module (file)
+```
+
+`MOD001` is warning-severity, so the run exits 0.
+
 ## Config
 
 ```yaml
@@ -508,6 +533,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`TEXT006`]: ./text-lints.md#text006---verbose-synonyms
 [`TEXT007`]: ./text-lints.md#text007---passive-voice-and-past-behaviour
 [`TEST001`]: #test001---non-behavioral-test-name
+[`MOD001`]: #mod001---oversized-module
 [lints for C#]: ./languages/lints/csharp.md
 [text lints]: ./text-lints.md
 

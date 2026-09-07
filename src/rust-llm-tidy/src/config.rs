@@ -35,7 +35,7 @@ use std::path::{Path, PathBuf};
 
 /// Threshold applied when the `module_size` section or its `max_lines` key
 /// is absent.
-const DEFAULT_MODULE_SIZE_MAX_LINES: usize = 500;
+pub(crate) const DEFAULT_MODULE_SIZE_MAX_LINES: usize = 500;
 
 /// A loaded and validated config, ready to answer `policy_for` queries.
 #[derive(Debug)]

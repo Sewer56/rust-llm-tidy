@@ -1,7 +1,7 @@
 //! Coordinate file transformations, project facts and linting without terminal
 //! output.
 
-use crate::config::{CompiledConfig, PostProcessStep};
+use crate::config::{CompiledConfig, DEFAULT_MODULE_SIZE_MAX_LINES, PostProcessStep};
 use crate::input as paths;
 use crate::reporting::{FileReport, PostProcessFailure, RunReport};
 use crate::rules::registry as check;
@@ -468,7 +468,19 @@ fn process_one(
         };
         let suppress_in_release_notes =
             config.is_none_or(CompiledConfig::suppress_in_release_notes);
-        match files::check_file(path, &lint_disabled, suppress_in_release_notes, index) {
+        // MOD001's budget resolves once per run like the links threshold:
+        // the configured value, else the 500-line default.
+        let module_size_max_lines = config.map_or(
+            DEFAULT_MODULE_SIZE_MAX_LINES,
+            CompiledConfig::module_size_max_lines,
+        );
+        match files::check_file(
+            path,
+            &lint_disabled,
+            suppress_in_release_notes,
+            module_size_max_lines,
+            index,
+        ) {
             Ok(found) => out
                 .diagnostics
                 .extend(found.into_iter().map(|(_, diagnostic)| diagnostic)),
