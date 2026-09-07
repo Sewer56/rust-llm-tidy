@@ -41,6 +41,11 @@
 links:
   min_occurrences: 1
 
+# This repo's tests/ modules are first-class code; size-check them too.
+# Inline #[cfg(test)] regions in src files stay exempt by default.
+module_size:
+  include_test_files: true
+
 # Skip ALL processing for files matching any pattern.
 exclude_files:
   # Test fixtures are intentional fragments, not compilable units; tidying
