@@ -161,6 +161,9 @@ Also:
   (default empty = all). File path appended as last arg.
   - Skipped under `--dry-run` and for excluded files.
 
+More keys and options (`links`, `passive_narration`): see the annotated
+[example config][`.rust-llm-tidy.example.yml`] and [docs/text-lints.md].
+
 Globs are relative to the config file's directory and use `literal_separator`
 semantics (`*` does not cross `/`; `**` recurses).
 

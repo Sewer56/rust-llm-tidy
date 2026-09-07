@@ -22,6 +22,7 @@ pub(crate) const CODE_TITLES: &[(&str, &str)] = &[
     (CODE_HEADER_OPENER, "header opener shape"),
     (CODE_FENCE_TAG, "untagged fenced code block"),
     (CODE_VERBOSE_SYNONYMS, "verbose synonym"),
+    (CODE_PASSIVE_NARRATION, "passive construction"),
     (CODE_TEST_NAMING, "non-behavioral test name"),
 ];
 /// Selectable transformations and the lint group, in pipeline order.
@@ -45,6 +46,7 @@ pub const LINT_CODES: &[&str] = &[
     CODE_HEADER_OPENER,
     CODE_FENCE_TAG,
     CODE_VERBOSE_SYNONYMS,
+    CODE_PASSIVE_NARRATION,
     CODE_TEST_NAMING,
 ];
 /// Rule code for placeholder text in doc comments.
@@ -66,6 +68,8 @@ pub const CODE_MISSING_DOCS: &str = "DOC001";
 pub const CODE_MISSING_ERRORS: &str = "DOC002";
 /// Rule code for an over-limit paragraph of stripped doc text.
 pub const CODE_PARAGRAPH_SIZE: &str = "TEXT001";
+/// Rule code for passive constructions and past-behavior narration.
+pub const CODE_PASSIVE_NARRATION: &str = "TEXT007";
 /// Rule code for an over-limit sentence of measured prose.
 pub const CODE_SENTENCE_LENGTH: &str = "TEXT003";
 /// Rule code for a discouraged test-function name.
@@ -90,13 +94,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lint_codes_lists_all_fourteen_codes() {
+    fn lint_codes_lists_all_fifteen_codes() {
         // `LINT_CODES` is the source of truth for CLI rule validation. It must
         // enumerate every code produced by the backends and the text rules.
         assert_eq!(
             LINT_CODES.len(),
-            14,
-            "LINT_CODES must list exactly fourteen codes: {LINT_CODES:?}"
+            15,
+            "LINT_CODES must list exactly fifteen codes: {LINT_CODES:?}"
         );
         for code in [
             CODE_MISSING_DOCS,
@@ -112,6 +116,7 @@ mod tests {
             CODE_HEADER_OPENER,
             CODE_FENCE_TAG,
             CODE_VERBOSE_SYNONYMS,
+            CODE_PASSIVE_NARRATION,
             CODE_TEST_NAMING,
         ] {
             assert!(LINT_CODES.contains(&code), "LINT_CODES is missing {code}");

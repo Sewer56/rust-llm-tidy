@@ -54,11 +54,14 @@ pub struct CompiledConfig {
     /// Additions from the `extra_extensions:` key, allowed on top of the
     /// effective base list.
     extra_extensions: Vec<String>,
+    /// Resolved `passive_narration` settings (section defaults when the
+    /// top-level key is absent).
+    passive_narration: PassiveNarrationConfig,
 }
 
 /// Raw serde view of `.rust-llm-tidy.yml`. Paths/globs are relative to the
 /// config file's directory.
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)] // Reject hallucinated config keys at parse time.
 pub struct Config {
     /// Whitelist: for matched paths, run ONLY these rules.
@@ -88,6 +91,10 @@ pub struct Config {
     /// (`extensions` when non-empty, else the defaults).
     #[serde(default)]
     pub extra_extensions: Vec<String>,
+    /// Settings under the top-level `passive_narration` key; absent keeps
+    /// the section defaults (see [`PassiveNarrationConfig`]).
+    #[serde(default)]
+    pub passive_narration: Option<PassiveNarrationConfig>,
 }
 
 /// Runtime policy for a single file: whether to skip it entirely, which ops are
@@ -131,6 +138,29 @@ pub struct LinkConfig {
     pub by_extension: BTreeMap<String, usize>,
 }
 
+/// Settings under the top-level `passive_narration` key for the opt-in
+/// TEXT007 passive-narration lint.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(deny_unknown_fields)] // Reject hallucinated sub-keys at parse time.
+pub struct PassiveNarrationConfig {
+    /// Run the TEXT007 passive-narration lint.
+    ///
+    /// - Default: `false` (the lint is prone to false positives)
+    /// - `true`: report TEXT007 hints in file processing
+    /// - `--include TEXT007` runs it regardless of this setting
+    /// - Pathless library text checks: unaffected
+    #[serde(default)]
+    pub enable: bool,
+    /// Suppress TEXT007 narration markers in release and migration notes.
+    ///
+    /// - Default: `true`
+    /// - Paths: `CHANGELOG*` or `MIGRATION*` basenames at any depth, or files
+    ///   under a `releases` directory (case-insensitive)
+    /// - Passive-voice findings: unaffected
+    #[serde(default = "default_true")]
+    pub suppress_in_release_notes: bool,
+}
+
 /// One external post-processing step. The processed file path is appended as
 /// the last argument by the library's file pipeline when permission is granted.
 #[derive(Debug, Deserialize, Clone)]
@@ -158,6 +188,16 @@ pub struct RuleGroup {
 }
 
 impl CompiledConfig {
+    /// Whether to apply `passive_narration.suppress_in_release_notes`.
+    pub(crate) fn suppress_in_release_notes(&self) -> bool {
+        self.passive_narration.suppress_in_release_notes
+    }
+
+    /// Whether to run the opt-in `passive_narration.enable` lint.
+    pub(crate) fn passive_narration(&self) -> bool {
+        self.passive_narration.enable
+    }
+
     /// Borrow the post-processing steps so the pipeline can run them after the
     /// per-file loop.
     pub fn post_process_steps(&self) -> &[PostProcessStep] {
@@ -237,6 +277,17 @@ impl CompiledConfig {
             policy.enabled = None;
         }
         policy
+    }
+}
+
+impl Default for PassiveNarrationConfig {
+    /// An absent section keeps the lint off but suppression on, matching a
+    /// present section that omits both keys.
+    fn default() -> Self {
+        Self {
+            enable: false,
+            suppress_in_release_notes: default_true(),
+        }
     }
 }
 
@@ -434,6 +485,7 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         links: config.links,
         extensions: config.extensions,
         extra_extensions: config.extra_extensions,
+        passive_narration: config.passive_narration.unwrap_or_default(),
     })
 }
 
@@ -487,6 +539,10 @@ fn compile_glob_set(patterns: &[String], _config_dir: &Path) -> anyhow::Result<G
 /// (always hoist).
 fn default_one() -> usize {
     1
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[cfg(test)]
@@ -668,6 +724,36 @@ mod tests {
         for op in ["tables", "fences", "links", "reorder", "vis", "lints"] {
             assert!(rules.contains(&op), "missing fix/operation {op}");
         }
+    }
+
+    /// YAML defaults keep narration suppression on with and without the
+    /// `passive_narration` section.
+    #[test]
+    fn suppression_should_default_to_enabled() {
+        assert!(compile("{}\n", &[]).suppress_in_release_notes());
+        assert!(compile("passive_narration:\n  enable: true\n", &[]).suppress_in_release_notes());
+        assert!(
+            !compile(
+                "passive_narration:\n  suppress_in_release_notes: false\n",
+                &[]
+            )
+            .suppress_in_release_notes()
+        );
+    }
+
+    /// The opt-in TEXT007 switch defaults off until the section enables it.
+    #[test]
+    fn passive_narration_should_default_off_until_configured() {
+        assert_eq!(Config::default().passive_narration, None);
+        assert!(!compile("{}\n", &[]).passive_narration());
+        assert!(
+            !compile(
+                "passive_narration:\n  suppress_in_release_notes: false\n",
+                &[]
+            )
+            .passive_narration()
+        );
+        assert!(compile("passive_narration:\n  enable: true\n", &[]).passive_narration());
     }
 
     // ── links.min_occurrences + links.by_extension ──

@@ -323,7 +323,96 @@ src/lib.rs:3: hint[TEXT006]: consider simpler wording.
 `TEXT006` has hint severity, so its findings do not fail the run.
 
 [wording dictionary]: ../src/rust-llm-tidy/src/rules/lint/text/text006_verbose_synonyms/suggestions.rs
+[module]: ../src/rust-llm-tidy/src/rules/lint/text/text007_passive_narration.rs
 
+## TEXT007 - passive voice and past behaviour
+
+Suggests checking docs for passive voice or implementation history.
+Say what the code does, directly:
+
+- Passive: `Errors are returned by the scanner.` →
+  `The scanner returns errors.`
+- Past behaviour: `This no longer panics.` →
+  `This returns an error.` (if accurate)
+
+### Detection details
+
+- Checks each line; reports at most one hint, preferring passive voice.
+- Flags be-verbs followed by past participles, but allows state descriptions
+  such as `is required` and `is deprecated`.
+- Flags history wording such as `no longer`, `previously`, and `prior to
+  this change`; allows temporal uses such as `before validation`.
+- This heuristic has no grammatical context: expect false positives and
+  treat every hint as a review suggestion, never a rewrite.
+- By default, allows past-behaviour wording in `CHANGELOG*` or `MIGRATION*`
+  basenames at any depth and files under a `releases` directory.
+  Matching is case-insensitive; passive voice still produces hints.
+
+Edge-case exceptions are listed in the rule's module documentation:
+[`text007_passive_narration.rs`][module]
+
+Before:
+
+```rust
+/// Errors are returned by the scanner.
+pub fn scan() {}
+```
+
+After:
+
+```rust
+/// The scanner returns errors.
+pub fn scan() {}
+```
+
+### Opt-in
+
+TEXT007 is heuristic and prone to false positives, so file processing keeps
+it off unless a config opts in:
+
+```yaml
+passive_narration:
+  enable: true
+```
+
+- `enable` omitted or `false`: TEXT007 does not run
+- `enable: true`: report TEXT007 hints
+- `--include TEXT007` runs it regardless; the `lints` group alone keeps
+  it off
+- Pathless library text checks are unaffected and always include it
+
+### Release-note suppression
+
+Set this boolean under `passive_narration` to report narration
+markers in release and migration notes too:
+
+```yaml
+passive_narration:
+  enable: true
+  suppress_in_release_notes: false
+```
+
+- Omitted or `true`: keep narration-marker suppression in those paths
+- `false`: report narration markers there, just as in ordinary files
+- Passive-voice checks and rule inclusion/exclusion: unchanged
+
+This setting has no CLI flag. File processing applies it; pathless text
+checks do not apply release-note suppression.
+
+### TEXT007 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include TEXT007 src/lib.rs
+src/lib.rs:1: hint[TEXT007]: passive construction: `are returned`.
+  - Treat this as a heuristic suggestion; preserve valid state descriptions and runtime history.
+  - State only current behavior in active, present-tense language.
+  - Remove change history, old/new comparisons, and time labels such as `now` or `currently`.
+  - Delete implementation-history-only sentences; do not invent replacement behavior.
+  - Check the implementation before rewriting; preserve exact conditions, guarantees, and limitations.
+  - Keep implementation history out of comments and API docs, including internals, tests, and helpers. Use release or migration notes only for a genuine public-API compatibility concern. (file)
+```
+
+`TEXT007` emits hints, grouped after warnings; hints alone exit 0.
 
 [`lints`]: ./lints.md
 

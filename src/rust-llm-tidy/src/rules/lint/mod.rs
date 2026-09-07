@@ -3,6 +3,7 @@
 use crate::reporting::Diagnostic;
 pub use crate::rules::registry::*;
 pub use crate::text::measurement::{Dialect, DocRegion, RegionLine, line_marker_regions};
+pub(crate) use text::is_narration_marker;
 
 pub(crate) mod csharp;
 pub(crate) mod rust;

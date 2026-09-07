@@ -1,8 +1,8 @@
 //! Rule: clean file - no diagnostics expected.
 //!
-//! Every public documentable item is documented, every `pub fn` returning
-//! `Result` has a complete `# Errors` section, and the file should produce
-//! zero diagnostics. Used to verify the checker does not false-positive on
+//! Every documentable item carries documentation and every `pub fn`
+//! returning `Result` documents its errors, so this file yields zero
+//! diagnostics. It verifies the checker avoids false positives on
 //! well-formed code.
 
 /// A fully documented struct.
@@ -57,6 +57,6 @@ pub union RawBytes {
 
 /// An error returned when parsing fails.
 pub enum ParseError {
-    /// The input was invalid.
+    /// The input is invalid.
     Invalid,
 }

@@ -895,6 +895,66 @@ fn md_three_sentence_heading_opener_warns_text004_without_failing() {
     );
 }
 
+/// Config controls narration suppression without hiding passive hints.
+#[test]
+fn narration_should_follow_suppression_setting_when_checking_note_paths() {
+    for (yaml, suppress) in [
+        (None, true),
+        (Some("{}\n"), true),
+        (
+            Some("passive_narration:\n  suppress_in_release_notes: true\n"),
+            true,
+        ),
+        (
+            Some("passive_narration:\n  suppress_in_release_notes: false\n"),
+            false,
+        ),
+    ] {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(".git"), "").unwrap();
+        if let Some(yaml) = yaml {
+            fs::write(dir.join(".rust-llm-tidy.yml"), yaml).unwrap();
+        }
+
+        for (rel, is_note) in [
+            ("CHANGELOG.md", true),
+            ("MIGRATION.md", true),
+            ("releases/notes.md", true),
+            // Case variants match the same release-note paths.
+            ("ChangeLog.md", true),
+            ("migrationNotes.txt", true),
+            ("RELEASES/notes.md", true),
+            ("notes.md", false),
+        ] {
+            let path = dir.join(rel);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, text007_marker_and_passive_md()).unwrap();
+
+            let output = Command::new(binary())
+                .current_dir(&dir)
+                .args(["--include", "TEXT007"])
+                .arg(&path)
+                .output()
+                .unwrap();
+
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(output.status.success(), "{rel}, {yaml:?}: {stderr}");
+            assert_eq!(
+                stderr.contains(":1: hint[TEXT007]"),
+                !(suppress && is_note),
+                "narration in {rel}, {yaml:?}: {stderr}"
+            );
+            assert!(
+                stderr.contains(":2: hint[TEXT007]"),
+                "passive voice in {rel}, {yaml:?}: {stderr}"
+            );
+        }
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+}
+
 /// Python docstring prose fires the text budgets with original file lines.
 ///
 /// TEXT001 errors on the module docstring's over-budget paragraph, and
@@ -1055,6 +1115,32 @@ fn sql_lexicon_measures_comments_not_strings() {
     );
 }
 
+/// An ordinarily named markdown file yields both TEXT007 classes, one
+/// per offending line, when the opt-in code is explicitly included.
+#[test]
+fn text007_should_render_hints_when_checking_an_ordinary_file() {
+    let path = temp_named_file("notes.md", &text007_marker_and_passive_md());
+    let output = run_command(&["--include", "lints", "--include", "TEXT007"], &path);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "TEXT007 hints must not fail the run: {stderr}"
+    );
+    assert!(
+        stderr.contains(":1: hint[TEXT007]") && stderr.contains(":2: hint[TEXT007]"),
+        "both the narration marker and the passive construction must emit hints:\n{stderr}"
+    );
+
+    let output = run_command(&["--include", "TEXT007", "--json"], &path);
+    let records: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert!(output.status.success());
+    let records = records.as_array().unwrap();
+    assert_eq!(records.len(), 2);
+    assert!(records.iter().all(|record| record["severity"] == "hint"));
+}
+
 // ── Helpers ───────────────────────────────────────────────────────
 
 /// The directory holding the default-run mixed-language fixtures.
@@ -1112,18 +1198,26 @@ fn rust_fixture_dir() -> std::path::PathBuf {
     fixture_dir().join("rust")
 }
 
-/// Create a numbered temporary directory.
-fn temp_dir() -> std::path::PathBuf {
-    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = std::process::id();
-    std::env::temp_dir().join(format!("rust-llm-tidy-lint-dir-{}-{}", pid, seq))
-}
-
 /// Writes `content` to a numbered temp `.md` file and returns its path.
 fn temp_md(content: &str) -> std::path::PathBuf {
     let path = temp_file("md");
     fs::write(&path, content).unwrap();
     path
+}
+
+/// Write `content` to `rel` (a relative path inside a fresh temp dir)
+/// and return the file's path; parent directories are created.
+fn temp_named_file(rel: &str, content: &str) -> std::path::PathBuf {
+    let path = temp_dir().join(rel);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, content).unwrap();
+    path
+}
+
+/// A markdown file whose line 1 carries a narration marker and line 2 a
+/// passive construction, so both TEXT007 classes are observable.
+fn text007_marker_and_passive_md() -> String {
+    "This no longer panics.\nErrors are returned by the scanner.\n".to_string()
 }
 
 /// The directory holding the Python lint fixtures.
@@ -1137,6 +1231,13 @@ fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
     cmd.args(["--no-config"]).args(args).arg(path);
     cmd.output()
         .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
+}
+
+/// Create a numbered temporary directory.
+fn temp_dir() -> std::path::PathBuf {
+    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    std::env::temp_dir().join(format!("rust-llm-tidy-lint-dir-{}-{}", pid, seq))
 }
 
 /// Create a numbered temporary file path with the given extension.
