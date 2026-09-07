@@ -13,7 +13,7 @@
 //! [`DocRegion`]: super::region::DocRegion
 
 use super::region::DocRegion;
-use super::{Document, PendingParagraph, StrippedLine, flush, measure_prose_line};
+use super::{Document, OpenFence, PendingParagraph, StrippedLine, flush, measure_prose_line};
 
 /// Measures one docstring region into `doc`'s lines and paragraphs.
 ///
@@ -24,7 +24,7 @@ pub(super) fn measure_region(
     region: DocRegion,
     doc: &mut Document,
     pending: &mut Option<PendingParagraph>,
-    in_fence: &mut bool,
+    open_fence: &mut Option<OpenFence>,
 ) {
     // A `>>>` line opens a doctest example that owns every following
     // line until the blank line ending the example: the source, `...`
@@ -47,7 +47,7 @@ pub(super) fn measure_region(
         in_doctest = false;
         // A `>>>` line inside an open fence is fenced example content,
         // not a doctest prompt, so it never opens an example there.
-        if trimmed.starts_with(">>>") && !*in_fence {
+        if trimmed.starts_with(">>>") && open_fence.is_none() {
             flush(pending, doc);
             doc.lines.push(StrippedLine {
                 number: line.number,
@@ -62,7 +62,7 @@ pub(super) fn measure_region(
                 line.indented,
                 doc,
                 pending,
-                in_fence,
+                open_fence,
             );
         }
     }
@@ -79,6 +79,7 @@ mod tests {
     use crate::reporting::diagnostic::Diagnostic;
     use crate::rules::lint::run_region_checks;
     use crate::rules::lint::tests::codes;
+    use crate::rules::registry::CODE_FENCE_TAG;
     use crate::rules::registry::CODE_LINE_LENGTH;
     use crate::rules::registry::CODE_PARAGRAPH_SIZE;
     use crate::text::measurement::region::{Dialect, DocRegion, RegionLine};
@@ -289,5 +290,27 @@ mod tests {
 
         assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
         assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
+    }
+
+    // ── Fences ──
+
+    // A bare fence in a docstring warns at its line; a tagged fence
+    // stays silent. A doctest inside the fence stays fenced content.
+    #[test]
+    fn bare_fences_warn_and_tagged_stay_silent() {
+        let diags = measure(&[
+            (1, "Summary."),
+            (2, "```"),
+            (3, ">>> 1 + 1"),
+            (4, "2"),
+            (5, "```"),
+        ]);
+
+        let found = codes(&diags, CODE_FENCE_TAG);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].line, 2);
+
+        let tagged = measure(&[(1, "```python"), (2, "x = 1"), (3, "```")]);
+        assert!(codes(&tagged, CODE_FENCE_TAG).is_empty());
     }
 }

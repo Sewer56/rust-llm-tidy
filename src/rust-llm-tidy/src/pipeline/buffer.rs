@@ -27,7 +27,7 @@ use std::collections::HashSet;
 ///
 /// # Example
 ///
-/// ```
+/// ```rust
 /// use rust_llm_tidy::{SourceOptions, tidy_source};
 ///
 /// let options = SourceOptions {

@@ -45,6 +45,20 @@ mod xml_doc;
 pub(crate) struct Document {
     pub lines: Vec<StrippedLine>,
     pub paragraphs: Vec<Paragraph>,
+    /// Opening fence lines, in source order. Recorded for every
+    /// opening fence the markdown classifier measures, whole-file
+    /// and doc/comment regions alike.
+    pub fences: Vec<Fence>,
+}
+
+/// The open fence of a code block: its marker character and run length.
+///
+/// Only a later line with the same marker, an equal-or-longer run, and no
+/// info string closes it; shorter or different-marker fences stay content.
+#[derive(Debug, PartialEq, Eq)]
+struct OpenFence {
+    marker: u8,
+    run: usize,
 }
 
 /// The paragraph under construction between boundary lines. Member texts
@@ -59,6 +73,16 @@ struct PendingParagraph {
     /// Each member line's line number and byte offset in `text`, in
     /// member order.
     line_starts: Vec<(usize, usize)>,
+}
+
+/// An opening fence line of a fenced code block.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Fence {
+    /// 1-based line number of the opening fence line.
+    pub line: usize,
+    /// The fence line's info string: the text after the fence marker
+    /// run, surrounding whitespace trimmed.
+    pub info: Box<str>,
 }
 
 /// A measured paragraph: the member lines' trimmed text joined with single
@@ -144,31 +168,34 @@ pub(crate) fn is_link_reference_definition(trimmed: &str) -> bool {
 /// Each region is measured with its dialect's rules. The gap between two
 /// regions ends any open paragraph and closes any open fence, so prose and
 /// code blocks never span regions.
+///
+/// Each markdown-measured opening fence lands in [`Document::fences`],
+/// feeding TEXT005 in every tier.
 pub(crate) fn measure(regions: Vec<DocRegion>) -> Document {
     let mut doc = Document::default();
     let mut pending: Option<PendingParagraph> = None;
-    let mut in_fence = false;
+    let mut open_fence: Option<OpenFence> = None;
 
     for region in regions {
         let region_start = doc.paragraphs.len();
         match region.dialect {
             Dialect::Markdown => {
-                measure_markdown_region(region, &mut doc, &mut pending, &mut in_fence);
+                measure_markdown_region(region, &mut doc, &mut pending, &mut open_fence);
             }
             Dialect::XmlDoc => {
                 xml_doc::measure_region(region, &mut doc, &mut pending);
             }
             Dialect::BlockDoc => {
-                block_doc::measure_region(region, &mut doc, &mut pending, &mut in_fence);
+                block_doc::measure_region(region, &mut doc, &mut pending, &mut open_fence);
             }
             Dialect::Docstring => {
-                docstring::measure_region(region, &mut doc, &mut pending, &mut in_fence);
+                docstring::measure_region(region, &mut doc, &mut pending, &mut open_fence);
             }
         }
         // A region break is a gap of non-doc lines: paragraphs and fences
         // never span it.
         flush(&mut pending, &mut doc);
-        in_fence = false;
+        open_fence = None;
         // The region's first paragraph is its opener.
         if let Some(first) = doc.paragraphs.get_mut(region_start) {
             first.opens_region = true;
@@ -180,13 +207,13 @@ pub(crate) fn measure(regions: Vec<DocRegion>) -> Document {
 /// Measures one markdown-prose region: the producer already stripped the
 /// comment markers, so each line goes through the shared prose classifier.
 ///
-/// `in_fence` carries the open-fence state in and out: a fence opened here
-/// stays open until its closing fence line or the region's end.
+/// `open_fence` carries the open-fence state in and out: a fence opened here
+/// stays open until a matching closing fence line or the region's end.
 fn measure_markdown_region(
     region: DocRegion,
     doc: &mut Document,
     pending: &mut Option<PendingParagraph>,
-    in_fence: &mut bool,
+    open_fence: &mut Option<OpenFence>,
 ) {
     for line in region.lines {
         measure_prose_line(
@@ -195,7 +222,7 @@ fn measure_markdown_region(
             line.indented,
             doc,
             pending,
-            in_fence,
+            open_fence,
         );
     }
 }
@@ -215,7 +242,7 @@ fn measure_prose_line(
     indented: bool,
     doc: &mut Document,
     pending: &mut Option<PendingParagraph>,
-    in_fence: &mut bool,
+    open_fence: &mut Option<OpenFence>,
 ) {
     let trimmed = text.trim();
 
@@ -229,24 +256,36 @@ fn measure_prose_line(
         return;
     }
 
-    // Decide whether this line is exempt from paragraph measuring.
-    // A fence is a ``` or ~~~ line: it opens a code block, and the
-    // next fence line closes it.
+    // Decide whether this line is exempt from paragraph measuring; the
+    // fence-matching rules live on `fence_delimiter` and `closes_fence`.
     //
     // Fence lines and everything between them are exempt. Outside a
     // block, indented code and lines like headings, tables, and
     // signature-like lines (full list on `is_exempt_content`) are also
     // exempt.
-    let fence = trimmed.starts_with("```") || trimmed.starts_with("~~~");
-    let in_code_block = *in_fence || fence || indented;
-    let exempt = if *in_fence {
-        if fence {
-            *in_fence = false;
+    let fence = fence_delimiter(trimmed);
+    let in_code_block = open_fence.is_some() || fence.is_some() || indented;
+    let exempt = if let Some(open) = open_fence.as_ref() {
+        // An indented line is indented code, not a fence delimiter, so
+        // only an unindented delimiter can close the open fence.
+        if !indented && closes_fence(open, fence, trimmed) {
+            *open_fence = None;
         }
         true
-    } else if fence || indented || is_exempt_content(trimmed) {
-        if fence {
-            *in_fence = true;
+    } else if fence.is_some() || indented || is_exempt_content(trimmed) {
+        // An indented line is indented code, not a fence delimiter:
+        // fence state only changes on unindented fence lines. Per
+        // CommonMark, a backtick fence's info string may not contain
+        // backticks; such a line is not a fence opener.
+        if let Some((marker, run)) = fence.filter(|_| !indented) {
+            let info = fence_info(trimmed);
+            if marker == b'~' || !info.contains('`') {
+                *open_fence = Some(OpenFence { marker, run });
+                doc.fences.push(Fence {
+                    line: number,
+                    info: info.into(),
+                });
+            }
         }
         true
     } else {
@@ -312,6 +351,31 @@ fn bullet_content(trimmed: &str) -> Option<&str> {
     }
 }
 
+/// Whether `trimmed` closes the open fence `open`: same marker, an
+/// equal-or-longer run, and no info string. Shorter, different-marker,
+/// or info-bearing fence lines stay fenced content.
+fn closes_fence(open: &OpenFence, fence: Option<(u8, usize)>, trimmed: &str) -> bool {
+    match fence {
+        Some((marker, run)) => {
+            marker == open.marker && run >= open.run && fence_info(trimmed).is_empty()
+        }
+        None => false,
+    }
+}
+
+/// The fence delimiter's marker character and run length, or `None` for
+/// non-fence lines. A delimiter is a lead of three or more backticks or
+/// tildes.
+fn fence_delimiter(trimmed: &str) -> Option<(u8, usize)> {
+    let bytes = trimmed.as_bytes();
+    let marker = *bytes.first()?;
+    if marker != b'`' && marker != b'~' {
+        return None;
+    }
+    let run = bytes.iter().take_while(|&&b| b == marker).count();
+    (run >= 3).then_some((marker, run))
+}
+
 /// Folds the accumulated member texts into a finished paragraph, if any.
 fn flush(pending: &mut Option<PendingParagraph>, doc: &mut Document) {
     if let Some(open) = pending.take() {
@@ -338,6 +402,17 @@ fn is_exempt_content(trimmed: &str) -> bool {
         || trimmed.starts_with('|')
         || is_signature_line(trimmed)
         || is_link_reference_definition(trimmed)
+}
+
+/// The opening fence's info string: the text after the fence marker run,
+/// surrounding whitespace trimmed.
+///
+/// `trimmed` starts with at least three fence characters; a longer marker
+/// run (` ```` `) belongs to the marker, not the info string.
+fn fence_info(trimmed: &str) -> &str {
+    let marker = trimmed.as_bytes()[0];
+    let run = trimmed.bytes().take_while(|&b| b == marker).count();
+    trimmed[run..].trim()
 }
 
 /// True for lines that look like code signatures rather than plain text.
@@ -581,6 +656,142 @@ mod tests {
         assert_eq!(paragraph_at(&doc, 1).unwrap().kind, ParagraphKind::Bullet);
     }
 
+    // ── Fence capture ──
+
+    // The measuring core records each opening fence's line and trimmed
+    // info string; closing fences and tagged fences are facts, not
+    // findings.
+    #[test]
+    fn analyze_records_opening_fence_info_strings() {
+        let source = indoc! {"
+            intro
+
+            ```rust
+            code
+            ```
+
+            ~~~ ignore
+            code
+            ~~~
+        "};
+        let doc = analyze(source, "md");
+        assert_eq!(
+            doc.fences,
+            vec![
+                Fence {
+                    line: 3,
+                    info: "rust".into(),
+                },
+                Fence {
+                    line: 7,
+                    info: "ignore".into(),
+                },
+            ]
+        );
+    }
+
+    // A backtick fence whose info string contains a backtick is not a
+    // fence opener (CommonMark); no fence is recorded and the fence
+    // state stays closed. Tilde fences may carry backticks in the info.
+    #[test]
+    fn analyze_skips_fence_opener_when_info_has_backtick() {
+        let source = indoc! {"
+            ``` not a`fence
+            text
+            ~~~ has`backticks
+            code
+            ~~~
+        "};
+        let doc = analyze(source, "md");
+        assert_eq!(
+            doc.fences,
+            vec![Fence {
+                line: 3,
+                info: "has`backticks".into(),
+            }]
+        );
+        // The invalid backtick line is exempt content (still a fence-
+        // shaped line), so no paragraph opens for `text`.
+    }
+
+    // A longer open fence stays open across shorter or different-marker
+    // inner fences: only a matching, info-free fence line closes it.
+    #[test]
+    fn analyze_keeps_longer_fence_open_across_inner_fences() {
+        let source = indoc! {"
+            ~~~~markdown
+            ```text
+            inner
+            ```
+            still code
+            ~~~~
+
+            after
+        "};
+        let doc = analyze(source, "md");
+        assert_eq!(
+            doc.fences,
+            vec![Fence {
+                line: 1,
+                info: "markdown".into(),
+            }]
+        );
+        // Everything between the outer delimiters is code-block content,
+        // the nested fence included.
+        for number in 1..=6 {
+            let line = doc.lines.iter().find(|l| l.number == number).unwrap();
+            assert!(line.in_code_block, "line {number} must be fenced content");
+        }
+        // Prose after the block still measures.
+        assert_eq!(paragraph_at(&doc, 8).unwrap().size, "after".len());
+    }
+
+    // A same-marker inner fence with a shorter run or an info string never
+    // closes the outer block. Built by concatenation so this source file
+    // keeps the canonical outer-backtick/inner-tilde alternation.
+    #[test]
+    fn analyze_keeps_fence_open_across_shorter_and_info_bearing_closers() {
+        let inner_open = concat!("``", "`text");
+        let inner_close = concat!("``", "`");
+        let info_closer = concat!("```", "` tail");
+        let source = format!(
+            "````markdown\n{inner_open}\ninner\n{inner_close}\n{info_closer}\nstill code\n````\nafter\n"
+        );
+        let doc = analyze(&source, "md");
+        assert_eq!(
+            doc.fences,
+            vec![Fence {
+                line: 1,
+                info: "markdown".into(),
+            }]
+        );
+        // The shorter inner fence and the info-bearing equal-run line both
+        // stay fenced content; only the bare four-backtick line closes.
+        for number in 1..=7 {
+            let line = doc.lines.iter().find(|l| l.number == number).unwrap();
+            assert!(line.in_code_block, "line {number} must be fenced content");
+        }
+        assert_eq!(paragraph_at(&doc, 8).unwrap().size, "after".len());
+    }
+
+    // Doc-comment regions record fences too: a bare fence in Rust doc
+    // comments is a markdown fence the same rule grades. Built with
+    // `concat!` so the fence lines stay string fragments, not measured
+    // comment lines.
+    #[test]
+    fn analyze_records_fences_from_doc_comment_regions() {
+        let bare_fence = concat!("``", "`");
+        let source = format!("/// {bare_fence}\n/// let x = 1;\n/// {bare_fence}\nfn f() {{}}\n");
+        assert_eq!(
+            analyze(&source, "rs").fences,
+            vec![Fence {
+                line: 1,
+                info: "".into(),
+            }]
+        );
+        assert!(measure(vec![]).fences.is_empty());
+    }
+
     // ── Exemptions ──
 
     // Fenced code content is exempt: it forms no paragraph.
@@ -588,10 +799,10 @@ mod tests {
     fn analyze_exempts_fenced_code() {
         let source = indoc! {"
             text
-            ```rust
+            ~~~rust
             let x = 1;
             let y = 2;
-            ```
+            ~~~
             after
         "};
         let doc = analyze(source, "md");
@@ -605,7 +816,7 @@ mod tests {
     #[test]
     fn analyze_closes_fence_at_non_doc_line() {
         let source = indoc! {"
-            /// ```text
+            /// ~~~text
             let x = 1;
             /// measured prose
         "};
@@ -635,6 +846,22 @@ mod tests {
         let doc = analyze("    indented code\nprose\n", "md");
         assert_eq!(doc.paragraphs.len(), 1);
         assert_eq!(paragraph_at(&doc, 2).unwrap().size, "prose".len());
+    }
+
+    // An indented backtick line is indented code, never a fence opener:
+    // prose after it still measures and no fence is recorded.
+    #[test]
+    fn analyze_measures_prose_after_an_indented_fence_lookalike() {
+        let doc = analyze("    ```\nsurplus prose beyond any fence\n", "md");
+        assert!(doc.fences.is_empty());
+        let line = doc.lines.iter().find(|l| l.number == 1).unwrap();
+        assert!(line.in_code_block);
+        let prose = doc.lines.iter().find(|l| l.number == 2).unwrap();
+        assert!(!prose.in_code_block);
+        assert_eq!(
+            paragraph_at(&doc, 2).unwrap().size,
+            "surplus prose beyond any fence".len()
+        );
     }
 
     // Table rows and headings are exempt content.

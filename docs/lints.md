@@ -41,6 +41,7 @@ Languages other than Rust and C# run the text lints only ([text lints]):
 | [`TEXT002`] | Warning  | A doc line over 80 chars of full text (code blocks, tables, link defs exempt).    |
 | [`TEXT003`] | Warning  | A doc sentence over 25 words (words join across wrapped lines).                   |
 | [`TEXT004`] | Warning  | A doc opener paragraph with three or more sentences (file, item, or heading).     |
+| [`TEXT005`] | Warning  | A fenced code block opens with no tag or bare `ignore` (all markdown prose).      |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
 
 ## Examples
@@ -421,6 +422,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`TEXT002`]: ./text-lints.md#text002---long-line
 [`TEXT003`]: ./text-lints.md#text003---long-sentence
 [`TEXT004`]: ./text-lints.md#text004---header-opener-shape
+[`TEXT005`]: ./text-lints.md#text005---fenced-code-block-without-a-language-tag
 [`TEST001`]: #test001---non-behavioral-test-name
 [lints for C#]: ./languages/lints/csharp.md
 [text lints]: ./text-lints.md

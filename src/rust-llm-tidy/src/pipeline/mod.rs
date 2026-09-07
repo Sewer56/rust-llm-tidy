@@ -46,7 +46,7 @@ impl FileReport {
 ///
 /// # Example
 ///
-/// ```
+/// ```rust
 /// use rust_llm_tidy::{RunOptions, run};
 ///
 /// let directory = tempfile::tempdir()?;

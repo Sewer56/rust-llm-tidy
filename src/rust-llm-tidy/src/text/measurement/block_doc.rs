@@ -11,7 +11,7 @@
 //! exempt.
 
 use super::region::DocRegion;
-use super::{Document, PendingParagraph, flush, measure_prose_line};
+use super::{Document, OpenFence, PendingParagraph, flush, measure_prose_line};
 
 /// Tag words whose first argument token is a name (`@param name`, `@throws
 /// IOException`): the tag and that name are exempt together.
@@ -34,7 +34,7 @@ pub(super) fn measure_region(
     region: DocRegion,
     doc: &mut Document,
     pending: &mut Option<PendingParagraph>,
-    in_fence: &mut bool,
+    open_fence: &mut Option<OpenFence>,
 ) {
     for line in region.lines {
         let mut text = strip_continuation(line.text);
@@ -46,10 +46,10 @@ pub(super) fn measure_region(
             // Drain the exempt prefix in place: the owned buffer moves
             // on to the measured line without a second allocation.
             text.replace_range(..prefix, "");
-            measure_prose_line(text, line.number, false, doc, pending, in_fence);
+            measure_prose_line(text, line.number, false, doc, pending, open_fence);
         } else {
             let indented = prose_is_indented(&text);
-            measure_prose_line(text, line.number, indented, doc, pending, in_fence);
+            measure_prose_line(text, line.number, indented, doc, pending, open_fence);
         }
     }
 }
@@ -132,6 +132,7 @@ mod tests {
     use crate::reporting::diagnostic::Diagnostic;
     use crate::rules::lint::run_region_checks;
     use crate::rules::lint::tests::codes;
+    use crate::rules::registry::CODE_FENCE_TAG;
     use crate::rules::registry::CODE_LINE_LENGTH;
     use crate::rules::registry::CODE_PARAGRAPH_SIZE;
     use crate::text::measurement::region::{Dialect, DocRegion, RegionLine};
@@ -295,5 +296,26 @@ mod tests {
 
         assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
         assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
+    }
+
+    // ── Fences ──
+
+    // A bare fence after the `* ` separator warns at its line; a tagged
+    // fence stays silent.
+    #[test]
+    fn bare_fences_warn_and_tagged_stay_silent() {
+        let diags = measure(&[
+            (1, "Summary."),
+            (2, "* ```"),
+            (3, "* let x = 1;"),
+            (4, "* ```"),
+        ]);
+
+        let found = codes(&diags, CODE_FENCE_TAG);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].line, 2);
+
+        let tagged = measure(&[(1, "* ```rust"), (2, "* let x = 1;"), (3, "* ```")]);
+        assert!(codes(&tagged, CODE_FENCE_TAG).is_empty());
     }
 }
