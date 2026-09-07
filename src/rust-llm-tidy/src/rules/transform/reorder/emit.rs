@@ -12,7 +12,7 @@ use anyhow::{Result, ensure};
 ///
 /// Wraps a `Vec<usize>` that maps output position → input item index.
 /// Every index in `0..n` appears exactly once. Items with in-type member
-/// reordering additionally carry a member permutation
+/// reordering also carry a member permutation
 /// ([`Permutation::set_member_order`]).
 #[derive(Debug, Clone)]
 pub struct Permutation {

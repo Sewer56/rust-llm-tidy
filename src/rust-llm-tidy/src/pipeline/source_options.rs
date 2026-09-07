@@ -5,7 +5,7 @@
 pub struct SourceOptions {
     /// Rule or operation whitelist; an empty list uses language defaults.
     pub include: Vec<String>,
-    /// Additional rule or operation exclusions.
+    /// Extra rule or operation exclusions.
     pub exclude: Vec<String>,
     /// Minimum repeated inline-link occurrences before hoisting; must be positive.
     pub links_min_occurrences: usize,

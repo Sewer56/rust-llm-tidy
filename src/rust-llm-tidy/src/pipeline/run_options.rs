@@ -20,8 +20,8 @@ pub struct RunOptions {
     pub post_process: bool,
     /// Rule or operation whitelist overriding configuration when nonempty.
     pub include: Vec<String>,
-    /// Additional rule or operation exclusions.
+    /// Extra rule or operation exclusions.
     pub exclude: Vec<String>,
-    /// Additional admitted extensions without leading dots.
+    /// Extra admitted extensions without leading dots.
     pub extensions: Vec<String>,
 }

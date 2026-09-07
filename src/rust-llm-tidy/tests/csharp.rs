@@ -497,7 +497,7 @@ fn doc002_resolves_object_creation_to_same_file_constructors() {
 }
 
 /// Self- and mutual recursion that never reach a throw stay silent and
-/// terminate.
+/// always stop.
 #[test]
 fn doc002_stays_silent_on_recursion_that_never_reaches_a_throw() {
     let source = concat!(
