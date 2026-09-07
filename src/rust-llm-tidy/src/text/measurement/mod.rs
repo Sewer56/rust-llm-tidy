@@ -272,13 +272,18 @@ fn measure_prose_line(
         true
     } else if fence.is_some() || indented || is_exempt_content(trimmed) {
         // An indented line is indented code, not a fence delimiter:
-        // fence state only changes on unindented fence lines.
+        // fence state only changes on unindented fence lines. Per
+        // CommonMark, a backtick fence's info string may not contain
+        // backticks; such a line is not a fence opener.
         if let Some((marker, run)) = fence.filter(|_| !indented) {
-            *open_fence = Some(OpenFence { marker, run });
-            doc.fences.push(Fence {
-                line: number,
-                info: fence_info(trimmed).into(),
-            });
+            let info = fence_info(trimmed);
+            if marker == b'~' || !info.contains('`') {
+                *open_fence = Some(OpenFence { marker, run });
+                doc.fences.push(Fence {
+                    line: number,
+                    info: info.into(),
+                });
+            }
         }
         true
     } else {
@@ -683,17 +688,41 @@ mod tests {
         );
     }
 
+    // A backtick fence whose info string contains a backtick is not a
+    // fence opener (CommonMark); no fence is recorded and the fence
+    // state stays closed. Tilde fences may carry backticks in the info.
+    #[test]
+    fn analyze_skips_fence_opener_when_info_has_backtick() {
+        let source = indoc! {"
+            ``` not a`fence
+            text
+            ~~~ has`backticks
+            code
+            ~~~
+        "};
+        let doc = analyze(source, "md");
+        assert_eq!(
+            doc.fences,
+            vec![Fence {
+                line: 3,
+                info: "has`backticks".into(),
+            }]
+        );
+        // The invalid backtick line is exempt content (still a fence-
+        // shaped line), so no paragraph opens for `text`.
+    }
+
     // A longer open fence stays open across shorter or different-marker
     // inner fences: only a matching, info-free fence line closes it.
     #[test]
     fn analyze_keeps_longer_fence_open_across_inner_fences() {
         let source = indoc! {"
-            ````markdown
-            ~~~text
+            ~~~~markdown
+            ```text
             inner
-            ~~~
+            ```
             still code
-            ````
+            ~~~~
 
             after
         "};
@@ -768,10 +797,10 @@ mod tests {
     fn analyze_exempts_fenced_code() {
         let source = indoc! {"
             text
-            ```rust
+            ~~~rust
             let x = 1;
             let y = 2;
-            ```
+            ~~~
             after
         "};
         let doc = analyze(source, "md");
@@ -785,7 +814,7 @@ mod tests {
     #[test]
     fn analyze_closes_fence_at_non_doc_line() {
         let source = indoc! {"
-            /// ```text
+            /// ~~~text
             let x = 1;
             /// measured prose
         "};
