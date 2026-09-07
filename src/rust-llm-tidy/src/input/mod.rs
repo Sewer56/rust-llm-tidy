@@ -1,6 +1,13 @@
 //! Path resolution utilities: expanding directories, collecting files by
 //! extension, and resolving the effective input list (explicit paths or git
 //! diff).
+//!
+//! Discovery excludes license documents unless config sets
+//! `exclude_license_documents: false`:
+//!
+//! - Names: `LICENSE`, `LICENCE`, or `COPYING`, ASCII case-insensitive
+//! - Suffix boundary: end of name, `.`, `-`, `_`, or space
+//! - Exception: recognized non-prose source extensions, including `license.rs`
 
 use anyhow::{Context, bail};
 use ignore::WalkBuilder;
@@ -23,8 +30,9 @@ pub(crate) fn collect_files(
     dir: &Path,
     exts: &[&str],
     out: &mut Vec<PathBuf>,
+    exclude_license_documents: bool,
 ) -> anyhow::Result<()> {
-    collect_project_files(dir, exts, out, false)
+    collect_project_files(dir, exts, out, false, exclude_license_documents)
 }
 
 // ---------------------------------------------------------------------------
@@ -37,11 +45,12 @@ pub(crate) fn resolve_inputs(
     inputs: &[PathBuf],
     git_changed: bool,
     exts: &[&str],
+    exclude_license_documents: bool,
 ) -> anyhow::Result<Vec<PathBuf>> {
     if inputs.is_empty() && git_changed {
-        git::changed_files(exts)
+        git::changed_files(exts, exclude_license_documents)
     } else {
-        resolve_all(inputs, exts)
+        resolve_all(inputs, exts, exclude_license_documents)
     }
 }
 
@@ -54,6 +63,7 @@ pub(crate) fn collect_project_files(
     exts: &[&str],
     out: &mut Vec<PathBuf>,
     skip_repositories: bool,
+    exclude_license_documents: bool,
 ) -> anyhow::Result<()> {
     // `hidden(false)` keeps dot-dirs walkable (gitignore still applies), so
     // behaviour matches a plain recursive read.
@@ -80,6 +90,7 @@ pub(crate) fn collect_project_files(
         let path = entry.path();
         if entry.file_type().is_some_and(|ft| ft.is_file())
             && ext_in(path.extension().and_then(|e| e.to_str()), exts)
+            && !(exclude_license_documents && is_license_document(path))
         {
             out.push(path.to_path_buf());
         }
@@ -90,16 +101,47 @@ pub(crate) fn collect_project_files(
 
 /// Resolve a list of input paths into a flat, ordered list of files with
 /// matching extensions.
-pub(crate) fn resolve_all(inputs: &[PathBuf], exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
+pub(crate) fn resolve_all(
+    inputs: &[PathBuf],
+    exts: &[&str],
+    exclude_license_documents: bool,
+) -> anyhow::Result<Vec<PathBuf>> {
     let mut paths: Vec<PathBuf> = Vec::new();
+
     for input in inputs {
-        let resolved = resolve_paths(input, exts)
+        let resolved = resolve_paths(input, exts, exclude_license_documents)
             .with_context(|| format!("failed to resolve path {}", input.display()))?;
         paths.extend(resolved);
     }
+
     paths.sort();
     paths.dedup();
+
     Ok(paths)
+}
+
+/// Identify conventional license filenames without hiding source implementations.
+pub(crate) fn is_license_document(path: &Path) -> bool {
+    use crate::languages::registry::{DEFAULT_EXTENSIONS, TextLints, profile_for};
+
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let conventional = ["LICENSE", "LICENCE", "COPYING"].iter().any(|prefix| {
+        name.get(..prefix.len())
+            .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
+            && name
+                .as_bytes()
+                .get(prefix.len())
+                .is_none_or(|next| matches!(next, b'.' | b'-' | b'_' | b' '))
+    });
+    if !conventional {
+        return false;
+    }
+
+    let extension = path.extension().and_then(|ext| ext.to_str());
+    !ext_in(extension, DEFAULT_EXTENSIONS)
+        || extension.is_some_and(|ext| matches!(profile_for(ext).text_lints, TextLints::Prose))
 }
 
 /// ASCII case-insensitive extension membership check.
@@ -120,9 +162,15 @@ pub(crate) fn ext_in(ext: Option<&str>, exts: &[&str]) -> bool {
 /// If `path` is a file, it is returned directly. If it is a directory,
 /// all files with extensions in `exts` are collected recursively and sorted
 /// for deterministic ordering.
-fn resolve_paths(path: &Path, exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
+fn resolve_paths(
+    path: &Path,
+    exts: &[&str],
+    exclude_license_documents: bool,
+) -> anyhow::Result<Vec<PathBuf>> {
     if path.is_file() {
-        if ext_in(path.extension().and_then(|e| e.to_str()), exts) {
+        if ext_in(path.extension().and_then(|e| e.to_str()), exts)
+            && !(exclude_license_documents && is_license_document(path))
+        {
             return Ok(vec![path.to_path_buf()]);
         }
         return Ok(Vec::new());
@@ -137,7 +185,7 @@ fn resolve_paths(path: &Path, exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
     }
 
     let mut files = Vec::new();
-    collect_files(path, exts, &mut files)
+    collect_files(path, exts, &mut files, exclude_license_documents)
         .with_context(|| format!("failed to read directory {}", path.display()))?;
     files.sort();
 
@@ -149,6 +197,31 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
+
+    #[test]
+    fn license_documents_should_match_delimited_names_but_preserve_source_files() {
+        for (name, expected) in [
+            ("LICENSE", true),
+            ("licence", true),
+            ("COPYING", true),
+            ("nested/LiCeNsE.MD", true),
+            ("LICENSE-MIT.txt", true),
+            ("LICENCE_APACHE.markdown", true),
+            ("COPYING notice.text", true),
+            ("LICENSE.spdx", true),
+            ("license.rs", false),
+            ("LICENSE-MIT.RS", false),
+            ("licence.py", false),
+            ("COPYING.cs", false),
+            ("licenses.md", false),
+            ("licenced.md", false),
+            ("copyingcat.txt", false),
+            ("my-LICENSE.md", false),
+            ("LICENSE/guide.md", false),
+        ] {
+            assert_eq!(is_license_document(Path::new(name)), expected, "{name}");
+        }
+    }
 
     /// Deletes the temp dir on drop so a panicked test cannot leak it.
     struct TempDir(PathBuf);
@@ -184,7 +257,7 @@ mod tests {
         fs::write(dir.join("target").join("gen.rs"), "fn d() {}\n").unwrap();
 
         let mut files = Vec::new();
-        collect_files(&dir, &["rs"], &mut files).unwrap();
+        collect_files(&dir, &["rs"], &mut files, true).unwrap();
         files.sort();
         files
     }

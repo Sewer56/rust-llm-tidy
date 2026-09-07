@@ -4,9 +4,8 @@
 //! Mirrors the helper pattern from `fix.rs`/`doc_check/mod.rs` (`run_command`,
 //! `manifest_dir`; `binary` lives in the shared `common` module).
 //!
-//! Each test writes a temp config and/or fixture and runs the built CLI
-//! binary with `--config <path>`. Existing tests use `--no-config` (see
-//! `fix.rs`), so the repo-root sample config never interferes here.
+//! Config fixtures use `--config <path>`; discovery tests isolate their working
+//! directory so the repo-root sample config cannot affect their results.
 
 use common::binary;
 use core::sync::atomic::{AtomicU64, Ordering};
@@ -121,6 +120,104 @@ fn check_excludes_doc001_rule() {
         "non-disabled DOC002 must still appear: {stderr:?}"
     );
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[rstest::rstest]
+#[case::no_configuration(None, true)]
+#[case::omitted_license_exclusion(Some("{}\n"), true)]
+#[case::enabled_license_exclusion(Some("exclude_license_documents: true\n"), true)]
+#[case::disabled_license_exclusion(Some("exclude_license_documents: false\n"), false)]
+fn cli_should_follow_license_exclusion_when_configuration_changes(
+    #[case] yaml: Option<&str>,
+    #[values("directory", "explicit_files", "git_changed")] input_mode: &str,
+    #[case] excluded: bool,
+) {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    git(&dir, &["init", "--quiet"]);
+    let license = dir.join("LICENSE-MIT.md");
+    let guide = dir.join("licenses.md");
+    let source = "Read [guide](https://example.com).\n";
+    let cfg = dir.join(".rust-llm-tidy.yml");
+
+    if let Some(yaml) = yaml {
+        fs::write(&cfg, yaml).unwrap();
+    }
+
+    fs::write(&license, source).unwrap();
+    fs::write(&guide, source).unwrap();
+    git(&dir, &["add", "--", "LICENSE-MIT.md", "licenses.md"]);
+    let paths = match input_mode {
+        "directory" => vec![&dir],
+        "explicit_files" => vec![&license, &guide],
+        "git_changed" => vec![],
+        _ => unreachable!(),
+    };
+
+    let mut command = Command::new(binary());
+    command.current_dir(&dir).args(["--include", "links"]);
+    if yaml.is_some() {
+        command.arg("--config").arg(&cfg);
+    }
+
+    let output = command.args(paths).output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{yaml:?}, input_mode={input_mode}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let rendered_guide = fs::read_to_string(&guide).unwrap();
+    assert_ne!(rendered_guide, source);
+    assert_eq!(
+        fs::read_to_string(&license).unwrap(),
+        if excluded { source } else { &rendered_guide },
+        "{yaml:?}, input_mode={input_mode}"
+    );
+
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[rstest::rstest]
+#[case::excluded_file("LICENSE-MIT.md", "exclude_files: [LICENSE-MIT.md]\n")]
+#[case::unselected_extension("LICENSE-MIT.txt", "extensions: [md]\n")]
+fn cli_should_preserve_filtered_license_when_license_exclusion_is_disabled(
+    #[case] filename: &str,
+    #[case] selection: &str,
+) {
+    let dir = temp_dir();
+    fs::create_dir_all(dir.join(".git")).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(
+        &cfg,
+        format!("exclude_license_documents: false\n{selection}"),
+    )
+    .unwrap();
+
+    let license = dir.join(filename);
+    let guide = dir.join("guide.md");
+    let source = "Read [guide](https://example.com).\n";
+    fs::write(&license, source).unwrap();
+    fs::write(&guide, source).unwrap();
+
+    let output = Command::new(binary())
+        .current_dir(&dir)
+        .arg("--config")
+        .arg(&cfg)
+        .args(["--include", "links"])
+        .arg(&dir)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fs::read_to_string(&license).unwrap(), source);
+    assert_ne!(fs::read_to_string(&guide).unwrap(), source);
+
+    fs::remove_dir_all(dir).unwrap();
 }
 
 // ── flag exclusivity ──
@@ -1225,36 +1322,58 @@ fn validate_ok_on_valid_config() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Non-boolean suppression values fail config validation.
-#[test]
-fn validation_should_reject_suppression_when_value_is_not_boolean() {
+/// Non-boolean exclusion and suppression values fail config validation.
+#[rstest::rstest]
+#[case::quoted_true("\"true\"")]
+#[case::quoted_false("\"false\"")]
+#[case::numeric_zero("0")]
+#[case::empty_sequence("[]")]
+#[case::null("null")]
+fn validation_should_reject_boolean_settings_when_value_is_not_boolean(
+    #[case] value: &str,
+    #[values(
+        "exclude_license_documents",
+        "passive_narration:\n  suppress_in_release_notes"
+    )]
+    setting: &str,
+) {
     let dir = temp_dir();
     fs::create_dir_all(&dir).unwrap();
     let cfg = dir.join(".rust-llm-tidy.yml");
 
-    for value in ["\"false\"", "0", "[]", "null"] {
-        fs::write(
-            &cfg,
-            format!("passive_narration:\n  suppress_in_release_notes: {value}\n"),
-        )
+    let yaml = format!("{setting}: {value}\n");
+    fs::write(&cfg, &yaml).unwrap();
+
+    let output = Command::new(binary())
+        .arg("--config")
+        .arg(&cfg)
+        .arg("--validate")
+        .output()
         .unwrap();
 
-        let output = Command::new(binary())
-            .arg("--config")
-            .arg(&cfg)
-            .arg("--validate")
-            .output()
-            .unwrap();
-
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(!output.status.success(), "{value}: {stderr}");
-        assert!(stderr.contains("failed to parse YAML config"), "{stderr}");
-    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "{yaml}: {stderr}");
+    assert!(stderr.contains("failed to parse YAML config"), "{stderr}");
 
     fs::remove_dir_all(dir).unwrap();
 }
 
 // -- Helpers (mirrors fix.rs) -----------------------------------
+
+/// Run Git inside a temporary fixture without changing the process directory.
+fn git(repo: &std::path::Path, args: &[&str]) {
+    let output = Command::new("git")
+        .current_dir(repo)
+        .args(args)
+        .output()
+        .expect("failed to run git");
+
+    assert!(
+        output.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
 
 /// Create a numbered temporary directory.
 fn temp_dir() -> std::path::PathBuf {

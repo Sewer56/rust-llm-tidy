@@ -1,5 +1,6 @@
 //! Public library behavior for source buffers and controlled file execution.
 
+use rstest::rstest;
 use rust_llm_tidy::{RunOptions, SourceOptions, config, run, tidy_source};
 use std::borrow::Cow;
 use std::fs;
@@ -59,6 +60,98 @@ fn run_should_require_explicit_write_and_subprocess_permissions() {
             assert!(report.post_process_failures[0].spawn_failed);
         }
     }
+}
+
+#[rstest]
+#[case::no_config_directory(None, false, true)]
+#[case::no_config_explicit(None, true, true)]
+#[case::omitted_directory(Some("{}"), false, true)]
+#[case::omitted_explicit(Some("{}"), true, true)]
+#[case::true_directory(Some("exclude_license_documents: true"), false, true)]
+#[case::true_explicit(Some("exclude_license_documents: true"), true, true)]
+#[case::false_directory(Some("exclude_license_documents: false"), false, false)]
+#[case::false_explicit(Some("exclude_license_documents: false"), true, false)]
+fn run_should_respect_license_exclusion_when_selecting_files_or_directories(
+    #[case] config_yaml: Option<&str>,
+    #[case] explicit: bool,
+    #[case] excluded: bool,
+) {
+    let directory = tempfile::tempdir().unwrap();
+    let compiled = config_yaml.map(|yaml| {
+        let path = directory.path().join(".rust-llm-tidy.yml");
+        fs::write(&path, yaml).unwrap();
+        config::load_and_compile(&path).unwrap()
+    });
+
+    let prose = "Read [guide](https://example.com).\n";
+    let source = "pub fn load() {}\n";
+    let licenses = ["LiCeNsE.MD", "LICENCE-MIT.txt", "COPYING_notice.md"];
+    let controls = ["licenses.md", "copyingcat.txt", "guide.md"];
+    let mut inputs = Vec::new();
+    for name in licenses
+        .iter()
+        .chain(&controls)
+        .chain(["LICENSE", "license.rs"].iter())
+    {
+        inputs.push(directory.path().join(name));
+    }
+
+    for path in &inputs {
+        fs::write(
+            path,
+            if path.ends_with("license.rs") {
+                source
+            } else {
+                prose
+            },
+        )
+        .unwrap();
+    }
+    let options = RunOptions {
+        paths: if explicit {
+            inputs
+        } else {
+            vec![directory.path().into()]
+        },
+        include: vec!["links".into(), "DOC001".into()],
+        apply: true,
+        ..RunOptions::default()
+    };
+
+    let report = run(&options, compiled.as_ref()).unwrap();
+
+    let expected_license_count = if excluded { 0 } else { licenses.len() };
+    assert_eq!(
+        report.files.len(),
+        controls.len() + 1 + expected_license_count
+    );
+    let rendered_control = fs::read_to_string(directory.path().join("guide.md")).unwrap();
+    for name in controls {
+        assert_ne!(
+            fs::read_to_string(directory.path().join(name)).unwrap(),
+            prose
+        );
+    }
+    for name in licenses {
+        assert_eq!(
+            fs::read_to_string(directory.path().join(name)).unwrap(),
+            if excluded { prose } else { &rendered_control },
+            "{name}"
+        );
+    }
+
+    // Disabling license exclusion does not bypass the extension filter.
+    assert_eq!(
+        fs::read_to_string(directory.path().join("LICENSE")).unwrap(),
+        prose
+    );
+    let rust = report
+        .files
+        .iter()
+        .find(|file| file.path.ends_with("license.rs"))
+        .unwrap();
+    assert!(rust.processed);
+    assert_eq!(rust.diagnostics[0].code, "DOC001");
 }
 
 #[test]

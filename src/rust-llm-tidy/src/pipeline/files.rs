@@ -244,7 +244,7 @@ pub(crate) fn resolve_vis_context(
             // per file, vs. the prior double parse).
             let crate_dir = root.parent().unwrap_or_else(|| Path::new("."));
             let mut rs_files: Vec<PathBuf> = Vec::new();
-            let _ = paths::collect_files(crate_dir, &["rs"], &mut rs_files);
+            let _ = paths::collect_files(crate_dir, &["rs"], &mut rs_files, true);
             let mut files: Vec<ParsedFile> = Vec::new();
             for f in &rs_files {
                 if let Ok(src) = fs::read_to_string(f) {

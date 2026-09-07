@@ -1,6 +1,6 @@
 [package]
 name = "rust-llm-tidy"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 autobenches = false
 description = "Library for linting and tidying Rust, C#, and documentation source."
@@ -68,3 +68,4 @@ tree-sitter-rust = "0.24"
 [dev-dependencies]
 criterion = "0.8"
 indoc = "2"
+rstest = "0.27.0"

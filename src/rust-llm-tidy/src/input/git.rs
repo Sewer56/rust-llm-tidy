@@ -22,6 +22,7 @@ use std::process::Command;
 /// Select which file extensions to keep.
 ///
 /// - `exts`: file extensions without the leading dot, such as `"rs"`
+/// - `exclude_license_documents`: skip conventional license documents when true
 /// - A changed path is returned only when its extension matches an entry in `exts`.
 ///
 /// # Errors
@@ -36,18 +37,27 @@ use std::process::Command;
 ///
 /// This is an `anyhow::Result`, so any upstream I/O or `git` failure is
 /// propagated as the error.
-pub fn changed_files(exts: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
+pub fn changed_files(
+    exts: &[&str],
+    exclude_license_documents: bool,
+) -> anyhow::Result<Vec<PathBuf>> {
     let root_raw = git_stdout(&["rev-parse", "--show-toplevel"])?;
     let root = PathBuf::from(root_raw.trim());
     let mut paths = Vec::new();
+
     for line in changed_lines(&root)? {
         let p = root.join(line);
-        if matches_ext(&p, exts) && p.is_file() {
+        if matches_ext(&p, exts)
+            && !(exclude_license_documents && super::is_license_document(&p))
+            && p.is_file()
+        {
             paths.push(p);
         }
     }
+
     paths.sort();
     paths.dedup();
+
     Ok(paths)
 }
 
