@@ -10,8 +10,8 @@
 //! and XML doc comments feed the same measurement.
 //!
 //! The measured budgets count the full line text, code spans, URLs, and
-//! link targets included. Table rows, code blocks, and link reference
-//! definitions are exempt.
+//! link targets included. Decorative borders, table rows, code blocks,
+//! and link reference definitions are exempt.
 //!
 //! # Layers
 //!
@@ -155,6 +155,27 @@ pub(crate) fn analyze(source: &str, ext: &str) -> Document {
     measure(line_markers::doc_regions(source, ext))
 }
 
+/// Identifies standalone decorative borders without exempting their labels.
+///
+/// A border has at least three drawing characters, optionally spaced.
+/// ASCII separators and Unicode box-drawing/block characters may mix.
+/// Markdown fence classification takes precedence over borders.
+pub(crate) fn is_decorative_border(text: &str) -> bool {
+    let mut count = 0;
+    for ch in text.chars().filter(|ch| !ch.is_whitespace()) {
+        if !matches!(
+            ch,
+            '-' | '=' | '_' | '*' | '+' | '|' | '/' | '\\' | '.' | ':' | '#' | '~' | '\u{2500}'
+                ..='\u{259f}'
+        ) {
+            return false;
+        }
+        count += 1;
+    }
+
+    count >= 3
+}
+
 /// True for markdown link reference definitions such as `[docs]: ./docs/x.md`.
 ///
 /// Used by the exempt-content classifier here and by the TEXT002 line
@@ -274,9 +295,10 @@ fn measure_prose_line(
         true
     } else if fence.is_some() || indented || is_exempt_content(trimmed) {
         // An indented line is indented code, not a fence delimiter:
-        // fence state only changes on unindented fence lines. Per
-        // CommonMark, a backtick fence's info string may not contain
-        // backticks; such a line is not a fence opener.
+        // fence state only changes on unindented fence lines.
+        //
+        // Per CommonMark, a backtick fence's info string may not
+        // contain backticks; such a line is not a fence opener.
         if let Some((marker, run)) = fence.filter(|_| !indented) {
             let info = fence_info(trimmed);
             if marker == b'~' || !info.contains('`') {
@@ -293,8 +315,10 @@ fn measure_prose_line(
     };
 
     // Count this line into the current paragraph (`pending`) or start
-    // a new one. A paragraph is a run of consecutive doc lines, ended
-    // by a blank line, an exempt line, or the start of a new bullet.
+    // a new one.
+    //
+    // A paragraph is a run of consecutive doc lines, ended by a blank
+    // line, an exempt line, or the start of a new bullet.
     if exempt {
         // Exempt lines are not paragraph text, so this is the end
         // of the current paragraph.
@@ -351,9 +375,11 @@ fn bullet_content(trimmed: &str) -> Option<&str> {
     }
 }
 
-/// Whether `trimmed` closes the open fence `open`: same marker, an
-/// equal-or-longer run, and no info string. Shorter, different-marker,
-/// or info-bearing fence lines stay fenced content.
+/// Whether `trimmed` closes the open fence `open`.
+///
+/// Closing requires the same marker, an equal-or-longer run, and no
+/// info string. Shorter, different-marker, or info-bearing fence lines
+/// stay fenced content.
 fn closes_fence(open: &OpenFence, fence: Option<(u8, usize)>, trimmed: &str) -> bool {
     match fence {
         Some((marker, run)) => {
@@ -391,9 +417,12 @@ fn flush(pending: &mut Option<PendingParagraph>, doc: &mut Document) {
     }
 }
 
-/// Whole-line exempt-content heuristics: headings, table rows, signature-like
-/// lines, and link reference definitions. Exempt lines cost no paragraph
-/// budget and end any open paragraph.
+/// Excludes non-prose lines from paragraph budgets and ends open paragraphs.
+///
+/// Exempt lines:
+/// - Headings and table rows
+/// - Signature-like lines and link reference definitions
+/// - Standalone decorative borders
 ///
 /// Code spans and URLs are not whole-line exemptions; those lines stay
 /// paragraph members whose full text counts toward the budget.
@@ -402,6 +431,7 @@ fn is_exempt_content(trimmed: &str) -> bool {
         || trimmed.starts_with('|')
         || is_signature_line(trimmed)
         || is_link_reference_definition(trimmed)
+        || is_decorative_border(trimmed)
 }
 
 /// The opening fence's info string: the text after the fence marker run,
@@ -523,6 +553,44 @@ mod tests {
     }
 
     // ── Paragraph segmentation ──
+
+    #[test]
+    fn analyze_should_split_paragraphs_when_borders_separate_prose() {
+        let source = "// ---\n// Opener.\n// * * *\n// Body.\n// ╚══╝\n";
+
+        let doc = analyze(source, "rs");
+
+        assert_eq!(doc.paragraphs.len(), 2);
+        let opener = &doc.paragraphs[0];
+        assert_eq!(&*opener.text, "Opener.");
+        assert_eq!(opener.size, "Opener.".len());
+        assert_eq!(opener.line_starts, [(2, 0)]);
+        assert!(opener.opens_region);
+        let body = &doc.paragraphs[1];
+        assert_eq!(&*body.text, "Body.");
+        assert_eq!(body.line_starts, [(4, 0)]);
+        assert!(!body.opens_region);
+    }
+
+    #[test]
+    fn is_decorative_border_should_require_drawing_characters_without_prose() {
+        for (text, expected) in [
+            ("", false),
+            ("  ", false),
+            ("--", false),
+            ("---", true),
+            (" * * * ", true),
+            ("+-=+", true),
+            ("╭──╮", true),
+            ("░▒▓", true),
+            ("--- Shared path resolution ---", false),
+            ("--- Résolution ---", false),
+            ("123", false),
+            ("!?", false),
+        ] {
+            assert_eq!(is_decorative_border(text), expected, "{text:?}");
+        }
+    }
 
     // Blank lines split paragraphs; size joins lines with single spaces.
     #[test]
@@ -691,8 +759,10 @@ mod tests {
     }
 
     // A backtick fence whose info string contains a backtick is not a
-    // fence opener (CommonMark); no fence is recorded and the fence
-    // state stays closed. Tilde fences may carry backticks in the info.
+    // fence opener (CommonMark).
+    //
+    // No fence is recorded and the fence state stays closed. Tilde
+    // fences may carry backticks in the info.
     #[test]
     fn analyze_skips_fence_opener_when_info_has_backtick() {
         let source = indoc! {"
@@ -746,9 +816,11 @@ mod tests {
         assert_eq!(paragraph_at(&doc, 8).unwrap().size, "after".len());
     }
 
-    // A same-marker inner fence with a shorter run or an info string never
-    // closes the outer block. Built by concatenation so this source file
-    // keeps the canonical outer-backtick/inner-tilde alternation.
+    // A same-marker inner fence with a shorter run or an info string
+    // never closes the outer block.
+    //
+    // Built by concatenation so this source file keeps the canonical
+    // outer-backtick/inner-tilde alternation.
     #[test]
     fn analyze_keeps_fence_open_across_shorter_and_info_bearing_closers() {
         let inner_open = concat!("``", "`text");
@@ -775,9 +847,10 @@ mod tests {
     }
 
     // Doc-comment regions record fences too: a bare fence in Rust doc
-    // comments is a markdown fence the same rule grades. Built with
-    // `concat!` so the fence lines stay string fragments, not measured
-    // comment lines.
+    // comments is a markdown fence the same rule grades.
+    //
+    // Built with `concat!` so the fence lines stay string fragments,
+    // not measured comment lines.
     #[test]
     fn analyze_records_fences_from_doc_comment_regions() {
         let bare_fence = concat!("``", "`");

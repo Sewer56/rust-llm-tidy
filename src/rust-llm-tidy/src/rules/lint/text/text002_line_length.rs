@@ -3,8 +3,8 @@
 use super::bulleted;
 use crate::reporting::diagnostic::{Diagnostic, Severity};
 use crate::rules::registry::CODE_LINE_LENGTH;
-use crate::text::measurement::is_link_reference_definition;
 use crate::text::measurement::{Document, StrippedLine};
+use crate::text::measurement::{is_decorative_border, is_link_reference_definition};
 
 /// Maximum line length before TEXT002 fires.
 const LINE_LIMIT: usize = 80;
@@ -14,8 +14,8 @@ const LINE_LIMIT: usize = 80;
 ///
 /// Measurement per line kind:
 ///
-/// - Code-block lines, table rows, and link reference definitions are
-///   skipped.
+/// - Code-block lines, decorative borders, table rows, and link reference
+///   definitions are skipped.
 /// - Every other line counts in full: code spans, URLs, and link targets
 ///   included.
 pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
@@ -25,7 +25,10 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
             continue;
         }
         let trimmed = line.text.trim();
-        if trimmed.starts_with('|') || is_link_reference_definition(trimmed) {
+        if trimmed.starts_with('|')
+            || is_link_reference_definition(trimmed)
+            || is_decorative_border(trimmed)
+        {
             continue;
         }
         let len = trimmed.chars().count();
@@ -46,6 +49,7 @@ fn line_length_diagnostic(line: &StrippedLine, len: usize) -> Diagnostic {
         "Split it at the nearest idea change with a blank line.".to_string(),
         "Code spans, URLs, and link targets count.".to_string(),
         "Code blocks, table rows, and link definitions are exempt.".to_string(),
+        "Borders are ignored.".to_string(),
     ];
     Diagnostic {
         severity: Severity::Warning,
@@ -92,6 +96,20 @@ mod tests {
         let source = format!("{}\n", "x".repeat(80));
         let diags = run_text_checks(&source, "md");
         assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
+    }
+
+    #[test]
+    fn text_checks_should_ignore_long_borders_when_standalone() {
+        for marker in ["-", "=", "_", "*", "+", "/", "\\", ".", ":", "─", "═", "█"] {
+            let border = marker.repeat(LINE_LIMIT + 1);
+            let source = format!("// {border}\n// {border} Label\n");
+
+            let diags = run_text_checks(&source, "rs");
+
+            let found = codes(&diags, CODE_LINE_LENGTH);
+            assert_eq!(found.len(), 1, "{marker}");
+            assert_eq!(found[0].line, 2, "{marker}");
+        }
     }
 
     // Code-block lines are exempt: fenced and indented blocks never warn,

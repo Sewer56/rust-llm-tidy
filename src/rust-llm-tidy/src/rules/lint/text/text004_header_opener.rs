@@ -321,6 +321,52 @@ mod tests {
 
     // ── Char budget ──
 
+    #[test]
+    fn text_checks_should_ignore_borders_when_surrounding_short_opener() {
+        for (name, left, marker, right) in [
+            ("dashes", "", "-", ""),
+            ("equals", "", "=", ""),
+            ("underscores", "", "_", ""),
+            ("asterisks", "", "*", ""),
+            ("slashes", "", "/", ""),
+            ("backslashes", "", "\\", ""),
+            ("dots", "", ".", ""),
+            ("colons", "", ":", ""),
+            ("spaced dashes", "", "- ", ""),
+            ("mixed ASCII", "+", "-=", "+"),
+            ("light box", "┌", "─", "┐"),
+            ("heavy box", "┏", "━", "┓"),
+            ("double box", "╔", "═", "╗"),
+            ("blocks", "", "█", ""),
+        ] {
+            let border = format!("{left}{}{right}", marker.repeat(OPENER_CHAR_LIMIT / 2));
+            let source = format!("// {border}\n// Shared path resolution\n// {border}\n");
+
+            let diags = run_text_checks(&source, "rs");
+
+            assert!(
+                codes(&diags, CODE_HEADER_OPENER).is_empty(),
+                "{name}: {diags:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn text_checks_should_check_prose_when_surrounded_by_borders() {
+        for prose in [
+            "x".repeat(OPENER_CHAR_LIMIT + 1),
+            "Sentence. ".repeat(OPENER_SENTENCE_LIMIT + 1),
+        ] {
+            let source = format!("// -----\n// {prose}\n// -----\n");
+
+            let diags = run_text_checks(&source, "rs");
+
+            let found = codes(&diags, CODE_HEADER_OPENER);
+            assert_eq!(found.len(), 1);
+            assert_eq!(found[0].line, 2);
+        }
+    }
+
     // A one-sentence plain opener over the char limit warns with the char
     // cause: sentence count alone would let a dense lead pass.
     #[test]
