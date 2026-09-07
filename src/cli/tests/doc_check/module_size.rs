@@ -150,15 +150,23 @@ fn mod001_should_exclude_rust_test_modules_by_default(#[case] path: &str) {
 #[case::rust("source.rs", " outside `#[cfg(test)]` mod regions")]
 #[case::python("source.py", "")]
 fn mod001_should_explain_focused_module_boundaries(#[case] path: &str, #[case] exclusions: &str) {
-    let expected = format!(
+    let mut expected = format!(
         "warning[MOD001]: file has 2 lines{exclusions}, \
          over the 1-line budget (module_size.max_lines).\n  \
          - Large files make readers search farther and keep more context in mind.\n  \
          - Put new, distinct responsibilities in focused modules instead of growing this file.\n  \
          - Plan new code around clear module boundaries from the start.\n  \
          - Keep closely related code together; name modules for the responsibility they own.\n  \
-         - Do not split mechanically or remove useful comments just to meet the line budget. (file)"
+         - Do not split mechanically or remove useful comments just to meet the line budget."
     );
+    if path.ends_with(".rs") {
+        expected.push_str(
+            "\n  - Test modules marked `#[cfg(test)]` at the file's top level are excluded. \
+             Other lines count, including comments and blank lines.\n  \
+             - Rust files in `tests/` directories are skipped.",
+        );
+    }
+    expected.push_str(" (file)");
 
     let output = run(
         "\n\n",
@@ -170,6 +178,40 @@ fn mod001_should_explain_focused_module_boundaries(#[case] path: &str, #[case] e
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{stderr}");
     assert!(stderr.contains(&expected), "{stderr}");
+}
+
+/// Rust warnings explain test counting without exposing configuration keys.
+#[rstest]
+#[case::defaults(false, false, "excluded", "skipped")]
+#[case::inline_tests(true, false, "counted", "skipped")]
+#[case::test_files(false, true, "excluded", "checked")]
+#[case::all_tests(true, true, "counted", "checked")]
+fn mod001_should_explain_test_counting_in_plain_language(
+    #[case] include_in_file_tests: bool,
+    #[case] include_test_files: bool,
+    #[case] regions: &str,
+    #[case] files: &str,
+) {
+    let config = format!(
+        "module_size:\n  max_lines: 1\n  include_in_file_tests: {include_in_file_tests}\n  include_test_files: {include_test_files}\n"
+    );
+
+    let output = run("\n\n", "source.rs", &config, &["--include", "MOD001"]);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    assert!(
+        stderr.contains(&format!(
+            "Test modules marked `#[cfg(test)]` at the file's top level are {regions}. \
+             Other lines count, including comments and blank lines."
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!("Rust files in `tests/` directories are {files}.")),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("module_size.include_"), "{stderr}");
 }
 
 /// The file-level rule follows the same CLI selection as other lint codes.
