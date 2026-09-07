@@ -388,6 +388,7 @@ markers in release and migration notes too:
 
 ```yaml
 passive_narration:
+  enable: true
   suppress_in_release_notes: false
 ```
 
