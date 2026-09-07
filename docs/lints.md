@@ -302,14 +302,16 @@ Before:
 ///
 /// # Errors
 ///
-/// Returns [Error::NotFound] when data cannot be loaded and
-/// [Error::Denied] when access is refused.
+/// - [`Error::NotFound`] when data cannot be loaded
+/// - [`Error::Denied`] when access is refused
+/// - [`Error::InvalidFormat`] when data has an unsupported format
 pub fn load() -> Result<(), Error> {
     Ok(())
 }
 
 enum Error {
     Denied,
+    InvalidFormat,
     NotFound,
 }
 ```
@@ -321,14 +323,16 @@ After:
 ///
 /// # Errors
 ///
-/// Returns [Error::Denied] when access is refused and
-/// [Error::NotFound] when data cannot be loaded.
+/// - [`Error::Denied`] when access is refused
+/// - [`Error::InvalidFormat`] when data has an unsupported format
+/// - [`Error::NotFound`] when data cannot be loaded
 pub fn load() -> Result<(), Error> {
     Ok(())
 }
 
 enum Error {
     Denied,
+    InvalidFormat,
     NotFound,
 }
 ```
