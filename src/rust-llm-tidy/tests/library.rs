@@ -121,9 +121,9 @@ fn run_should_respect_license_exclusion_when_selecting_files_or_directories(
     let report = run(&options, compiled.as_ref()).unwrap();
 
     let expected_license_count = if excluded { 0 } else { licenses.len() };
-    // Directory scans process the config file itself; `yml` is a
-    // default-on lexicon extension. Explicit runs list files, so the
-    // config never joins the input set.
+    // Only directory scans can pick up the YAML config itself: `yml`
+    // is a default-on lexicon extension, and explicit runs only list
+    // their own files.
     let config_count = usize::from(config_yaml.is_some() && !explicit);
     assert_eq!(
         report.files.len(),
