@@ -37,10 +37,6 @@ Never measured:
 - Python `>>>` doctest examples: source lines, `...` continuations,
   and expected output, until the blank line ending the example.
 
-`TEXT005` applies to the markdown family tier only: fence info strings
-are recorded for whole-file markdown-family sources, never for Rust,
-C#, Python, or comment-marker regions.
-
 Python's producer and the marker families' comment lexicon fail closed:
 a file they cannot attribute safely produces no findings rather than
 guesses.
@@ -228,13 +224,12 @@ src/lib.rs:1: warning[TEXT004]: opener paragraph has 3 sentences; maximum is 2.
 
 ## TEXT005 - fenced code block without a language tag
 
-A fenced code block whose opening fence has no info string, or one that
-is exactly `ignore`, is a warning in markdown-family files. The finding
-sits on the opening fence line.
+A markdown code fence without a language identifier warns at its opening
+line.
 
-Closing fences and indented 4-space code blocks never fire.
-`ignore,foo`, `ignore no_run`, and `Ignore` carry a real tag and stay
-silent.
+- Bare fences and bare `ignore` warn.
+- Closing fences, indented code blocks, and real tags (`ignore,foo`,
+  `Ignore`) never fire.
 
 Before:
 

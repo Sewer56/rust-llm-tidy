@@ -107,9 +107,9 @@ pub fn covers(ext: &str) -> bool {
 ///
 /// # Returns
 ///
-/// Diagnostics grouped by rule, in source order within each group:
-/// TEXT001 per over-limit paragraph, then TEXT002 per over-limit line,
-/// then TEXT003 per over-limit sentence.
+/// Diagnostics grouped by rule, in source order within each group.
+/// Rule order: TEXT001 paragraphs, TEXT002 lines, TEXT003 sentences,
+/// TEXT004 openers, TEXT005 fences.
 pub fn text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
     match lexicon_for(ext).and_then(|lex| scan::scan(source, lex)) {
         Some(regions) => run_region_checks(regions),

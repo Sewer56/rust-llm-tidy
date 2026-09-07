@@ -8,8 +8,8 @@ use crate::text::measurement::{Document, Fence};
 /// TEXT005 diagnostics for `doc`: one Warning per opening fence whose
 /// info string is empty or exactly `ignore`, in source order.
 ///
-/// The rule reads the fence facts the prose tier recorded; region
-/// measurement records none, so region tiers never fire it.
+/// Fires wherever markdown prose is measured: whole-file sources and
+/// doc/comment regions. XML doc regions have no fences and never fire it.
 pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     doc.fences
         .iter()
@@ -161,12 +161,12 @@ mod tests {
         assert!(codes(&run_text_checks(source, "md"), CODE_FENCE_TAG).is_empty());
     }
 
-    // ── Tier exclusion ──
+    // ── Region tiers ──
 
-    // Region tiers record no fence facts: bare fences in Rust doc
-    // regions produce no TEXT005.
+    // Region tiers record fences too: a bare fence in a markdown-dialect
+    // region warns like a whole-file one.
     #[test]
-    fn region_checks_silent_on_bare_fences() {
+    fn region_checks_warn_on_bare_fences() {
         let diags = run_region_checks(vec![DocRegion {
             dialect: Dialect::Markdown,
             lines: vec![
@@ -187,19 +187,29 @@ mod tests {
                 },
             ],
         }]);
-        assert!(codes(&diags, CODE_FENCE_TAG).is_empty());
+        let found = codes(&diags, CODE_FENCE_TAG);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].line, 1);
     }
 
-    // A whole-file `rs` call records no fence facts either: the Rust
-    // parity test sources its regions through the same tier.
+    // A whole-file `rs` call warns on a bare Rust doc fence; a tagged
+    // one stays silent. Built with `concat!` so the bare fence lines
+    // stay string fragments, not measured comment lines.
     #[test]
-    fn text_checks_silent_for_rust_source_with_bare_fences() {
-        let source = indoc! {"
-            /// ```
+    fn text_checks_warn_for_rust_source_with_bare_doc_fences() {
+        let bare_fence = concat!("``", "`");
+        let bare = format!("/// {bare_fence}\n/// let x = 1;\n/// {bare_fence}\nfn f() {{}}\n");
+        let bare_diags = run_text_checks(&bare, "rs");
+        let found = codes(&bare_diags, CODE_FENCE_TAG);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].line, 1);
+
+        let tagged = indoc! {"
+            /// ```rust
             /// let x = 1;
             /// ```
             fn f() {}
         "};
-        assert!(codes(&run_text_checks(source, "rs"), CODE_FENCE_TAG).is_empty());
+        assert!(codes(&run_text_checks(tagged, "rs"), CODE_FENCE_TAG).is_empty());
     }
 }

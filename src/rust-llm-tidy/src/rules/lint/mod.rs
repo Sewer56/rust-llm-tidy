@@ -14,7 +14,7 @@ pub(crate) mod text;
 ///
 /// - `regions`: documentation regions with original source line numbers
 pub fn run_region_checks(regions: Vec<DocRegion>) -> Vec<Diagnostic> {
-    text::diagnostics(&crate::text::measurement::measure(regions, false))
+    text::diagnostics(&crate::text::measurement::measure(regions))
 }
 
 /// Check raw prose or line-marker documentation selected by extension.

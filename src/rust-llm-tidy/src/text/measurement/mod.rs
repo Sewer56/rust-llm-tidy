@@ -31,7 +31,6 @@
 //! - [`Paragraph`] - a measured paragraph: plain text or a bullet with its
 //!   wrapped continuations.
 
-use crate::languages::registry::TextLints;
 pub use line_markers::doc_regions as line_marker_regions;
 pub use region::{Dialect, DocRegion, RegionLine};
 
@@ -46,8 +45,9 @@ mod xml_doc;
 pub(crate) struct Document {
     pub lines: Vec<StrippedLine>,
     pub paragraphs: Vec<Paragraph>,
-    /// Opening fence lines, in source order. Recorded only for the
-    /// whole-file prose tier; region measurement leaves it empty.
+    /// Opening fence lines, in source order. Recorded for every
+    /// opening fence the markdown classifier measures, whole-file
+    /// and doc/comment regions alike.
     pub fences: Vec<Fence>,
 }
 
@@ -152,10 +152,7 @@ impl PendingParagraph {
 /// comment marker are skipped entirely for marker languages; for
 /// marker-less extensions every line is kept.
 pub(crate) fn analyze(source: &str, ext: &str) -> Document {
-    // Fence facts feed TEXT005, which the prose tier alone owns: any
-    // other tier producing markdown-dialect regions must stay silent.
-    let record_fences = crate::languages::registry::profile_for(ext).text_lints == TextLints::Prose;
-    measure(line_markers::doc_regions(source, ext), record_fences)
+    measure(line_markers::doc_regions(source, ext))
 }
 
 /// True for markdown link reference definitions such as `[docs]: ./docs/x.md`.
@@ -172,10 +169,9 @@ pub(crate) fn is_link_reference_definition(trimmed: &str) -> bool {
 /// regions ends any open paragraph and closes any open fence, so prose and
 /// code blocks never span regions.
 ///
-/// `record_fences` collects opening-fence info strings into
-/// [`Document::fences`]; the prose tier passes `true`, every region
-/// producer `false`.
-pub(crate) fn measure(regions: Vec<DocRegion>, record_fences: bool) -> Document {
+/// Each markdown-measured opening fence lands in [`Document::fences`],
+/// feeding TEXT005 in every tier.
+pub(crate) fn measure(regions: Vec<DocRegion>) -> Document {
     let mut doc = Document::default();
     let mut pending: Option<PendingParagraph> = None;
     let mut open_fence: Option<OpenFence> = None;
@@ -184,13 +180,7 @@ pub(crate) fn measure(regions: Vec<DocRegion>, record_fences: bool) -> Document 
         let region_start = doc.paragraphs.len();
         match region.dialect {
             Dialect::Markdown => {
-                measure_markdown_region(
-                    region,
-                    &mut doc,
-                    &mut pending,
-                    &mut open_fence,
-                    record_fences,
-                );
+                measure_markdown_region(region, &mut doc, &mut pending, &mut open_fence);
             }
             Dialect::XmlDoc => {
                 xml_doc::measure_region(region, &mut doc, &mut pending);
@@ -224,7 +214,6 @@ fn measure_markdown_region(
     doc: &mut Document,
     pending: &mut Option<PendingParagraph>,
     open_fence: &mut Option<OpenFence>,
-    record_fences: bool,
 ) {
     for line in region.lines {
         measure_prose_line(
@@ -234,7 +223,6 @@ fn measure_markdown_region(
             doc,
             pending,
             open_fence,
-            record_fences,
         );
     }
 }
@@ -255,7 +243,6 @@ fn measure_prose_line(
     doc: &mut Document,
     pending: &mut Option<PendingParagraph>,
     open_fence: &mut Option<OpenFence>,
-    record_fences: bool,
 ) {
     let trimmed = text.trim();
 
@@ -288,12 +275,10 @@ fn measure_prose_line(
         // fence state only changes on unindented fence lines.
         if let Some((marker, run)) = fence.filter(|_| !indented) {
             *open_fence = Some(OpenFence { marker, run });
-            if record_fences {
-                doc.fences.push(Fence {
-                    line: number,
-                    info: fence_info(trimmed).into(),
-                });
-            }
+            doc.fences.push(Fence {
+                line: number,
+                info: fence_info(trimmed).into(),
+            });
         }
         true
     } else {
@@ -666,8 +651,9 @@ mod tests {
 
     // ── Fence capture ──
 
-    // The prose tier records each opening fence's line and trimmed info
-    // string; closing fences and tagged fences are facts, not findings.
+    // The measuring core records each opening fence's line and trimmed
+    // info string; closing fences and tagged fences are facts, not
+    // findings.
     #[test]
     fn analyze_records_opening_fence_info_strings() {
         let source = indoc! {"
@@ -757,18 +743,22 @@ mod tests {
         assert_eq!(paragraph_at(&doc, 8).unwrap().size, "after".len());
     }
 
-    // Non-prose tiers record no fence facts, even when their regions
-    // carry fence lines.
+    // Doc-comment regions record fences too: a bare fence in Rust doc
+    // comments is a markdown fence the same rule grades. Built with
+    // `concat!` so the fence lines stay string fragments, not measured
+    // comment lines.
     #[test]
-    fn analyze_records_no_fences_outside_the_prose_tier() {
-        let source = indoc! {"
-            /// ```
-            /// let x = 1;
-            /// ```
-            fn f() {}
-        "};
-        assert!(analyze(source, "rs").fences.is_empty());
-        assert!(measure(vec![], false).fences.is_empty());
+    fn analyze_records_fences_from_doc_comment_regions() {
+        let bare_fence = concat!("``", "`");
+        let source = format!("/// {bare_fence}\n/// let x = 1;\n/// {bare_fence}\nfn f() {{}}\n");
+        assert_eq!(
+            analyze(&source, "rs").fences,
+            vec![Fence {
+                line: 1,
+                info: "".into(),
+            }]
+        );
+        assert!(measure(vec![]).fences.is_empty());
     }
 
     // ── Exemptions ──

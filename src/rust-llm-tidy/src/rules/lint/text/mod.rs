@@ -17,8 +17,8 @@ mod text005_fence_tag;
 /// TEXT001 through TEXT005 diagnostics for one measured document.
 ///
 /// Called by the `run_text_checks` and `run_region_checks` entry points
-/// in [`crate::rules::registry`]. TEXT005 reads fence facts the prose
-/// tier alone records, so region tiers never emit it.
+/// in [`crate::rules::registry`]. TEXT005 reads the recorded fence
+/// facts, so every markdown-prose tier can emit it.
 pub(crate) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     let mut diags = text001_paragraph_size::diagnostics(doc);
     diags.extend(text002_line_length::diagnostics(doc));

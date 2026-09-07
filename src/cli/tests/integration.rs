@@ -469,8 +469,8 @@ fn invalid_source_should_abort_with_error() {
 // ── Language tiers ────────────────────────────────────────────────
 
 /// TEXT005 end to end: the CLI warns once per untagged or bare-`ignore`
-/// opening fence in a markdown file, warnings keep the exit code 0, and
-/// `--exclude TEXT005` silences both findings.
+/// opening fence. Warnings keep the exit code 0, and `--exclude TEXT005`
+/// silences both findings.
 #[test]
 fn lints_warn_on_untagged_fences_and_exclude_silences_them() {
     let source = "\
