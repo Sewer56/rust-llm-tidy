@@ -228,8 +228,9 @@ pub(crate) fn resolve_vis_context(
             // Canonicalizing here keeps the BFS root consistent with the
             // canonicalized source paths.
             let root = fs::canonicalize(&root).unwrap_or(root);
-            // Collect every .rs file under the crate src dir, parse once, build
-            // tree. Each file is parsed into a `ParsedFile` reused by both the
+            // Collect every .rs file under the crate src dir, parse once, build tree.
+            //
+            // Each file is parsed into a `ParsedFile` reused by both the
             // module-tree build and the crate-wide re-export scan (single parse
             // per file, vs. the prior double parse).
             let crate_dir = root.parent().unwrap_or_else(|| Path::new("."));
@@ -299,16 +300,20 @@ pub(crate) fn vis_file(
             // Canonicalize the lookup key to match the tree's canonical keys.
             let canon = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
             if tree.contains(&canon) {
-                // File is a node in the resolved crate module tree: apply the
-                // tree floor + crate-wide re-export guard (built from every .rs
-                // under the crate src dir, so cross-file re-exports are sound).
+                // Apply the tree floor + crate-wide re-export guard.
+                //
+                // The file is a node in the resolved crate module tree, and the
+                // guard is built from every .rs under the crate src dir, so
+                // cross-file re-exports are sound.
                 let floor = tree.floor_for(&canon);
                 narrow_vis_in_tree(&source, floor, reexports)
             } else {
-                // File is outside the crate's src module tree (integration test,
-                // example, bench, stray file under tests/). The crate-wide
-                // re-export set would miss this file's own `pub use`, so narrow
-                // standalone with a per-file re-export guard instead.
+                // Narrow standalone with a per-file re-export guard instead.
+                //
+                // The file is outside the crate's src module tree
+                // (integration test, example, bench, stray file under
+                // tests/). The crate-wide re-export set would miss this
+                // file's own `pub use`.
                 let pf = ParsedFile::new(path.to_path_buf(), source.clone())?;
                 let per_file = collect_crate_reexports(core::iter::once(&pf));
                 narrow_vis_in_tree(&source, None, &per_file)

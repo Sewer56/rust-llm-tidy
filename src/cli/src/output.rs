@@ -15,8 +15,9 @@ use std::borrow::Cow;
 use std::io::Write;
 use std::path::Path;
 
-/// A serializable record that is either a lint finding or a dry-run change
-/// record. It matches the documented JSON schema (`{ path, line, severity,
+/// A serializable record for one lint finding or dry-run change.
+///
+/// It matches the documented JSON schema (`{ path, line, severity,
 /// code, message, item_kind, item_name, title }`).
 ///
 /// Lint findings use severity `error`, `warning`, or `hint`; change

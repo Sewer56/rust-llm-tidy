@@ -100,9 +100,10 @@ impl ReorderProfile for RustProfile {
             ItemKind::MacroInvocation => {
                 let name = item.name().unwrap_or("");
                 // Only invocations of a locally-defined macro_rules! follow
-                // their definition; external macros (println!,
-                // tokio::main, ...) stay in the stable uncategorized
-                // bucket.
+                // their definition.
+                //
+                // External macros (println!, tokio::main, ...) stay in the
+                // stable uncategorized bucket.
                 if !name.is_empty() && ctx.macro_names.contains(name) {
                     4
                 } else {
@@ -361,10 +362,11 @@ mod tests {
         assert_eq!(order, vec![2, 0, 1]);
     }
 
-    /// Duplicate `macro_rules!` names (a later definition shadows the
-    /// earlier one) attach the shared invocation to exactly one definition.
-    /// The order therefore never repeats an index and the permutation
-    /// validates.
+    /// Duplicate `macro_rules!` names attach the shared invocation to
+    /// exactly one definition.
+    ///
+    /// A later definition shadows the earlier one. The order therefore never
+    /// repeats an index and the permutation validates.
     #[test]
     fn duplicate_macro_names_emit_the_invocation_once() {
         // Source order: 0 = macro m, 1 = macro m (shadowing), 2 = m!().
@@ -432,6 +434,7 @@ mod tests {
     // ── Engine: mod phases through the profile ────────────────────────
 
     /// A file-based `#[cfg(test)] mod x;` declaration stays in the mod phase.
+    ///
     /// It keeps its source position among file-based mods instead of moving
     /// to the end (rustfmt owns its alphabetical placement).
     #[test]
@@ -634,8 +637,9 @@ mod tests {
     }
 
     /// Walk data drives declaration matching: a walk declaring `mod_item`
-    /// as a declaration kind records references inside a mod body. The
-    /// Rust walk (which skips mods) ignores those references.
+    /// as a declaration kind records references inside a mod body.
+    ///
+    /// The Rust walk (which skips mods) ignores those references.
     #[test]
     fn walk_data_drives_declaration_matching() {
         let source = "mod m { fn f() { g(); } }\nfn g() {}\n";

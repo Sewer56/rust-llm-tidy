@@ -195,8 +195,9 @@ mod tests {
     }
 
     // The naive split is conservative by design: a decimal like `3.5`
-    // splits a sentence four words over the limit into fragments under
-    // it, so the rule stays silent rather than fabricating a violation.
+    // splits a sentence four words over the limit into fragments under it.
+    //
+    // The rule stays silent rather than fabricating a violation.
     #[test]
     fn text_checks_stay_silent_when_a_decimal_splits_a_sentence() {
         let mut words: Vec<String> = (0..SENTENCE_LIMIT + 4).map(|i| format!("w{i}")).collect();

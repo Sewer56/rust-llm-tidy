@@ -21,8 +21,10 @@ use rust_llm_tidy::rules::transform::visibility::rust::narrow_vis_in_tree;
 mod fixtures;
 
 /// Benchmark [`narrow_vis_in_tree`] per file across the multi-file crate
-/// fixtures. The crate context (module tree + crate-wide re-export set) is built
-/// once per fixture in setup; the hot loop measures only the per-file narrowing.
+/// fixtures.
+///
+/// The crate context (module tree + crate-wide re-export set) is built once
+/// per fixture in setup; the hot loop measures only the per-file narrowing.
 fn vis_crate_aware(c: &mut Criterion) {
     let mut group = c.benchmark_group("vis_crate_aware");
     for (name, sources) in fixtures::CRATE_FIXTURES {

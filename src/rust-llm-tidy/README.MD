@@ -39,8 +39,9 @@ assert_eq!(result.diagnostics[0].code, "DOC001");
 ```
 
 Source processing returns final transformed text and findings against that text.
-Project-dependent checks use standalone facts; use `run` for cross-file
-analysis.
+
+- Project-dependent checks use standalone facts
+- Use `run` for cross-file analysis
 
 ### File processing
 

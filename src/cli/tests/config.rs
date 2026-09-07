@@ -18,16 +18,18 @@ mod common;
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Default pipeline with `exclude: [reorder]` fixes/vis/lints but does
-/// not reorder. The input is reordered on a normal run; under `reorder`
-/// being disabled it must remain in input order.
+/// not reorder.
+///
+/// The input is reordered on a normal run; under `reorder` being disabled
+/// it must remain in input order.
 #[test]
 fn all_excludes_reorder_rule() {
     let dir = temp_dir();
     fs::create_dir_all(&dir).unwrap();
     let tmp = dir.join("lib.rs");
-    // Two top-level fns in NON-canonical order (canonical is caller before
-    // callee, per the reorder phase). Here callee precedes caller so a normal
-    // run would reorder them.
+    // Two top-level fns in NON-canonical order: callee precedes caller, so a
+    // normal run would reorder them. Canonical is caller before callee, per
+    // the reorder phase.
     fs::write(&tmp, "fn callee() {}\nfn caller() { callee(); }\n").unwrap();
     let cfg = dir.join(".rust-llm-tidy.yml");
     fs::write(
@@ -374,9 +376,10 @@ fn extensions_key_replaces_default_extensions() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// `extra_extensions:` composes with `exclude` groups: the allowed `.py`
-/// file whose path matches the group keeps its tables disabled while a
-/// sibling still gets the default table fix.
+/// `extra_extensions:` composes with `exclude` groups.
+///
+/// The allowed `.py` file whose path matches the group keeps its tables
+/// disabled while a sibling still gets the default table fix.
 #[test]
 fn extra_extensions_compose_with_exclude_rules() {
     let dir = temp_dir();
@@ -559,8 +562,10 @@ fn flags_reject_unknown_op() {
 }
 
 /// --include + --exclude combine in whitelist mode: --include vis,lints then
-/// --exclude lints yields enabled={vis}. vis narrows the inner fn, but lints
-/// does NOT run, so the bare `pub fn f` that would trigger DOC001 stays clean.
+/// --exclude lints yields enabled={vis}.
+///
+/// vis narrows the inner fn, but lints does NOT run, so the bare `pub fn f`
+/// that would trigger DOC001 stays clean.
 #[test]
 fn include_and_exclude_cli_combine_in_whitelist_mode() {
     let dir = temp_dir();
@@ -758,8 +763,10 @@ fn patterns_resolved_relative_to_config_dir() {
     fs::write(src.join("lib.rs"), "pub fn example() {}\n").unwrap();
 
     // Config in `cfg-dir/`, but the excluded path is `../src/lib.rs` relative
-    // to the config dir. The config dir is canonicalized, so the relative path
-    // must resolve against it.
+    // to the config dir.
+
+    // The config dir is canonicalized, so the relative path must resolve
+    // against it.
     let cfg = sub.join(".rust-llm-tidy.yml");
     fs::write(&cfg, "exclude_files:\n  - \"../src/lib.rs\"\n").unwrap();
 
@@ -1096,9 +1103,11 @@ fn validate_fails_on_unknown_rule() {
 /// `--validate` exits non-zero when no config file is found.
 #[test]
 fn validate_fails_when_no_config_found() {
-    // Run --validate from a temp dir with no .rust-llm-tidy.yml and no .git, and
-    // pass neither --config nor --no-config. discover walks to fs root without
-    // finding a config and returns None, which `--validate` treats as failure.
+    // Run --validate from a temp dir with no .rust-llm-tidy.yml and no .git;
+    // pass neither --config nor --no-config.
+
+    // discover walks to fs root without finding a config and returns None,
+    // which `--validate` treats as failure.
     let dir = temp_dir();
     fs::create_dir_all(&dir).unwrap();
     let output = Command::new(binary())

@@ -119,9 +119,10 @@ pub fn compute_member_order(
 ///
 /// # Errors
 ///
-/// Returns an [`anyhow::Error`] on internal graph-ordering failure. Because
-/// ordering operates over an already-parsed [`ParseResult`] and never
-/// re-parses, this never fires for a well-formed `parsed`.
+/// Returns an [`anyhow::Error`] on internal graph-ordering failure.
+///
+/// Ordering operates over an already-parsed [`ParseResult`] and never
+/// re-parses, so this never fires for a well-formed `parsed`.
 pub fn compute_order(
     parsed: &ParseResult,
     profile: &dyn ReorderProfile,
@@ -222,9 +223,10 @@ fn order_region(
     }
 }
 
-/// Emit one fn phase: visibility groups (`pub`, then restricted, then
-/// private), each dependency-sorted with an alphabetical tie-break.
-/// `main`-first is handled by the toposort itself.
+/// Emit one fn phase: visibility groups, each dependency-sorted with an
+/// alphabetical tie-break. `main`-first is handled by the toposort itself.
+///
+/// Groups emit in order: `pub`, then restricted, then private.
 fn emit_fns_by_visibility(
     parsed: &ParseResult,
     items: &[usize],
@@ -322,10 +324,11 @@ fn emit_impls_after_target_type(parsed: &ParseResult, items: &[usize], out: &mut
     }
 }
 
-/// Emit one macro phase: definitions dependency-sorted alphabetically, each
-/// immediately followed by its local invocations in source order, so a
-/// `macro_rules!` definition always precedes its use sites (Rust
-/// `macro_rules!` uses textual scoping).
+/// Emit one macro phase: definitions dependency-sorted alphabetically,
+/// each immediately followed by its local invocations in source order.
+///
+/// This keeps a `macro_rules!` definition before its use sites because
+/// Rust `macro_rules!` uses textual scoping.
 fn emit_macro_definitions(
     parsed: &ParseResult,
     items: &[usize],
@@ -374,9 +377,11 @@ fn emit_macro_definitions(
     for &def_idx in &def_order {
         out.push(def_idx);
         let def_name = parsed.items[def_idx].name().unwrap_or("");
-        // `remove` (not `get`): duplicate definition names - legal in
-        // Rust, a later `macro_rules!` shadows the earlier - would attach
+        // `remove` (not `get`): duplicate definition names would attach
         // the shared invocations once per definition and repeat indices.
+        //
+        // Duplicate definition names are legal in Rust; a later
+        // `macro_rules!` shadows the earlier.
         if let Some(invocs) = invocations_by_def.remove(def_name) {
             out.extend(invocs);
         }
@@ -385,8 +390,10 @@ fn emit_macro_definitions(
 }
 
 /// Sort one group's items by reference dependency with `tie_break` for
-/// unconstrained items. Names are borrowed from `parsed.items[group[*]]`,
-/// so no per-item name clone is needed.
+/// unconstrained items.
+///
+/// Names are borrowed from `parsed.items[group[*]]`, so no per-item name
+/// clone is needed.
 fn dependency_order(
     parsed: &ParseResult,
     group: &[usize],
@@ -477,9 +484,10 @@ mod tests {
     use super::*;
     use crate::languages::{LanguageBackend, RustBackend};
 
-    /// Items only reorder within their preprocessor region run: a caller in
-    /// region 0 with its callee also in region 0 still reorders. A
-    /// region-1 item sitting between them never crosses.
+    /// Items only reorder within their preprocessor region run.
+    ///
+    /// A caller in region 0 with its callee also in region 0 still
+    /// reorders; a region-1 item sitting between them never crosses.
     #[test]
     fn items_reorder_only_within_region_runs() {
         // Source order: fn z(0, region 1) splits two region-0 fns where

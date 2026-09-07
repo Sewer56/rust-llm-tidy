@@ -43,9 +43,11 @@ pub(crate) struct Cli {
     /// Disable config discovery and loading entirely.
     #[arg(long, global = true, conflicts_with = "config")]
     pub(crate) no_config: bool,
-    /// Lint output format: `text` (default) prints plaintext diagnostics to
-    /// stderr; `json` prints a single JSON array of lint findings and dry-run
-    /// change records to stdout.
+    /// Lint output format selector.
+    ///
+    /// - `text` (default): prints plaintext diagnostics to stderr.
+    /// - `json`: prints a single JSON array of lint findings and dry-run
+    ///   change records to stdout.
     #[arg(long, value_name = "MODE", default_value = "text")]
     pub(crate) output_mode: output::OutputMode,
     /// Alias for `--output-mode json`.

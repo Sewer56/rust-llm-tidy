@@ -3,11 +3,12 @@
 ## What it does
 
 Pads GitHub-Flavored Markdown table columns to a consistent width so the
-pipe delimiters line up. Runs in markdown-family files and in the line
-comments and doc comments of allowed code languages.
+pipe delimiters line up.
 
-Comment prefixes are stripped and re-applied, so rows keep their marker
-and indent.
+- Runs in markdown-family files and in the line comments and doc comments
+  of allowed code languages.
+- Comment prefixes are stripped and re-applied, so rows keep their marker
+  and indent.
 
 ## Before
 

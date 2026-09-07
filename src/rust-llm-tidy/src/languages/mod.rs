@@ -177,9 +177,12 @@ mod tests {
     }
 
     /// Extensions without a registered backend resolve no backend, so no AST
-    /// op can dispatch for them. Such extensions include code languages,
-    /// the markdown family, data formats, unmapped extensions, and the
-    /// empty extension.
+    /// op can dispatch for them. Covered cases:
+    /// - code languages
+    /// - the markdown family
+    /// - data formats
+    /// - unmapped extensions
+    /// - the empty extension
     #[test]
     fn backendless_extensions_resolve_no_backend() {
         for ext in ["js", "md", "json", "org", ""] {

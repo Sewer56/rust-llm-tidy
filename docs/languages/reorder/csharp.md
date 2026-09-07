@@ -1,9 +1,13 @@
 # `reorder` for C# - profile-ordered types and members
 
 C# files reorder through the same `reorder` op as Rust; shared behavior
-(config, change output, callers before callees) is in [reorder]. Members
-follow the Rider/ReSharper default order; ties keep file order, not
-Rust's alphabetical.
+is in [reorder].
+
+Differences from Rust:
+
+- Shared behavior covers config, change output, and callers before callees.
+- Members follow the Rider/ReSharper default order.
+- Ties keep file order, not Rust's alphabetical.
 
 ## Top-level order
 

@@ -310,9 +310,9 @@ pub(in crate::languages::rust) fn doc_attribute_content<'a>(
     if path.kind() != "identifier" || path.utf8_text(source.as_bytes()).ok()? != "doc" {
         return None;
     }
-    // `#[doc = "..."]` carries the literal in the `value` field; list forms
-    // like `#[doc(hidden)]` instead have an `arguments` `token_tree` and are
-    // not doc-comment lines.
+    // `#[doc = "..."]` carries the literal in the `value` field.
+    // List forms like `#[doc(hidden)]` have an `arguments` `token_tree`
+    // and are not doc-comment lines.
     let value = attr.child_by_field_name("value")?;
     if value.kind() != "string_literal" {
         return None;
@@ -321,8 +321,10 @@ pub(in crate::languages::rust) fn doc_attribute_content<'a>(
 }
 
 /// True when `node` is attachable leading trivia: an outer doc comment
-/// (`///`) or an attribute item (`#[...]`). Inner docs (`//!`) and plain
-/// comments (`//`) are NOT attachable - they are transparent to attachment.
+/// (`///`) or an attribute item (`#[...]`).
+///
+/// Inner docs (`//!`) and plain comments (`//`) are NOT attachable; they are
+/// transparent to attachment.
 pub(super) fn is_attachable(node: Node) -> bool {
     match node.kind() {
         "attribute_item" => true,
@@ -340,9 +342,11 @@ pub(super) fn is_transparent_comment(node: Node) -> bool {
     if matches!(node.kind(), "line_comment" | "block_comment") {
         !is_outer_doc(node)
     } else {
-        // `empty_statement` and `shebang` nodes are treated as transparent
-        // (ignored) so they neither attach nor break attachment. Stray
-        // top-level statements are handled by `collect_item_entries` instead.
+        // `empty_statement` and `shebang` nodes are transparent (ignored):
+        // they neither attach nor break attachment.
+        //
+        // Stray top-level statements are handled by `collect_item_entries`
+        // instead.
         matches!(node.kind(), "empty_statement" | "shebang")
     }
 }
@@ -492,8 +496,10 @@ fn find_macro_invocation(node: Node<'_>) -> Option<Node<'_>> {
 }
 
 /// The leftmost identifier text of a type/path node, mirroring syn's
-/// `path_type_to_string` (first segment only). Descends through
-/// `generic_type`, `scoped_type_identifier`, and `scoped_identifier`.
+/// `path_type_to_string` (first segment only).
+///
+/// Descends through `generic_type`, `scoped_type_identifier`, and
+/// `scoped_identifier`.
 fn first_ident_of_type(node: Node<'_>, source: &str) -> Option<String> {
     first_segment(node, source).map(str::to_string)
 }

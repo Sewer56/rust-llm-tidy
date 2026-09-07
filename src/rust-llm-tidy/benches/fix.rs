@@ -29,9 +29,10 @@ fn fix_pass(c: &mut Criterion) {
         // A deliberately misaligned copy: realigning it rebuilds every table.
         let misaligned = tables::misalign(source);
 
-        // Setup-only sanity check: misaligning must yield work for `fix_tables`
-        // (an Owned result), guarding against a fixture whose tables already
-        // survive misaligning unchanged.
+        // Setup-only sanity check: misaligning must yield work for `fix_tables`.
+        //
+        // That work is an Owned result, guarding against a fixture whose
+        // tables already survive misaligning unchanged.
         debug_assert!(
             matches!(
                 fix_tables(&misaligned, DOC_PREFIXES),

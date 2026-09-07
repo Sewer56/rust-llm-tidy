@@ -34,9 +34,10 @@ fn no_args_empty_diff_succeeds() {
     cleanup(&repo);
 }
 
-/// Empty diff still fails when the config is invalid: config validation runs
-/// up front, before the empty-list short-circuit (REQ-006 half:
-/// "config still validated up front").
+/// Empty diff still fails when the config is invalid.
+///
+/// Config validation runs up front, before the empty-list short-circuit
+/// (REQ-006 half: "config still validated up front").
 #[test]
 fn no_args_empty_diff_with_bad_config_errors() {
     let Some(repo) = init_repo() else {
@@ -131,9 +132,11 @@ fn no_args_processes_git_diff() {
     cleanup(&repo);
 }
 
-/// No-args git-diff mode selects changed files of newly allowed extensions
-/// (`.py`, `.cs`, `.markdown`), case-insensitively, through the same
-/// allowed list; a follow-up run finds nothing left to change.
+/// No-args git-diff mode selects changed files of newly allowed extensions.
+///
+/// Extensions: `.py`, `.cs`, `.markdown`, matched case-insensitively
+/// through the same allowed list. A follow-up run finds nothing left to
+/// change.
 #[test]
 fn no_args_selects_newly_allowed_extensions() {
     let Some(repo) = init_repo() else {
@@ -233,6 +236,7 @@ fn cleanup(dir: &std::path::Path) {
 }
 
 // -- Helpers (mirrors integration.rs) --------------------------------
+//
 // Note: `temp_dir` and `TEST_COUNTER` are still duplicated from
 // integration.rs; `binary` now lives in the shared `tests/common/mod.rs`
 // module.

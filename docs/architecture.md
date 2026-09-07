@@ -60,7 +60,8 @@ Excluded visibility does not trigger discovery.
 
 File preview preserves the CLI's existing behavior: each operation reads the
 unchanged file on disk.
-Its lint findings therefore describe the original file, not a simulated final
+
+Its lint findings describe the original file, not a simulated final
 transformation.
 
 The buffer API returns transformed source and lints that final source instead.
@@ -69,7 +70,8 @@ implementations.
 
 ### Failure handling
 
-Setup failures return `Err`, before a complete run report is available.
+Setup failures return `Err` before a complete run report is available.
+
 Individual file and subprocess failures remain in `RunReport` alongside
 successful results.
 

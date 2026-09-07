@@ -84,6 +84,7 @@ See [Change reporting] for the shared format.
 
 ## Library access
 
-Use `rust_llm_tidy::rules::transform::fix_fences`.
+Use `rust_llm_tidy::rules::transform::fix_fences` for this rule.
+
 For complete processing and project context, see [library entry
 points](architecture.md#library-entry-points).

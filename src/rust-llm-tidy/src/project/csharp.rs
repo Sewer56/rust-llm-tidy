@@ -177,13 +177,16 @@ fn project_scope(inputs: &[PathBuf]) -> anyhow::Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-/// Extract the literal `Include` targets of `<ProjectReference>` elements from
-/// project XML, matching element and attribute local names so namespaces never
-/// hide a reference.
+/// Extract the literal `Include` targets of `<ProjectReference>` elements
+/// from project XML.
 ///
-/// Commented-out references contribute nothing, and targets containing MSBuild
-/// properties or wildcards (`$`, `*`, `?`) are skipped as non-literal. XML
-/// parsing stops at malformed content, keeping the targets read before it.
+/// Element and attribute local names are matched so namespaces never hide a
+/// reference.
+///
+/// Commented-out references contribute nothing, and targets containing
+/// MSBuild properties or wildcards (`$`, `*`, `?`) are skipped as
+/// non-literal. XML parsing stops at malformed content, keeping the targets
+/// read before it.
 fn literal_project_includes(source: &str) -> Vec<String> {
     let mut reader = Reader::from_str(source);
 
@@ -273,6 +276,7 @@ mod tests {
 
     /// Include targets survive quote style, spaced equals signs, paired
     /// elements, prefixed names, backslashes, and malformed tails.
+    ///
     /// Commented-out references and MSBuild-variable includes stay out of scope.
     #[test]
     fn scope_should_read_xml_includes_and_skip_commented_or_variable_references() {

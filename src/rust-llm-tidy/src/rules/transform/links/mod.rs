@@ -135,9 +135,10 @@ fn fix_links_counted<'a>(
     }
 
     // Pass 1: tally eligible inline links (outside code fences) and record
-    // the texts of every existing `[text]:` definition. The texts prevent
-    // re-definition, and the pass detects whether the input is comment-block
-    // content.
+    // the texts of every existing `[text]:` definition.
+    //
+    // The texts prevent re-definition, and the pass detects whether the
+    // input is comment-block content.
     //
     // Splitting each line once (into content/body) feeds the fence step, the
     // link tally, and the comment-context detection. The `contains('[')`
@@ -226,9 +227,11 @@ fn rewrite_doc_context<'a>(
         let (prefix, body) = strip_comment_prefix(content, prefixes);
         let block_key = doc_block_key(prefix);
 
-        // Close the previous block the moment the line leaves it (a new
-        // block, a non-comment line, or a fence carries a different key).
-        // Thus each using comment gets exactly one in-comment definition copy.
+        // Close the previous block the moment the line leaves it.
+        //
+        // Leaving means a new block, a non-comment line, or a fence carries
+        // a different key. Thus each using comment gets exactly one
+        // in-comment definition copy.
         if block_key != cur_block {
             flush_block_defs(&mut out, cur_block, &mut cur_defs, &mut cur_defs_seen, le);
             cur_block = block_key;
@@ -327,8 +330,7 @@ fn rewrite_markdown<'a>(
     }
 
     // Append hoisted `[text]: url` definitions at the end of the document.
-    // Definitions use the source's dominant line ending so a CRLF document
-    // stays CRLF after hoisting.
+    // Definitions use the source's dominant line ending, so CRLF stays CRLF.
     let mut buf = out.unwrap_or_else(|| {
         let mut s = String::with_capacity(input.len());
         s.push_str(input);
@@ -354,9 +356,10 @@ fn ensure_output<'a>(out: &'a mut Option<String>, input: &str, seg_start: usize)
     })
 }
 
-/// Append a comment block's collected definition lines to `out` and reset
-/// its accumulator (with the dedup set), so the next block starts fresh.
-/// No-op when the block rewrote nothing.
+/// Append a comment block's collected definition lines to `out`.
+///
+/// This resets the accumulator (with the dedup set), so the next block
+/// starts fresh. No-op when the block rewrote nothing.
 fn flush_block_defs(
     out: &mut Option<String>,
     prefix: Option<&str>,
@@ -429,8 +432,10 @@ after
     #[test]
     fn mismatched_marker_inside_fence_is_content() {
         // A `~~~` line inside a backtick fence is code-block content, not a
-        // second opener. The `` ``` `` closer therefore really closes the
-        // block, and the link after it is still hoisted.
+        // second opener.
+        //
+        // The `` ``` `` closer therefore really closes the block, and the
+        // link after it is still hoisted.
         let input = "```text\n~~~\n```\nsee [A](http://x) here\n";
         let expected = "```text\n~~~\n```\nsee [A] here\n\n[A]: http://x\n";
         let (out, pairs) = fix_links(input, RUST_DOC, 1);
@@ -480,7 +485,9 @@ after
     fn badge_link_hoists_inner_image_only() {
         // A repeated badge hoists only its flat inner image: occurrences keep
         // the inline `[![alt]](url)` shape and the definition carries the
-        // flat `[alt]` label. Both engines agree.
+        // flat `[alt]` label.
+        //
+        // Both engines agree.
         let input = "[![Crates.io](https://img.shields.io/crates/v/t.svg)](https://crates.io/crates/t)\n\
                      [![Crates.io](https://img.shields.io/crates/v/t.svg)](https://crates.io/crates/t)\n";
         let expected = "[![Crates.io]](https://crates.io/crates/t)\n\
@@ -510,9 +517,11 @@ after
 
     #[test]
     fn flat_image_hoists_in_both_engines() {
-        // A flat image `![alt](img)` hoists exactly like a flat link: each
-        // occurrence becomes `![alt]` (the `!` sits outside the rewritten
-        // span) and one `[alt]: img` definition is appended, in both engines.
+        // A flat image `![alt](img)` hoists exactly like a flat link.
+        //
+        // Each occurrence becomes `![alt]` (the `!` sits outside the
+        // rewritten span) and one `[alt]: img` definition is appended, in
+        // both engines.
         let input = "lead ![logo](i.png) mid ![logo](i.png)\n";
         let expected = "lead ![logo] mid ![logo]\n\n[logo]: i.png\n";
 
@@ -639,8 +648,9 @@ see [A] and [A]
     #[test]
     fn existing_definition_prevents_hoist() {
         // A pre-existing `[A]:` definition (any URL, including the valid empty
-        // angle destination `<>`) excludes the pair. The inline occurrences
-        // are left as-is rather than re-targeted.
+        // angle destination `<>`) excludes the pair.
+        //
+        // The inline occurrences are left as-is rather than re-targeted.
         for dest in ["http://z", "<>"] {
             let input = format!("[A](http://x) [A](http://x)\n[A]: {dest}\n");
             let (out, _) = fix_links(&input, RUST_DOC, 1);
@@ -814,9 +824,11 @@ pub fn b() {}
 
     #[test]
     fn non_doc_commented_link_not_rewritten_and_borrowed() {
-        // Rust context (one `///` line exists), but the only inline link sits
-        // on a non-doc-comment line (a string literal). It is never rewritten
-        // and gets no definition, so the pass returns the input borrowed.
+        // Rust context: one `///` line exists, but the only inline link sits
+        // on a non-doc-comment line (a string literal).
+        //
+        // It is never rewritten and gets no definition, so the pass returns
+        // the input borrowed.
         let input = "\
 /// some doc
 pub fn f() {
@@ -866,6 +878,7 @@ pub fn f() {
     fn definition_shaped_trailing_line_still_gets_blank() {
         // `[x]:` (no destination) and `[x]: junk` (trailing junk after the
         // destination, no valid title) are paragraph text, not definitions.
+        //
         // Appended definitions therefore need a blank separator after them.
         for bad in ["[x]:", "[x]: not a valid dest title junk"] {
             let input = format!("see [A](http://x) and [A](http://x)\n{bad}\n");
@@ -900,9 +913,11 @@ pub fn f() {
     #[test]
     fn idempotent_on_hoisted_output() {
         // Re-running `fix_links` on its own output is a borrowed no-op for
-        // every hoisted shape. Shapes: flat links, flat images, badges hoisted
-        // via their inner image, and a corrupted badge definition line
-        // coexisting with a hoisted flat link.
+        // every hoisted shape.
+        //
+        // Shapes: flat links, flat images, badges hoisted via their inner
+        // image, and a corrupted badge definition line coexisting with a
+        // hoisted flat link.
         let cases = [
             "see [A](http://x) and [A](http://x)\n",
             "lead ![logo](i.png) mid ![logo](i.png)\n",
@@ -924,14 +939,17 @@ pub fn f() {
 
     #[test]
     fn optimized_is_idempotent_on_diverse_cases() {
-        // Broad corpus: repeated vs single-use links, reference definitions,
-        // autolinks, whitespace URLs, links inside code fences, doc-comment
-        // prefixes, intra-doc forms, nested brackets, and blank-text links.
+        // Broad corpus: `fix_links` must stay idempotent on every input.
         //
-        // Also badges hoisted via their inner image (outer bracket-bearing
-        // link declined), unbalanced edge cases, non-ASCII text, and
-        // multi-comment Rust inputs. `fix_links` must stay idempotent on
-        // every input.
+        // - repeated vs single-use links
+        // - reference definitions
+        // - autolinks, whitespace URLs
+        // - links inside code fences
+        // - doc-comment prefixes, intra-doc forms
+        // - nested brackets, blank-text links
+        // - badges hoisted via their inner image (outer bracket-bearing
+        //   link declined)
+        // - unbalanced edge cases, non-ASCII text, multi-comment Rust inputs
         let cases: &[&str] = &[
             "",
             "no brackets at all\n",
@@ -1004,8 +1022,10 @@ pub fn f() {
     #[test]
     fn malformed_definition_lines_do_not_block_hoist() {
         // Each line is definition-shaped but malformed: CommonMark leaves it
-        // as paragraph text. The label is therefore free to hoist, and the
-        // appended definition needs a blank separator after it.
+        // as paragraph text.
+        //
+        // The label is therefore free to hoist, and the appended definition
+        // needs a blank separator after it.
         //
         // `definition_text` and `is_reference_definition` share one parser,
         // so both reject these.
@@ -1074,8 +1094,10 @@ pub fn f() {
     #[test]
     fn doc_block_malformed_def_line_gets_blank_separator() {
         // A malformed `[A]:`-shaped line at the end of a doc-comment block is
-        // paragraph text: `needs_blank_before_defs` inserts the blank comment
-        // line before the hoisted in-comment definition.
+        // paragraph text.
+        //
+        // `needs_blank_before_defs` inserts the blank comment line before
+        // the hoisted in-comment definition.
         for bad in ["[A]:", "[A]: http://x(junk", "[A]: <u>\"t\""] {
             let input = format!("/// see [A](http://x) and [A](http://x)\n/// {bad}\n");
             let (out, _) = fix_links(&input, RUST_DOC, 1);
@@ -1127,7 +1149,9 @@ pub fn f() {
     fn crlf_no_trailing_newline_uses_crlf_guard() {
         // CRLF input without a trailing newline: the `ends_with('\n')` guard
         // in `append_definitions` must push `le` ("\r\n") before the first
-        // definition. Every `\n` in the output must be part of `\r\n`.
+        // definition.
+        //
+        // Every `\n` in the output must be part of `\r\n`.
         let input = "intro\r\nsee [A](http://x) and [A](http://x)";
         let (out, _) = fix_links(input, RUST_DOC, 1);
         let s = out.into_owned();
@@ -1223,6 +1247,7 @@ pub fn f() {
     fn empty_prefix_family_hoists_doc_marker_lines_as_markdown() {
         // Without a marker family, `///` lines are plain paragraph text,
         // so links hoist in markdown context.
+        //
         // The definition lands in the trailing block, not inside a comment.
         let input = "/// see [A](http://x) and [A](http://x)\n";
         let expected = "/// see [A] and [A]\n\n[A]: http://x\n";

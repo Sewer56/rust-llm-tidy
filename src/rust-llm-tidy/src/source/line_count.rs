@@ -18,13 +18,12 @@ use ahash::AHashMap;
 /// - `source`: the text whose non-blank lines are counted. The returned map's
 ///   keys borrow from `source`, so `source` must outlive the map.
 pub fn count_lines(source: &str) -> AHashMap<&str, usize> {
-    // Capacity heuristic: one entry per ~24 bytes covers typical line lengths
-    // without a second full pass over the source (the previous code called
-    // `source.lines().count()`, which scanned the whole string just to size
-    // the map).
+    // Capacity heuristic: one entry per ~24 bytes covers typical line
+    // lengths without a second full pass over the source.
     //
-    // Over-estimating slightly is harmless; under-estimating triggers a
-    // single regrow.
+    // The previous code called `source.lines().count()`, which scanned the
+    // whole string just to size the map. Over-estimating slightly is
+    // harmless; under-estimating triggers a single regrow.
     let estimate = source.len() / 24 + 1;
     let mut map = AHashMap::with_capacity(estimate);
     for line in source.lines() {

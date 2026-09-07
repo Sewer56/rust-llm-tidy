@@ -17,11 +17,11 @@
 //! # Comment-prefix families
 //!
 //! Each pass takes the language's line-comment markers, longest first
-//! (e.g. `["///", "//"]`) so a longer marker wins over a shorter one it
-//! starts with; an empty slice handles plain markdown.
+//! (e.g. `["///", "//"]`); an empty slice handles plain markdown.
 //!
-//! Tables, fences, and links inside `//`, `#`, `--`, `;`, or `%` comments
-//! then tidy the same way.
+//! Longest-first ordering means a longer marker wins over a shorter one it
+//! starts with. Tables, fences, and links inside `//`, `#`, `--`, `;`, or `%`
+//! comments then tidy the same way.
 //!
 //! [`fix_fences`] returns a [`FixOutcome`] (text + per-entity [`FixAnchor`]);
 //! [`fix_links`] returns the text plus its substitution pairs; [`fix_tables`]

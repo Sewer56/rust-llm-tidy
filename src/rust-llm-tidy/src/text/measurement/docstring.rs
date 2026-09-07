@@ -1,11 +1,12 @@
 //! The docstring dialect: measuring [`DocRegion`]s whose lines carry
-//! Python docstring content, the first-statement triple-quoted string of
-//! a module, class, or function.
+//! Python docstring content.
 //!
-//! The producer strips the quotes and the docstring's common
-//! indentation. This dialect then exempts doctest examples and feeds the
-//! remaining prose to the shared markdown classifier, so blank lines
-//! split paragraphs.
+//! Docstring content is the first-statement triple-quoted string of a
+//! module, class, or function. The producer strips the quotes and the
+//! docstring's common indentation.
+//!
+//! This dialect then exempts doctest examples and feeds the remaining prose
+//! to the shared markdown classifier, so blank lines split paragraphs.
 //!
 //! Fenced and indented example blocks are exempt through that
 //! classifier.
@@ -27,15 +28,18 @@ pub(super) fn measure_region(
     open_fence: &mut Option<OpenFence>,
 ) {
     // A `>>>` line opens a doctest example that owns every following
-    // line until the blank line ending the example: the source, `...`
-    // continuations, and expected output are literal text, never prose.
+    // line until the blank line ending the example.
+    //
+    // The source, `...` continuations, and expected output are literal
+    // text, never prose.
     let mut in_doctest = false;
     for line in region.lines {
         let trimmed = line.text.trim();
         // A fence delimiter ends the example and flows through the
-        // classifier, which closes the fence. Swallowing it as doctest
-        // output would leave the fence open and exempt the docstring's
-        // remaining prose.
+        // classifier, which closes the fence.
+        //
+        // Swallowing it as doctest output would leave the fence open and
+        // exempt the docstring's remaining prose.
         if in_doctest && !trimmed.is_empty() && !is_fence_delimiter(trimmed) {
             doc.lines.push(StrippedLine {
                 number: line.number,
@@ -233,8 +237,9 @@ mod tests {
         assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
     }
 
-    // A `>>>` line inside a fenced example is fenced content. The
-    // closing delimiter closes the fence: prose after the block
+    // A `>>>` line inside a fenced example is fenced content.
+    //
+    // The closing delimiter closes the fence: prose after the block
     // measures, never silently exempt for the rest of the docstring.
     #[test]
     fn fenced_doctests_do_not_swallow_the_closing_fence() {

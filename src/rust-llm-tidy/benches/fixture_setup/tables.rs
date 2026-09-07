@@ -28,8 +28,9 @@ pub const RS_FIXTURES: &[(&str, &str)] = &[
 ];
 
 /// Produce a misaligned copy of `input` by collapsing each table cell's
-/// surrounding padding, so columns no longer line up. Non-table lines and
-/// doc-comment prefixes are left untouched.
+/// surrounding padding, so columns no longer line up.
+///
+/// Non-table lines and doc-comment prefixes are left untouched.
 ///
 /// Used only in benchmark setup (never inside the measured `iter` closure) to
 /// exercise the realignment path against an otherwise-canonical fixture.
@@ -56,8 +57,10 @@ fn misalign_line(line: &str) -> String {
 }
 
 /// Strip an optional Rust doc-comment prefix from `line`, mirroring the crate's
-/// own logic. Returns `(prefix, rest)` where `prefix` is the leading indent
-/// plus the `///` or `//!` marker and one separating space (empty when absent).
+/// own logic.
+///
+/// Returns `(prefix, rest)` where `prefix` is the leading indent plus the `///`
+/// or `//!` marker and one separating space (empty when absent).
 fn strip_doc_prefix(line: &str) -> (&str, &str) {
     let indent_end = line.len() - line.trim_start_matches([' ', '\t']).len();
     let core = &line[indent_end..];

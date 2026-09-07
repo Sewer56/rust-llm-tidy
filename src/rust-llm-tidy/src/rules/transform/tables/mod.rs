@@ -66,9 +66,11 @@ mod realign;
 ///
 /// # Allocation strategy
 ///
-/// The output buffer is allocated lazily: a single read-only scan runs first.
-/// Only when a table actually changes is a `String` allocated and the
-/// unchanged text before it copied in.
+/// The output buffer is allocated lazily: a single read-only scan runs
+/// first. A `String` is allocated only when a table actually changes.
+///
+/// When that happens, the unchanged text before the changed table is
+/// copied into the new buffer just-in-time.
 ///
 /// A fully-aligned document therefore returns a [`Cow::Borrowed`] with
 /// **zero** heap allocation.
@@ -90,18 +92,20 @@ mod realign;
 /// assert_eq!(fix_tables(input, &["#"]), expected);
 /// ```
 pub fn fix_tables<'a>(input: &'a str, prefixes: &[&str]) -> Cow<'a, str> {
-    // Output buffer, allocated lazily on the first real change. `copied_until`
-    // is the byte offset in `input` already present in `output`; the slice
-    // `input[copied_until..next_change_start]` is copied in just-in-time.
+    // Output buffer, allocated lazily on the first real change.
+    //
+    // `copied_until` is the byte offset in `input` already present in
+    // `output`; the slice `input[copied_until..next_change_start]` is copied
+    // in just-in-time.
     let mut output = String::new();
     let mut changed = false;
     let mut copied_until = 0usize;
 
     let mut pos = 0usize;
     while pos < input.len() {
-        // Fast-forward to the start of the next line that contains a pipe,
-        // skipping whole runs of pipe-less text/code in a single vectorized
-        // byte search. If no pipe remains, nothing can change.
+        // Fast-forward to the next pipe-bearing line in one vectorized byte
+        // search, skipping whole runs of pipe-less text/code. If no pipe
+        // remains, nothing can change.
         let line_start = match input[pos..].find('|') {
             None => break,
             Some(rel) => {
@@ -324,12 +328,11 @@ no tables here
 
     #[test]
     fn realigns_plain_markdown_table() {
-        // Single-line `\n` escapes (not a multi-line `\`-continuation string):
-        // the pre-commit hook runs `fix_tables` on `.rs` source, and would
-        // realign any multi-line pipe input back to canonical form, silently
-        // re-breaking this test.
+        // Single-line `\n` escapes (not a multi-line `\`-continuation string).
         //
-        // One physical line is not seen as a table.
+        // The pre-commit hook runs `fix_tables` on `.rs` source, and would
+        // realign any multi-line pipe input back to canonical form, silently
+        // re-breaking this test. One physical line is not seen as a table.
         let input = "| a | bb |\n| --- | --- |\n| ccc | d |\n";
         let text = fix_tables(input, DOC_PREFIXES);
         assert!(text != input, "misaligned table should change");
@@ -389,7 +392,9 @@ pub fn f() {}
     #[test]
     fn doc_comment_table_realigns() {
         // A misaligned table inside `///` doc comments realigns and keeps its
-        // prefix. Written with single-line `\n` escapes so the repo's own
+        // prefix.
+        //
+        // Written with single-line `\n` escapes so the repo's own
         // `fix_tables` pre-commit hook cannot re-align the literal back to
         // canonical first.
         let input = "/// | name | value |\n/// | ---- | ----- |\n/// | a | 1 |\npub fn f() {}\n";
@@ -452,9 +457,10 @@ pub fn f() {}
     #[test]
     fn multiple_tables_and_text_roundtrip() {
         // Two tables separated by prose: the first is misaligned (realigns),
-        // the second is already canonical (borrowed). Exercises the lazy
-        // output buffer: unchanged text before, between, and after the changed
-        // run must be copied through verbatim.
+        // the second is already canonical (borrowed).
+        //
+        // Exercises the lazy output buffer: unchanged text before, between,
+        // and after the changed run must be copied through verbatim.
         let input = "\
 intro line
 | a  | b |
@@ -595,8 +601,9 @@ trailer
     #[test]
     fn prefix_family_tables_realign_with_marker_and_indent_kept() {
         // One misaligned GFM table per line-comment family: every row comes
-        // back with the marker and indent re-applied. The code line stays
-        // untouched, and a second pass is a no-op.
+        // back with the marker and indent re-applied.
+        //
+        // The code line stays untouched, and a second pass is a no-op.
         for (marker, label) in PREFIX_FAMILIES {
             let input = format!(
                 "  {m} | a | bb |\n  {m} | ---- | ---- |\n  {m} | ccc | d |\ncode();\n",
@@ -651,10 +658,11 @@ trailer
 
     #[test]
     fn org_mode_tables_are_left_untouched() {
-        // Org-mode delimiters (`|---+---|`) carry a `+`, which GFM
-        // delimiter validation rejects: the block is not a table and
-        // comes back verbatim. The empty (unmapped) prefix family would
-        // see it the same way.
+        // Org-mode delimiters (`|---+---|`) carry a `+`, which GFM delimiter
+        // validation rejects: the block is not a table and comes back
+        // verbatim.
+        //
+        // The empty (unmapped) prefix family would see it the same way.
         let input = "\
 | a | b |
 |---+---|

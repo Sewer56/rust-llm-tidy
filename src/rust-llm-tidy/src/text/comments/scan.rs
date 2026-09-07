@@ -58,10 +58,11 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
     for (idx, raw) in source.lines().enumerate() {
         let number = idx + 1;
 
-        // Heredoc payload: string content until the closing delimiter
-        // line, exact for strict heredocs. For `<<~`/`<<-` the
-        // terminator may carry the lead its family permits (`\t`
-        // shells, any whitespace Ruby).
+        // Heredoc payload: string content until the closing
+        // delimiter line. Strict heredocs take it exact.
+        //
+        // For `<<~`/`<<-` the terminator may carry the lead its
+        // family permits (`\t` shells, any whitespace Ruby).
         //
         // A missing terminator fails the scan at the end.
         if let Some(pending) = heredocs.first() {
@@ -87,17 +88,21 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
         'chars: while i < bytes.len() {
             match state {
                 State::Code => {
-                    // Literal forms the family does not model reject the
-                    // scan early, before any marker claims the rest of the
-                    // line. Rejected forms: SQL `$tag$`, Haskell `[q|`,
-                    // TeX `\verb`.
+                    // Literal forms the family does not model reject
+                    // the scan early.
+                    //
+                    // Rejection happens before any marker claims the
+                    // rest of the line. Rejected forms: SQL `$tag$`,
+                    // Haskell `[q|`, TeX `\verb`.
                     if lex.rejects.iter().any(|reject| reject.opens(bytes, i)) {
                         return None;
                     }
-                    // TeX: an odd-length backslash run before the marker
-                    // escapes it, so the marker prints literally. An
-                    // even-length run is `\\` commands, so the marker still
-                    // comments.
+                    // TeX: an odd-length backslash run before the
+                    // marker escapes it, so the marker prints
+                    // literally.
+                    //
+                    // An even-length run is `\\` commands, so the
+                    // marker still comments.
                     if lex.escaped_marker && bytes[i] == b'\\' {
                         let mut run = 1;
                         while bytes.get(i + run) == Some(&b'\\') {
@@ -107,11 +112,13 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
                             i += if run % 2 == 1 { run + 1 } else { run };
                             continue 'chars;
                         }
-                        // Mid-line and no marker: only the run's last
-                        // backslash can open a `\verb`-style reject, so
-                        // skip straight to it. Line-leading runs keep
-                        // the byte-wise walk so the `\\` line-string
-                        // rule still sees them.
+                        // Mid-line and no marker: skip straight to
+                        // the run's last backslash.
+                        //
+                        // Only it can open a `\verb`-style reject.
+                        // Line-leading runs keep the byte-wise walk
+                        // so the `\\` line-string rule still sees
+                        // them.
                         if run > 1 && !raw[..i].trim().is_empty() {
                             i += run - 1;
                             continue 'chars;
@@ -136,9 +143,11 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
                         continue 'chars;
                     }
                     // Line comment: consumes the rest of the line.
-                    // Word-start families (POSIX `#` rules, Ruby after a
-                    // token) never open a comment mid-word, so regex
-                    // literals and words like `a#b` stay code.
+                    //
+                    // Word-start families (POSIX `#` rules, Ruby
+                    // after a token) never open a comment mid-word,
+                    // so regex literals and words like `a#b` stay
+                    // code.
                     if bytes[i..].starts_with(lex.line.as_bytes())
                         && (!lex.word_start_comments || comment_starts_word(bytes, i))
                     {
@@ -213,10 +222,13 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
                             state = State::Backtick;
                             i += 1;
                         }
-                        // Zig multi-line strings: a line-leading `\\` run
-                        // makes the rest of the line string content. Only
-                        // a line lead qualifies, so a `\\` mid-line in
-                        // other families never hides a trailing comment.
+                        // Zig multi-line strings: a line-leading `\\`
+                        // run makes the rest of the line string
+                        // content.
+                        //
+                        // Only a line lead qualifies, so a `\\`
+                        // mid-line in other families never hides a
+                        // trailing comment.
                         b'\\' if bytes.get(i + 1) == Some(&b'\\') && raw[..i].trim().is_empty() => {
                             break 'chars;
                         }
@@ -428,9 +440,11 @@ fn push_block_line(seg: &str, opener: bool, number: usize, lines: &mut Vec<Regio
     });
 }
 
-/// Recognizes a heredoc opener at `bytes[i]` (a `<<` lead) and queues
-/// its delimiter with whether the terminator may be indented. Returns
-/// the consumed width, or `None` when the bytes do not open a heredoc.
+/// Recognizes a heredoc opener at `bytes[i]` (a `<<` lead).
+///
+/// Queues the delimiter with whether the terminator may be indented.
+/// Returns the consumed width, or `None` when the bytes do not open a
+/// heredoc.
 fn heredoc_open(
     bytes: &[u8],
     i: usize,

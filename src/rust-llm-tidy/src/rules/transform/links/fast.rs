@@ -244,9 +244,11 @@ fn rewrite_markdown<'a>(input: &'a str, scan: Scan<'a>) -> (Cow<'a, str>, Vec<(S
     if !output.ends_with('\n') {
         output.push_str(scan.line_ending);
     }
-    // A definition cannot interrupt a paragraph: when the document ends in
-    // paragraph text, separate the trailing definition block with one blank
-    // line (see `needs_blank_before_defs`).
+    // A definition cannot interrupt a paragraph (see
+    // `needs_blank_before_defs`).
+    //
+    // When the document ends in paragraph text, separate the trailing
+    // definition block with one blank line.
     if needs_blank_before_defs(&output, "") {
         capacity += scan.line_ending.len();
         output.push_str(scan.line_ending);

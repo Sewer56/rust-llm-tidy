@@ -44,11 +44,12 @@ pub(crate) fn reorder_permutation(parsed: &ParseResult) -> anyhow::Result<Option
         return Ok(None);
     }
     // A top-level pair sharing a row is unrepresentable for the span
-    // tiling. Sharing a row means either declaration's span reaches
-    // the next one's start row, so the later item's span degenerates.
+    // tiling.
     //
-    // Degrade to a no-op rather than emitting a guessed rewrite or a
-    // record for a move the bytes never perform.
+    // Sharing a row means either declaration's span reaches the next
+    // one's start row, so the later item's span degenerates. Degrade
+    // to a no-op rather than emitting a guessed rewrite or a record
+    // for a move the bytes never perform.
     {
         let root = parsed.syntax_tree().root_node();
         let mut cursor = root.walk();

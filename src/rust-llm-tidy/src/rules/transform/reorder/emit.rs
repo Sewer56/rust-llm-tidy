@@ -271,10 +271,11 @@ pub fn compute_moves(items: &[crate::source::SourceItem], perm: &Permutation) ->
 ///
 /// # Panics
 ///
-/// Panics if `perm` contains an item index out of range for
-/// `parsed.items`, or a member index out of range for that item's
-/// parsed members; both are indexed here without a further bounds
-/// check.
+/// Panics if `perm` contains an out-of-range item or member index.
+///
+/// An item index is out of range for `parsed.items`, or a member index is
+/// out of range for that item's parsed members; both are indexed here
+/// without a further bounds check.
 ///
 /// # Line endings
 ///
@@ -297,16 +298,20 @@ pub fn emit(parsed: &ParseResult, perm: &Permutation) -> Result<String> {
     for (i, &idx) in perm.order.iter().enumerate() {
         let item = &parsed.items[idx];
         if let Some(member_order) = member_splice_order(perm, idx) {
-            // Splice the type body: the head up to the first member and the
-            // tail after the last member stay fixed. The reordered member
-            // spans tile the body back-to-back between them.
+            // Splice the type body: head and tail stay fixed, and the
+            // reordered member spans tile the body back-to-back between
+            // them.
+            //
+            // The head runs up to the first member; the tail starts after
+            // the last member.
             //
             // Member slices are verbatim, so carried whitespace travels
             // with each member.
             let members = item.members();
+            // Re-check the member count against the parsed members so a
+            // divergent count errors instead of indexing out of bounds.
+            //
             // The permutation validated the member count it was built with.
-            // Re-check it against the parsed members so a divergent count
-            // errors instead of indexing out of bounds.
             ensure!(
                 member_order.len() == members.len(),
                 "member permutation length {} does not match item {} member count {}",
@@ -353,8 +358,10 @@ fn describe(item: &crate::source::SourceItem) -> String {
 }
 
 /// The member permutation to splice for item `idx`, or `None` when the item
-/// emits its plain slice. A plain slice means no attached member order, or an
-/// identity one, which must keep the original bytes.
+/// emits its plain slice.
+///
+/// A plain slice means no attached member order, or an identity one, which
+/// must keep the original bytes.
 fn member_splice_order(perm: &Permutation, idx: usize) -> Option<&[usize]> {
     let order = perm.member_orders.get(&idx)?;
     let identity = order.iter().enumerate().all(|(pos, &member)| pos == member);
@@ -527,8 +534,10 @@ mod tests {
     }
 
     /// Member reordering round-trips: the type body splices members in the
-    /// profile order and every line survives. The spliced order is
-    /// idempotent (recomputing yields the identity member permutation).
+    /// profile order and every line survives.
+    ///
+    /// The spliced order is idempotent (recomputing yields the identity
+    /// member permutation).
     #[test]
     fn member_reorder_round_trips_through_emit() {
         // One type item whose body holds three members: method Z (calls A),

@@ -55,8 +55,10 @@ pub enum PhaseStrategy {
 }
 
 /// The language-specific part of reference collection: which parse-tree
-/// nodes declare items. It also covers which identifier positions define
-/// names rather than use them, and which node shapes record a use.
+/// nodes declare items.
+///
+/// It also covers which identifier positions define names rather than
+/// use them, and which node shapes record a use.
 ///
 /// [`ReferenceCollector`] orders items by who references whom, and
 /// finds references by walking a parse tree. Grammars name their nodes
@@ -88,14 +90,17 @@ pub struct ReferenceWalk {
     /// `struct_item`, ...). Everything inside counts as that item's
     /// references.
     pub declaration_kinds: &'static [&'static str],
-    /// Spots where an identifier defines a name instead of using one:
-    /// item names (`fn parse()`), bindings (`let x`, parameters),
+    /// Spots where an identifier defines a name instead of using one.
+    ///
+    /// Item names (`fn parse()`), bindings (`let x`, parameters),
     /// aliases (`use a as b`). Skipped, so `let helper = 1;` never
     /// references `fn helper`.
     pub decl_name_positions: &'static [DeclNamePosition],
     /// Reference-position shapes: how each reference-holding node kind
-    /// records its use. Kinds the table omits are walked as pure
-    /// structure: their children are examined, nothing records.
+    /// records its use.
+    ///
+    /// Kinds the table omits are walked as pure structure: their
+    /// children are examined, nothing records.
     pub reference_positions: &'static [ReferencePosition],
     /// Token kind that immediately follows a called path (Rust: `!`),
     /// marking the recorded reference as a call.
@@ -137,9 +142,10 @@ pub struct ReferencePosition {
     /// `a::b::c` resolves through `path` to `a`; `None` when the node
     /// itself is the segment.
     pub segment_field: Option<&'static str>,
-    /// Whether the walk recurses into the node after recording: wrapped
-    /// shapes carry further references among their children, while
-    /// plain paths stop after their first segment.
+    /// Whether the walk recurses into the node after recording.
+    ///
+    /// Wrapped shapes carry further references among their children,
+    /// while plain paths stop after their first segment.
     pub recurse: bool,
 }
 
@@ -196,8 +202,9 @@ impl ReferencePosition {
     }
 
     /// A path shape: the node's leftmost segment (in `segment_field`)
-    /// names the reference, and the remaining segments never reference
-    /// a top-level item, so the walk stops.
+    /// names the reference, so the walk stops.
+    ///
+    /// The remaining segments never reference a top-level item.
     pub const fn path(kind: &'static str, segment_field: &'static str) -> Self {
         Self {
             kind,
@@ -208,8 +215,9 @@ impl ReferencePosition {
     }
 
     /// A wrapped shape: the child in `path_field` names the reference.
-    /// The node's children hold further references (a generic type's type
-    /// arguments), so the walk records, then recurses.
+    ///
+    /// The node's children hold further references (a generic type's
+    /// type arguments), so the walk records, then recurses.
     pub const fn wrapping(kind: &'static str, path_field: &'static str) -> Self {
         Self {
             kind,

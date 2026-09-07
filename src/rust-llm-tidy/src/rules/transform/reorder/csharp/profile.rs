@@ -69,9 +69,10 @@ static DECL_NAME_POSITIONS: &[DeclNamePosition] = &[
     DeclNamePosition::new("parameter", "name"),
 ];
 
-/// The C# reorder profile: `using` directives pinned first. Everything
-/// else stays in source order at the top level, with the documented
-/// member buckets inside type and namespace bodies.
+/// The C# reorder profile: `using` directives pinned first.
+///
+/// Everything else stays in source order at the top level, with the
+/// documented member buckets inside type and namespace bodies.
 pub(super) struct CSharpProfile;
 
 impl ReorderProfile for CSharpProfile {
@@ -150,8 +151,9 @@ pub(super) fn member_edges(
     let Some(first) = decls.first().copied() else {
         return edges;
     };
-    // `decls` and `members` align 1:1 (the parse built both from the same
-    // body walk), so positions translate directly. One cursor is reused
+    // `decls` and `members` align 1:1, so positions translate directly.
+    //
+    // The parse built both from the same body walk. One cursor is reused
     // across every member's subtree: a fresh cursor per node would
     // allocate behind every step.
     let mut cursor = first.walk();
@@ -265,10 +267,11 @@ mod tests {
     use super::*;
     use crate::rules::transform::reorder::graph::PhaseStrategy;
 
-    /// Every member kind maps to its documented bucket: fields, then
-    /// constructors, finalizers, delegates/events, enums and nested types,
-    /// properties, operators, methods. Usings pin first for namespace
-    /// bodies.
+    /// Every member kind maps to its documented bucket.
+    ///
+    /// Buckets: fields, then constructors, finalizers, delegates/events,
+    /// enums and nested types, properties, operators, methods. Usings pin
+    /// first for namespace bodies.
     #[test]
     fn member_phases_follow_the_documented_buckets() {
         let cases = [

@@ -234,8 +234,9 @@ fn fixture_dir() -> std::path::PathBuf {
     manifest_dir().join("tests").join("fixtures").join("vis")
 }
 
-/// Build a minimal temp crate dir with a Cargo.toml + src/lib.rs + src/foo.rs,
-/// returning the crate root path (src/lib.rs). `lib_src` declares
+/// Build a minimal temp crate dir, returning the crate root path (`src/lib.rs`).
+///
+/// Files created: `Cargo.toml`, `src/lib.rs`, `src/foo.rs`. `lib_src` declares
 /// `pub(crate) mod foo;`; `foo.rs` holds bare-`pub` children.
 fn make_temp_crate(lib_src: &str, foo_src: &str) -> PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);

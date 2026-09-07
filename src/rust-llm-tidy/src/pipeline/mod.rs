@@ -207,8 +207,10 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
 /// # Calibration
 ///
 /// Weights = 120x markdown and the 600KB score minimize regret over 26
-/// measured workloads (single-threaded vs 32-thread runs). Either can float
-/// ±50% before regret exceeds 0.5ms, so they are not sensitive.
+/// measured workloads. Neither is sensitive.
+///
+/// Workloads span single-threaded vs 32-thread runs. Each value can float
+/// ±50% before regret exceeds 0.5ms.
 ///
 /// Early-exits on the threshold, so huge repos don't `stat` every file.
 pub(crate) fn should_parallelize(paths: &[PathBuf]) -> bool {
@@ -361,8 +363,10 @@ fn process_one(
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let profile = crate::languages::registry::profile_for(ext);
     // A fix op qualifies its file for post-processing whenever the profile
-    // allows it. An AST op additionally needs the profile's `backend` tier
-    // and a backend registered in the language registry (Rust today).
+    // allows it.
+
+    // An AST op additionally needs the profile's `backend` tier and a
+    // backend registered in the language registry (Rust today).
     let backend = crate::languages::backend_for(ext);
     let ast_op_on = |op: &str| {
         profile.backend

@@ -1,6 +1,7 @@
 //! Shared link rewrite helpers plus the counted-threshold tally/rewrite core.
-//! The specialized threshold-one engine reuses link iteration, definition
-//! emission, and replacement-pair construction from this module.
+//!
+//! The specialized threshold-one engine reuses this module's link iteration,
+//! definition emission, and replacement-pair construction.
 
 use super::scan::{inline_links, is_reference_definition};
 use std::collections::{HashMap, HashSet};
@@ -35,11 +36,10 @@ pub(super) fn append_block_definitions(
 }
 
 /// Append hoisted `[text]: url` definitions at the end of `buf`, each on its
-/// own line using the source's dominant line ending (`le`). A CRLF document
-/// stays CRLF after hoisting.
+/// own line. A CRLF document stays CRLF after hoisting.
 ///
-/// Ensures the buffer ends with a newline so the first definition starts on
-/// its own line.
+/// Lines use the source's dominant line ending (`le`). Ensures the buffer
+/// ends with a newline so the first definition starts on its own line.
 ///
 /// Inserts a blank separator line first when the document otherwise ends in
 /// paragraph text. CommonMark forbids a link reference definition from
@@ -94,7 +94,9 @@ pub(super) fn replacement_pair(text: &str, url: &str) -> (String, String) {
 
 /// Rewrite eligible inline links in `body` to `[text]`, then re-attach `prefix`
 /// and `term`. Returns `Some(new_segment)` if any link was rewritten, else
-/// `None` (caller emits the original segment verbatim).
+/// `None`.
+///
+/// When `None`, the caller emits the original segment verbatim.
 ///
 /// Output is allocated lazily: only once the first hoisted link is found. If
 /// no link in `body` is hoisted, returns `None` with zero allocation.
@@ -112,9 +114,11 @@ pub(super) fn rewrite_links<'a>(
     rewrite_links_inner(prefix, body, term, hoist, |_, _| {})
 }
 
-/// Rewrite eligible inline links and report each hoisted occurrence via
-/// `on_rewrite(text, url)` as it is rewritten. The comment-block rewrite path
-/// uses this to collect which definitions belong to the enclosing block.
+/// Rewrite eligible inline links, reporting each hoisted occurrence via
+/// `on_rewrite(text, url)` as it is rewritten.
+///
+/// The comment-block rewrite path uses this to collect which definitions
+/// belong to the enclosing block.
 pub(super) fn rewrite_links_track<'a, F>(
     prefix: &str,
     body: &'a str,
@@ -129,9 +133,10 @@ where
 }
 
 /// Scan `body` for inline links (`[`-opening `(url)` forms) and tally each
-/// `(text, url)`, recording first-seen order in `order`. Reference-style,
-/// autolink, and whitespace-URL forms never match the inline shape, so they
-/// are skipped.
+/// `(text, url)`, recording first-seen order in `order`.
+///
+/// Reference-style, autolink, and whitespace-URL forms never match the inline
+/// shape, so they are skipped.
 ///
 /// Jumps between `[` bytes with [`str::find`] instead of walking every
 /// character: the cost is O(number of brackets), not O(text). `[` is ASCII, so
@@ -173,6 +178,7 @@ pub(super) fn blank_line_prefix(prefix: &str) -> &str {
 }
 
 /// True when definitions appended after `text` need a blank comment line first.
+///
 /// `text` is any slice ending in the block's last line: the output buffer for
 /// the counted path, `input[..block.end]` for the specialized one.
 ///

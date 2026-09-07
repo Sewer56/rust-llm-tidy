@@ -291,9 +291,12 @@ fn js_lexicon_string_probes_stay_quiet() {
     );
 }
 
-/// Explicit `--include lints` on a `.js` file emits TEXT001 for
-/// over-budget `//` and `/** */` prose and TEXT002 for an over-long
-/// comment line, all at original file lines.
+/// Explicit `--include lints` on a `.js` file fires the text budgets.
+///
+/// Details:
+/// - TEXT001 fires for over-budget `//` and `/** */` prose.
+/// - TEXT002 fires for an over-long comment line.
+/// - Both report at original file lines.
 #[test]
 fn js_lexicon_text_budgets_fire_with_original_lines() {
     let (stderr, exit) = run_lexicon_fixture("doc_text_lexicon_budgets.js");
@@ -498,9 +501,11 @@ fn json_output_combines_with_dry_run() {
         .unwrap_or_else(|e| panic!("stdout must parse as JSON: {e}\n{stdout}"));
 }
 
-/// One `--output-mode json --dry-run` document carries every lint finding and
-/// every recorded change together. Error-severity lints still bail the run
-/// non-zero after the document is written.
+/// One `--output-mode json --dry-run` document carries every lint
+/// finding and every recorded change together.
+///
+/// Error-severity lints still bail the run non-zero after the document
+/// is written.
 #[test]
 fn json_output_merges_lints_and_changes_in_one_document() {
     let path = rust_fixture_dir().join("doc001_missing_docs.rs");
@@ -575,9 +580,10 @@ fn json_output_prints_document_before_error_bail() {
     );
 }
 
-/// `--output-mode json --dry-run` records the would-be reorder as a
-/// `severity: "success"` record carrying its move positions on stdout, with no
-/// JSON duplicated on stderr.
+/// `--output-mode json --dry-run` records the would-be reorder on stdout.
+///
+/// The record carries `severity: "success"` with its move positions, and no
+/// JSON is duplicated on stderr.
 #[test]
 fn json_output_records_reorder_changes() {
     let path = reorder_fixture_dir()
@@ -822,9 +828,10 @@ fn md_three_sentence_heading_opener_warns_text004_without_failing() {
     );
 }
 
-/// Python docstring prose fires the text budgets with original file
-/// lines: TEXT001 errors on the module docstring's over-budget
-/// paragraph. TEXT002 warns on a function docstring's over-long line.
+/// Python docstring prose fires the text budgets with original file lines.
+///
+/// TEXT001 errors on the module docstring's over-budget paragraph, and
+/// TEXT002 warns on a function docstring's over-long line.
 ///
 /// The non-docstring triple-quoted payload and the `>>>` doctest example
 /// stay quiet.
@@ -854,9 +861,9 @@ fn py_docstring_budgets_fire_with_original_lines() {
 }
 
 /// Python docstring sentences over the word budget warn with TEXT003.
-/// The long sentence reports at the module docstring's first prose
-/// line, the function docstring stays quiet, and warnings leave the
-/// exit code at 0.
+///
+/// The long sentence reports at the module docstring's first prose line, the
+/// function docstring stays quiet, and warnings leave the exit code at 0.
 #[test]
 fn py_docstring_long_sentence_warns_text003() {
     let (stderr, exit) = run_python_fixture("docstring_sentence_budgets.py");

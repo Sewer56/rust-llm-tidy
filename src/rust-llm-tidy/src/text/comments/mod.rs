@@ -108,6 +108,7 @@ pub fn covers(ext: &str) -> bool {
 /// # Returns
 ///
 /// Diagnostics grouped by rule, in source order within each group.
+///
 /// Rule order: TEXT001 paragraphs, TEXT002 lines, TEXT003 sentences,
 /// TEXT004 openers, TEXT005 fences.
 pub fn text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
@@ -168,9 +169,11 @@ mod tests {
     // ── True positives ──
 
     /// Standalone line-comment prose measures as one paragraph at the
-    /// paragraph's first line, for every extension in the lexicon table
-    /// with that row's own family marker. A row wired to the wrong
-    /// lexicon stays silent, so pin all of them.
+    /// paragraph's first line, per lexicon table extension with its
+    /// row's own family marker.
+    ///
+    /// A row wired to the wrong lexicon stays silent, so pin all of
+    /// them.
     #[test]
     fn line_comment_prose_measures_for_every_lexed_extension() {
         for (ext, lexicon) in families::LEXED_EXTENSIONS {
@@ -195,8 +198,10 @@ mod tests {
     }
 
     /// The dash, semicolon, and percent families' block forms measure
-    /// with the block doc dialect. Forms: SQL `/* */`, Lua `--[[ ]]`,
-    /// Haskell and Elm `{- -}`, Lisp `#| |#`, and MATLAB `%{ %}`.
+    /// with the block doc dialect.
+    ///
+    /// Forms: SQL `/* */`, Lua `--[[ ]]`, Haskell and Elm `{- -}`,
+    /// Lisp `#| |#`, and MATLAB `%{ %}`.
     #[test]
     fn dash_semi_percent_block_forms_measure_with_the_block_dialect() {
         for (ext, open, close) in [
@@ -227,8 +232,9 @@ mod tests {
         }
     }
 
-    /// MATLAB block markers comment only alone on their lines. A
-    /// mid-line or non-alone `%{` is an ordinary `%` comment whose
+    /// MATLAB block markers comment only alone on their lines.
+    ///
+    /// A mid-line or non-alone `%{` is an ordinary `%` comment whose
     /// code lines never measure; a mid-line `%}` never closes a block.
     #[test]
     fn matlab_block_markers_comment_only_alone() {
@@ -379,9 +385,10 @@ mod tests {
         }
     }
 
-    /// Strings that legally span lines stay string content in the
-    /// dash and semicolon families too: Elm and Lisp native spans.
-    /// Also a Haskell string gap (a `\` at the line's end).
+    /// Spanned strings stay string content in the dash and semicolon
+    /// families too: Elm and Lisp native spans.
+    ///
+    /// Also a Haskell string gap: a `\` at the line's end.
     #[test]
     fn spanned_dash_and_semi_strings_stay_quiet() {
         let payload: &str = "-- payload-looking span line padding far past both the line and paragraph budget limits\n";
@@ -687,9 +694,11 @@ mod tests {
     }
 
     /// The dash, semicolon, and percent families' unmodeled forms
-    /// reject the scan. Forms: SQL dollar quotes, Lua long brackets,
-    /// Haskell quasiquotes, nested block comments, Lisp semicolons,
-    /// TeX verbatim, Erlang percent.
+    /// reject the scan.
+    ///
+    /// Forms: SQL dollar quotes, Lua long brackets, Haskell
+    /// quasiquotes, nested block comments, Lisp semicolons, TeX
+    /// verbatim, Erlang percent.
     #[test]
     fn dash_semi_percent_ambiguities_fail_closed() {
         let cases = [

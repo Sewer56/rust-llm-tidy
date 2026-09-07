@@ -319,10 +319,11 @@ fn csharp_doc006_warns_on_placeholders() {
 
 // ── JSON records ─────────────────────────────────────────────────
 
-/// `--include reorder --output-mode json --dry-run` on a `.cs` file
-/// records the would-be using hoist and member reorder with
-/// `severity: "success"` and no title, exactly like the Rust reorder
-/// records.
+/// JSON dry-run records the would-be using hoist and member reorder.
+///
+/// Runs `--include reorder --output-mode json --dry-run` on a `.cs` file.
+/// Both records use `severity: "success"` and no title, exactly like the
+/// Rust reorder records.
 #[test]
 fn csharp_json_dry_run_records_the_member_reorder() {
     let path = reorder_fixture_dir()
@@ -478,9 +479,12 @@ fn csharp_text_budgets_fire_with_original_lines() {
     );
 }
 
-/// C# text checks stay quiet on the probe classes. Idiomatic XML docs,
-/// long `cref`/`name` attribute values, `<code>`/`<example>` blocks, and
-/// verbatim string content produce no TEXT001/TEXT002 findings.
+/// C# text checks stay quiet on the probe classes.
+///
+/// - Idiomatic XML docs produce no TEXT001/TEXT002 findings.
+/// - Long `cref`/`name` attribute values stay unmeasured.
+/// - `<code>`/`<example>` blocks stay unmeasured.
+/// - Verbatim string content stays unmeasured.
 #[test]
 fn csharp_text_probes_stay_quiet() {
     let (stderr, exit) = run_csharp_fixture("doc_text_quiet_probes.cs");
