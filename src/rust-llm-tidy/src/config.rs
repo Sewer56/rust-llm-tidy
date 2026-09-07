@@ -54,10 +54,9 @@ pub struct CompiledConfig {
     /// Additions from the `extra_extensions:` key, allowed on top of the
     /// effective base list.
     extra_extensions: Vec<String>,
-    /// Whether release-note paths suppress TEXT007 narration markers.
-    suppress_in_release_notes: bool,
-    /// Whether the opt-in TEXT007 passive-narration lint runs.
-    passive_narration: bool,
+    /// Resolved `passive_narration` settings (section defaults when the
+    /// top-level key is absent).
+    passive_narration: PassiveNarrationConfig,
 }
 
 /// Raw serde view of `.rust-llm-tidy.yml`. Paths/globs are relative to the
@@ -191,12 +190,12 @@ pub struct RuleGroup {
 impl CompiledConfig {
     /// Whether to apply `passive_narration.suppress_in_release_notes`.
     pub(crate) fn suppress_in_release_notes(&self) -> bool {
-        self.suppress_in_release_notes
+        self.passive_narration.suppress_in_release_notes
     }
 
     /// Whether to run the opt-in `passive_narration.enable` lint.
     pub(crate) fn passive_narration(&self) -> bool {
-        self.passive_narration
+        self.passive_narration.enable
     }
 
     /// Borrow the post-processing steps so the pipeline can run them after the
@@ -486,13 +485,7 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         links: config.links,
         extensions: config.extensions,
         extra_extensions: config.extra_extensions,
-        suppress_in_release_notes: config
-            .passive_narration
-            .unwrap_or_default()
-            .suppress_in_release_notes,
-        passive_narration: config
-            .passive_narration
-            .is_some_and(|section| section.enable),
+        passive_narration: config.passive_narration.unwrap_or_default(),
     })
 }
 
