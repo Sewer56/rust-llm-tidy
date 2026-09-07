@@ -790,12 +790,8 @@ mod tests {
     fn license_exclusion_should_default_to_enabled() {
         assert!(Config::default().exclude_license_documents);
         assert!(compile("{}\n", &[]).exclude_license_documents());
-        assert!(
-            compile("exclude_license_documents: true\n", &[]).exclude_license_documents()
-        );
-        assert!(
-            !compile("exclude_license_documents: false\n", &[]).exclude_license_documents()
-        );
+        assert!(compile("exclude_license_documents: true\n", &[]).exclude_license_documents());
+        assert!(!compile("exclude_license_documents: false\n", &[]).exclude_license_documents());
     }
 
     // ── links.min_occurrences + links.by_extension ──
