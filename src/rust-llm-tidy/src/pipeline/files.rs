@@ -33,13 +33,15 @@ pub(crate) struct VisContext {
 /// plaintext lines to stderr (default output) or project them to JSON.
 ///
 /// The profile decides which passes run: parser-driven checks need a
-/// registered backend; text lints source TEXT* per tier.
+/// registered backend; text lints source TEXT* per tier. MOD001 counts whole
+/// eligible non-Rust files without requiring a parser.
 ///
 /// - `path`: source file to check
 /// - `disabled`: diagnostic codes to suppress
 /// - `suppress_in_release_notes`: the resolved
 ///   `passive_narration.suppress_in_release_notes` setting; suppresses
 ///   TEXT007 narration markers in release and migration notes
+/// - `module_size`: resolved MOD001 eligibility and counting options
 /// - `index`: refreshed C# facts and cached parses for this run
 ///
 /// # Errors
@@ -48,6 +50,7 @@ pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
     suppress_in_release_notes: bool,
+    module_size: crate::config::ModuleSizeConfig,
     index: Option<&csharp_index::CSharpIndex>,
 ) -> anyhow::Result<Vec<(PathBuf, crate::reporting::Diagnostic)>> {
     let source =
@@ -72,7 +75,31 @@ pub(crate) fn check_file(
             Some(index) => backend.lint_indexed(parsed, &index.index),
             None => backend.lint(parsed),
         };
+        // MOD001 is file-level: it needs the path and the threshold, which
+        // never reach `LanguageBackend::lint`, so it runs at this seam.
+        if profile.module_size == langs::ModuleSize::RustNonTest
+            && !disabled.contains(check::CODE_MODULE_SIZE)
+        {
+            diagnostics.extend(check::rust::mod001_module_size::check_with_options(
+                parsed,
+                path,
+                module_size.max_lines,
+                module_size.include_in_file_tests,
+                module_size.include_test_files,
+            ));
+        }
     }
+
+    if (profile.module_size == langs::ModuleSize::WholeFile
+        || (profile.module_size == langs::ModuleSize::NonCode && module_size.include_non_code))
+        && !disabled.contains(check::CODE_MODULE_SIZE)
+    {
+        diagnostics.extend(check::mod001_module_size::check(
+            &source,
+            module_size.max_lines,
+        ));
+    }
+
     match profile.text_lints {
         langs::TextLints::Prose => diagnostics.extend(check::run_text_checks(&source, ext)),
         langs::TextLints::Lexicon => {

@@ -16,7 +16,7 @@
 //! Any config error causes [`load_and_compile`] to return `Err`.
 //!
 //! Errors include bad YAML, bad glob syntax, unknown rule name, or a
-//! `links` value below 1. They also include a malformed
+//! `links` or `module_size` value below 1. They also include a malformed
 //! `extensions`/`extra_extensions` entry or a pattern matching zero files.
 //!
 //! The CLI propagates that error as a non-zero exit on every command.
@@ -32,6 +32,10 @@ use globset::{GlobBuilder, GlobSet};
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
+
+/// Threshold applied when the `module_size` section or its `max_lines` key
+/// is absent.
+pub(crate) const DEFAULT_MODULE_SIZE_MAX_LINES: usize = 500;
 
 /// A loaded and validated config, ready to answer `policy_for` queries.
 #[derive(Debug)]
@@ -51,6 +55,8 @@ pub struct CompiledConfig {
     post_process: Vec<PostProcessStep>,
     /// Link-hoist threshold settings (`None` = always hoist at threshold 1).
     links: Option<LinkConfig>,
+    /// Module-size threshold settings (`None` = default threshold 500).
+    module_size: Option<ModuleSizeConfig>,
     /// Replacement list from the `extensions:` key; empty = keep the defaults.
     extensions: Vec<String>,
     /// Additions from the `extra_extensions:` key, allowed on top of the
@@ -90,6 +96,9 @@ pub struct Config {
     /// Link-hoist threshold settings. Absent = always hoist (threshold 1).
     #[serde(default)]
     pub links: Option<LinkConfig>,
+    /// Module-size threshold settings. Absent = the default threshold 500.
+    #[serde(default)]
+    pub module_size: Option<ModuleSizeConfig>,
     /// Full allowed-extension list, replacing the defaults when non-empty
     /// (empty keeps the defaults). No leading dot; case-insensitive.
     #[serde(default)]
@@ -143,6 +152,36 @@ pub struct LinkConfig {
     /// Per-extension thresholds, applied before the global setting.
     #[serde(default)]
     pub by_extension: BTreeMap<String, usize>,
+}
+
+/// Select files and counted lines for MOD001 under the `module_size` key.
+///
+/// The effective threshold is `max_lines`; an absent section or key keeps
+/// the default 500. `max_lines` must be `>= 1`.
+#[derive(Debug, Deserialize, Clone, Copy)]
+#[serde(deny_unknown_fields)] // Reject hallucinated `module_size` sub-keys at parse time.
+pub struct ModuleSizeConfig {
+    /// Maximum counted physical lines per eligible file before MOD001 warns.
+    #[serde(default = "default_module_size_max_lines")]
+    pub max_lines: usize,
+    /// Include supported configuration, data, and prose files selected for the run.
+    ///
+    /// Defaults to false: only code files are checked. Does not broaden discovery
+    /// or enable other operations for otherwise op-less formats.
+    #[serde(default)]
+    pub include_non_code: bool,
+    /// Count Rust's top-level `#[cfg(test)]` mod regions instead of excluding them.
+    ///
+    /// Defaults to false; independent of `include_test_files`.
+    /// Other languages always count all physical lines, including inline tests.
+    #[serde(default)]
+    pub include_in_file_tests: bool,
+    /// Include Rust files with an exact `tests` directory component in their path.
+    ///
+    /// Defaults to false. `include_in_file_tests` still controls test-module regions.
+    /// Other languages always include test files.
+    #[serde(default)]
+    pub include_test_files: bool,
 }
 
 /// Settings under the top-level `passive_narration` key for the opt-in
@@ -244,6 +283,18 @@ impl CompiledConfig {
         }
     }
 
+    /// Effective MOD001 line budget.
+    ///
+    /// Lookup order: `module_size.max_lines`, else the default 500.
+    pub fn module_size_max_lines(&self) -> usize {
+        self.module_size().max_lines
+    }
+
+    /// Resolve the file-size policy, retaining defaults for an absent section.
+    pub(crate) fn module_size(&self) -> ModuleSizeConfig {
+        self.module_size.unwrap_or_default()
+    }
+
     /// Test-only accessor for the canonicalized config directory. Used by the
     /// unit tests to reconstruct canonical paths matching `policy_for`.
     #[cfg(test)]
@@ -301,9 +352,21 @@ impl Default for Config {
             exclude_license_documents: true,
             post_process: Vec::new(),
             links: None,
+            module_size: None,
             extensions: Vec::new(),
             extra_extensions: Vec::new(),
             passive_narration: None,
+        }
+    }
+}
+
+impl Default for ModuleSizeConfig {
+    fn default() -> Self {
+        Self {
+            max_lines: DEFAULT_MODULE_SIZE_MAX_LINES,
+            include_non_code: false,
+            include_in_file_tests: false,
+            include_test_files: false,
         }
     }
 }
@@ -387,6 +450,7 @@ pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathB
 /// - `include` and `exclude` are both non-empty.
 /// - Any `extensions` or `extra_extensions` entry is empty or contains a dot,
 ///   a path separator, or whitespace.
+/// - `module_size.max_lines` is below 1.
 /// - Any rule name is not in [`known_rules()`].
 /// - Any glob pattern has invalid syntax.
 /// - Any pattern matches zero files under the config directory.
@@ -436,6 +500,19 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
                 bail!("links.by_extension.{ext} must be >= 1, got {count}");
             }
         }
+    }
+
+    // Module-size threshold: the value must be >= 1.
+    //
+    // A missing `max_lines` already defaults to 500; a non-integer value
+    // fails YAML deserialization above, so only a literal 0 reaches this check.
+    if let Some(module_size) = &config.module_size
+        && module_size.max_lines < 1
+    {
+        bail!(
+            "module_size.max_lines must be >= 1, got {}",
+            module_size.max_lines
+        );
     }
 
     let valid = known_rules();
@@ -512,6 +589,7 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         exclude_groups,
         post_process: config.post_process,
         links: config.links,
+        module_size: config.module_size,
         extensions: config.extensions,
         extra_extensions: config.extra_extensions,
         passive_narration: config.passive_narration.unwrap_or_default(),
@@ -562,6 +640,12 @@ fn compile_glob_set(patterns: &[String], _config_dir: &Path) -> anyhow::Result<G
     builder
         .build()
         .map_err(|e| anyhow!("failed to build glob set: {e}"))
+}
+
+/// `serde` default helper: an absent `max_lines` keeps the default
+/// module-size threshold.
+fn default_module_size_max_lines() -> usize {
+    DEFAULT_MODULE_SIZE_MAX_LINES
 }
 
 /// `serde` default helper: an absent `min_occurrences` means threshold 1
@@ -894,5 +978,21 @@ mod tests {
             "non-integer threshold must fail at parse: {err:#}"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── module_size.max_lines ──
+
+    /// Threshold resolution: an absent or empty `module_size` section keeps
+    /// the 500 default; an explicit `max_lines` wins.
+    #[test]
+    fn module_size_max_lines_should_default_to_500_until_configured() {
+        let absent = compile("exclude_files: []\n", &[]);
+        assert_eq!(absent.module_size_max_lines(), 500);
+
+        let empty_section = compile("module_size: {}\n", &[]);
+        assert_eq!(empty_section.module_size_max_lines(), 500);
+
+        let configured = compile("module_size:\n  max_lines: 300\n", &[]);
+        assert_eq!(configured.module_size_max_lines(), 300);
     }
 }

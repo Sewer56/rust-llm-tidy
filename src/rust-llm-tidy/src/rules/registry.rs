@@ -24,6 +24,7 @@ pub(crate) const CODE_TITLES: &[(&str, &str)] = &[
     (CODE_VERBOSE_SYNONYMS, "verbose synonym"),
     (CODE_PASSIVE_NARRATION, "passive construction"),
     (CODE_TEST_NAMING, "non-behavioral test name"),
+    (CODE_MODULE_SIZE, "oversized module"),
 ];
 /// Selectable transformations and the lint group, in pipeline order.
 pub const KNOWN_FIX_OPS: &[&str] = &["tables", "fences", "links", "reorder", "vis", "lints"];
@@ -48,6 +49,7 @@ pub const LINT_CODES: &[&str] = &[
     CODE_VERBOSE_SYNONYMS,
     CODE_PASSIVE_NARRATION,
     CODE_TEST_NAMING,
+    CODE_MODULE_SIZE,
 ];
 /// Rule code for placeholder text in doc comments.
 pub const CODE_DOC_PLACEHOLDER: &str = "DOC006";
@@ -66,6 +68,8 @@ pub const CODE_MISSING_ARGUMENTS: &str = "DOC004";
 pub const CODE_MISSING_DOCS: &str = "DOC001";
 /// Rule code for a missing `# Errors` section.
 pub const CODE_MISSING_ERRORS: &str = "DOC002";
+/// Rule code for a source file over its language's line budget.
+pub const CODE_MODULE_SIZE: &str = "MOD001";
 /// Rule code for an over-limit paragraph of stripped doc text.
 pub const CODE_PARAGRAPH_SIZE: &str = "TEXT001";
 /// Rule code for passive constructions and past-behavior narration.
@@ -94,13 +98,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lint_codes_lists_all_fifteen_codes() {
+    fn lint_codes_lists_all_sixteen_codes() {
         // `LINT_CODES` is the source of truth for CLI rule validation. It must
         // enumerate every code produced by the backends and the text rules.
         assert_eq!(
             LINT_CODES.len(),
-            15,
-            "LINT_CODES must list exactly fifteen codes: {LINT_CODES:?}"
+            16,
+            "LINT_CODES must list exactly sixteen codes: {LINT_CODES:?}"
         );
         for code in [
             CODE_MISSING_DOCS,
@@ -118,6 +122,7 @@ mod tests {
             CODE_VERBOSE_SYNONYMS,
             CODE_PASSIVE_NARRATION,
             CODE_TEST_NAMING,
+            CODE_MODULE_SIZE,
         ] {
             assert!(LINT_CODES.contains(&code), "LINT_CODES is missing {code}");
         }
@@ -126,11 +131,11 @@ mod tests {
     /// The title table pairs every lint code with a non-empty title and
     /// holds no extra codes.
     #[test]
-    fn code_titles_cover_exactly_the_twelve_lint_codes() {
+    fn code_titles_cover_exactly_the_lint_codes() {
         assert_eq!(
             CODE_TITLES.len(),
             LINT_CODES.len(),
-            "CODE_TITLES must pair exactly the twelve lint codes"
+            "CODE_TITLES must pair exactly the lint codes"
         );
         for code in LINT_CODES {
             let title =

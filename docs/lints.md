@@ -1,4 +1,4 @@
-# `lints` - documentation, text, and test-naming checks
+# `lints` - documentation, text, test-naming, and file-size checks
 
 ## What it does
 
@@ -17,10 +17,9 @@ So `exclude: [{rules: [DOC001]}]` turns off just missing-docs and
 Which codes run depends on the language:
 
 - Rust: every code, read from a tree-sitter parse.
-- C#: every code, read from a tree-sitter parse, evaluated against XML
-  doc comments ([lints for C#]).
+- C#: checks XML documentation and test names ([lints for C#]).
 
-Languages other than Rust and C# run the text lints only ([text lints]):
+Text lints for other languages use these sources ([text lints]):
 
 - Markdown family: read from the raw file.
 - Python: read from a tree-sitter-python parse.
@@ -46,6 +45,7 @@ Languages other than Rust and C# run the text lints only ([text lints]):
 | [`TEXT006`] | Hint     | A doc line has a shorter alternative for a word, phrase, or filler.               |
 | [`TEXT007`] | Hint     | A doc line may hold passive voice or implementation history.                      |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
+| [`MOD001`]  | Warning  | A code file exceeds `module_size.max_lines` (default 500).                        |
 
 ## Examples
 
@@ -380,6 +380,53 @@ src/lib.rs:1: warning[TEST001]: test function `test_foo` should use a behavioral
 
 `TEST001` is warning-severity, so the run exits 0.
 
+### MOD001 - oversized module
+
+Warn once when a code file exceeds the line budget (default 500).
+
+- Count every physical line, including blanks and comments.
+- Rust excludes top-level `#[cfg(test)] mod` regions and `tests/` paths by
+  default. Other test code counts.
+- Non-code files require the [opt-in below].
+
+Exactly 500 lines passes with the default budget; line 501 triggers the warning.
+The warning points to the first counted line over budget. A final line counts
+with or without a newline; a trailing newline adds no extra line.
+
+Organize code into focused modules by responsibility, keeping related code
+together. Do not split mechanically just to meet the line budget.
+
+Tune the budget through the `module_size.max_lines` config key (default
+500).
+
+#### MOD001 counting options
+
+```yaml
+module_size:
+  max_lines: 500
+  include_non_code: false       # include selected config, data, and prose files
+  include_in_file_tests: false  # include Rust's #[cfg(test)] mod regions
+  include_test_files: false     # include Rust files under tests/ directories
+# Other languages always count inline tests and test files.
+```
+
+Discovery and exclusions are unchanged; unsupported extensions remain exempt.
+`ini`/`json` require explicit extension selection and gain only MOD001.
+
+#### MOD001 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include MOD001 src/big.rs
+src/big.rs:501: warning[MOD001]: file has 612 lines outside `#[cfg(test)]` mod regions, over the 500-line budget (module_size.max_lines).
+  - Large files make readers search farther and keep more context in mind.
+  - Put new, distinct responsibilities in focused modules instead of growing this file.
+  - Plan new code around clear module boundaries from the start.
+  - Keep closely related code together; name modules for the responsibility they own.
+  - Do not split mechanically or remove useful comments just to meet the line budget. (file)
+```
+
+`MOD001` is warning-severity, so the run exits 0.
+
 ## Config
 
 ```yaml
@@ -508,6 +555,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`TEXT006`]: ./text-lints.md#text006---verbose-synonyms
 [`TEXT007`]: ./text-lints.md#text007---passive-voice-and-past-behaviour
 [`TEST001`]: #test001---non-behavioral-test-name
+[`MOD001`]: #mod001---oversized-module
 [lints for C#]: ./languages/lints/csharp.md
 [text lints]: ./text-lints.md
 
@@ -517,3 +565,4 @@ Use `rust_llm_tidy::rules::lint`.
 For complete processing and project context, see [library entry points].
 
 [library entry points]: architecture.md#library-entry-points
+[opt-in below]: #mod001-counting-options

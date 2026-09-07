@@ -1,9 +1,12 @@
-//! The Rust item lint rules: DOC* and TEST001.
+//! The Rust item lint rules: DOC*, TEST001, and the file-level MOD001.
 //!
 //! One module per rule, named by lint code: [`doc001_missing_docs`]
 //! through [`test001_test_naming`]. Each rule is a pure function over a
 //! [`SourceItem`] returning [`Vec<Diagnostic>`]; [`run_all`] runs every
 //! rule over every item in code order.
+//!
+//! [`mod001_module_size`] is file-level instead: the pipeline runs it
+//! from `check_file`, outside [`run_all`].
 //!
 //! The C# backend's `lints` module implements the same codes over its own
 //! parse; both consume the shared code constants from
@@ -21,6 +24,7 @@ mod doc004_missing_arguments;
 mod doc005_undocumented_param;
 mod doc006_placeholder;
 mod doc008_error_variant_order;
+pub(crate) mod mod001_module_size;
 mod test001_test_naming;
 
 /// Accepted rustdoc headers for documenting function parameters.

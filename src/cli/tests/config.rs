@@ -122,6 +122,41 @@ fn check_excludes_doc001_rule() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// A valid or absent `module_size.max_lines` keeps the default pipeline
+/// running cleanly.
+#[rstest::rstest]
+#[case::configured_threshold("module_size:\n  max_lines: 300\n")]
+#[case::absent_section("exclude_files: []\n")]
+#[case::neither("module_size:\n  include_non_code: false\n  include_in_file_tests: false\n")]
+#[case::non_code_only("module_size:\n  include_non_code: true\n  include_in_file_tests: false\n")]
+#[case::inline_tests_only(
+    "module_size:\n  include_non_code: false\n  include_in_file_tests: true\n"
+)]
+#[case::both("module_size:\n  include_non_code: true\n  include_in_file_tests: true\n")]
+#[case::test_files_enabled("module_size:\n  include_test_files: true\n")]
+#[case::test_files_disabled("module_size:\n  include_test_files: false\n")]
+fn cli_should_accept_module_size_when_threshold_is_valid_or_absent(#[case] yaml: &str) {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let tmp = dir.join("lib.rs");
+    fs::write(&tmp, "fn example() {}\n").unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(&cfg, yaml).unwrap();
+
+    let output = Command::new(binary())
+        .arg("--config")
+        .arg(&cfg)
+        .arg(&tmp)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "{yaml}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[rstest::rstest]
 #[case::no_configuration(None, true)]
 #[case::omitted_license_exclusion(Some("{}\n"), true)]
@@ -1177,6 +1212,28 @@ fn text007_should_follow_opt_in_switch_and_explicit_inclusion() {
     }
 }
 
+/// `--validate` accepts a config that sets `module_size.max_lines`.
+#[test]
+fn validate_accepts_module_size_max_lines() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(&cfg, "module_size:\n  max_lines: 500\n").unwrap();
+
+    let output = Command::new(binary())
+        .arg("--config")
+        .arg(&cfg)
+        .arg("--validate")
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+    assert!(
+        output.status.success(),
+        "--validate should accept the module_size key: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// `--validate` exits non-zero when `links.min_occurrences` is below 1.
 #[test]
 fn validate_fails_on_links_min_occurrences_zero() {
@@ -1340,7 +1397,10 @@ fn validation_should_reject_boolean_settings_when_value_is_not_boolean(
     #[case] value: &str,
     #[values(
         "exclude_license_documents",
-        "passive_narration:\n  suppress_in_release_notes"
+        "passive_narration:\n  suppress_in_release_notes",
+        "module_size:\n  include_non_code",
+        "module_size:\n  include_in_file_tests",
+        "module_size:\n  include_test_files"
     )]
     setting: &str,
 ) {
@@ -1361,6 +1421,35 @@ fn validation_should_reject_boolean_settings_when_value_is_not_boolean(
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!output.status.success(), "{yaml}: {stderr}");
     assert!(stderr.contains("failed to parse YAML config"), "{stderr}");
+
+    fs::remove_dir_all(dir).unwrap();
+}
+
+/// An invalid `module_size.max_lines` value fails `--validate` with a
+/// non-zero exit naming the failure.
+#[rstest::rstest]
+#[case::zero("module_size:\n  max_lines: 0\n", "module_size.max_lines must be >= 1")]
+#[case::negative("module_size:\n  max_lines: -1\n", "failed to parse YAML config")]
+#[case::non_integer("module_size:\n  max_lines: many\n", "failed to parse YAML config")]
+fn validation_should_reject_module_size_max_lines_when_value_is_invalid(
+    #[case] yaml: &str,
+    #[case] failure: &str,
+) {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(&cfg, yaml).unwrap();
+
+    let output = Command::new(binary())
+        .arg("--config")
+        .arg(&cfg)
+        .arg("--validate")
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "{yaml}: {stderr}");
+    assert!(stderr.contains(failure), "{yaml}: {stderr}");
 
     fs::remove_dir_all(dir).unwrap();
 }

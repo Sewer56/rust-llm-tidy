@@ -15,6 +15,7 @@ use std::fs;
 use std::process::Command;
 
 mod csharp;
+mod module_size;
 mod rust;
 // The folder root sits inside `tests/doc_check/`, so the helpers shared by
 // every test binary resolve at their sibling path, not under this folder.

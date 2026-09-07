@@ -43,6 +43,20 @@
 #   min_occurrences: 2        # hoist a pair only after this many uses; >= 1.
 #   by_extension: { rs: 2 }   # per-extension override; unknown keys are inert.
 
+# ── File size (MOD001) ──
+# Code files count all physical lines, including blanks and comments.
+# Rust excludes top-level #[cfg(test)] mod regions by default.
+# Enable MOD001 or lints in the whitelist below to run this check.
+
+# module_size:
+#   max_lines: 500                # warning above this budget; >= 1.
+#   include_non_code: false       # also check selected config/data/prose files.
+#   include_in_file_tests: false  # include Rust's in-file test modules.
+#   include_test_files: false     # include Rust files under tests/ directories.
+# Other languages always count inline tests and test files.
+# Non-code opt-in preserves discovery and exclusions. INI/JSON still need
+# extension selection; unsupported extensions remain exempt.
+
 # ── Post-processing ──
 # External commands run on every processed file; the file path is appended
 # as the last argument. `extensions` filters (empty = all). Skipped under
@@ -88,8 +102,8 @@ include:
       # - reorder
       # - vis
 
-      # Level 3: all documentation and test-name checks.
-      # `lints` enables the DOC*, TEXT*, and TEST* codes together; the
+      # Level 3: documentation, test-name, and file-size checks.
+      # `lints` enables the DOC*, TEXT*, TEST*, and MOD* codes together; the
       # opt-in TEXT007 stays off (see above).
       # Uncomment to enable the complete lint pass.
       # - lints
@@ -110,3 +124,4 @@ include:
       # - TEXT006 # verbose synonym
       # - TEXT007 # passive narration; opt-in
       # - TEST001 # non-behavioral test name
+      # - MOD001  # oversized code file
