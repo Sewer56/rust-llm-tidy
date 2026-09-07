@@ -7,42 +7,72 @@
 /// search applies.
 pub(super) const LEXED_EXTENSIONS: &[(&str, &Lexicon)] = &[
     ("ada", &DASH_ADA),
+    ("applescript", &DASH_APPLESCRIPT),
     ("bash", &HASH_SCRIPT),
+    ("bst", &PERCENT_TEX),
+    ("bzl", &HASH_TRIPLE),
     ("c", &SLASH),
     ("cc", &SLASH),
     ("clj", &SEMI_PLAIN),
     ("cljc", &SEMI_PLAIN),
+    ("cls", &PERCENT_TEX),
+    ("cmake", &HASH_CMAKE),
     ("conf", &HASH_PLAIN),
     ("cpp", &SLASH),
     ("dart", &SLASH),
     ("el", &SEMI_BLOCK),
     ("elm", &DASH_ELM),
     ("erl", &PERCENT_ERL),
+    ("fish", &HASH_FISH),
     ("go", &SLASH),
+    ("gql", &HASH_GRAPHQL),
+    ("gradle", &SLASH),
+    ("graphql", &HASH_GRAPHQL),
+    ("groovy", &SLASH),
     ("h", &SLASH),
     ("hpp", &SLASH),
     ("hs", &DASH_HS),
     ("java", &SLASH),
     ("jl", &HASH_TRIPLE),
     ("js", &SLASH),
+    ("json5", &SLASH),
+    ("jsonc", &SLASH),
+    ("ksh", &HASH_SCRIPT),
     ("kt", &SLASH),
+    ("less", &SLASH),
     ("lisp", &SEMI_BLOCK),
+    ("ltx", &PERCENT_TEX),
     ("lua", &DASH_LUA),
     ("m", &PERCENT_MATLAB),
     ("mjs", &SLASH),
     ("nim", &HASH_TRIPLE),
     ("php", &SLASH),
     ("pl", &HASH_SCRIPT),
+    ("proto", &SLASH),
+    ("ps1", &HASH_POWERSHELL),
+    ("psd1", &HASH_POWERSHELL),
+    ("psm1", &HASH_POWERSHELL),
+    ("purs", &DASH_ELM),
     ("r", &HASH_PLAIN),
     ("rb", &HASH_RUBY),
     ("scala", &SLASH),
     ("scm", &SEMI_BLOCK),
+    ("scss", &SLASH),
     ("sh", &HASH_SCRIPT),
+    ("sol", &SLASH),
     ("sql", &DASH_SQL),
+    ("sty", &PERCENT_TEX),
+    ("sv", &SLASH_VERILOG),
     ("swift", &SLASH),
     ("tex", &PERCENT_TEX),
+    ("thrift", &SLASH),
+    ("toml", &HASH_TRIPLE),
     ("ts", &SLASH),
     ("tsx", &SLASH),
+    ("v", &SLASH_VERILOG),
+    ("vhd", &DASH_ADA),
+    ("yaml", &HASH_YAML),
+    ("yml", &HASH_YAML),
     ("zig", &SLASH),
     ("zsh", &HASH_SCRIPT),
 ];
@@ -51,6 +81,22 @@ pub(super) const LEXED_EXTENSIONS: &[(&str, &Lexicon)] = &[
 const DASH_ADA: Lexicon = Lexicon {
     line: "--",
     block: None,
+    triple: false,
+    backtick: false,
+    template_holes: false,
+    heredoc: Heredoc::None,
+    rejects: &[],
+    escaped_marker: false,
+    single_quotes: false,
+    multiline_quotes: false,
+    word_start_comments: false,
+    block_markers_alone: false,
+};
+/// AppleScript: `--` comments and `(* *)` block comments; `"` strings
+/// are single-line and apostrophes are plain text.
+const DASH_APPLESCRIPT: Lexicon = Lexicon {
+    line: "--",
+    block: Some(("(*", "*)")),
     triple: false,
     backtick: false,
     template_holes: false,
@@ -124,6 +170,53 @@ const DASH_SQL: Lexicon = Lexicon {
     word_start_comments: false,
     block_markers_alone: false,
 };
+/// CMake: `#` comments; quoted arguments may span lines.
+const HASH_CMAKE: Lexicon = Lexicon {
+    line: "#",
+    block: None,
+    triple: false,
+    backtick: false,
+    template_holes: false,
+    heredoc: Heredoc::None,
+    rejects: &[],
+    escaped_marker: false,
+    single_quotes: true,
+    multiline_quotes: true,
+    word_start_comments: false,
+    block_markers_alone: false,
+};
+/// Fish: `#` comments at word start only, quotes span lines, and `<<`
+/// is always an operator (fish has no heredocs).
+const HASH_FISH: Lexicon = Lexicon {
+    line: "#",
+    block: None,
+    triple: false,
+    backtick: false,
+    template_holes: false,
+    heredoc: Heredoc::None,
+    rejects: &[],
+    escaped_marker: false,
+    single_quotes: true,
+    multiline_quotes: true,
+    word_start_comments: true,
+    block_markers_alone: false,
+};
+/// GraphQL: `#` comments and `"""` block strings; apostrophes are
+/// plain text.
+const HASH_GRAPHQL: Lexicon = Lexicon {
+    line: "#",
+    block: None,
+    triple: true,
+    backtick: false,
+    template_holes: false,
+    heredoc: Heredoc::None,
+    rejects: &[],
+    escaped_marker: false,
+    single_quotes: false,
+    multiline_quotes: false,
+    word_start_comments: false,
+    block_markers_alone: false,
+};
 /// R and generic `#`-comment config formats: single-line strings only.
 const HASH_PLAIN: Lexicon = Lexicon {
     line: "#",
@@ -137,6 +230,23 @@ const HASH_PLAIN: Lexicon = Lexicon {
     single_quotes: true,
     multiline_quotes: false,
     word_start_comments: false,
+    block_markers_alone: false,
+};
+/// PowerShell: `#` comments at word start only, `<# #>` block
+/// comments, quotes span lines, and the backtick is an escape, never a
+/// literal.
+const HASH_POWERSHELL: Lexicon = Lexicon {
+    line: "#",
+    block: Some(("<#", "#>")),
+    triple: false,
+    backtick: false,
+    template_holes: false,
+    heredoc: Heredoc::None,
+    rejects: &[],
+    escaped_marker: false,
+    single_quotes: true,
+    multiline_quotes: true,
+    word_start_comments: true,
     block_markers_alone: false,
 };
 /// Ruby: opaque backtick literals, marked heredocs, percent literals.
@@ -182,6 +292,22 @@ const HASH_TRIPLE: Lexicon = Lexicon {
     single_quotes: true,
     multiline_quotes: false,
     word_start_comments: false,
+    block_markers_alone: false,
+};
+/// YAML: `#` comments at word start only, quotes span lines; block
+/// scalars reject the scan.
+const HASH_YAML: Lexicon = Lexicon {
+    line: "#",
+    block: None,
+    triple: false,
+    backtick: false,
+    template_holes: false,
+    heredoc: Heredoc::None,
+    rejects: &[Reject::BlockScalar],
+    escaped_marker: false,
+    single_quotes: true,
+    multiline_quotes: true,
+    word_start_comments: true,
     block_markers_alone: false,
 };
 /// Erlang: `%` comments; `'` atoms and `"` strings are single-line.
@@ -281,6 +407,22 @@ const SLASH: Lexicon = Lexicon {
     word_start_comments: false,
     block_markers_alone: false,
 };
+/// Verilog and SystemVerilog: the `//` family shape, but apostrophes
+/// are width-separator punctuation (`8'h00`), never string delimiters.
+const SLASH_VERILOG: Lexicon = Lexicon {
+    line: "//",
+    block: Some(("/*", "*/")),
+    triple: false,
+    backtick: false,
+    template_holes: false,
+    heredoc: Heredoc::None,
+    rejects: &[],
+    escaped_marker: false,
+    single_quotes: false,
+    multiline_quotes: false,
+    word_start_comments: false,
+    block_markers_alone: false,
+};
 
 /// The lexical forms one language group's scan tracks.
 pub(super) struct Lexicon {
@@ -358,6 +500,9 @@ pub(super) enum Reject {
     Verbatim,
     /// Erlang `$%` and `$\%`: the percent character literal.
     DollarPercent,
+    /// YAML block-scalar indicators (`|`, `>`, with `-`/`+`/digit
+    /// modifiers) at a value position.
+    BlockScalar,
 }
 
 impl Reject {
@@ -381,6 +526,7 @@ impl Reject {
                     && (bytes.get(i + 1) == Some(&b'%')
                         || (bytes.get(i + 1) == Some(&b'\\') && bytes.get(i + 2) == Some(&b'%')))
             }
+            Reject::BlockScalar => matches!(bytes[i], b'|' | b'>') && block_scalar(bytes, i),
         }
     }
 }
@@ -415,6 +561,38 @@ pub(super) fn ident_byte(b: u8) -> bool {
 /// Whether `b` may start a heredoc delimiter or identifier.
 pub(super) fn ident_start(b: u8) -> bool {
     b.is_ascii_alphabetic() || b == b'_'
+}
+
+/// Whether the bytes at `i` open a YAML block scalar: `|` or `>` with
+/// optional `-`/`+`/digit modifiers, then end of line or a trailing
+/// comment.
+///
+/// Value positions:
+///
+/// - after `key:` or a `-` sequence entry, with optional spaces;
+/// - alone on its line, heading a value on the following lines.
+///
+/// An anchor between the colon and the indicator (`key: &a |`) is not
+/// recognized; callers treat that payload as plain mapping text.
+fn block_scalar(bytes: &[u8], i: usize) -> bool {
+    let mut j = i + 1;
+    while matches!(bytes.get(j), Some(&b) if b.is_ascii_digit() || matches!(b, b'-' | b'+')) {
+        j += 1;
+    }
+    // The header ends at end of line or a trailing `#` comment.
+    let mut k = j;
+    while matches!(bytes.get(k), Some(b' ') | Some(b'\t')) {
+        k += 1;
+    }
+    match bytes.get(k) {
+        None | Some(b'#') => {}
+        Some(_) => return false,
+    }
+    let mut p = i;
+    while p > 0 && matches!(bytes[p - 1], b' ' | b'\t') {
+        p -= 1;
+    }
+    p == 0 || matches!(bytes[p - 1], b':' | b'-')
 }
 
 /// The index just past the identifier run starting at `j`.
