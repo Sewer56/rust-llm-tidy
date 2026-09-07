@@ -67,7 +67,7 @@ exclude:
   # Rust string fixtures are immutable to pipeline text fixes. This real doc
   # comment illustrates `items[i](count)` syntax, which links would hoist.
   - paths:
-      - "src/cli/tests/fix.rs"
+      - "src/cli/tests/fix/links.rs"
     rules:
       - links
   # This page has a nested-fence before+after example that `fix_fences`

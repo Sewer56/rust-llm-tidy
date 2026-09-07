@@ -153,7 +153,7 @@ fn count_lines_outside_spans(
 }
 
 /// Whether `path` has a `tests` directory component (e.g.
-/// `tests/integration.rs`, `src/cli/tests/config.rs`).
+/// `tests/csharp/main.rs`, `src/cli/tests/config/main.rs`).
 ///
 /// A file named `tests.rs` is not a directory component and does not match.
 fn is_tests_path(path: &Path) -> bool {
