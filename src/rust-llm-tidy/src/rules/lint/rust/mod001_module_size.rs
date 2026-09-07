@@ -20,6 +20,9 @@ use std::path::Path;
 /// then subtracts every top-level `#[cfg(test)]`-gated `mod` item span,
 /// attributes through closing brace.
 ///
+/// A line that shares a test-module span with production code still
+/// counts.
+///
 /// Fires when the remaining count strictly exceeds `max_lines`: a file at
 /// exactly `max_lines` stays silent.
 ///
@@ -31,8 +34,8 @@ use std::path::Path;
 ///
 /// # Arguments
 ///
-/// - `parsed`: the file's parse facts; `source` and item spans drive the
-///   count.
+/// - `parsed`: the file's parse facts; `source`, item spans, and item
+///   start lines drive the count.
 /// - `path`: the file's path; a `tests` directory component skips the rule.
 /// - `max_lines`: the resolved `module_size.max_lines` budget.
 pub(crate) fn check(parsed: &ParseResult, path: &Path, max_lines: usize) -> Option<Diagnostic> {
@@ -46,8 +49,19 @@ pub(crate) fn check(parsed: &ParseResult, path: &Path, max_lines: usize) -> Opti
         .filter(|item| item.is_test_module())
         .map(|item| (item.start, item.end))
         .collect();
-    let (non_test_lines, crossing_line) =
-        count_lines_outside_spans(&parsed.source, &test_spans, max_lines);
+    // File-order items keep the start lines sorted, as the count requires.
+    let production_start_lines: Vec<usize> = parsed
+        .items
+        .iter()
+        .filter(|item| !item.is_test_module())
+        .map(|item| item.start_line())
+        .collect();
+    let (non_test_lines, crossing_line) = count_lines_outside_spans(
+        &parsed.source,
+        &test_spans,
+        &production_start_lines,
+        max_lines,
+    );
 
     (non_test_lines > max_lines).then(|| Diagnostic {
         severity: Severity::Warning,
@@ -64,19 +78,28 @@ pub(crate) fn check(parsed: &ParseResult, path: &Path, max_lines: usize) -> Opti
     })
 }
 
-/// Count physical lines whose byte range avoids every span in `spans`,
-/// tracking where the count passes `max_lines`.
+/// Count physical lines no span fully owns, tracking where the count
+/// passes `max_lines`.
 ///
-/// A line belongs to a span when the line's byte range - `[start, end)`,
-/// newline excluded - intersects it. A test-module span therefore removes
-/// exactly its own lines. The piece after a trailing newline is not a
-/// physical line.
+/// A line leaves the count only when both hold:
+///
+/// - A span covers the line's entire byte range, `\r` from CRLF input
+///   aside.
+/// - No `production_start_lines` entry names the line.
+///
+/// Spans run to the next line start, so a test-module span absorbs
+/// same-line trailing code (`#[cfg(test)] mod t {} fn c() {}`). The
+/// `production_start_lines` list restores such lines: a span removes
+/// only lines it alone occupies.
+///
+/// The piece after a trailing newline is not a physical line.
 ///
 /// Returns the outside-span line count plus the 1-based line holding the
 /// `max_lines + 1`-th counted line, or `None` when the file never crosses.
 fn count_lines_outside_spans(
     source: &str,
     spans: &[(usize, usize)],
+    production_start_lines: &[usize],
     max_lines: usize,
 ) -> (usize, Option<usize>) {
     let mut non_test_lines = 0;
@@ -90,10 +113,18 @@ fn count_lines_outside_spans(
         }
         line_number += 1;
         let line_end = offset + line.len();
-        let in_span = spans
-            .iter()
-            .any(|&(start, end)| start < line_end && end > offset);
-        if !in_span {
+        // CRLF: the `\r` is line dressing, not span content.
+        let line_end_no_cr = if line.ends_with('\r') {
+            line_end - 1
+        } else {
+            line_end
+        };
+        let hosts_production = production_start_lines.binary_search(&line_number).is_ok();
+        let span_owns_line = !hosts_production
+            && spans
+                .iter()
+                .any(|&(start, end)| start <= offset && end >= line_end_no_cr);
+        if !span_owns_line {
             non_test_lines += 1;
             if non_test_lines > max_lines && crossing_line.is_none() {
                 crossing_line = Some(line_number);
@@ -213,6 +244,65 @@ mod tests {
 
         // 8 physical lines, 2 counted.
         assert!(check(&parsed, Path::new("src/lib.rs"), 5).is_none());
+    }
+
+    // A line mixing a test module with trailing production code still
+    // counts: the production item started on that line keeps it in the
+    // budget.
+    #[test]
+    fn counts_a_line_mixing_a_test_module_with_production_code() {
+        let parsed = parse("fn a() {}\nfn b() {}\n#[cfg(test)] mod t {} fn c() {}\n");
+
+        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 2).expect("3 non-test lines > 2");
+
+        assert_eq!(
+            diagnostic.line, 3,
+            "the mixed line is the first past the budget"
+        );
+        assert!(
+            check(&parsed, Path::new("src/lib.rs"), 3).is_none(),
+            "exactly 3 non-test lines"
+        );
+    }
+
+    // A test module's closing brace sharing its line with a following
+    // production item keeps that line in the count too.
+    #[test]
+    fn counts_a_closing_brace_line_shared_with_production_code() {
+        let parsed = parse("fn a() {}\nfn b() {}\n#[cfg(test)]\nmod t {\n} fn c() {}\n");
+
+        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 2).expect("3 non-test lines > 2");
+
+        assert_eq!(
+            diagnostic.line, 5,
+            "the shared closing-brace line crosses the budget"
+        );
+    }
+
+    // CRLF input: fully covered test-module lines stay excluded even
+    // though each line ends with `\r`.
+    #[test]
+    fn excludes_fully_covered_crlf_test_module_lines() {
+        let source = "fn a() {}\r\n#[cfg(test)]\r\nmod t {\r\n}\r\nfn b() {}\r\n";
+        let parsed = parse(source);
+
+        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 1).expect("2 non-test lines > 1");
+
+        assert_eq!(diagnostic.line, 5, "fn b's CRLF line crosses the budget");
+    }
+
+    // Direct helper contract, unreachable through `check` (its spans
+    // always end past the newline). A span may stop at the `\r` and
+    // still cover the line.
+    #[test]
+    fn covers_a_line_whose_span_stops_at_the_carriage_return() {
+        let (count, crossing) = count_lines_outside_spans("fn a() {}\r\n", &[(0, 9)], &[], 0);
+
+        assert_eq!(
+            (count, crossing),
+            (0, None),
+            "the span still covers the line"
+        );
     }
 
     // A `#[cfg(test)]` attribute on a non-`mod` item is not a module
