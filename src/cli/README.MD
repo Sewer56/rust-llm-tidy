@@ -123,9 +123,12 @@ text mode; see [hints].
 | `vis`     | narrow bare `pub` in restricted modules | yes     | yes         |
 | `lints`   | run DOC*, TEXT*, TEST* checks           | no      | yes         |
 
-An optional YAML config file (`.rust-llm-tidy.yml`) may exclude files from
-processing, whitelist or blacklist specific rules per path, and run external
-programs (e.g. `rustfmt`) on every processed file.
+An optional YAML config file (`.rust-llm-tidy.yml`) customizes processing.
+Per file it can:
+
+- exclude files from processing
+- whitelist or blacklist specific rules per path
+- run external programs (e.g. `rustfmt`) on every processed file
 
 Pass `--config <PATH>` to use an explicit config or `--no-config` to disable
 discovery. See the repository README for the full schema.
@@ -134,6 +137,7 @@ discovery. See the repository README for the full schema.
 
 Use `rust-llm-tidy` as a dependency for source buffers or complete file
 processing.
+
 The CLI owns only arguments, rendering and exit status; all processing lives in
 the library.
 

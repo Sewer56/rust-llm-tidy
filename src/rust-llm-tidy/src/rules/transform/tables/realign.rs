@@ -53,9 +53,10 @@ enum Alignment {
 /// # Returns
 ///
 /// [`Some`] realigned lines when the entries form a table with a valid
-/// delimiter row and realignment produces a different layout. Returns
-/// [`None`] when they are not a table or are already aligned (idempotent
-/// fast path).
+/// delimiter row and realignment produces a different layout.
+///
+/// Returns [`None`] when they are not a table or are already aligned
+/// (idempotent fast path).
 ///
 /// # Allocation strategy
 ///
@@ -309,9 +310,9 @@ fn drop_border_empties(cells: &mut Vec<&str>) {
     }
 }
 
-/// Append every pipe-delimited cell of `line` to `out` (without dropping the
-/// border empty cells produced by leading/trailing pipes). Borrows from
-/// `line`, so it allocates nothing itself.
+/// Append every pipe-delimited cell of `line` to `out`, keeping the border
+/// empties from leading/trailing pipes. Borrows from `line`; allocates
+/// nothing itself.
 ///
 /// Each cell is trimmed and escaped pipes (`\|`) stay inside their cell rather
 /// than acting as a separator. For input `| a | b\|c |`:
@@ -406,9 +407,10 @@ fn write_padded(cell: &str, width: usize, alignment: Alignment, out: &mut String
     }
 }
 
-/// Character count of `s`, using the byte length directly when `s` is ASCII
-/// (the overwhelmingly common case for table cells). This lets the optimizer
-/// avoid decoding UTF-8.
+/// Character count of `s`, using the byte length directly when `s` is ASCII.
+///
+/// ASCII is the overwhelmingly common case for table cells; this lets the
+/// optimizer avoid decoding UTF-8.
 #[inline]
 fn char_width(s: &str) -> usize {
     if s.is_ascii() {

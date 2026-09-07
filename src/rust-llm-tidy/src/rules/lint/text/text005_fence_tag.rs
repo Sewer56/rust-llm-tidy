@@ -193,8 +193,10 @@ mod tests {
     }
 
     // A whole-file `rs` call warns on a bare Rust doc fence; a tagged
-    // one stays silent. Built with `concat!` so the bare fence lines
-    // stay string fragments, not measured comment lines.
+    // one stays silent.
+
+    // Built with `concat!` so the bare fence lines stay string
+    // fragments, not measured comment lines.
     #[test]
     fn text_checks_warn_for_rust_source_with_bare_doc_fences() {
         let bare_fence = concat!("``", "`");

@@ -16,9 +16,10 @@
 //!
 //! # Allocation strategy
 //!
-//! Identifiers are probed against the name map by writing each one into a
-//! single reused scratch [`String`] (via its `fmt::Write` impl). As a
-//! result, the hot reference paths perform zero per-ident heap allocation.
+//! Identifiers are probed against the name map through a single reused
+//! scratch [`String`] (via its `fmt::Write` impl).
+//!
+//! The hot reference paths thus perform zero per-ident heap allocation.
 //!
 //! Edges are stored as item indices, not owned strings.
 //!
@@ -62,17 +63,19 @@ pub struct ReferenceCollector<'names> {
     walk: &'static ReferenceWalk,
     /// Edges: `(referencer_index, referenced_index)`.
     edges: Vec<(usize, usize)>,
-    /// Reused buffer for ident -> `&str` conversion during probing. Writing an
-    /// ident via `fmt::Write` fills existing capacity instead of allocating,
-    /// so the hot walk paths never heap-allocate per ident.
+    /// Reused buffer for ident -> `&str` conversion during probing.
+    ///
+    /// Writing an ident via `fmt::Write` fills existing capacity instead of
+    /// allocating, so the hot walk paths never heap-allocate per ident.
     scratch: String,
 }
 
 impl<'names> ReferenceCollector<'names> {
     /// Create a new collector seeded with a name-to-index map, the macro
-    /// name set, and the grammar's walk data. The map and set borrow `&str`
-    /// slices that must outlive the collector (typically the name fields of
-    /// the parsed items).
+    /// name set, and the grammar's walk data.
+    ///
+    /// The map and set borrow `&str` slices that must outlive the collector
+    /// (typically the name fields of the parsed items).
     pub fn new(
         name_to_idx: AHashMap<&'names str, usize>,
         macro_names: AHashSet<&'names str>,
@@ -177,9 +180,11 @@ impl<'names> ReferenceCollector<'names> {
         self.probe_first_segment(name_node, source)
     }
 
-    /// Record a reference edge from the current item to the item named by the
-    /// first segment of `node` (a path/type identifier). The edge is recorded
-    /// only if that item is a top-level item other than the current one.
+    /// Record a reference edge from the current item to the item named by
+    /// the first segment of `node` (a path/type identifier).
+    ///
+    /// The edge is recorded only if that item is a top-level item other
+    /// than the current one.
     ///
     /// Macro calls to a local macro reverse the edge so the definition
     /// precedes its use.
@@ -192,7 +197,9 @@ impl<'names> ReferenceCollector<'names> {
         let is_macro_call = self.is_macro_call(node);
         // `probe_first_segment` writes the first segment into `self.scratch`
         // and returns the target index (copied), so no borrow is held across
-        // the edge push. `self.scratch` still holds the name afterwards.
+        // the edge push.
+        //
+        // `self.scratch` still holds the name afterwards.
         let Some(target_idx) = self.probe_first_segment(node, source) else {
             return;
         };
@@ -216,8 +223,9 @@ impl<'names> ReferenceCollector<'names> {
     }
 
     /// Write the first segment's text of `node` into the scratch buffer and
-    /// return its top-level item index, if any. Leaves `self.scratch` holding
-    /// the segment text on success.
+    /// return its top-level item index, if any.
+    ///
+    /// Leaves `self.scratch` holding the segment text on success.
     fn probe_first_segment(&mut self, node: Node, source: &[u8]) -> Option<usize> {
         let seg = first_segment_node(self.walk, node)?;
         self.scratch.clear();

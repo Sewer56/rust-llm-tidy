@@ -1,6 +1,8 @@
-//! Language registry: the single authority deciding which pipeline
-//! ops may run for a source-file extension. It also decides which
-//! line-comment prefixes the fix passes strip around tables and fences.
+//! The single authority deciding which pipeline ops may run for a
+//! source-file extension.
+//!
+//! It also decides which line-comment prefixes the fix passes strip
+//! around tables and fences.
 //!
 //! Every allowed extension is governed by a [`Profile`]:
 //!
@@ -57,9 +59,10 @@
 //!
 //! # Lookup
 //!
-//! [`profile_for`] matches extensions ASCII case-insensitively (`.MD`
-//! resolves like `.md`, matching [`crate::input::ext_in`]) by binary search
-//! over sorted static tables.
+//! [`profile_for`] matches extensions ASCII case-insensitively by binary
+//! search over sorted static tables.
+//!
+//! `.MD` resolves like `.md`, matching [`crate::input::ext_in`].
 //!
 //! Lookups allocate nothing and never run per line or per item - at most
 //! once per file.
@@ -256,8 +259,10 @@ pub(crate) struct Profile {
     /// Ops this extension may ever run, as rule names accepted by
     /// `--include`/`--exclude`, in [`crate::config::KNOWN_FIX_OPS`] order.
     pub ops: &'static [&'static str],
-    /// Line-comment markers stripped and re-applied around tables and fences,
-    /// longest first (a `///` marker must precede `//`); empty when the tier
+    /// Line-comment markers stripped and re-applied around tables and
+    /// fences, longest first.
+    ///
+    /// A `///` marker must precede `//`; the list is empty when the tier
     /// has no comment prefixes.
     pub prefixes: &'static [&'static str],
     /// Ops that run when no explicit include list narrows the run; always a
@@ -266,10 +271,11 @@ pub(crate) struct Profile {
     /// Their `lints` op runs by default through the fail-closed lexicon,
     /// which never measures string content or code lines.
     pub default_ops: &'static [&'static str],
-    /// Whether an AST parser is registered for the extension. `reorder`
-    /// and the parser-driven `lints` checks require this in addition to
-    /// appearing in `ops`, as does the [`TextLints::Ast`] tier's doc-region
-    /// producer.
+    /// Whether an AST parser is registered for the extension.
+    ///
+    /// `reorder` and the parser-driven `lints` checks require this in
+    /// addition to appearing in `ops`, as does the [`TextLints::Ast`]
+    /// tier's doc-region producer.
     pub backend: bool,
     /// How the TEXT* text checks are sourced for this profile.
     pub text_lints: TextLints,
@@ -285,9 +291,10 @@ pub(crate) enum TextLints {
     /// feeds its lint composition, which emits the text checks.
     Ast,
     /// Text regions from the language module's fail-closed comment lexicon:
-    /// a linear scan over line and block comments. String content and
-    /// code lines never measure, and ambiguous sources produce no
-    /// findings.
+    /// a linear scan over line and block comments.
+    ///
+    /// String content and code lines never measure, and ambiguous sources
+    /// produce no findings.
     Lexicon,
     /// No text checks: data formats and unmapped extensions produce no
     /// text findings.
@@ -302,8 +309,10 @@ impl Profile {
     }
 
     /// Whether `op` runs for a file with this profile under the active rule
-    /// selection (`enabled` whitelist / `disabled` blacklist, exactly as
-    /// [`crate::pipeline`] resolves them).
+    /// selection.
+    ///
+    /// `enabled` whitelist / `disabled` blacklist, exactly as
+    /// [`crate::pipeline`] resolves them.
     ///
     /// Whitelist mode intersects the whitelist with the profile's `ops`;
     /// default mode runs the profile's `default_ops` minus the disabled
@@ -393,10 +402,11 @@ pub(crate) fn profile_for(ext: &str) -> &'static Profile {
 ///
 /// # Errors
 ///
-/// Returns an error when `ext` is empty, starts with a dot, or contains an
-/// inner dot, a path separator (`/` or `\`), or whitespace. None of those
-/// can match a real path extension, so they fail the run instead of being
-/// silently ignored.
+/// Returns an error when `ext` is empty, starts with a dot, or contains
+/// an inner dot, a path separator (`/` or `\`), or whitespace.
+///
+/// None of those can match a real path extension, so they fail the run
+/// instead of being silently ignored.
 pub(crate) fn validate_extension(ext: &str) -> anyhow::Result<()> {
     let shape_ok = !ext.is_empty()
         && !ext.starts_with('.')
@@ -575,8 +585,10 @@ mod tests {
     // ── Per-file op gating ──
 
     /// The `backend` column must agree with the lang-crate backend registry
-    /// per extension and per AST op: dispatch composes both tables. A
-    /// language updated on only one side silently gains or loses AST ops.
+    /// per extension and per AST op.
+    ///
+    /// Dispatch composes both tables, and a language updated on only one
+    /// side silently gains or loses AST ops.
     ///
     /// The Ast text tier additionally requires the column: its doc-region
     /// producer dispatches through the backend.
@@ -619,9 +631,10 @@ mod tests {
         }
     }
 
-    /// Op gating intersects the rule selection with the profile. Default
-    /// mode runs the profile defaults minus disabled names; whitelist mode
-    /// intersects the whitelist with the allowed ops.
+    /// Op gating intersects the rule selection with the profile.
+    ///
+    /// Default mode runs the profile defaults minus disabled names;
+    /// whitelist mode intersects the whitelist with the allowed ops.
     #[test]
     fn op_enabled_combines_rule_selection_with_profile_ops() {
         let none = None;
@@ -647,9 +660,10 @@ mod tests {
         assert!(!profile_for("json").op_enabled("tables", &none, &empty));
 
         // Whitelist mode: an explicit include reaches a code language's
-        // fences and every code family's text checks. Links outside
-        // the markdown family and Rust stay refused, and so does an op
-        // the profile never carries.
+        // fences and every code family's text checks.
+        //
+        // Links outside the markdown family and Rust stay refused, and
+        // so does an op the profile never carries.
         //
         // The loop's second assertion is default mode: every code
         // family's `lints` runs with no include list.
@@ -735,8 +749,10 @@ mod tests {
     }
 
     /// The Lexicon tier and the language module's lexicon table agree per
-    /// extension. A tier without a lexicon entry would silently emit
-    /// nothing, and a lexicon entry without the tier would never run.
+    /// extension.
+    ///
+    /// A tier without a lexicon entry would silently emit nothing, and a
+    /// lexicon entry without the tier would never run.
     #[test]
     fn lexicon_tiers_match_the_lang_crate_lexicon() {
         for (ext, profile) in LANG_ENTRIES {

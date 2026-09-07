@@ -26,9 +26,13 @@ use std::process::Command;
 ///
 /// # Errors
 ///
-/// Returns an error if `git rev-parse --show-toplevel` cannot determine the
-/// repo root (e.g. the current directory is outside a git repository) or if a
-/// `git diff` invocation fails.
+/// Returns an error if a `git` invocation fails.
+///
+/// Failure cases:
+///
+/// - `git rev-parse --show-toplevel` cannot determine the repo root (e.g. the
+///   current directory is outside a git repository)
+/// - a `git diff` invocation fails
 ///
 /// This is an `anyhow::Result`, so any upstream I/O or `git` failure is
 /// propagated as the error.

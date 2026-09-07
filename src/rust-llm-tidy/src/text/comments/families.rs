@@ -1,6 +1,7 @@
-//! The per-family lexical tables, the fail-closed reject predicates,
-//! and the extension lookup: which comment markers, block pairs, and
-//! string forms each language group's scan tracks.
+//! Per-family lexicons and the extension lookup: which comment markers,
+//! block pairs, and string forms each language group's scan tracks.
+//!
+//! Also holds the fail-closed reject predicates for those scans.
 
 /// Extension-to-lexicon table, sorted by extension (ASCII) so binary
 /// search applies.
@@ -198,9 +199,10 @@ const PERCENT_ERL: Lexicon = Lexicon {
     word_start_comments: false,
     block_markers_alone: false,
 };
-/// MATLAB and Octave: `%` comments and `%{ %}` block comments
-/// (the markers count only alone on their lines). It also scans
-/// `'` strings and transposes and `"` strings, all single-line.
+/// MATLAB and Octave: `%` comments, `%{ %}` block comments, and `'`
+/// strings and transposes and `"` strings, all single-line.
+///
+/// The block markers count only alone on their lines.
 const PERCENT_MATLAB: Lexicon = Lexicon {
     line: "%",
     block: Some(("%{", "%}")),
@@ -303,7 +305,9 @@ pub(super) struct Lexicon {
     /// instead of commenting.
     pub(super) escaped_marker: bool,
     /// Whether `'` opens a string literal. False where the apostrophe is
-    /// punctuation instead: the Lisp quote operator, Ada attributes
+    /// punctuation instead.
+    ///
+    /// Punctuation cases: the Lisp quote operator, Ada attributes
     /// (`X'First`), Haskell names (`x'`), Elm and TeX text.
     pub(super) single_quotes: bool,
     /// Whether quoted strings may span lines natively (shells, Ruby,
@@ -311,8 +315,9 @@ pub(super) struct Lexicon {
     /// carries its state.
     pub(super) multiline_quotes: bool,
     /// Whether the comment marker opens a comment only at the start of a
-    /// word (POSIX `#` rules; Ruby after a token). Outside that, regex
-    /// literals and mid-word `#` stay code.
+    /// word (POSIX `#` rules; Ruby after a token).
+    ///
+    /// Outside that, regex literals and mid-word `#` stay code.
     pub(super) word_start_comments: bool,
     /// Whether the block pair's markers open and close only alone on
     /// their lines (MATLAB `%{`/`%}`); elsewhere the line marker
@@ -432,10 +437,11 @@ fn percent_literal(bytes: &[u8], i: usize) -> bool {
     }
 }
 
-/// Whether the bytes at `i` open a Lisp semicolon that is not a
-/// comment: a reader form (`#;`, `#\;`) or a character literal
-/// (`\;`, `?;`, `?\;`). The `?` form needs a preceding
-/// non-identifier byte, so `odd?;` keeps its comment.
+/// Whether the bytes at `i` open a Lisp semicolon that is not a comment.
+///
+/// Non-comment forms: a reader form (`#;`, `#\;`) or a character literal
+/// (`\;`, `?;`, `?\;`). The `?` form needs a preceding non-identifier
+/// byte, so `odd?;` keeps its comment.
 fn semicolon_literal(bytes: &[u8], i: usize) -> bool {
     match bytes[i] {
         b'#' => {

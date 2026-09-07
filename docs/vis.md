@@ -2,11 +2,12 @@
 
 ## What it does
 
-Items inside a limited-visibility module (`pub(crate) mod`, `pub(super) mod`,
-...) written as `pub` get narrowed to match the module: `pub(crate) mod` items
-become `pub(crate)`, `pub(super)` become `pub(super)`.
+Items in a limited-visibility module (`pub(crate) mod`, `pub(super) mod`, ...)
+written as `pub` are narrowed to match the module.
 
-Exception: names re-exported (`pub use`) keep `pub`. They're public API.
+- `pub(crate) mod` items become `pub(crate)`.
+- `pub(super) mod` items become `pub(super)`.
+- Exception: names re-exported (`pub use`) keep `pub`; they're public API.
 
 By default it sees the whole crate - reads the module tree and re-exports once,
 applies to each file. Files outside `src/` (tests, benches, fixtures) work

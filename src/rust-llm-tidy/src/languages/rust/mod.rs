@@ -117,8 +117,7 @@ mod tests {
             .map(|diagnostic| (diagnostic.line, diagnostic.code))
             .collect();
 
-        // Hardcoded on purpose: deriving the sequence from the
-        // composition would leave the assertion invariant under reorders.
+        // Hardcoded on purpose: a derived sequence stays invariant under reorders.
         // The doc line's single-sentence opener stays TEXT004-quiet.
         assert_eq!(
             order,

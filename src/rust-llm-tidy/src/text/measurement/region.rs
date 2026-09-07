@@ -35,10 +35,11 @@ pub enum Dialect {
     /// Blank lines split paragraphs, and fenced or indented example
     /// blocks are exempt.
     BlockDoc,
-    /// Python docstrings: a `>>>` doctest example - its source line,
-    /// `...` continuations, and expected output, until the blank line
-    /// that ends the example - is exempt, and the remaining prose
-    /// measures with the markdown rules.
+    /// Python docstrings: `>>>` doctest examples are exempt, and the
+    /// remaining prose measures with the markdown rules.
+    ///
+    /// A doctest example spans its source line, `...` continuations, and
+    /// expected output, until the blank line that ends the example.
     Docstring,
 }
 
@@ -49,8 +50,10 @@ pub struct RegionLine {
     pub number: usize,
     /// The stripped text: line ending, indent, and comment marker removed.
     pub text: String,
-    /// Whether the line counts as indented code: a tab or 4-space lead in
-    /// the stripped text for marker languages. Or a raw indent of at
-    /// least 4 spaces in marker-less files.
+    /// Whether the line counts as indented code.
+    ///
+    /// In marker languages, a tab or 4-space lead in the stripped text
+    /// counts. In marker-less files, a raw indent of at least 4 spaces
+    /// counts.
     pub indented: bool,
 }

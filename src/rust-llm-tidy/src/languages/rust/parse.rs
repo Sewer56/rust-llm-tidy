@@ -15,9 +15,12 @@ pub(super) use classify::{doc_attribute_content, is_outer_doc};
 
 mod classify;
 
-/// A raw top-level item entry: the item body node plus its pending attachable
-/// trivia (attributes + outer doc comments). The item body node is the
-/// wrapping `expression_statement` for a top-level macro invocation.
+/// A raw top-level item entry: body node plus pending attachable trivia.
+///
+/// Details:
+/// - Trivia is attributes plus outer doc comments.
+/// - The body node is the wrapping `expression_statement` for a top-level
+///   macro invocation.
 struct RawEntry<'a> {
     /// Node whose byte range covers the item body (incl. trailing `;` for
     /// macro invocations wrapped in `expression_statement`).
@@ -115,8 +118,10 @@ fn build_items(raw: &[RawEntry<'_>], source: &str, line_starts: &[usize]) -> Vec
         let attached_start = entry.pending.attached_start().unwrap_or(body_start);
 
         // Gap-anchored start: the first item seeds with its attached_start
-        // (= preamble_end). Later items chain from the previous item's end
-        // so the inter-item gap falls inside this item's span.
+        // (= preamble_end).
+        //
+        // Later items chain from the previous item's end so the inter-item
+        // gap falls inside this item's span.
         let start = if first {
             first = false;
             attached_start
@@ -152,9 +157,11 @@ fn build_items(raw: &[RawEntry<'_>], source: &str, line_starts: &[usize]) -> Vec
     out
 }
 
-/// Walk the `source_file` children in byte order. Collect one [`RawEntry`]
-/// per recognized top-level item, attaching the contiguous run of preceding
-/// attributes and outer doc comments to each.
+/// Walk the `source_file` children in byte order, collecting one
+/// [`RawEntry`] per recognized top-level item.
+///
+/// Each entry carries the contiguous run of preceding attributes and outer
+/// doc comments.
 ///
 /// Non-attachable nodes (plain `//` comments, inner `//!` docs, empty
 /// statements) are transparent: they neither attach to an item nor break a
@@ -178,8 +185,10 @@ fn collect_item_entries(root: tree_sitter::Node<'_>) -> Vec<RawEntry<'_>> {
             });
         } else {
             // Unrecognized non-item top-level node (e.g. a stray
-            // `expression_statement` that is not a macro invocation): treat as
-            // transparent so it does not break attachment of surrounding trivia.
+            // `expression_statement` that is not a macro invocation).
+            //
+            // Treated as transparent so it does not break attachment of
+            // surrounding trivia.
         }
     }
     entries
@@ -266,9 +275,10 @@ mod tests {
     use crate::source::ItemKind;
 
     /// Gap-anchored spans: each non-first item's `start` is the previous
-    /// item's `end`, `end` includes the trailing newline. `start_line`
-    /// tracks the attached-trivia start (the SYN body start when no attached
-    /// attrs/docs precede it).
+    /// item's `end`, `end` includes the trailing newline.
+    ///
+    /// `start_line` tracks the attached-trivia start (the SYN body start
+    /// when no attached attrs/docs precede it).
     #[test]
     fn gap_anchored_spans_and_start_lines() {
         // Line map (1-based):

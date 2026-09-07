@@ -103,10 +103,9 @@ pub fn fix_fences<'a>(input: &'a str, prefixes: &[&str]) -> FixOutcome<'a> {
         let seg_start = pos;
         pos += segment.len();
 
-        // Cheap candidate check: a line can only be a fence after
-        // [`strip_comment_prefix`] + trim. It qualifies if, ignoring leading
-        // whitespace, it begins with a marker run or a comment prefix from the
-        // family.
+        // Cheap candidate check: ignoring leading whitespace, the line must
+        // begin with a marker run or a family comment prefix after
+        // [`strip_comment_prefix`] + trim.
         //
         // The vast majority of lines (code, prose) fail this and are emitted
         // verbatim with no further work.
@@ -508,9 +507,11 @@ deep
         );
     }
 
-    /// Reference: the exact `fix_fences` from commit bc51750 (eager allocation,
-    /// no candidate-check fast path). It is retained only to differential-test
-    /// that the optimized version produces byte-identical output.
+    /// Reference: the exact `fix_fences` from commit bc51750 (eager
+    /// allocation, no candidate-check fast path).
+    ///
+    /// It is retained only to differential-test that the optimized version
+    /// produces byte-identical output.
     ///
     /// It must also produce the same `Cow` variant for every input.
     ///
@@ -600,10 +601,11 @@ deep
 
     #[test]
     fn optimized_matches_bc51750_reference() {
-        // Broad differential corpus: ASCII + Unicode leading whitespace before
-        // fences (the fast-path risk area) and doc-comment fences. It also
-        // covers tilde roots, run lengths, info strings, and unbalanced and
-        // non-fence edge cases.
+        // Broad differential corpus covering the fast-path risk areas.
+        //
+        // Includes ASCII + Unicode leading whitespace before fences and
+        // doc-comment fences, plus tilde roots, run lengths, info strings,
+        // and unbalanced and non-fence edge cases.
         let cases: &[&str] = &[
             "",
             "no markers here at all\n",
@@ -667,7 +669,9 @@ deep
     fn optimized_matches_reference_on_generated_inputs() {
         // Deterministic linear congruential generator (LCG; no external test
         // dependency) builds many inputs from a fence-flavoured fragment
-        // alphabet. It spans ASCII and Unicode whitespace, doc prefixes,
+        // alphabet.
+        //
+        // The alphabet spans ASCII and Unicode whitespace, doc prefixes,
         // mixed markers, run lengths, and info strings.
         //
         // Every generated input is one fragment list.
@@ -733,9 +737,10 @@ deep
     #[test]
     fn crlf_doc_comment_fences_preserved() {
         // CRLF input with nested fences inside a `///` doc comment: only the
-        // inner backtick fence should flip to tildes. Every line ending must
-        // also stay `\r\n`: the pass only swaps marker chars, never line
-        // terminators.
+        // inner backtick fence should flip to tildes.
+        //
+        // Every line ending must also stay `\r\n`: the pass only swaps
+        // marker chars, never line terminators.
         //
         // `split_inclusive('\n')` keeps `\r\n` in-segment and `emit_fence`
         // reuses the segment's terminator.
@@ -768,9 +773,10 @@ deep
     }
 
     // Prefix-family coverage for `fix_fences`. Inputs are built with
-    // `format!` from single-line `\n`-escaped templates so the repo's own
-    // `fix_fences` lint hook cannot canonicalize the literals first (same
-    // trick as the tests above).
+    // `format!` from single-line `\n`-escaped templates.
+    //
+    // This prevents the repo's own `fix_fences` lint hook from canonicalizing
+    // the literals first (same trick as the tests above).
 
     /// One line-comment family per entry: the marker family and a label for
     /// assertion messages.
@@ -785,8 +791,10 @@ deep
     #[test]
     fn prefix_family_fences_flip_inner_marker_and_keep_prefix() {
         // Nested fences inside each line-comment family: the inner backtick
-        // fence flips to tildes with the marker kept on every line. Each
-        // flipped delimiter anchors its own line, and the pass is idempotent.
+        // fence flips to tildes with the marker kept on every line.
+        //
+        // Each flipped delimiter anchors its own line, and the pass is
+        // idempotent.
         for (marker, label) in PREFIX_FAMILIES {
             let input = format!(
                 "{m} ```text\n{m} ```rust\n{m} inner\n{m} ```\n{m} ```\n",
@@ -849,8 +857,10 @@ deep
     #[test]
     fn fence_family_with_overlapping_markers_strips_longest_first() {
         // A `["///", "//"]` family (doc plus plain markers) still strips the
-        // full `///` marker. Stripping only `//` would leave a `/` on the
-        // body, and no fence would be recognized.
+        // full `///` marker.
+        //
+        // Stripping only `//` would leave a `/` on the body, and no fence
+        // would be recognized.
         let input = "/// ```text\n/// ```rust\n/// ```\n/// ```\n";
         let expected = "/// ```text\n/// ~~~rust\n/// ~~~\n/// ```\n";
         let out = fix_fences(input, &["///", "//"]);

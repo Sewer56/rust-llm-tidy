@@ -39,6 +39,10 @@ exclude_files:
   # Git submodules are their own repos (own URL/ref); tidying their checked-out
   # content would dirty the gitlink and produce a spurious diff upstream.
   - "**/submodules/**"
+  # Verification scripts use a terse step-banner comment style whose opener
+  # exceeds the TEXT004 budget; they are operational scripts, not docs.
+  - "src/.llm/verify.sh"
+  - "src/.llm/verify.ps1"
 
 # Disable specific rules for files matching a group's patterns.
 exclude:

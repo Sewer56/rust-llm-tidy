@@ -18,9 +18,11 @@ pub struct ParseResult {
     pub items: Vec<SourceItem>,
     /// The original source text.
     pub source: String,
-    /// The parsed tree-sitter syntax tree, retained so downstream passes (e.g.
-    /// the reorder reference-graph walk) can reuse it instead of re-parsing
-    /// `source`.
+    /// The parsed tree-sitter syntax tree, retained for reuse by downstream
+    /// passes.
+    ///
+    /// Downstream passes (e.g. the reorder reference-graph walk) can reuse
+    /// it instead of re-parsing `source`.
     /// `pub(crate)`: read it through [`ParseResult::syntax_tree`].
     pub(crate) tree: tree_sitter::Tree,
     /// Byte offset where the preamble ends.
@@ -58,8 +60,10 @@ pub struct SourceItem {
     /// Byte offset of the end of this item.
     pub end: usize,
     /// 1-based source line where this item starts (including prefix
-    /// comments/attrs). Precomputed at parse time so lint checks need not rescan
-    /// the source for each diagnostic.
+    /// comments/attrs).
+    ///
+    /// Precomputed at parse time so lint checks need not rescan the
+    /// source for each diagnostic.
     start_line: usize,
     /// The kind of this item.
     kind: ItemKind,
@@ -92,10 +96,11 @@ pub struct SourceItem {
     params: Vec<String>,
     /// True for fn items carrying a `#[test]` or `#[...::test]` attribute.
     is_test_fn: bool,
-    /// Preprocessor region id this item belongs to: reordering permutes
-    /// items only within one region id, so no item crosses a preprocessor
-    /// conditional boundary. `0` for languages without preprocessor
-    /// conditionals (Rust).
+    /// Preprocessor region id this item belongs to.
+    ///
+    /// Reordering permutes items only within one region id, so no item
+    /// crosses a preprocessor conditional boundary. `0` for languages
+    /// without preprocessor conditionals (Rust).
     region: u32,
     /// In-type members of this item, for member reordering. Empty unless a
     /// language backend's parse produced them; the Rust parse emits none.
@@ -244,10 +249,11 @@ impl SourceItem {
         self.start_line
     }
 
-    /// The preprocessor region id of this item: reordering permutes items
-    /// only within one region, so no item crosses a preprocessor
-    /// conditional boundary. `0` for languages without preprocessor
-    /// conditionals (Rust).
+    /// The preprocessor region id of this item.
+    ///
+    /// Reordering permutes items only within one region, so no item
+    /// crosses a preprocessor conditional boundary. `0` for languages
+    /// without preprocessor conditionals (Rust).
     #[inline]
     pub fn region(&self) -> u32 {
         self.region
@@ -336,7 +342,9 @@ mod tests {
     use super::*;
 
     /// New items carry region `0` and no members; the builders override
-    /// both. The Rust parse relies on the defaults (no preprocessor
+    /// both.
+    ///
+    /// The Rust parse relies on the defaults (no preprocessor
     /// conditionals, no in-type reordering).
     #[test]
     fn region_and_members_default_then_override() {

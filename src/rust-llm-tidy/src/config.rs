@@ -144,9 +144,10 @@ pub struct PostProcessStep {
     pub extensions: Vec<String>,
 }
 
-/// One entry under `include` or `exclude`: a list of path globs and the rule
-/// names to (include|exclude) for files they match. An omitted `paths` matches
-/// every file (implied `["**"]`).
+/// One entry under `include` or `exclude`: path globs plus the rule names to
+/// (include|exclude) for files they match.
+///
+/// An omitted `paths` matches every file (implied `["**"]`).
 #[derive(Debug, Deserialize, Default, Clone)]
 #[serde(deny_unknown_fields)] // Reject hallucinated config keys at parse time.
 pub struct RuleGroup {
@@ -176,7 +177,9 @@ impl CompiledConfig {
     }
 
     /// Effective link-hoist threshold for files with extension `ext` (no
-    /// leading dot): `by_extension[ext]`, else the global `min_occurrences`,
+    /// leading dot).
+    ///
+    /// Lookup order: `by_extension[ext]`, else the global `min_occurrences`,
     /// else 1. `ext` is matched exactly against the config's extension keys.
     pub fn links_min_occurrences_for(&self, ext: &str) -> usize {
         match &self.links {
@@ -338,9 +341,10 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         crate::languages::registry::validate_extension(ext)?;
     }
 
-    // Link thresholds: every value must be >= 1 (a missing `min_occurrences`
-    // already defaults to 1). A non-integer value fails YAML deserialization
-    // above, so only a literal 0 reaches this check.
+    // Link thresholds: every value must be >= 1.
+    //
+    // A missing `min_occurrences` already defaults to 1; a non-integer value
+    // fails YAML deserialization above, so only a literal 0 reaches this check.
     if let Some(links) = &config.links {
         if links.min_occurrences < 1 {
             bail!(
@@ -434,17 +438,21 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
 }
 
 /// Return every rule name accepted by `include.rules`, `exclude.rules`,
-/// `--include`, and `--exclude`: lint codes followed by fix/operation names.
-/// The CLI validates rule names against this list.
+/// `--include`, and `--exclude`.
+///
+/// The list holds lint codes followed by fix/operation names; the CLI
+/// validates rule names against it.
 pub fn known_rules() -> Vec<&'static str> {
     let mut rules: Vec<&'static str> = LINT_CODES.to_vec();
     rules.extend_from_slice(KNOWN_FIX_OPS);
     rules
 }
 
-/// Expand `pattern` joined with `config_dir` via `glob::glob()` and require at
-/// least one match. Descends only the pattern's prefix subtree, so cost scales
-/// with the number/depth of patterns, not repo size.
+/// Expand `pattern` joined with `config_dir` via `glob::glob()` and require
+/// at least one match.
+///
+/// Descends only the pattern's prefix subtree, so cost scales with the
+/// number/depth of patterns, not repo size.
 fn check_pattern_matches(config_dir: &Path, pattern: &str) -> anyhow::Result<()> {
     let full = config_dir.join(pattern);
     let full_str = full.to_string_lossy().into_owned();

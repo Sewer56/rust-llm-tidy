@@ -21,9 +21,11 @@ pub fn binary() -> std::path::PathBuf {
         }
     }
 
-    // Fallback for direct runs: the test binary lives in `<profile>/deps/`
-    // (stable) or the build-out dir (newer Cargo). Both sit under the
-    // `<profile>` dir that holds the peer binary.
+    // Fallback for direct runs: walk up to the `<profile>` dir that holds
+    // the peer binary.
+
+    // The test binary lives in `<profile>/deps/` (stable) or the build-out
+    // dir (newer Cargo); both sit under that `<profile>` dir.
     let mut dir = std::env::current_exe()
         .expect("current_exe must resolve")
         .parent()

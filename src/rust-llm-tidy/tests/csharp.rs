@@ -65,8 +65,10 @@ fn blank_lines_after_the_opening_brace_still_reorder() {
 }
 
 /// A type body whose members do not each occupy their own lines keeps its
-/// member order entirely. Line-tiled spans cannot represent the body, so
-/// the emitted output equals the source.
+/// member order entirely.
+///
+/// Line-tiled spans cannot represent the body, so the emitted output
+/// equals the source.
 #[test]
 fn bodies_with_same_line_members_stay_whole() {
     let cases = [
@@ -294,8 +296,9 @@ fn doc002_does_not_treat_nameof_as_a_call() {
 }
 
 /// DOC002 errors when a documented non-private member throws without an
-/// `<exception>` tag; an `<exception>` presence silences it. Constructors
-/// with bodies scan like methods.
+/// `<exception>` tag; an `<exception>` presence silences it.
+///
+/// Constructors with bodies scan like methods.
 #[test]
 fn doc002_errors_on_untagged_throwers() {
     let source = concat!(
@@ -359,6 +362,7 @@ fn doc002_flags_callers_of_private_throwers() {
 }
 
 /// DOC002 recursion: calling a same-file thrower flags the caller.
+///
 /// Every call form resolves by simple name - bare, `this.`-qualified,
 /// receiver-qualified, generic - and a concrete-`cref` tag passes.
 #[test]
@@ -436,9 +440,10 @@ fn doc002_flags_mutually_recursive_callers_that_reach_a_throw() {
     );
 }
 
-/// Throw detection is transitive: with First calling Second, Second
-/// calling Third, and Third throwing, every undocumented member of the
-/// chain is flagged, in document order.
+/// Throw detection is transitive.
+///
+/// With First calling Second, Second calling Third, and Third throwing,
+/// every undocumented member of the chain is flagged, in document order.
 #[test]
 fn doc002_propagates_through_transitive_call_chains() {
     let source = concat!(
@@ -599,6 +604,7 @@ fn doc003_warns_on_vague_exception_crefs() {
 
 /// DOC004 fires when a parameterized documented member has no `<param>`
 /// tags at all; DOC005 when the tags omit a declared parameter.
+///
 /// Constructors and indexers carry real parameter lists into both checks.
 #[test]
 fn doc004_and_doc005_check_param_tags_against_real_parameters() {
@@ -674,9 +680,10 @@ fn doc006_flags_placeholder_words_only() {
 // ── Doc-comment attachment through reorder ───────────────────────
 
 /// A `///` doc run above the first item stays attached to that item
-/// even under a plain `//` banner. A hoisted `using` lands after the
-/// banner (the banner stays in the preamble) and before the item's doc
-/// run.
+/// even under a plain `//` banner.
+///
+/// A hoisted `using` lands after the banner (the banner stays in the
+/// preamble) and before the item's doc run.
 ///
 /// The rewritten file lints clean for the documented item.
 #[test]
@@ -1023,8 +1030,10 @@ fn nested_type_moves_whole_while_the_enclosing_body_reorders() {
     );
 
     // The nested type stays whole: its callee keeps its source position
-    // before its caller. Its property stays after the methods - both
-    // would move under any nested-body sort.
+    // before its caller.
+    //
+    // Its property stays after the methods - both would move under any
+    // nested-body sort.
     let second = output.find("Second()").expect("nested callee survives");
     let first = output.find("First()").expect("nested caller survives");
     let tally = output
@@ -1135,8 +1144,10 @@ fn parse_keeps_plain_comments_in_the_preamble() {
 }
 
 /// Item spans tile back-to-back: each `end` is the byte after the item's
-/// trailing newline. Every later item's `start` is the previous `end`, so
-/// reordering carries inter-item comments and blank lines.
+/// trailing newline.
+///
+/// Every later item's `start` is the previous `end`, so reordering
+/// carries inter-item comments and blank lines.
 ///
 /// The trailer starts exactly where the last item ends.
 #[test]
@@ -1238,8 +1249,10 @@ fn reorder_permutation_applies_profile_and_caller_first() {
 }
 
 /// Two top-level declarations on one row are unrepresentable for the
-/// top-level tiling. The whole reorder declines to a no-op with zero
-/// records and byte-stable output, whatever the profile order would do.
+/// top-level tiling.
+///
+/// The whole reorder declines to a no-op with zero records and
+/// byte-stable output, whatever the profile order would do.
 #[test]
 fn same_line_top_level_items_decline_the_whole_reorder() {
     let cases = [

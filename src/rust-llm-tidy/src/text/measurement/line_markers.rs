@@ -76,9 +76,11 @@ fn markers_for(ext: &str) -> &'static [&'static str] {
     }
 }
 
-/// Strips leading whitespace, the first matching comment marker, and at most
-/// one following space. Returns the stripped text plus the raw line's leading
-/// whitespace count, or `None` when no marker matches in a marker language.
+/// Strips the first matching comment marker plus at most one following space.
+///
+/// Also strips leading whitespace. Returns the stripped text plus the raw
+/// line's leading whitespace count, or `None` when no marker matches in a
+/// marker language.
 ///
 /// Marker languages (Rust markers shown):
 ///

@@ -119,9 +119,10 @@ fn scan_line(
     });
 }
 
-/// Applies one closed tag to the scan state: `<code>` and `<example>`
-/// openings enter an exempt subtree. Their closings leave it, and a
-/// self-closing tag opens nothing.
+/// Applies one closed tag to the scan state.
+///
+/// `<code>` and `<example>` openings enter an exempt subtree; their
+/// closings leave it. A self-closing tag opens nothing.
 fn close_tag(fragment: &str, scan: &mut TagScan) {
     let Some((name, closing, self_closing)) = tag_kind(fragment) else {
         return;
@@ -316,8 +317,9 @@ mod tests {
 
     // ── Exempt subtrees ──
 
-    // `<code>` and `<example>` subtrees are exempt like code fences:
-    // their lines never warn on length or feed a paragraph, including a
+    // `<code>` and `<example>` subtrees are exempt like code fences.
+    //
+    // Their lines never warn on length or feed a paragraph, including a
     // nested `<code>` inside `<example>`.
     #[test]
     fn xml_code_and_example_subtrees_are_exempt() {

@@ -22,8 +22,9 @@ pub(crate) const CODE_TITLES: &[(&str, &str)] = &[
 /// Selectable transformations and the lint group, in pipeline order.
 pub const KNOWN_FIX_OPS: &[&str] = &["tables", "fences", "links", "reorder", "vis", "lints"];
 /// All lint codes accepted through `include.rules`, `exclude.rules`,
-/// `--include`, and `--exclude`, in the order they run. The CLI validates rule
-/// names against this slice plus
+/// `--include`, and `--exclude`, in the order they run.
+///
+/// The CLI validates rule names against this slice plus
 /// `KNOWN_FIX_OPS` in the library's `config` module.
 pub const LINT_CODES: &[&str] = &[
     CODE_MISSING_DOCS,

@@ -12,10 +12,11 @@ use std::process::Command;
 
 mod common;
 
-/// The byte-exact output of the fix on [`INTRA_DOC_REPRO_SOURCE`]: every link
-/// is hoisted. A `[text]: url` definition is duplicated inside each comment
-/// that uses it, never at EOF, with a blank comment line before the
-/// definitions.
+/// Byte-exact output of the fix on [`INTRA_DOC_REPRO_SOURCE`]: every link is
+/// hoisted.
+///
+/// A `[text]: url` definition is duplicated inside each comment that uses it,
+/// never at EOF, with a blank comment line before the definitions.
 const INTRA_DOC_REPRO_FIXED: &str = "\
 /// Assembles the final value by driving [the Builder].
 ///
@@ -43,9 +44,10 @@ impl Builder {
 /// [the Builder]: crate::Builder
 pub struct Config;
 ";
-/// Reported multi-comment intra-doc repro (`Self::`/`crate::`-style links used
-/// across several doc comments) with resolvable targets, so it is doc-build
-/// clean both before and after the fix.
+/// Reported multi-comment intra-doc repro with resolvable targets.
+///
+/// Uses `Self::`/`crate::`-style links across several doc comments, so it is
+/// doc-build clean both before and after the fix.
 const INTRA_DOC_REPRO_SOURCE: &str = "\
 /// Assembles the final value by driving [the Builder](crate::Builder).
 pub struct Builder;
@@ -66,9 +68,10 @@ pub struct Config;
 ";
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// Default all-pass `fix` on a file where only the table changes: the later
-/// fence/link passes are no-ops and restore `prior`. So the earlier table fix
-/// must survive and produce one record plus a byte-identical write.
+/// Default all-pass `fix` on a file where only the table changes.
+///
+/// The later fence/link passes are no-ops and restore `prior`, so the earlier
+/// table fix must survive and produce one record plus a byte-identical write.
 #[test]
 fn fix_default_passes_borrowed_restore_preserves_earlier_change() {
     let before = fixture_dir().join("table_md_before.md");
@@ -272,8 +275,10 @@ fn fix_in_place_write() {
 }
 
 /// In-place `fix` on a CRLF markdown file with a repeated inline link
-/// preserves `\r\n` in the hoisted `[text]: url` definition. CRLF input is
-/// built in-memory (committed fixtures would be git-normalized on checkout).
+/// preserves `\r\n` in the hoisted `[text]: url` definition.
+///
+/// CRLF input is built in-memory (committed fixtures would be git-normalized
+/// on checkout).
 #[test]
 fn fix_links_in_place_preserves_crlf() {
     let tmp = temp_file("md");
@@ -308,8 +313,9 @@ fn fix_links_in_place_preserves_crlf() {
 }
 
 /// `fix --include links --dry-run` over a `.rs` file with intra-doc links in
-/// several doc comments reports one link record per hoisted pair on stderr and
-/// leaves the file untouched.
+/// several doc comments leaves the file untouched.
+///
+/// It reports one link record per hoisted pair on stderr.
 #[test]
 fn fix_links_rs_dry_run_reports_intra_doc_records() {
     let tmp = temp_file("rs");
@@ -347,8 +353,9 @@ fn fix_links_rs_dry_run_reports_intra_doc_records() {
 }
 
 /// In-place `fix --include links` on the intra-doc repro produces the
-/// byte-exact per-comment definitions: no definition is emitted at EOF or on a
-/// non-doc-comment line.
+/// byte-exact per-comment definitions.
+///
+/// No definition is emitted at EOF or on a non-doc-comment line.
 #[test]
 fn fix_links_rs_in_place_produces_per_comment_defs() {
     let tmp = temp_file("rs");
@@ -369,9 +376,11 @@ fn fix_links_rs_in_place_produces_per_comment_defs() {
     );
 }
 
-/// A scratch crate embedding the intra-doc repro passes
-/// `cargo doc --document-private-items` with `RUSTDOCFLAGS="-D warnings"` after
-/// the fix, proving the per-comment rewritten output is doc-build clean.
+/// A scratch crate embedding the intra-doc repro is doc-build clean after the
+/// fix.
+///
+/// It passes `cargo doc --document-private-items` with
+/// `RUSTDOCFLAGS="-D warnings"`, proving the per-comment rewritten output.
 #[test]
 fn fix_links_rs_output_is_doc_build_clean() {
     let dir = temp_dir();
@@ -512,8 +521,10 @@ fn fix_recursive_directory_collects_md_and_rs() {
 }
 
 /// A JavaScript indexed call `items[i](count)` reads like an inline link but
-/// is call syntax. Even an explicit `--include links` leaves the file
-/// byte-unchanged with zero records.
+/// is call syntax.
+///
+/// Even an explicit `--include links` leaves the file byte-unchanged with zero
+/// records.
 #[test]
 fn js_indexed_call_stays_unchanged_even_with_links_included() {
     let original =
@@ -545,8 +556,9 @@ fn js_indexed_call_stays_unchanged_even_with_links_included() {
 }
 
 /// With `links.by_extension: { rs: 2 }`, a single-use doc-comment link in a
-/// `.rs` file is below the threshold: it stays byte-unchanged with no link
-/// record (dry-run), while a `.md` file at the default threshold 1 hoists.
+/// `.rs` file stays byte-unchanged with no link record (dry-run).
+///
+/// A `.md` file at the default threshold 1 hoists.
 #[test]
 fn links_by_extension_rs_two_leaves_single_use_rs_unchanged() {
     let dir = temp_dir();
@@ -649,8 +661,10 @@ fn links_global_min_two_suppresses_single_use_rs() {
 }
 
 /// Pipe-bearing lines that never form a GFM table stay byte-unchanged under
-/// the default run. Cases include Haskell guard runs, SQL `||` concatenation,
-/// and Lua comment notes without a delimiter row.
+/// the default run.
+///
+/// Cases include Haskell guard runs, SQL `||` concatenation, and Lua comment
+/// notes without a delimiter row.
 #[test]
 fn non_table_pipe_lines_stay_byte_unchanged() {
     for name in [
@@ -685,9 +699,10 @@ fn non_table_pipe_lines_stay_byte_unchanged() {
 // ── Per-language table fixtures ────────────────────────────────────
 
 /// One before/after pair per comment-prefix family, the C# `///`/`//`
-/// profile, and a markdown-family `.txt`: the default run realigns each
-/// table with its marker and indent kept, reports one record, and a second
-/// run emits zero records.
+/// profile, and a markdown-family `.txt`.
+///
+/// The default run realigns each table with its marker and indent kept,
+/// reports one record, and a second run emits zero records.
 #[test]
 fn table_fixtures_realign_with_marker_and_indent_kept() {
     let pairs = [

@@ -47,8 +47,10 @@ pub(crate) fn doc_regions(parsed: &ParseResult) -> Vec<DocRegion> {
             indented: false,
         };
         // A run continues while comment rows stay on adjacent (or equal)
-        // rows; any gap of a non-comment line ends it. A later comment
-        // can never rejoin the run: rows arrive in source order.
+        // rows; any gap of a non-comment line ends it.
+        //
+        // A later comment can never rejoin the run: rows arrive in source
+        // order.
         let continues = regions
             .last()
             .is_some_and(|region| row <= region.lines.last().expect("run holds a line").number);
@@ -66,6 +68,7 @@ pub(crate) fn doc_regions(parsed: &ParseResult) -> Vec<DocRegion> {
 
 /// Collects `(row, start_byte, end_byte)` of every `///` comment node in
 /// document order, walking the subtree depth-first on one reused cursor.
+///
 /// A fourth slash keeps the node an ordinary comment, so `////` runs
 /// never join a doc region.
 fn collect_doc_comments(
@@ -124,6 +127,7 @@ mod tests {
     fn idiomatic_xml_doc_yields_zero_findings() {
         let source = "\
 /// <summary>Loads a value for the key.</summary>
+///
 /// <param name=\"key\">The key to look up.</param>
 /// <exception cref=\"System.InvalidOperationException\">
 /// Thrown when the key is empty.
@@ -137,9 +141,11 @@ public string Load(string key) { return key; }
         assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
     }
 
-    /// The marker-scanner false-positive class: a doc run whose
-    /// marker-stripped lines join far past the paragraph budget stays
-    /// quiet because only text-node inner text is measured.
+    /// The marker-scanner false-positive class: only text-node inner
+    /// text is measured.
+    ///
+    /// A doc run whose marker-stripped lines join far past the paragraph
+    /// budget stays quiet.
     #[test]
     fn long_attribute_values_stay_quiet() {
         let doc_lines = [

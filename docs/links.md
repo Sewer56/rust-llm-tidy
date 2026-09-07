@@ -3,8 +3,9 @@
 ## What it does
 
 Replaces every eligible inline link `[text](url)` with the reference form
-`[text]` plus a `[text]: url` definition. Runs in `///` and `//!` doc
-comments and markdown-family files only.
+`[text]` plus a `[text]: url` definition.
+
+- Runs in `///` and `//!` doc comments and markdown-family files only.
 
 - Doc comments: each definition is duplicated into every comment using
   the label, so `cargo doc` stays clean.
@@ -57,9 +58,11 @@ rust-llm-tidy --exclude links src
 
 ## Change output
 
-Every run reports each hoisted link it applies (or would apply under
-`--dry-run`) as one record showing the before -> after substitution. In text
-mode the records print to stderr:
+Every run reports each hoisted link it applies as one record showing the
+before -> after substitution.
+
+- Under `--dry-run`, the same records report links it would apply.
+- In text mode the records print to stderr:
 
 ```text
 src/lib.rs: success[FIX]: `[A](http://x)` -> `[A]` (link)

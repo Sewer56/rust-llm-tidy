@@ -6,9 +6,11 @@ use ahash::AHashSet;
 use std::borrow::Cow;
 use tree_sitter::Node;
 
-/// Narrow bare `pub` items using cross-file module visibility (the file's
-/// effective floor from a [`ModuleTree`]) plus a crate-wide re-export guard
-/// ([`ReexportSet`]).
+/// Narrow bare `pub` items using cross-file module visibility plus a
+/// crate-wide re-export guard.
+///
+/// The cross-file visibility is the file's effective floor from a
+/// [`ModuleTree`]; the guard is a [`ReexportSet`].
 ///
 /// This is the sole entry point. A standalone file (no crate context) is
 /// narrowed with `floor = None` and a per-file re-export set built by the
@@ -75,9 +77,9 @@ pub fn narrow_vis_in_tree<'a>(
     let mut edits: Vec<(usize, usize, Cow<'a, str>)> = Vec::new();
     let names = crate_reexports.names();
 
-    // Top-level items: narrow against the file's tree floor. With `floor = None`
-    // (standalone, no crate context) this loop is skipped and only inline mods
-    // narrow via `walk()`.
+    // Top-level items: narrow against the file's tree floor.
+    // With `floor = None` (standalone, no crate context) this loop is
+    // skipped; inline mods narrow via `walk()`.
     if let Some(f) = floor {
         let count = root.named_child_count() as u32;
         for i in 0..count {

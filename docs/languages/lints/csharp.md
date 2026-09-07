@@ -27,16 +27,19 @@ Error-severity codes fail the run with a non-zero exit; warnings exit 0.
 ## Examples
 
 Each example shows the smallest common fix for its lint. The text
-lints measure `///` text-node inner text, and `<code>` and `<example>`
-subtrees are never measured.
+lints' shared rules: [text lints].
 
-The text lints' shared rules: [text lints].
+Measurement details for the text lints:
+
+- Lints measure `///` text-node inner text.
+- `<code>` and `<example>` subtrees are never measured.
 
 ### DOC001 - missing documentation
 
-A non-private documentable member has no `///` comment. Explicit
-`private` and modifier-less members pass; `internal` and
-`protected`-family count as non-private.
+A non-private documentable member has no `///` comment.
+
+- Explicit `private` and modifier-less members pass.
+- `internal` and `protected`-family count as non-private.
 
 Documentable kinds: classes, structs, interfaces, records, enums,
 delegates, methods, properties, events, fields, constructors.
@@ -424,8 +427,10 @@ Loader.cs:4: warning[TEXT003]: sentence is 26 words long.
 ### TEST001 - non-behavioral test name
 
 A `TestMethod`/`Test`/`Fact`/`Theory` method uses a `test_*`, `case_*`,
-or `test` + digits name. Marker attributes match with the `Attribute`
-suffix stripped, and names evaluate case-insensitively.
+or `test` + digits name.
+
+- Marker attributes match with the `Attribute` suffix stripped.
+- Names evaluate case-insensitively.
 
 Before:
 

@@ -268,10 +268,11 @@ fn lex_line(mut state: LexState, line: &str) -> Option<LexState> {
                 }
                 _ => i += 1,
             },
-            // Hole content walks by brace depth. Any quote or char
-            // literal inside a hole is outside the modeled lexicon
-            // (nested literals would desync the scan), so the whole scan
-            // rejects.
+            // Hole content walks by brace depth.
+            //
+            // Any quote or char literal inside a hole is outside the
+            // modeled lexicon (nested literals would desync the scan),
+            // so the whole scan rejects.
             LexState::InterpHole { verbatim, depth } => match bytes[i] {
                 b'"' | b'\'' => return None,
                 b'{' => {
@@ -301,9 +302,10 @@ fn lex_line(mut state: LexState, line: &str) -> Option<LexState> {
         }
     }
     // An unterminated regular string, char literal, or classic
-    // interpolated string is invalid source. Leaving its state would
-    // swallow following directive lines, so the line's end closes it
-    // (splitting conservatively).
+    // interpolated string is invalid source.
+    //
+    // Leaving its state would swallow following directive lines, so the
+    // line's end closes it (splitting conservatively).
     //
     // An interpolation hole reaching the line's end rejects the scan
     // instead. A hole spanning lines cannot be distinguished from an
@@ -674,8 +676,10 @@ mod tests {
     }
 
     /// Unbalanced conditionals reject the scan so callers degrade to a
-    /// no-op: a stray `#endif`/`#else`/`#elif`, an unclosed `#if`, and a
-    /// stray `#endif` after a balanced block.
+    /// no-op.
+    ///
+    /// Cases: a stray `#endif`/`#else`/`#elif`, an unclosed `#if`, and
+    /// a stray `#endif` after a balanced block.
     #[test]
     fn scan_rejects_unbalanced_conditionals() {
         let cases = [

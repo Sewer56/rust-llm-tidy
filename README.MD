@@ -86,8 +86,10 @@ allowed language runs the text lints only.
 #### JSON output
 
 Emit every lint finding and change record as one JSON array on stdout, in both
-in-place and `--dry-run` runs. Prints `[]` when there are no findings or
-changes, and still prints the document when the run exits non-zero:
+in-place and `--dry-run` runs.
+
+- Prints `[]` when there are no findings or changes
+- Still prints the document when the run exits non-zero:
 
 ```json
 [

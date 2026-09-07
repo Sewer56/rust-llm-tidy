@@ -5,9 +5,11 @@
 //!   common non-fence line before the full Unicode-aware pipeline runs.
 //! - [`parse_fence`]: exact fence parser for a trimmed line body.
 
-/// Cheaply decide whether `segment` could begin a fence under the full
-/// [`super::strip_comment_prefix`] + Unicode `body.trim_start()` pipeline for
-/// one prefix family.
+/// Cheaply decide whether `segment` could begin a fence for one prefix
+/// family.
+///
+/// The gate mirrors the full [`super::strip_comment_prefix`] + Unicode
+/// `body.trim_start()` pipeline.
 ///
 /// This is a sound superset gate. It returns `true` for every line the
 /// pipeline would treat as a fence. It also admits a few extras the pipeline

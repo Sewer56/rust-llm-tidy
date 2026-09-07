@@ -119,9 +119,11 @@ Error: found 1 error(s)
 
 ### DOC003 - vague `# Errors` section
 
-When non-empty, an `# Errors` section must contain text with `[` or `::`, the
-heuristic used to recognize a concrete error variant. Sections with an empty
-body slice are ignored; whitespace-only bodies still warn.
+When non-empty, an `# Errors` section must contain text with `[` or `::`.
+
+- `[` or `::` is the heuristic used to recognize a concrete error variant.
+- Sections with an empty body slice are ignored.
+- Whitespace-only bodies still warn.
 
 Before:
 
@@ -164,9 +166,15 @@ src/lib.rs:7: warning[DOC003]: `# Errors` section does not name any concrete err
 
 ### DOC004 - missing `# Arguments` section
 
-Public functions with named parameters need a recognized argument section:
-`# Arguments`, `# Argument`, `# Parameters`, `# Parameter`, `# Params`, or
-`# Param` (case-insensitive).
+Public functions with named parameters need a recognized argument section
+(case-insensitive):
+
+- `# Arguments`
+- `# Argument`
+- `# Parameters`
+- `# Parameter`
+- `# Params`
+- `# Param`
 
 Before:
 
@@ -201,9 +209,17 @@ src/lib.rs:1: warning[DOC004]: pub fn with parameters is missing a `# Arguments`
 
 ### DOC005 - undocumented parameter
 
-An `# Arguments`, `# Argument`, `# Parameters`, `# Parameter`, `# Params`, or
-`# Param` section must mention every named non-`self` parameter recognized by
-the parser.
+The argument section must mention every named non-`self` parameter
+recognized by the parser.
+
+Recognized sections (case-insensitive):
+
+- `# Arguments`
+- `# Argument`
+- `# Parameters`
+- `# Parameter`
+- `# Params`
+- `# Param`
 
 Before:
 
@@ -329,9 +345,11 @@ rust-llm-tidy --output-mode json src
 rust-llm-tidy --json src
 ```
 
-Print every lint finding and change record as one JSON array on stdout, in both
-in-place and `--dry-run` runs. Prints `[]` when there are no findings or
-changes, and still prints the document when the run exits non-zero:
+Every lint finding and change record is printed as one JSON array on stdout,
+in both in-place and `--dry-run` runs.
+
+- Prints `[]` when there are no findings or changes.
+- Still prints the document when the run exits non-zero.
 
 ```json
 [

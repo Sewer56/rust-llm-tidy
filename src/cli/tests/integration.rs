@@ -243,9 +243,10 @@ fn all_after_fixtures_should_be_idempotent_on_rerun() {
 }
 
 /// An in-place reorder of `reorder_cs_before.cs` writes the `_after`
-/// fixture byte-for-byte: members land in the profile order. The caller
-/// precedes its callee, and the trailing `using` hoists to the pinned
-/// using block.
+/// fixture byte-for-byte: members land in the profile order.
+///
+/// The caller precedes its callee, and the trailing `using` hoists to the
+/// pinned using block.
 #[test]
 fn csharp_member_reorder_matches_after_fixture() {
     let before = csharp_reorder_fixture_dir().join("reorder_cs_before.cs");
@@ -469,8 +470,9 @@ fn invalid_source_should_abort_with_error() {
 // ── Language tiers ────────────────────────────────────────────────
 
 /// TEXT005 end to end: the CLI warns once per untagged or bare-`ignore`
-/// opening fence. Warnings keep the exit code 0, and `--exclude TEXT005`
-/// silences both findings.
+/// opening fence. Warnings keep the exit code 0.
+///
+/// `--exclude TEXT005` silences both findings.
 #[test]
 fn lints_warn_on_untagged_fences_and_exclude_silences_them() {
     let source = "\
@@ -529,9 +531,10 @@ hidden
     let _ = fs::remove_file(&file);
 }
 
-/// Markdown-family siblings (`.markdown`, `.txt`, `.text`, `.mdx`, and the
-/// uppercase `.TXT` variant) behave exactly like `.md` on identical input:
-/// same fixed bytes, same stderr records and lint findings, same exit code.
+/// Markdown-family siblings behave exactly like `.md` on identical input.
+///
+/// Same fixed bytes, same stderr records and lint findings, same exit code.
+/// Siblings: `.markdown`, `.txt`, `.text`, `.mdx`, and uppercase `.TXT`.
 #[test]
 fn markdown_family_siblings_match_md_behavior() {
     // Exercises every markdown-family op plus a text lint: a misaligned
@@ -801,8 +804,10 @@ fn reorder_in_place(path: &std::path::Path, ext: &str) -> String {
 }
 
 /// In-place reorder of a CRLF source preserves every `\r\n` and reorders
-/// callers before callees. CRLF input is built in-memory (not from a
-/// committed fixture, which git would normalize on checkout).
+/// callers before callees.
+///
+/// CRLF input is built in-memory (not from a committed fixture, which git
+/// would normalize on checkout).
 #[test]
 fn reorder_in_place_preserves_crlf() {
     let source = "fn b() { a(); }\r\nfn a() {}\r\n";
@@ -1137,10 +1142,11 @@ fn temp_file() -> std::path::PathBuf {
     std::env::temp_dir().join(format!("rust-llm-tidy-file-{}-{}.rs", pid, seq))
 }
 
-/// Create a numbered temporary file path with the given extension, for
-/// fixture copies whose language the extension selects (`.cs`) and
-/// case-sensitivity tests that need `.RS`/`.MD`/`.TXT` (the local
-/// `temp_file` is fixed to `.rs`).
+/// Create a numbered temporary file path with the given extension.
+///
+/// Fixture copies use the extension to select the language (`.cs`);
+/// case-sensitivity tests need `.RS`/`.MD`/`.TXT` (the local `temp_file`
+/// is fixed to `.rs`).
 fn temp_file_ext(ext: &str) -> std::path::PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
@@ -1178,9 +1184,10 @@ fn binary() -> std::path::PathBuf {
         }
     }
 
-    // Fallback for direct runs: the test binary lives in `<profile>/deps/`
-    // (stable) or the build-out dir (newer Cargo). Both sit under the
-    // `<profile>` dir that holds the peer binary.
+    // Fallback for direct runs. The test binary lives in `<profile>/deps/`
+    // (stable) or the build-out dir (newer Cargo).
+    //
+    // Both sit under the `<profile>` dir that holds the peer binary.
     let mut dir = std::env::current_exe()
         .expect("current_exe must resolve")
         .parent()

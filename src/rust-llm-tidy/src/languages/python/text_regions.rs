@@ -19,7 +19,9 @@
 //! # Fail-closed
 //!
 //! A parse tree carrying error nodes produces no findings: a mis-scoped
-//! string in a broken tree would risk measuring string content as prose.
+//! string in a broken tree would risk measuring string content as
+//! prose.
+//!
 //! Invalid sources stay silent instead of guessed.
 //!
 //! [`DocRegion`]: crate::text::measurement::DocRegion
@@ -43,8 +45,9 @@ pub(crate) fn doc_regions(parsed: &ParseResult) -> Vec<DocRegion> {
     let mut run: Option<DocRegion> = None;
     walk(root, source, &mut regions, &mut run);
     // The module body is visited before its children, so its docstring
-    // lands ahead of leading comments that precede it in the file. A
-    // stable sort by first line restores source order.
+    // lands ahead of leading comments that precede it in the file.
+    //
+    // A stable sort by first line restores source order.
     regions.sort_by_key(|region| region.lines[0].number);
     regions
 }
@@ -221,6 +224,7 @@ fn docstring_region(body: tree_sitter::Node<'_>, source: &str) -> Option<DocRegi
     let raw_lines: Vec<&str> = content.split('\n').collect();
     // The docstring's continuation indent: the common leading whitespace
     // of the lines after the first, which sits at the body's own indent.
+    //
     // The first line starts right after the quotes and never carries it.
     let margin = raw_lines[1..]
         .iter()
@@ -250,8 +254,9 @@ fn docstring_region(body: tree_sitter::Node<'_>, source: &str) -> Option<DocRegi
 }
 
 /// Whether `node` is a body whose first statement may be its docstring:
-/// the module root, or the block of a class or function definition. Other
-/// blocks (`if`, `for`, `while`) never carry docstrings.
+/// the module root, or the block of a class or function definition.
+///
+/// Other blocks (`if`, `for`, `while`) never carry docstrings.
 fn is_docstring_body(node: tree_sitter::Node<'_>) -> bool {
     match node.kind() {
         "module" => true,
@@ -377,7 +382,9 @@ mod tests {
 
     // A triple-quoted string that is not a first statement is string
     // content: assigned, second-statement, and block-local strings never
-    // measure. The real module docstring and comment run do.
+    // measure.
+    //
+    // The real module docstring and comment run do.
     //
     // The in-string payloads are plain prose that crosses the paragraph
     // budget - `#`-led filler would read as headings and stay exempt if
@@ -416,8 +423,10 @@ mod tests {
     // ── Comment coverage ──
 
     // Standalone `#` comment runs measure as one paragraph per run, and
-    // a trailing comment is its own region: fragments never pool. The
-    // fragments join past the paragraph budget, so pooling would fire.
+    // a trailing comment is its own region.
+    //
+    // Fragments never pool: they join past the paragraph budget, so
+    // pooling would fire.
     #[test]
     fn comment_runs_measure_and_trailing_comments_isolate() {
         let fragment = "fragments of trailing comments that must never pool into one paragraph";

@@ -212,9 +212,10 @@ fn find_cargo_toml(start: &Path) -> anyhow::Result<PathBuf> {
     anyhow::bail!("no Cargo.toml found walking up from {}", start.display())
 }
 
-/// Resolve top-level `mod` items of one file into children. Edition path rules:
-/// both editions prefer `foo.rs` over `foo/mod.rs` (mod.rs is the deprecated
-/// fallback).
+/// Resolve top-level `mod` items of one file into children.
+///
+/// Edition path rules: both editions prefer `foo.rs` over `foo/mod.rs`
+/// (mod.rs is the deprecated fallback).
 ///
 /// `#[path = "..."]` overrides normal resolution. `#[cfg]`-gated mods are
 /// treated as present. Unresolved `mod foo;` and missing `#[path]` targets
@@ -313,9 +314,11 @@ fn find_path_attr(attrs: &[Node], source: &str) -> Option<String> {
         let Some(attr) = child_of_kind(*a, "attribute") else {
             continue;
         };
-        // The attribute name is the first named child (an `identifier` for a
-        // bare `path`; `crate::path` is a `scoped_identifier` and ignored here,
-        // matching syn's `path().is_ident("path")`).
+        // The attribute name is the first named child.
+
+        // A bare `path` is an `identifier`; `crate::path` is a
+        // `scoped_identifier` and is ignored here, matching syn's
+        // `path().is_ident("path")`.
         let Some(first) = attr.named_child(0) else {
             continue;
         };
@@ -361,9 +364,10 @@ fn resolve_mod_file(
     None
 }
 
-/// Capture a `visibility_modifier` node's text verbatim from `source` when it
-/// is restricted (`pub(crate)`/`pub(super)`/`pub(in path)`). `None` for bare
-/// `pub` and private (no visibility).
+/// Capture a `visibility_modifier` node's text verbatim from `source`.
+///
+/// Captured only when restricted: `pub(crate)`/`pub(super)`/`pub(in path)`.
+/// Returns `None` for bare `pub` and private (no visibility).
 ///
 /// Uses byte-exact span slicing mirroring `walk()`. tree-sitter yields byte
 /// offsets directly, so no line/column conversion is needed (the prior

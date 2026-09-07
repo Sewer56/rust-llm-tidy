@@ -88,9 +88,11 @@ impl Declaration<'_> {
     }
 }
 
-/// Run every C# check over `parsed` and return all diagnostics in document
-/// order. The declaration checks run first, then the text checks (TEXT*)
-/// over the same parse's doc regions.
+/// Run every C# check over `parsed`, returning all diagnostics in document
+/// order.
+///
+/// The declaration checks run first, then the text checks (TEXT*) over the
+/// same parse's doc regions.
 ///
 /// Returns no diagnostics when the parse tree carries error nodes: a
 /// broken tree would report findings against misread declarations. The

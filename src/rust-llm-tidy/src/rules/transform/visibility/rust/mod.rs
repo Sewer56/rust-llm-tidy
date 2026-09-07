@@ -1,6 +1,7 @@
-//! Rust-only visibility narrowing: bare `pub` items inside
-//! restricted-visibility modules are narrowed to the module's visibility,
-//! via cross-file module-tree resolution.
+//! Rust-only visibility narrowing via cross-file module-tree resolution.
+//!
+//! Bare `pub` items inside restricted-visibility modules are narrowed to the
+//! module's visibility.
 //!
 //! A `pub` item inside a `pub(crate)` module is effectively `pub(crate)` -
 //! the bare `pub` keyword overstates the item's reachability.
@@ -94,9 +95,11 @@ impl ReexportSet {
     }
 }
 
-/// Build a crate-wide [`ReexportSet`] by scanning every parsed file's `pub use`
-/// items (top-level and nested in inline modules). Mirrors the shared
-/// `collect_reexports` (private, same logic) but unions across all files.
+/// Build a crate-wide [`ReexportSet`] from every parsed file's `pub use` items
+/// (top-level and nested in inline modules).
+///
+/// Mirrors the shared `collect_reexports` (private, same logic) but unions
+/// across all files.
 ///
 /// This is the hard-correctness gate's data source: a missed cross-file
 /// re-export turns a safe narrowing into a soundness bug. The caller MUST
@@ -142,9 +145,11 @@ pub(crate) fn visibility_node<'a>(node: Node<'a>) -> Option<Node<'a>> {
     None
 }
 
-/// Collect the simple names re-exported by any `pub use` (bare-`pub` visibility)
-/// found at any depth in `container` - top-level and inside inline modules. A
-/// glob (`pub use p::*`) records the sentinel "*".
+/// Collect the simple names re-exported by any `pub use` (bare-`pub`
+/// visibility) at any depth in `container`.
+///
+/// Depth includes top-level and inline modules. A glob (`pub use p::*`)
+/// records the sentinel "*".
 ///
 /// The set is allocated lazily via the `Option`: it stays `None` (no
 /// allocation) for files with no `pub use`, which is the common case.
@@ -172,9 +177,10 @@ fn collect_reexports(container: Node, source: &[u8], out: &mut Option<AHashSet<S
     }
 }
 
-/// Parse `source` with the Rust backend's grammar. The returned [`Tree`]
-/// stores byte offsets (not references), so it stays valid for the caller's
-/// source bytes as long as those bytes are not mutated.
+/// Parse `source` with the Rust backend's grammar.
+///
+/// The returned [`Tree`] stores byte offsets (not references), so it stays
+/// valid for the caller's source bytes as long as those bytes are not mutated.
 fn parse(source: &str) -> anyhow::Result<Tree> {
     // Visibility consumes only nodes, not the backend's shared item model.
     let mut parser = tree_sitter::Parser::new();
@@ -248,17 +254,20 @@ fn collect_use_clause(node: Node, source: &[u8], out: &mut AHashSet<String>) {
     }
 }
 
-/// True when a `visibility_modifier` node is a bare `pub` (no restriction). The
-/// `pub` keyword is an anonymous token, so a bare `pub` has zero named
+/// True when a `visibility_modifier` node is a bare `pub` (no restriction).
+///
+/// The `pub` keyword is an anonymous token, so a bare `pub` has zero named
 /// children; `pub(crate)`/`pub(super)`/`pub(in path)` each have one named child.
 #[inline]
 fn is_bare_pub(vis: Node<'_>) -> bool {
     vis.named_child_count() == 0
 }
 
-/// Last path-segment text of a path node (`identifier`/`type_identifier`, or the
-/// `name` field of a `scoped_identifier`). `None` for non-path nodes - mirroring
-/// syn, which only matched `Type::Path`.
+/// Last path-segment text of a path node (`identifier`/`type_identifier`, or
+/// the `name` field of a `scoped_identifier`).
+///
+/// `None` for non-path nodes - mirroring syn, which only matched
+/// `Type::Path`.
 fn last_segment_text<'a>(node: Node<'a>, source: &'a [u8]) -> Option<&'a str> {
     match node.kind() {
         "identifier" | "type_identifier" => node.utf8_text(source).ok(),

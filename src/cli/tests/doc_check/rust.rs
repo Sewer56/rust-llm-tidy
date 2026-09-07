@@ -270,9 +270,11 @@ fn doc006_placeholders() {
 // ── Text budgets ─────────────────────────────────────────────────
 
 /// Rust block and attribute doc prose fires the text budgets with
-/// original file lines: TEXT001 errors on the over-budget `/** */` and
-/// `#[doc = "..."]` paragraphs, and TEXT002 warns on the 81-char block
-/// and attribute lines.
+/// original file lines.
+///
+/// - TEXT001 errors on the over-budget `/** */` and `#[doc = "..."]`
+///   paragraphs.
+/// - TEXT002 warns on the 81-char block and attribute lines.
 #[test]
 fn rs_block_and_attribute_docs_fire_text_budgets() {
     let (stderr, exit) = run_rust_fixture("text-001_text-002_block_attr_budgets.rs");
@@ -311,8 +313,10 @@ fn rs_block_and_attribute_docs_fire_text_budgets() {
 }
 
 /// The CLI's rendered rs findings equal the Rust backend's lint
-/// composition over the same file. That composition is the item rules
-/// (DOC*, TEST001) plus the rs text checks.
+/// composition over the same file.
+///
+/// That composition is the item rules (DOC*, TEST001) plus the rs text
+/// checks.
 ///
 /// The rs text checks cover line comments plus `/** */` and
 /// `#[doc = "..."]` docs.

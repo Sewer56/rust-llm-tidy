@@ -48,9 +48,10 @@ pub(crate) struct Declaration<'a> {
     pub(crate) param_scan: Option<(Vec<String>, Vec<String>)>,
 }
 
-/// Collect the facts of every declaration under `list` (a
-/// `compilation_unit` or `declaration_list`) in document order, recursing
-/// into nested bodies and preprocessor branches.
+/// Collect the facts of every declaration under `list` in document order.
+///
+/// `list` is a `compilation_unit` or `declaration_list`; collection
+/// recurses into nested bodies and preprocessor branches.
 pub(crate) fn collect_children<'a>(
     list: tree_sitter::Node<'a>,
     source: &'a str,
@@ -149,8 +150,9 @@ fn collect_declaration<'a>(
         return;
     }
 
-    // Shared facts: computed once per declaration, never per rule. The
-    // <exception> facts are stamped in `run` after the can-throw
+    // Shared facts, computed once per declaration rather than per rule.
+    //
+    // The <exception> facts are stamped in `run` after the can-throw
     // closure, which needs every declaration first.
     let non_private = visibility_of(node, source).is_some_and(|vis| vis != VisibilityTier::Private);
     let docs = doc_comment_texts(node, source);
@@ -166,9 +168,11 @@ fn collect_declaration<'a>(
         kind,
         name: declaration_name(node, source),
         type_name: type_name.map(str::to_owned),
-        // The `///` doc run's line when present, else the declaration's own
-        // row; doc_run_start_line shares the parse module's adjacency
-        // contract with span building and doc collection.
+        // The `///` doc run's line when present, else the declaration's
+        // own row.
+        //
+        // doc_run_start_line shares the parse module's adjacency contract
+        // with span building and doc collection.
         line: doc_run_start_line(node, source).unwrap_or_else(|| node.start_position().row + 1),
         docs,
         non_private,

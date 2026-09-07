@@ -35,9 +35,10 @@ pub struct Diagnostic {
 ///
 /// # Remarks
 ///
-/// Adding `Hint` is additive, not free for every consumer. Exhaustive
-/// downstream matches on this enum need a new arm, and strict severity
-/// parsers must accept the `hint` value.
+/// Adding `Hint` is additive, not free for every consumer.
+///
+/// - Exhaustive downstream matches on this enum need a new arm.
+/// - Strict severity parsers must accept the `hint` value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Severity {
     /// A gating finding (missing docs, missing `# Errors` section).

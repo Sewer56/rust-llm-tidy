@@ -117,9 +117,11 @@ mod tests {
 
     #[test]
     fn crlf_to_lf_flip_rejected() {
-        // Same content, different dominant ending: the additive guard rejects
-        // a CRLF -> LF flip even though every non-blank line survives. The old
-        // `str::lines()` multiset alone could not detect this.
+        // The additive guard rejects a CRLF -> LF flip with different
+        // dominant ending, even though every non-blank line survives.
+        //
+        // Same content alone does not pass: the old `str::lines()` multiset
+        // could not detect this flip.
         assert!(verify_line_preservation("a\r\nb\r\n", "a\nb\n").is_err());
     }
 

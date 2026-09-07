@@ -25,7 +25,9 @@ pub struct TypeMember {
     /// newline.
     pub end: usize,
     /// Preprocessor region id: member reordering permutes only within one
-    /// region id, so no member crosses a conditional boundary. `0` for
+    /// region id.
+    ///
+    /// No member crosses a conditional boundary as a result. `0` for
     /// languages without preprocessor conditionals.
     region: u32,
     /// The kind of this member.

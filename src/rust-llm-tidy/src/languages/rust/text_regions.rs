@@ -52,9 +52,11 @@ enum DocNode<'a> {
 ///
 /// # Returns
 ///
-/// Diagnostics grouped by rule, in source order within each group:
-/// TEXT001 per over-limit paragraph, then TEXT002 per over-limit line,
-/// then TEXT003 per over-limit sentence.
+/// Diagnostics grouped by rule, in source order within each group.
+///
+/// - TEXT001 per over-limit paragraph
+/// - TEXT002 per over-limit line
+/// - TEXT003 per over-limit sentence
 #[cfg(test)]
 pub(crate) fn text_checks(parsed: &ParseResult) -> Vec<Diagnostic> {
     run_region_checks(doc_regions(parsed))
@@ -150,9 +152,10 @@ fn merge_regions(marker: Vec<DocRegion>, tree: Vec<DocRegion>) -> Vec<DocRegion>
     merged
 }
 
-/// One doc attribute's measured lines: the value's text split on its
-/// literal newlines, each line keeping its original number. The
-/// conventional leading space goes with the quote, so `#[doc = "
+/// One doc attribute's measured lines, split on the value's literal
+/// newlines with each line keeping its original number.
+///
+/// The conventional leading space goes with the quote, so `#[doc = "
 /// text"]` measures like `/// text`.
 ///
 /// The value's text arrives in `string_content` fragments split by
@@ -173,10 +176,11 @@ fn attribute_lines(content: tree_sitter::Node<'_>, source: &str) -> Vec<RegionLi
         .collect()
 }
 
-/// One outer block doc comment as a block-doc region: the `doc` child's
-/// text split into lines with original numbers, each trimmed to its
-/// prose. The block doc dialect then strips the `*` continuations and
-/// exempts tagged and indented lines.
+/// One outer block doc comment as a block-doc region.
+///
+/// The `doc` child's text splits into lines with original numbers,
+/// each trimmed to its prose. The block doc dialect then strips the
+/// `*` continuations and exempts tagged and indented lines.
 fn block_doc_region(content: tree_sitter::Node<'_>, source: &str) -> DocRegion {
     DocRegion {
         dialect: Dialect::BlockDoc,
@@ -253,8 +257,9 @@ fn content_fragments<'a>(
 }
 
 /// The content node's text as `(1-based line number, line text)` pairs,
-/// numbered from the node's own row. A value or block spanning lines
-/// keeps each line's original number.
+/// numbered from the node's own row.
+///
+/// A value or block spanning lines keeps each line's original number.
 ///
 /// Lazy, so callers consume each borrowed line once with no
 /// intermediate collection.
@@ -302,9 +307,10 @@ mod tests {
     // ── Line-comment parity ──
 
     /// Without block or attribute docs the producer is the line-marker
-    /// producer: identical diagnostics, so `///`/`//!`/`//` output is
-    /// unchanged. The source fires both codes, so the equality compares
-    /// real findings, not two empty vectors.
+    /// producer: `///`/`//!`/`//` output is unchanged.
+    ///
+    /// The source fires both codes, so the equality compares real
+    /// findings, not two empty vectors.
     #[test]
     fn line_comment_sources_match_the_line_marker_checks() {
         let line = prose_line();
@@ -455,8 +461,9 @@ mod tests {
     }
 
     /// A trailing doc attribute (`#[doc = "..."] fn f() {}`) ends its
-    /// item's doc: the next item's attribute never joins it, so four
-    /// under-budget docs on consecutive rows stay quiet.
+    /// item's doc: the next item's attribute never joins it.
+    ///
+    /// Four under-budget docs on consecutive rows therefore stay quiet.
     #[test]
     fn trailing_doc_attributes_never_join_across_items() {
         let line = prose_line();

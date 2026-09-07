@@ -59,9 +59,11 @@ pub(super) fn doc_block_key(prefix: &str) -> Option<&str> {
     }
 }
 
-/// Iterate hoist-eligible inline links in one body (see [`parse_inline_link`]
-/// for the label rule). Scanning resumes one byte past each rejected `[`, so
-/// a badge's declined outer link still yields its flat inner image.
+/// Iterate hoist-eligible inline links in one body.
+///
+/// See [`parse_inline_link`] for the label rule. Scanning resumes one byte
+/// past each rejected `[`, so a badge's declined outer link still yields its
+/// flat inner image.
 #[inline]
 pub(super) fn inline_links(body: &str) -> impl Iterator<Item = InlineLink<'_>> {
     let mut next = 0usize;
@@ -83,9 +85,10 @@ pub(super) fn inline_links(body: &str) -> impl Iterator<Item = InlineLink<'_>> {
     })
 }
 
-/// True when `body` is a complete CommonMark link reference definition:
-/// `[label]: destination` plus an optional quoted or parenthesized title, with
-/// nothing else on the line.
+/// True when `body` is a complete CommonMark link reference definition.
+///
+/// The form is `[label]: destination` plus an optional quoted or
+/// parenthesized title, with nothing else on the line.
 ///
 /// Shares [`parse_definition`] with [`definition_text`], so both agree on
 /// what counts as a definition.
@@ -94,6 +97,7 @@ pub(super) fn is_reference_definition(body: &str) -> bool {
 }
 
 /// Iterate line segments as `(start, segment)`, retaining each terminator.
+///
 /// Uses `memchr` so every input byte participates in one vectorized newline
 /// search instead of `str::split`'s character-pattern state machine.
 #[inline]
@@ -112,8 +116,9 @@ pub(super) fn line_segments(input: &str) -> impl Iterator<Item = (usize, &str)> 
         })
 }
 
-/// Update the open-fence stack for the (doc-prefix-stripped) line `body` and
-/// report whether it is a fence delimiter line (an opener or its closer).
+/// Update the open-fence stack for the (doc-prefix-stripped) line `body`.
+/// Reports whether it is a fence delimiter line (an opener or its closer).
+///
 /// Reuses the byte-exact [`parse_fence`] for recognition.
 ///
 /// Follows CommonMark block structure: while a fence is open, every other
@@ -144,9 +149,11 @@ pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
         return false;
     };
     match stack.last() {
-        // A fence is open: only a matching closer (same marker, run at least as
-        // long as the opener's, empty info string) ends it. Anything else is
-        // block content, so the marker run is ignored.
+        // A fence is open: only a matching closer ends it.
+        //
+        // A closer is the same marker, a run at least as long as the
+        // opener's, and an empty info string. Anything else is block
+        // content, so the marker run is ignored.
         Some(&(open_marker, open_len)) => {
             let is_closer = info.is_empty() && open_marker == marker && open_len <= run_len;
             if is_closer {
@@ -191,9 +198,11 @@ pub(super) fn parse_inline_link(body: &str, open: usize) -> Option<(&str, &str, 
     if escapes % 2 == 1 {
         return None;
     }
-    // Walk to the matching `]`, allowing balanced nested `[ ]`. The same pass
-    // tracks whether the text qualifies as a hoisted label: flat (no bracket
-    // bytes inside the text) and non-blank (a non-space/tab byte).
+    // Walk to the matching `]`, allowing balanced nested `[ ]`.
+    //
+    // The same pass tracks whether the text qualifies as a hoisted label:
+    // flat (no bracket bytes inside the text) and non-blank (a non-space/tab
+    // byte).
     let mut depth = 1usize;
     let mut flat = true;
     let mut non_blank = false;
@@ -282,8 +291,10 @@ fn is_fence_candidate_body(body: &str) -> bool {
 }
 
 /// Parse the leading-whitespace-trimmed `s` as one complete CommonMark link
-/// reference definition. A definition is `[label]: destination` plus an
-/// optional quoted or parenthesized title, with nothing else on the line.
+/// reference definition.
+///
+/// A definition is `[label]: destination` plus an optional quoted or
+/// parenthesized title, with nothing else on the line.
 ///
 /// Returns the label. Any malformed form (blank label, unescaped bracket in
 /// the label, invalid destination, glued title, trailing junk) is paragraph
@@ -312,9 +323,10 @@ fn parse_definition(s: &str) -> Option<&str> {
     // whether present or not.
     let rest = rest.trim_start();
     let dest_len = parse_destination(rest)?;
-    // Optional title, then only whitespace to end-of-line. A title must be
-    // separated from the destination by whitespace (CommonMark), which the
-    // angle form does not get for free.
+    // Optional title, then only whitespace to end-of-line.
+    //
+    // A title must be separated from the destination by whitespace
+    // (CommonMark), which the angle form does not get for free.
     let after_dest = &rest[dest_len..];
     let tail = after_dest.trim_start();
     if !after_dest.is_empty() && tail.len() == after_dest.len() {
@@ -333,9 +345,11 @@ fn parse_definition(s: &str) -> Option<&str> {
     tail[end + 2..].trim().is_empty().then_some(text)
 }
 
-/// Index of the `]` closing a label opened before `after`: the first `]` not
-/// preceded by a backslash escape (CommonMark). `\\]` does not close, and an
-/// unescaped nested `[` can never belong to a label.
+/// Index of the `]` closing a label opened before `after`: the first `]`
+/// not preceded by a backslash escape (CommonMark).
+///
+/// `\\]` does not close, and an unescaped nested `[` can never belong to a
+/// label.
 #[inline]
 fn closing_bracket(after: &str) -> Option<usize> {
     let bytes = after.as_bytes();

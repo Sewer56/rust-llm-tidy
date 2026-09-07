@@ -22,11 +22,11 @@
 //! # Members
 //!
 //! A body (namespace, class, struct, interface, record) emits members
-//! only when its declaration list holds no preprocessor directive. The
-//! grammar groups `#if`/`#else`/`#endif` runs into single `preproc_*`
-//! nodes.
+//! only when its declaration list holds no preprocessor directive.
 //!
-//! Other directives (`#region`, `#define`, ...) are standalone nodes.
+//! - The grammar groups `#if`/`#else`/`#endif` runs into single
+//!   `preproc_*` nodes.
+//! - Other directives (`#region`, `#define`, ...) are standalone nodes.
 //!
 //! A body carrying any of them is kept whole rather than permuted: a
 //! directive must never move independently of the code it governs.
