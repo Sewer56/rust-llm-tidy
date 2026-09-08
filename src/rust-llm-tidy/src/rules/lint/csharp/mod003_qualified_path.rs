@@ -1,7 +1,108 @@
 //! `MOD003`: shorten qualified names to make code easier to read.
 //!
-//! Imports affect advice, not eligibility. Unknown expression receivers,
-//! conditional methods, attributes, and import text are exempt.
+//! A qualified name spells out where a name lives, such as `System.Console`.
+//! This rule reads the file's syntax and emits hints; it does not rewrite code
+//! or ask the compiler to resolve names.
+//!
+//! # Explanation 1: reuse an existing import
+//!
+//! A plain `using` lets the replacement omit the namespace prefix.
+//!
+//! The walker tracks imports and names in nested scopes, then looks for the
+//! longest import matching the beginning of a name.
+//!
+//! ```csharp
+//! using System;
+//!
+//! System.Console.WriteLine("before");
+//! Console.WriteLine("after");
+//! ```
+//!
+//! Here, `using System;` makes `Console` available without `System.`. An alias
+//! instead supplies a replacement name: with `using Log = System.Console;`,
+//! the hint suggests `Log.WriteLine("before")`.
+//!
+//! # Explanation 2: suggest a missing import
+//!
+//! Without a matching import, the rule can suggest an alias at namespace or
+//! file scope.
+//!
+//! For an expression, it aliases the first two segments and keeps
+//! the rest, rather than trying to import a method or property.
+//!
+//! ```csharp
+//! // Before: no import is needed for the long spelling.
+//! System.Console.WriteLine("hello");
+//! ```
+//!
+//! ```csharp
+//! // After: alias the type, not its method `WriteLine`.
+//! using Console = System.Console;
+//!
+//! Console.WriteLine("hello");
+//! ```
+//!
+//! `System` is a known namespace root. Other roots need evidence from imports,
+//! namespace declarations, or qualified names used as types; a dotted expression
+//! alone could just be an object's members.
+//!
+//! # Code walkthrough: start at `check`
+//!
+//! Read these functions in call order, not their order in the file.
+//!
+//! 1. [`check`] receives an already-parsed file. It creates a [`Walker`], visits
+//!    the syntax tree, and returns the collected diagnostics.
+//! 2. [`Walker::collect_roots`] gathers possible namespace roots from imports,
+//!    namespace declarations, and qualified type names. These join
+//!    [`ROOT_SEGMENTS`] before any expressions are checked.
+//! 3. [`Walker::walk`] visits syntax nodes recursively. Entering a scope pushes
+//!    a [`ScopeFrame`]; leaving a nested scope pops it.
+//! 4. [`is_chain_head`] selects the outermost node of a dotted chain. For
+//!    `System.Console.WriteLine`, this avoids separate hints for shorter prefixes.
+//!    [`Walker::record_occurrence`] then checks the name's eligibility.
+//! 5. [`Walker::covering_import`] finds the longest visible import prefix.
+//!    [`Walker::suggestion_under`] removes a plain import's prefix or replaces
+//!    an aliased prefix with its alias.
+//! 6. [`Walker::record_occurrence`] adds a hint only when it has advice.
+//!    [`Walker::enclosing_item`] supplies the containing item's kind and name;
+//!    the name node supplies the line number. [`check`] returns these hints.
+//!
+//! ## What the stored data means
+//!
+//! - [`Walker`]: source bytes, known roots, active scopes, and accumulated hints
+//! - [`ScopeFrame`]: imports and bound names in one active scope
+//! - [`Import`]: an imported path, its name, and whether it is an alias
+//! - [`Binding`]: a declared name and the position where it starts counting
+//! - [`Suggestion`]: the import's name for the hint and the replacement text
+//!
+//! The scope stack models nested visibility, not compiler name resolution.
+//!
+//! [`frame_mentions`] asks whether a scope uses a name; [`frame_shadows`] asks
+//! whether it conflicts with the proposed import.
+//!
+//! Imports and declaration names are collected before visiting a scope's children.
+//! A binding's `start` value distinguishes scope-wide declarations from locals
+//! that count only from their position.
+//!
+//! Without a covering import, `record_occurrence` builds the alias advice
+//! shown in Explanation 2. It also rejects roots bound to a local or declaration.
+//!
+//! ## Trace the first example
+//!
+//! `collect_usings` records `using System;` as a plain import, not an alias.
+//!
+//! `name_segments` splits the call's name into `System`, `Console`, `WriteLine`.
+//!
+//! The covering import matches `System`. `suggestion_under` removes that prefix,
+//! leaving `Console.WriteLine`, provided the short name does not conflict.
+//!
+//! Next: open [`check`], then follow [`Walker::walk`] to
+//! [`Walker::record_occurrence`] with this example in mind.
+//!
+//! # Remarks
+//!
+//! Hints are withheld for conflicting short names, unknown expression receivers,
+//! conditional methods or regions, attributes, and import text.
 
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::CODE_QUALIFIED_PATH;

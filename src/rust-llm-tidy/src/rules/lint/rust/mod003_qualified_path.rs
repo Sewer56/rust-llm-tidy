@@ -1,4 +1,105 @@
 //! `MOD003`: shorten qualified paths to make code easier to read.
+//!
+//! A qualified path spells out where a name lives, such as `std::sync::Arc`.
+//! This rule reads the file's syntax and emits hints; it does not rewrite code
+//! or ask the compiler to resolve names.
+//!
+//! # Explanation 1: reuse an existing import
+//!
+//! An import gives a long path a short name.
+//!
+//! The walker tracks imports and names in nested scopes, then looks for the
+//! longest import matching the beginning of a path.
+//!
+//! ```rust
+//! use std::sync::Arc;
+//!
+//! let before = std::sync::Arc::new(42);
+//! let after = Arc::new(42);
+//! ```
+//!
+//! Here, `use std::sync::Arc;` already supplies `Arc`, so the hint replaces
+//! only `std::sync::Arc`; `::new` stays. An import alias works the same way:
+//! `use std::sync::Arc as Shared;` makes the replacement `Shared::new(42)`.
+//!
+//! # Explanation 2: suggest a missing import
+//!
+//! Without a matching import, the rule can suggest adding one at module scope.
+//!
+//! It uses naming conventions: the first uppercase segment is treated as a
+//! type or trait, so later segments stay on the replacement.
+//!
+//! ```rust
+//! // Before: no import is needed for the long spelling.
+//! let before = std::sync::Arc::new(42);
+//! ```
+//!
+//! ```rust
+//! // After: import the type, not its associated function `new`.
+//! use std::sync::Arc;
+//!
+//! let after = Arc::new(42);
+//! ```
+//!
+//! # Code walkthrough: start at `check`
+//!
+//! Read these functions in call order, not their order in the file.
+//!
+//! 1. [`check`] receives an already-parsed file. It creates a [`Walker`], visits
+//!    the syntax tree, and returns the collected diagnostics.
+//! 2. [`Walker::collect_roots`] gathers possible path beginnings from imports.
+//!    These join [`ROOT_SEGMENTS`], such as `std` and `crate`. This first pass
+//!    lets an import below a use site contribute evidence above it.
+//! 3. [`Walker::walk`] visits syntax nodes recursively. Entering a scope pushes
+//!    a [`ScopeFrame`]; leaving a nested scope pops it.
+//! 4. [`is_chain_head`] selects the outermost node of a path. For
+//!    `std::sync::Arc::new`, this avoids separate hints for each shorter prefix.
+//!    [`Walker::record_occurrence`] splits that node into segments and checks
+//!    whether the path is eligible.
+//! 5. [`Walker::covering_import`] finds the longest visible import prefix.
+//!    [`Walker::suggestion_under`] builds a replacement when that import's
+//!    short name is usable.
+//! 6. [`Walker::record_occurrence`] adds a hint only when it has advice.
+//!    [`Walker::enclosing_item`] supplies the containing item's kind and name;
+//!    the path node supplies the line number. [`check`] returns these hints.
+//!
+//! ## What the stored data means
+//!
+//! - [`Walker`]: source bytes, known roots, active scopes, and accumulated hints
+//! - [`ScopeFrame`]: imports and bound names in one active scope
+//! - [`Import`]: a full imported path and its short name or alias
+//! - [`Binding`]: a declared name and the position where it starts counting
+//! - [`Suggestion`]: the short name used and the replacement text
+//!
+//! The scope stack models nested visibility, not compiler name resolution.
+//!
+//! [`frame_mentions`] asks whether a scope uses a name; [`frame_shadows`] asks
+//! whether it conflicts with the proposed import.
+//!
+//! Imports and item names are collected before visiting a scope's children.
+//! Their declarations can appear after their uses. A binding's `start` value
+//! distinguishes scope-wide items from locals that count only from their position.
+//!
+//! Without a covering import, [`use_path`] chooses what to import, as shown
+//! in Explanation 2.
+//!
+//! ## Trace the first example
+//!
+//! `collect_use` turns `use std::sync::Arc;` into an import whose short name is
+//! `Arc`.
+//!
+//! `scoped_segments` turns the call's path into `std`, `sync`, `Arc`, `new`.
+//!
+//! The covering import matches the first three segments. `suggestion_under`
+//! joins `Arc` to the remaining `new`, producing `Arc::new`.
+//!
+//! Next: open [`check`], then follow [`Walker::walk`] to
+//! [`Walker::record_occurrence`] with this example in mind.
+//!
+//! # Remarks
+//!
+//! Hints are withheld for conflicting short names and exempt syntax, including
+//! imports, macros, attributes, and conditionally compiled regions or functions.
 
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::CODE_QUALIFIED_PATH;
