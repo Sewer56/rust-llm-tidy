@@ -431,7 +431,6 @@ src/lib.rs:1: warning[TEST001]: test function `test_foo` should use a behavioral
 
 `TEST001` is warning-severity, so the run exits 0.
 
-D
 ### MOD001 - oversized module
 
 Warn once when a code file exceeds the line budget (default 500).
