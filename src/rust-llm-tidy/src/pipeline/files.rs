@@ -47,6 +47,7 @@ pub(crate) struct VisContext {
 ///   `passive_narration.suppress_in_release_notes` setting; suppresses
 ///   TEXT007 narration markers in release and migration notes
 /// - `module_size`: resolved MOD001 eligibility and counting options
+/// - `method_length`: resolved LEN001 `max_lines` threshold
 /// - `index`: refreshed C# facts and cached parses for this run
 ///
 /// # Errors
@@ -56,6 +57,7 @@ pub(crate) fn check_file(
     disabled: &HashSet<String>,
     suppress_in_release_notes: bool,
     module_size: ModuleSizeConfig,
+    method_length: crate::config::MethodLengthConfig,
     index: Option<&csharp_index::CSharpIndex>,
 ) -> anyhow::Result<Vec<(PathBuf, Diagnostic)>> {
     let source =
@@ -92,6 +94,14 @@ pub(crate) fn check_file(
                 module_size.include_in_file_tests,
                 module_size.include_test_files,
                 module_size.exclude_module_headers,
+            ));
+        }
+        // LEN001 walks the retained Rust tree and consumes a config
+        // threshold, so it runs at this seam like MOD001. Rust only.
+        if paths::ext_in(Some(ext), &["rs"]) && !disabled.contains(check::CODE_LEN001) {
+            diagnostics.extend(check::rust::len001_method_length::check(
+                parsed,
+                method_length.max_lines,
             ));
         }
     }

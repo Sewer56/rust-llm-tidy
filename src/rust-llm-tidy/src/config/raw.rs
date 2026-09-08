@@ -1,6 +1,8 @@
 //! Deserialized `.rust-llm-tidy.yml` model (`Config`) and its rule groups.
 
-use super::{LinkConfig, ModuleSizeConfig, PassiveNarrationConfig, PostProcessStep};
+use super::{
+    LinkConfig, MethodLengthConfig, ModuleSizeConfig, PassiveNarrationConfig, PostProcessStep,
+};
 use serde::Deserialize;
 
 /// Raw serde view of `.rust-llm-tidy.yml`. Paths/globs are relative to the
@@ -35,6 +37,9 @@ pub struct Config {
     /// Module-size threshold settings. Absent = the default threshold 500.
     #[serde(default)]
     pub module_size: Option<ModuleSizeConfig>,
+    /// Method-length threshold settings. Absent = the default threshold 75.
+    #[serde(default)]
+    pub method_length: Option<MethodLengthConfig>,
     /// Full allowed-extension list, replacing the defaults when non-empty
     /// (empty keeps the defaults). No leading dot; case-insensitive.
     #[serde(default)]
@@ -72,6 +77,7 @@ impl Default for Config {
             post_process: Vec::new(),
             links: None,
             module_size: None,
+            method_length: None,
             extensions: Vec::new(),
             extra_extensions: Vec::new(),
             passive_narration: None,

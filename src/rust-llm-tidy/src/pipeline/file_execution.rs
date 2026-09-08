@@ -2,7 +2,7 @@
 
 use super::effective_policy;
 use super::files::{self, VisContext};
-use crate::config::{CompiledConfig, ModuleSizeConfig};
+use crate::config::{CompiledConfig, MethodLengthConfig, ModuleSizeConfig};
 use crate::languages::{backend_for, registry as langs};
 use crate::project::csharp::CSharpIndex;
 use crate::reporting::FileReport;
@@ -108,6 +108,8 @@ pub(super) fn process_one(
     }
     // The non-code size opt-in admits supported data formats to MOD001 only.
     let module_size = config.map_or_else(ModuleSizeConfig::default, CompiledConfig::module_size);
+    let method_length =
+        config.map_or_else(MethodLengthConfig::default, CompiledConfig::method_length);
     let non_code_size_on = module_size.include_non_code
         && profile.module_size == langs::ModuleSize::NonCode
         && !disabled.contains(check::CODE_MODULE_SIZE)
@@ -154,6 +156,7 @@ pub(super) fn process_one(
             &lint_disabled,
             suppress_in_release_notes,
             module_size,
+            method_length,
             index,
         ) {
             Ok(found) => out

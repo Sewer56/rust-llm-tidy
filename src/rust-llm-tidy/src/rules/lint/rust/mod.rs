@@ -1,4 +1,4 @@
-//! The Rust lint rules: DOC*, TEST*, and MOD*.
+//! The Rust lint rules: DOC*, TEST*, LEN*, and MOD*.
 //!
 //! One module per rule, named by lint code: [`doc001_missing_docs`]
 //! through [`test001_test_naming`].
@@ -10,6 +10,8 @@
 //! pipeline runs it from `check_file`, outside [`run_all`].
 //! [`mod003_qualified_path`] walks the whole retained tree once per
 //! file at the end of [`run_all`].
+//! [`len001_method_length`] consumes a config threshold the same way,
+//! so the pipeline runs it from `check_file` too.
 //!
 //! The C# backend's `lints` module implements the same codes over its own
 //! parse; both consume the shared code constants from
@@ -30,6 +32,7 @@ mod doc005_undocumented_param;
 mod doc006_placeholder;
 mod doc008_error_variant_order;
 mod doc009_missing_module_docs;
+pub(crate) mod len001_method_length;
 pub(crate) mod mod001_module_size;
 mod mod002_fn_local_use;
 mod mod003_qualified_path;

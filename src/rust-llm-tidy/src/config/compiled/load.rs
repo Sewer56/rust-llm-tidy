@@ -44,7 +44,7 @@ static COMPILE_COUNTER: core::sync::atomic::AtomicU64 = core::sync::atomic::Atom
 /// - `include` and `exclude` are both non-empty.
 /// - Any `extensions` or `extra_extensions` entry is empty or contains a dot,
 ///   a path separator, or whitespace.
-/// - `module_size.max_lines` is below 1.
+/// - `module_size.max_lines` or `method_length.max_lines` is below 1.
 /// - Any rule name is not in [`known_rules()`].
 /// - Any glob pattern has invalid syntax.
 /// - Any pattern matches zero files under the config directory.
@@ -106,6 +106,19 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         bail!(
             "module_size.max_lines must be >= 1, got {}",
             module_size.max_lines
+        );
+    }
+
+    // Method-length threshold: the value must be >= 1.
+    //
+    // A missing `max_lines` already defaults to 75; a non-integer value
+    // fails YAML deserialization above, so only a literal 0 reaches this check.
+    if let Some(method_length) = &config.method_length
+        && method_length.max_lines < 1
+    {
+        bail!(
+            "method_length.max_lines must be >= 1, got {}",
+            method_length.max_lines
         );
     }
 
@@ -184,6 +197,7 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         post_process: config.post_process,
         links: config.links,
         module_size: config.module_size,
+        method_length: config.method_length,
         extensions: config.extensions,
         extra_extensions: config.extra_extensions,
         passive_narration: config.passive_narration.unwrap_or_default(),

@@ -6,7 +6,10 @@
 
 // `load` is `pub(super)` so sibling `config` unit tests can reuse its
 // `compile` fixture helper; `compiled` itself stays private.
-use super::{FilePolicy, LinkConfig, ModuleSizeConfig, PassiveNarrationConfig, PostProcessStep};
+use super::{
+    FilePolicy, LinkConfig, MethodLengthConfig, ModuleSizeConfig, PassiveNarrationConfig,
+    PostProcessStep,
+};
 use globset::GlobSet;
 pub use load::load_and_compile;
 use std::collections::HashSet;
@@ -34,6 +37,8 @@ pub struct CompiledConfig {
     links: Option<LinkConfig>,
     /// Module-size threshold settings (`None` = default threshold 500).
     module_size: Option<ModuleSizeConfig>,
+    /// Method-length threshold settings (`None` = default threshold 75).
+    method_length: Option<MethodLengthConfig>,
     /// Replacement list from the `extensions:` key; empty = keep the defaults.
     extensions: Vec<String>,
     /// Additions from the `extra_extensions:` key, allowed on top of the
@@ -111,6 +116,12 @@ impl CompiledConfig {
     /// Resolve the file-size policy, retaining defaults for an absent section.
     pub(crate) fn module_size(&self) -> ModuleSizeConfig {
         self.module_size.unwrap_or_default()
+    }
+
+    /// Resolve the method-length policy, retaining defaults for an absent
+    /// section.
+    pub(crate) fn method_length(&self) -> MethodLengthConfig {
+        self.method_length.unwrap_or_default()
     }
 
     /// Test-only accessor for the canonicalized config directory. Used by the

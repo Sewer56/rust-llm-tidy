@@ -16,7 +16,7 @@
 //! Any config error causes [`load_and_compile`] to return `Err`.
 //!
 //! Errors include bad YAML, bad glob syntax, unknown rule name, or a
-//! `links` or `module_size` value below 1. They also
+//! `links`, `module_size`, or `method_length` value below 1. They also
 //! include a malformed `extensions`/`extra_extensions` entry or a pattern
 //! matching zero files.
 //!
@@ -32,6 +32,7 @@
 //!   queries, plus `load_and_compile` (in `compiled::load`)
 //! - `file_policy`: the runtime [`FilePolicy`] computed per file
 //! - `link_config`: `links` hoist-threshold settings
+//! - `method_length_config`: `method_length` threshold settings
 //! - `module_size_config`: `module_size` threshold settings
 //! - `passive_narration_config`: TEXT007 opt-in and suppression settings
 //! - `post_process_step`: one external post-processing command
@@ -42,6 +43,7 @@ pub use compiled::CompiledConfig;
 pub use compiled::load_and_compile;
 pub use file_policy::FilePolicy;
 pub use link_config::LinkConfig;
+pub use method_length_config::MethodLengthConfig;
 pub use module_size_config::ModuleSizeConfig;
 pub use passive_narration_config::PassiveNarrationConfig;
 pub use post_process_step::PostProcessStep;
@@ -52,6 +54,7 @@ use std::path::{Path, PathBuf};
 mod compiled;
 mod file_policy;
 mod link_config;
+mod method_length_config;
 mod module_size_config;
 mod passive_narration_config;
 mod post_process_step;
