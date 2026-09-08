@@ -51,6 +51,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`MOD001`]  | Warning  | A code file exceeds `module_size.max_lines` (default 500).                        |
 | [`MOD002`]  | Error    | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
 | [`MOD003`]  | Hint     | A path includes the full namespace.                                               |
+| [`LEN001`]  | Warning  | A Rust fn body exceeds `method_length.max_lines` (default 75).                    |
 
 ## Examples
 
@@ -605,6 +606,86 @@ MOD003 skips:
 
 See [C# MOD003] for C# import advice.
 
+### LEN001 - oversized function or method
+
+Warn once per Rust function whose body exceeds its counted-line
+budget (default 75).
+
+- Rust only. Free functions, methods in `impl` blocks, test
+  functions, and inner functions are measured alike; nothing is
+  exempt.
+- A counted line is a physical line between the body braces that
+  holds code. Blank lines and comment-only lines never count, and
+  the signature never counts.
+- An inner function's lines count toward both the inner function
+  and its enclosing function.
+
+Exactly 75 counted lines passes with the default budget; the 76th
+line triggers the warning.
+
+Split long bodies into smaller sub-functions or inner functions, each
+named for its step. The outer function then reads as an overview of
+the flow.
+
+Tune the budget through the `method_length.max_lines` config key
+(default 75).
+
+#### LEN001 threshold options
+
+```yaml
+method_length:
+  max_lines: 75  # warn above this many counted body lines; >= 1.
+```
+
+#### LEN001 research basis
+
+No peer-reviewed length breakpoint exists; the studies disagree.
+
+- [Chowdhury et al. 2022] tracked about 785K evolving Java methods:
+  fewer changes and faults under 24 lines.
+- [Basili & Perricone 1984] found fault density falling as routines
+  grew, later criticized as an artifact of the size denominator.
+- [Tempero et al. 2024] ran a controlled comprehension experiment;
+  decomposition's benefit was inconclusive.
+
+Style guidance is equally broad. Code Complete 2nd ed., section 7.4
+tolerates 100-200 lines from 1980s fault data. Clean Code ch. 3
+argues a function should hardly ever exceed 20 lines.
+
+Mainstream linter defaults:
+
+- ESLint `max-lines-per-function`: 50.
+- RuboCop `Metrics/MethodLength`: 10.
+- detekt `LongMethod`: 60.
+- SonarSource S138: 75 lines of code.
+- Clippy `too_many_lines`: 100.
+- SwiftLint `function_body_length`: 50 warning, 100 error.
+- Checkstyle `MethodLength`: 150 physical lines, comments counted.
+
+Clippy, SonarSource S138, and SwiftLint count code lines, like this
+rule. ESLint and Checkstyle count physical lines by default, and
+RuboCop skips comments.
+
+75 sits mid-way among the 50-100 code-line defaults and matches S138
+exactly. Tighten toward 24 through `method_length.max_lines` if
+noisier output is acceptable.
+
+#### LEN001 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include LEN001 src/merge.rs
+src/merge.rs:2: warning[LEN001]: fn `merge_all` has 76 body lines (blank and comment-only lines excluded),
+over the 75-line budget (method_length.max_lines).
+- Long functions are hard to follow: readers must hold the whole
+  control flow and every local in mind at once.
+- Split the body into smaller sub-functions or inner functions, each
+  named for what it does.
+- Keep the outer function short enough to read as an overview of
+  the flow. (fn `merge_all`)
+```
+
+`LEN001` is warning-severity, so the run exits 0.
+
 ## Config
 
 ```yaml
@@ -739,8 +820,12 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`MOD002`]: #mod002---function-local-use-without-cfg
 [`MOD003`]: #mod003---full-namespace-qualification-in-code
 [C# MOD003]: languages/lints/csharp.md#mod003---full-namespace-qualification-in-code
+[`LEN001`]: #len001---oversized-function-or-method
 [lints for C#]: ./languages/lints/csharp.md
 [text lints]: ./text-lints.md
+[Chowdhury et al. 2022]: https://arxiv.org/abs/2205.01842
+[Basili & Perricone 1984]: https://doi.org/10.1145/69605.2085
+[Tempero et al. 2024]: https://doi.org/10.1145/3643916.3644432
 
 ## Library access
 

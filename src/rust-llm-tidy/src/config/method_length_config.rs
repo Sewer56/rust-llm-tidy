@@ -40,7 +40,6 @@ fn default_method_length_max_lines() -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::config::compiled::load::compile;
     use crate::config::load_and_compile;
 

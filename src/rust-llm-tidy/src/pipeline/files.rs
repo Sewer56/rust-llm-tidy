@@ -1,6 +1,6 @@
 //! File operations and project-aware visibility context.
 
-use crate::config::ModuleSizeConfig;
+use crate::config::{MethodLengthConfig, ModuleSizeConfig};
 use crate::input as paths;
 use crate::input::file_io as io;
 use crate::languages::{backend_for, registry as langs};
@@ -57,7 +57,7 @@ pub(crate) fn check_file(
     disabled: &HashSet<String>,
     suppress_in_release_notes: bool,
     module_size: ModuleSizeConfig,
-    method_length: crate::config::MethodLengthConfig,
+    method_length: MethodLengthConfig,
     index: Option<&csharp_index::CSharpIndex>,
 ) -> anyhow::Result<Vec<(PathBuf, Diagnostic)>> {
     let source =

@@ -61,6 +61,15 @@
 # Non-code opt-in preserves discovery and exclusions. INI/JSON still need
 # extension selection; unsupported extensions remain exempt.
 
+# ── Method length (LEN001) ──
+# Rust fn bodies count the non-blank, non-comment-only lines between
+# the braces; the signature never counts. Every fn is measured, tests
+# included. Enable LEN001 or lints in the whitelist below to run this
+# check.
+
+# method_length:
+#   max_lines: 75   # warn above this budget; >= 1.
+
 # ── Post-processing ──
 # External commands run on every processed file; the file path is appended
 # as the last argument. `extensions` filters (empty = all). Skipped under
@@ -107,8 +116,8 @@ include:
       # - vis
 
       # Level 3: documentation, test-name, and file-size checks.
-      # `lints` enables the DOC*, TEXT*, TEST*, and MOD* codes together; the
-      # opt-in TEXT007 stays off (see above).
+      # `lints` enables the DOC*, TEXT*, TEST*, MOD*, and LEN* codes
+      # together; the opt-in TEXT007 stays off (see above).
       # Uncomment to enable the complete lint pass.
       # - lints
 
@@ -133,3 +142,4 @@ include:
       # - TEST001 # non-behavioral test name
       # - MOD001  # oversized code file
       # - MOD002  # function-local `use` without `#[cfg]`
+      # - LEN001  # oversized Rust function or method
