@@ -27,10 +27,16 @@
 //!   same-file members and indexed qualified members that throw.
 //! - DOC003: non-private can-throw members whose `<exception>` tags
 //!   all lack a concrete `cref` type.
+//!
+//! Parameter and placeholder checks:
+//!
 //! - DOC004: non-private methods, constructors, and indexers with
 //!   parameters need `<param name="...">` tags.
 //! - DOC005: `<param>` tags must name every declared parameter.
 //! - DOC006: placeholder markers (`TODO`/`FIXME`/`TBD`) in doc comments.
+//!
+//! Naming and prose checks:
+//!
 //! - TEST001: `TestMethod`/`Test`/`Fact`/`Theory`-marked methods with
 //!   discouraged (`test_*`, `case_*`, `test` + digits) names.
 //! - TEXT*: `///` doc-comment prose measured with the XML doc

@@ -363,6 +363,9 @@ Say what the code does, directly:
   such as `is required` and `is deprecated`.
 - Flags history wording such as `no longer`, `previously`, and `prior to
   this change`; allows temporal uses such as `before validation`.
+
+Interpretation and defaults:
+
 - This heuristic has no grammatical context: expect false positives and
   treat every hint as a review suggestion, never a rewrite.
 - By default, allows past-behaviour wording in `CHANGELOG*` or `MIGRATION*`
@@ -437,10 +440,12 @@ src/lib.rs:1: hint[TEXT007]: passive construction: `are returned`.
 
 ## TEXT008 - dense bullet list
 
-A list exceeding 10 source lines warns once at its first line.
+An unordered list exceeding 10 source lines warns once at its first line.
 
-Nested bullets count; blank lines do not. Only prose between lists resets
-the budget, not headings, tables, or code blocks alone.
+- Count unordered bullets, including nested bullets and wrapped lines.
+- Ignore blank lines and tables without resetting the count.
+- Reset at prose, `#` headings, code blocks, or numbered lists.
+- Exempt numbered lists.
 
 Before:
 

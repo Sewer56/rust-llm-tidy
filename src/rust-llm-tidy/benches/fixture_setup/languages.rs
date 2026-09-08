@@ -9,6 +9,9 @@
 //! - `fixtures/vis/`: `crate_small_lib`, `crate_small_foo`,
 //!   `crate_medium_lib`, `crate_medium_foo`, `crate_medium_bar` - multi-file
 //!   crate fixtures for the crate-aware vis bench.
+//!
+//! Text-transformation fixtures:
+//!
 //! - `fixtures/fences/`: named `<size>_<clean|dirty>` (plus `doc_*`) by fence
 //!   outcome (`clean` = no nested same-marker fences, a borrowed no-op).
 //! - `fixtures/links/`: named `<size>_<clean|dirty>` (plus `doc_*`) by link

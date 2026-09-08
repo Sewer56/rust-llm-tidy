@@ -18,6 +18,8 @@ const ACCEPTANCE_LIST_LINE_BUDGET: usize = 10;
 #[case::five_wrapped_at_budget("- item\n  tail\n".repeat(ACCEPTANCE_LIST_LINE_BUDGET / 2), 0)]
 #[case::ten_single_at_budget("- item\n".repeat(ACCEPTANCE_LIST_LINE_BUDGET), 0)]
 #[case::eleven_single_over_budget("- item\n".repeat(ACCEPTANCE_LIST_LINE_BUDGET + 1), 1)]
+#[case::numbered_dot("1. item\n".repeat(ACCEPTANCE_LIST_LINE_BUDGET + 1), 0)]
+#[case::numbered_parenthesis("1) item\n".repeat(ACCEPTANCE_LIST_LINE_BUDGET + 1), 0)]
 fn cli_should_follow_list_source_line_budget(#[case] list: String, #[case] warnings: usize) {
     let source = format!("Intro.\n\n{list}");
 
@@ -33,8 +35,6 @@ fn cli_should_follow_list_source_line_budget(#[case] list: String, #[case] warni
     );
 }
 
-// CLI rule selection.
-
 /// Inclusion enables TEXT008; exclusion suppresses its warning.
 #[rstest]
 #[case::default_run(&[], 1)]
@@ -45,6 +45,32 @@ fn cli_should_follow_rule_selection(#[case] args: &[&str], #[case] warnings: usi
     let source = "- item\n  tail\n".repeat(ACCEPTANCE_LIST_LINE_BUDGET / 2 + 1);
 
     let output = run(&source, args);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    assert_eq!(
+        stderr.matches("warning[TEXT008]").count(),
+        warnings,
+        "{stderr}"
+    );
+}
+
+/// Structural boundaries split list budgets without intervening prose.
+#[rstest]
+#[case::heading("## Section", ACCEPTANCE_LIST_LINE_BUDGET, 0)]
+#[case::heading_between_dense_lists("## Section", ACCEPTANCE_LIST_LINE_BUDGET + 1, 2)]
+#[case::numbered_list("1. Step", ACCEPTANCE_LIST_LINE_BUDGET, 0)]
+#[case::fenced_code("```text\nexample\n```", ACCEPTANCE_LIST_LINE_BUDGET, 0)]
+#[case::indented_code("    example", ACCEPTANCE_LIST_LINE_BUDGET, 0)]
+fn cli_should_measure_structurally_separated_lists_independently(
+    #[case] separator: &str,
+    #[case] list_lines: usize,
+    #[case] warnings: usize,
+) {
+    let list = "- item\n".repeat(list_lines);
+    let source = format!("{list}\n{separator}\n\n{list}");
+
+    let output = run(&source, &["--include", "TEXT008"]);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{stderr}");

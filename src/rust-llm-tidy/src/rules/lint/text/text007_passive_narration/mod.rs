@@ -30,6 +30,9 @@
 //! - Runtime states such as `currently active` and `currently running`.
 //! - Attributive present-time modifiers such as `now removed features` and
 //!   `very recently loaded data`.
+//!
+//! Intent and temporal comparisons also stay silent:
+//!
 //! - Present intent: `for now`, `now to <verb>`, `We now need`, and a bare
 //!   value after `currently`, as in `currently 0.1.157`.
 //! - `no longer` before `than`, and temporal `before` as in

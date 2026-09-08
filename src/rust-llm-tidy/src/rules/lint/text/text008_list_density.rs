@@ -1,4 +1,4 @@
-//! TEXT008: source-line budget for consecutive measured bullet paragraphs.
+//! TEXT008: source-line budget for consecutive unordered bullet paragraphs.
 
 use super::bulleted;
 use crate::reporting::diagnostic::{Diagnostic, Severity};
@@ -10,15 +10,34 @@ const LIST_LINE_LIMIT: usize = 10;
 
 /// Warn once per over-budget run of bullet paragraphs, at its first line.
 ///
-/// Only a non-bullet paragraph ends a run. Blank lines do not contribute
-/// to the budget; nested bullets contribute their own member lines.
+/// Prose, numbered lists, headings, and code blocks end a run.
+/// Headings follow the measuring core's `#`-prefix convention. Blank lines
+/// do not count; nested bullets contribute their own member lines.
 pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
+    let mut source_lines = doc.lines.iter().peekable();
     let mut diags = Vec::new();
     let mut first_line = 0;
     let mut lines = 0;
 
     for para in &doc.paragraphs {
-        if para.kind != ParagraphKind::Bullet {
+        // Scan each source line once, including after an over-budget list.
+        while let Some(line) = source_lines.next_if(|line| line.number < para.first_line) {
+            if line.in_code_block || line.text.trim_start().starts_with('#') {
+                lines = 0;
+            }
+        }
+
+        // The measuring core recognizes digit-prefixed bullets as ordered lists.
+        let numbered = source_lines.peek().is_some_and(|line| {
+            line.number == para.first_line
+                && line
+                    .text
+                    .trim_start()
+                    .as_bytes()
+                    .first()
+                    .is_some_and(u8::is_ascii_digit)
+        });
+        if para.kind != ParagraphKind::Bullet || numbered {
             lines = 0;
             continue;
         }
@@ -85,7 +104,9 @@ mod tests {
     #[case::blank_gaps("- item\n\n".repeat(LIST_LINE_LIMIT + 1), 1)]
     #[case::blank_lines_excluded("- item\n\n".repeat(LIST_LINE_LIMIT), 0)]
     #[case::nested(format!("- parent\n{}", "  - child\n".repeat(LIST_LINE_LIMIT)), 1)]
-    #[case::ordered("1. item\n".repeat(LIST_LINE_LIMIT + 1), 1)]
+    #[case::ordered_dot("1. item\n".repeat(LIST_LINE_LIMIT + 1), 0)]
+    #[case::ordered_parenthesis("1) item\n".repeat(LIST_LINE_LIMIT + 1), 0)]
+    #[case::ordered_wrapped("12. item\n    tail\n".repeat(LIST_LINE_LIMIT), 0)]
     #[case::fenced(format!("~~~text\n{}~~~\n", "- item\n".repeat(LIST_LINE_LIMIT + 1)), 0)]
     fn checks_should_report_over_budget_lists(#[case] source: String, #[case] expected: usize) {
         let diags = run_text_checks(&source, "md");
@@ -94,6 +115,39 @@ mod tests {
     }
 
     // Independent runs and diagnostic rendering.
+
+    #[rstest]
+    #[case::heading_at_budget("# Section", LIST_LINE_LIMIT, 0)]
+    #[case::subheading_at_budget("## Section", LIST_LINE_LIMIT, 0)]
+    #[case::deep_heading("###### Section", LIST_LINE_LIMIT, 0)]
+    #[case::indented_heading("  ## Section", LIST_LINE_LIMIT, 0)]
+    #[case::adjacent_headings("# Section\n## Subsection", LIST_LINE_LIMIT, 0)]
+    #[case::both_dense("## Section", LIST_LINE_LIMIT + 1, 2)]
+    #[case::blank_gap("", LIST_LINE_LIMIT, 1)]
+    #[case::ordered_list("1. Step\n2. Next step", LIST_LINE_LIMIT, 0)]
+    #[case::fenced_heading("```md\n# Example\n```", LIST_LINE_LIMIT, 0)]
+    #[case::backtick_code("```rust\nlet n = 1;\n```", LIST_LINE_LIMIT, 0)]
+    #[case::tilde_code("~~~text\nexample\n~~~", LIST_LINE_LIMIT, 0)]
+    #[case::indented_code("    example", LIST_LINE_LIMIT, 0)]
+    #[case::code_between_dense_lists("```text\nexample\n```", LIST_LINE_LIMIT + 1, 2)]
+    #[case::table("| Example |", LIST_LINE_LIMIT, 1)]
+    fn checks_should_apply_list_boundaries(
+        #[case] separator: &str,
+        #[case] list_lines: usize,
+        #[case] expected: usize,
+    ) {
+        let list = "- item\n".repeat(list_lines);
+        let source = format!("{list}\n{separator}\n\n{list}");
+
+        let diags = run_text_checks(&source, "md");
+
+        let found = codes(&diags, CODE_TEXT008);
+        assert_eq!(found.len(), expected);
+        if expected == 2 {
+            assert_eq!(found[0].line, 1);
+            assert_eq!(found[1].line, list_lines + separator.lines().count() + 3);
+        }
+    }
 
     #[rstest]
     #[case::both_short(LIST_LINE_LIMIT, LIST_LINE_LIMIT, vec![])]

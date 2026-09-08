@@ -15,6 +15,9 @@
 //! - `mod001_module_size`: cross-language MOD001 acceptance
 //! - `python`: Python lints over the `.py` fixtures
 //! - `rust`: Rust lints over the `.rs` fixtures
+//!
+//! Text-budget and wording modules:
+//!
 //! - `text001_paragraph_size`: TEXT001 paragraph budgets (markdown, Python)
 //! - `text002_line_length`: TEXT002 over-long markdown lines
 //! - `text003_sentence_length`: TEXT003 long Python docstring sentences
