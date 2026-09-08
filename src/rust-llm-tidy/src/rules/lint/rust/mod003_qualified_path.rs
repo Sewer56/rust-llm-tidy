@@ -1039,7 +1039,7 @@ mod tests {
 
     // A `use` after the occurrence still selects imported-name advice:
     // items are visible throughout their scope, and in-order advice
-    // would duplicate the existing import.
+    // would duplicate that import.
     #[test]
     fn check_should_apply_import_advice_when_use_follows_the_occurrence() {
         let diags = lint("fn f() { std::sync::Arc::new(1); }\nuse std::sync::Arc;");

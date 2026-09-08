@@ -169,9 +169,11 @@ struct Import<'a> {
 }
 
 impl<'a> Walker<'a> {
-    /// Collect root evidence: the first segment of every `using` path
-    /// (imports and `using static` prefixes), plus the leftmost segment
-    /// of namespace declarations and type-position qualified names.
+    /// Collect root evidence: the first segment of every `using`
+    /// path, plain or `using static`.
+    ///
+    /// Namespace declarations and type-position qualified names add
+    /// their leftmost segment.
     fn collect_roots(&mut self, node: Node) {
         // Type-position qualified names and namespace declarations provide
         // syntactic evidence; expression member chains alone do not.
