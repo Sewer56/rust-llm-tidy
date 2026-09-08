@@ -111,7 +111,7 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
 
     // Method-length threshold: the value must be >= 1.
     //
-    // A missing `max_lines` already defaults to 75; a non-integer value
+    // A missing `max_lines` already defaults to 100; a non-integer value
     // fails YAML deserialization above, so only a literal 0 reaches this check.
     if let Some(method_length) = &config.method_length
         && method_length.max_lines < 1

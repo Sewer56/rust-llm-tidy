@@ -37,7 +37,7 @@ pub struct CompiledConfig {
     links: Option<LinkConfig>,
     /// Module-size threshold settings (`None` = default threshold 500).
     module_size: Option<ModuleSizeConfig>,
-    /// Method-length threshold settings (`None` = default threshold 75).
+    /// Method-length threshold settings (`None` = default threshold 100).
     method_length: Option<MethodLengthConfig>,
     /// Replacement list from the `extensions:` key; empty = keep the defaults.
     extensions: Vec<String>,
