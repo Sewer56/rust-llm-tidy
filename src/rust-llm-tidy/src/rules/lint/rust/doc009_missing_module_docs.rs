@@ -32,6 +32,11 @@ use crate::source::ParseResult;
 /// - `parsed` - the parsed source result whose preamble is inspected for
 ///   a `//!` module-doc line.
 pub(super) fn check(parsed: &ParseResult) -> Vec<Diagnostic> {
+    // Malformed syntax makes item spans and `preamble_end` unreliable;
+    // skip doc checking rather than fire on a garbage boundary.
+    if parsed.syntax_tree().root_node().has_error() {
+        return Vec::new();
+    }
     if parsed.items.is_empty() {
         return Vec::new();
     }
@@ -131,6 +136,13 @@ mod tests {
     fn fires_when_lookalike_sits_inside_plain_comment() {
         let source = "// //! not a module doc\npub fn load() {}\n";
         assert_eq!(lint(source).len(), 1);
+    }
+
+    // Parse errors make spans unreliable; never fire on broken syntax.
+    #[test]
+    fn silent_when_syntax_is_malformed() {
+        let source = "pub fn load() {}\nfn broken( {}\n";
+        assert!(lint(source).is_empty());
     }
 
     // `#![doc = ...]` carries no module-doc credit.
