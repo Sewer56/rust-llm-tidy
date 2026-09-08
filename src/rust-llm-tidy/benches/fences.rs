@@ -13,6 +13,7 @@ criterion_group!(benches, fence_pass);
 
 criterion_main!(benches);
 
+use core::hint;
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rust_llm_tidy::rules::transform::fix_fences;
 
@@ -30,7 +31,7 @@ fn fence_pass(c: &mut Criterion) {
         group.bench_function(*name, |bencher| {
             bencher.iter(|| {
                 let out = fix_fences(source, DOC_PREFIXES);
-                core::hint::black_box(out);
+                hint::black_box(out);
             });
         });
     }

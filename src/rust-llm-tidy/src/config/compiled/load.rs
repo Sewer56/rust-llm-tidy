@@ -2,9 +2,11 @@
 
 use super::{CompiledConfig, CompiledRuleGroup};
 use crate::config::{Config, known_rules};
+use crate::languages::registry;
 use anyhow::{Context, anyhow, bail};
 use glob::glob as fs_glob;
 use globset::{GlobBuilder, GlobSet};
+use std::fs;
 #[cfg(test)]
 use std::io::Write;
 use std::path::Path;
@@ -49,7 +51,7 @@ static COMPILE_COUNTER: core::sync::atomic::AtomicU64 = core::sync::atomic::Atom
 ///
 /// On success, returns a [`CompiledConfig`] ready for `policy_for`.
 pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
-    let raw = std::fs::read_to_string(path)
+    let raw = fs::read_to_string(path)
         .with_context(|| format!("failed to read config {}", path.display()))?;
     let config: Config = serde_yml::from_str(&raw)
         .with_context(|| format!("failed to parse YAML config {}", path.display()))?;
@@ -73,7 +75,7 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
     // Extension-list entries must be shaped like real path extensions; a
     // malformed entry fails the run instead of being silently ignored.
     for ext in config.extensions.iter().chain(&config.extra_extensions) {
-        crate::languages::registry::validate_extension(ext)?;
+        registry::validate_extension(ext)?;
     }
 
     // Link thresholds: every value must be >= 1.

@@ -12,7 +12,7 @@ use rust_llm_tidy::reporting::{Change, RunReport};
 use rust_llm_tidy::reporting::{Diagnostic, Severity};
 use serde::Serialize;
 use std::borrow::Cow;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::Path;
 
 /// A serializable record for one lint finding or dry-run change.
@@ -60,7 +60,7 @@ pub(crate) enum OutputMode {
 
 /// Render processing results before the entry point selects a failure exit code.
 pub(crate) fn emit_report(report: &RunReport, json: bool) -> anyhow::Result<()> {
-    let mut stderr = std::io::stderr().lock();
+    let mut stderr = io::stderr().lock();
     for warning in &report.warnings {
         writeln!(stderr, "warning: {warning}")?;
     }
@@ -123,7 +123,7 @@ pub(crate) fn emit_json(report: &RunReport) -> anyhow::Result<()> {
     let doc = serde_json::to_string(&records)?;
     // Lock once and write the document plus a trailing newline through the
     // handle so an I/O error is reported instead of silently swallowed.
-    let mut out = std::io::stdout().lock();
+    let mut out = io::stdout().lock();
     out.write_all(doc.as_bytes())?;
     out.write_all(b"\n")?;
     Ok(())
@@ -162,7 +162,7 @@ fn project_lint<'a>(path: &Path, d: &'a Diagnostic) -> JsonRecord<'a> {
 }
 
 /// Write changes and findings in file order, followed by the separate hint group.
-fn write_text(output: &mut impl Write, report: &RunReport) -> std::io::Result<()> {
+fn write_text(output: &mut impl Write, report: &RunReport) -> io::Result<()> {
     for file in &report.files {
         for change in &file.changes {
             writeln!(output, "{}:{change}", file.path.display())?;

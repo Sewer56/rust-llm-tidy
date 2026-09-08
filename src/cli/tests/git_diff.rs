@@ -8,7 +8,8 @@
 use common::binary;
 use core::sync::atomic::{AtomicU64, Ordering};
 use std::fs;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{self, Command, Output};
 
 mod common;
 
@@ -231,7 +232,7 @@ fn no_args_selects_uppercase_extension_variants() {
 }
 
 /// Remove a throwaway temp dir created by `temp_dir`/`init_repo`.
-fn cleanup(dir: &std::path::Path) {
+fn cleanup(dir: &Path) {
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -246,7 +247,7 @@ fn cleanup(dir: &std::path::Path) {
 
 /// Spawn a fresh git repo in a temp dir, or return `None` when git is
 /// unavailable so the test skips (dev machines without git).
-fn init_repo() -> Option<std::path::PathBuf> {
+fn init_repo() -> Option<PathBuf> {
     if !git_available() {
         return None;
     }
@@ -259,7 +260,7 @@ fn init_repo() -> Option<std::path::PathBuf> {
 }
 
 /// Run the binary with `args` in `current_dir`, returning the raw `Output`.
-fn run(current_dir: &std::path::Path, args: &[&str]) -> std::process::Output {
+fn run(current_dir: &Path, args: &[&str]) -> Output {
     Command::new(binary())
         .current_dir(current_dir)
         .args(args)
@@ -267,7 +268,7 @@ fn run(current_dir: &std::path::Path, args: &[&str]) -> std::process::Output {
         .expect("failed to spawn")
 }
 
-fn git(repo: &std::path::Path, args: &[&str]) -> String {
+fn git(repo: &Path, args: &[&str]) -> String {
     let out = Command::new("git")
         .current_dir(repo)
         .args(args)
@@ -291,8 +292,8 @@ fn git_available() -> bool {
         .unwrap_or(false)
 }
 
-fn temp_dir() -> std::path::PathBuf {
+fn temp_dir() -> PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = std::process::id();
+    let pid = process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-git-{}-{}", pid, seq))
 }

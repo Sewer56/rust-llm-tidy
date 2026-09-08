@@ -17,6 +17,7 @@
 //! - `test001_test_naming`: TEST001 discouraged test-method names
 
 use crate::{manifest_dir, run_command};
+use std::path::PathBuf;
 
 mod doc001_missing_docs;
 mod doc002_missing_exception_tag;
@@ -40,7 +41,7 @@ pub(super) fn run_csharp_fixture(name: &str) -> (String, i32) {
 }
 
 /// The directory holding the C# lint fixtures.
-pub(super) fn csharp_fixture_dir() -> std::path::PathBuf {
+pub(super) fn csharp_fixture_dir() -> PathBuf {
     manifest_dir()
         .join("tests")
         .join("fixtures")

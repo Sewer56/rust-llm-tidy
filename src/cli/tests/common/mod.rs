@@ -5,6 +5,9 @@
 //! roots pull it in with `mod common;`; folder roots use
 //! `#[path = "../common/mod.rs"]`.
 
+use std::env;
+use std::path::PathBuf;
+
 /// Returns the path to the `rust-llm-tidy` binary for spawning in tests.
 ///
 /// Resolution order:
@@ -14,10 +17,10 @@
 ///    holds the peer binary.
 ///
 /// Panics when none resolve.
-pub fn binary() -> std::path::PathBuf {
+pub fn binary() -> PathBuf {
     for var in ["CARGO_BIN_EXE_rust-llm-tidy", "CARGO_BIN_EXE_rust_llm_tidy"] {
-        if let Some(path) = std::env::var_os(var) {
-            return std::path::PathBuf::from(path);
+        if let Some(path) = env::var_os(var) {
+            return PathBuf::from(path);
         }
     }
 
@@ -26,7 +29,7 @@ pub fn binary() -> std::path::PathBuf {
 
     // The test binary lives in `<profile>/deps/` (stable) or the build-out
     // dir (newer Cargo); both sit under that `<profile>` dir.
-    let mut dir = std::env::current_exe()
+    let mut dir = env::current_exe()
         .expect("current_exe must resolve")
         .parent()
         .expect("current_exe must have a parent")

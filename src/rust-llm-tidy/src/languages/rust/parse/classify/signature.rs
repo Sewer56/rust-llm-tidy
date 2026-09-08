@@ -116,10 +116,7 @@ pub(super) fn last_path_segment(node: Node<'_>, source: &str) -> Option<String> 
 ///   segment collides with one.
 /// - Only a single crate-root prefix (`crate::Error`, `self::Error`,
 ///   `super::Error`) can still resolve to a top-level enum.
-pub(in crate::languages::rust::parse) fn result_error_type(
-    body: Node<'_>,
-    source: &str,
-) -> Option<String> {
+pub(in super::super) fn result_error_type(body: Node<'_>, source: &str) -> Option<String> {
     let rt = body.child_by_field_name("return_type")?;
     if rt.kind() != "generic_type" {
         return None;

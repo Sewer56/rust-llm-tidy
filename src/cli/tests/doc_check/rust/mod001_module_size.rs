@@ -7,6 +7,7 @@
 use crate::common::binary;
 use crate::{run_command, temp_dir, temp_file};
 use std::fs;
+use std::path::PathBuf;
 use std::process::Command;
 
 /// Lines inside the `#[cfg(test)]` mod region never count: 553 physical
@@ -189,7 +190,7 @@ fn mod001_should_warn_when_non_test_lines_exceed_the_default_budget() {
 
 /// Write `yaml` beside a fresh `over.rs` of `count` private fn lines and
 /// return `(dir, file)`; the config governs runs against `file`.
-fn mod001_module_with_config(count: usize, yaml: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+fn mod001_module_with_config(count: usize, yaml: &str) -> (PathBuf, PathBuf) {
     let dir = temp_dir();
     fs::create_dir_all(&dir).unwrap();
     let file = dir.join("over.rs");

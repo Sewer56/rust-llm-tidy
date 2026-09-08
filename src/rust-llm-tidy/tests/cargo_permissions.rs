@@ -1,21 +1,19 @@
 //! Isolated subprocess checks for explicit Cargo project-discovery permission.
 
 use rust_llm_tidy::{RunOptions, config, run};
+use std::env;
 use std::fs;
-use std::process::Command;
+use std::path::PathBuf;
+use std::process::{self, Command};
 
 /// Act as a Cargo sentinel, isolated library caller, or parent test harness.
 fn main() {
-    if std::env::args().nth(1).as_deref() == Some("metadata") {
-        fs::write(
-            std::env::var_os("TIDY_DISCOVERY_SENTINEL").unwrap(),
-            "invoked",
-        )
-        .unwrap();
-        std::process::exit(1);
+    if env::args().nth(1).as_deref() == Some("metadata") {
+        fs::write(env::var_os("TIDY_DISCOVERY_SENTINEL").unwrap(), "invoked").unwrap();
+        process::exit(1);
     }
 
-    if std::env::var_os("TIDY_DISCOVERY_PROBE").is_some() {
+    if env::var_os("TIDY_DISCOVERY_PROBE").is_some() {
         discovery_probe();
     } else {
         discovery_should_require_permission_and_enabled_visibility();
@@ -25,10 +23,10 @@ fn main() {
 
 /// Exercise library discovery without mutating the parent test environment.
 fn discovery_probe() {
-    let Ok(mode) = std::env::var("TIDY_DISCOVERY_PROBE") else {
+    let Ok(mode) = env::var("TIDY_DISCOVERY_PROBE") else {
         return;
     };
-    let source = std::path::PathBuf::from(std::env::var_os("TIDY_DISCOVERY_SOURCE").unwrap());
+    let source = PathBuf::from(env::var_os("TIDY_DISCOVERY_SOURCE").unwrap());
     let config_path = source.parent().unwrap().join("excluded.yml");
     let compiled =
         (mode == "config_excluded").then(|| config::load_and_compile(&config_path).unwrap());
@@ -80,11 +78,11 @@ fn discovery_should_require_permission_and_enabled_visibility() {
         ("allowed_excluded", false),
         ("config_excluded", false),
     ] {
-        let output = Command::new(std::env::current_exe().unwrap())
+        let output = Command::new(env::current_exe().unwrap())
             .env("TIDY_DISCOVERY_PROBE", mode)
             .env("TIDY_DISCOVERY_SOURCE", &source)
             .env("TIDY_DISCOVERY_SENTINEL", &sentinel)
-            .env("CARGO", std::env::current_exe().unwrap())
+            .env("CARGO", env::current_exe().unwrap())
             .output()
             .unwrap();
 

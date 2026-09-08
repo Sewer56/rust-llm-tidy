@@ -49,6 +49,7 @@ synthetic_fixture!(csharp, "cs", spacing_usings_compact_types_separated);
 
 use super::{manifest_dir, reorder_in_place, run_command, run_dry_run, temp_file_ext};
 use std::fs;
+use std::path::PathBuf;
 
 /// An in-place reorder of `reorder_cs_before.cs` writes the `_after`
 /// fixture byte-for-byte: members land in the profile order.
@@ -120,7 +121,7 @@ fn csharp_reorder_on_pure_crlf_source_preserves_the_endings() {
 // ── C# reorder: member profile + pinned usings ────────────────────
 
 /// The directory holding the C# reorder fixture pair.
-fn csharp_reorder_fixture_dir() -> std::path::PathBuf {
+fn csharp_reorder_fixture_dir() -> PathBuf {
     manifest_dir()
         .join("tests")
         .join("fixtures")

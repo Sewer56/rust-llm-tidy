@@ -12,9 +12,10 @@
 //! `run_all` composition.
 
 use crate::reporting::Diagnostic;
-use crate::rules::lint::mod001_module_size::diagnostic;
+use crate::rules::lint::mod001_module_size::{check, diagnostic};
 use crate::source::ParseResult;
 use core::fmt::Write;
+use std::ffi::OsStr;
 use std::path::Path;
 
 /// Warn when a Rust file exceeds its configured line budget.
@@ -57,7 +58,7 @@ pub(crate) fn check_with_options(
     }
 
     if include_in_file_tests {
-        return crate::rules::lint::mod001_module_size::check(&parsed.source, max_lines)
+        return check(&parsed.source, max_lines)
             .map(|finding| with_rust_guidance(finding, true, include_test_files));
     }
 
@@ -158,7 +159,7 @@ fn count_lines_outside_spans(
 /// A file named `tests.rs` is not a directory component and does not match.
 fn is_tests_path(path: &Path) -> bool {
     path.components()
-        .any(|component| component.as_os_str() == std::ffi::OsStr::new("tests"))
+        .any(|component| component.as_os_str() == OsStr::new("tests"))
 }
 
 /// Add Rust module-root guidance and the effective test-counting policies.

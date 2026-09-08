@@ -6,8 +6,10 @@
 
 use super::{TEST_COUNTER, binary, manifest_dir, run_command, run_dry_run};
 use core::sync::atomic::Ordering;
+use std::env;
 use std::fs;
-use std::process::Command;
+use std::path::PathBuf;
+use std::process::{self, Command};
 
 // ── Idempotency: every _after fixture must be unchanged ───────────
 
@@ -21,7 +23,7 @@ fn all_after_fixtures_should_be_idempotent_on_rerun() {
         .join("reorder");
     // Each language directory under the fixture root holds its own
     // `<name>_after.<ext>` fixture pairs.
-    let mut after_files: Vec<std::path::PathBuf> = Vec::new();
+    let mut after_files: Vec<PathBuf> = Vec::new();
     for lang in fs::read_dir(&fixture_root).unwrap() {
         let lang_dir = lang.unwrap().path().read_dir().unwrap();
         for entry in lang_dir {
@@ -62,8 +64,8 @@ fn all_after_fixtures_should_be_idempotent_on_rerun() {
 fn in_place_write_should_match_after_fixture() {
     let expected = include_str!("../fixtures/reorder/rust/phase_use_stable_after.rs");
 
-    let dir = std::env::temp_dir();
-    let pid = std::process::id();
+    let dir = env::temp_dir();
+    let pid = process::id();
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let tmp = dir.join(format!("rust-llm-tidy-write-test-{}-{}.rs", pid, seq));
 

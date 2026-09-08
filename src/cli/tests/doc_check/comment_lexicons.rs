@@ -77,7 +77,7 @@ fn default_run_lints_comment_prose_in_every_comment_family() {
         "default_budgets.erl",
     ];
     let dir = temp_dir();
-    std::fs::create_dir_all(&dir).unwrap();
+    fs::create_dir_all(&dir).unwrap();
     for name in names {
         fs::copy(defaults_fixture_dir().join(name), dir.join(name)).unwrap();
     }

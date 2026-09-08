@@ -12,6 +12,7 @@
 
 use super::lexicon::{Heredoc, Lexicon, Syntax, comment_starts_word, ident_byte, ident_start};
 use crate::rules::lint::{Dialect, DocRegion, RegionLine};
+use core::mem;
 use heredoc::{PendingHeredoc, heredoc_open};
 
 mod heredoc;
@@ -284,7 +285,7 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
                         close_run(&mut run, &mut regions);
                         regions.push(DocRegion {
                             dialect: Dialect::BlockDoc,
-                            lines: core::mem::take(&mut block_lines),
+                            lines: mem::take(&mut block_lines),
                         });
                         state = State::Code;
                         seg_start = i + close.len();

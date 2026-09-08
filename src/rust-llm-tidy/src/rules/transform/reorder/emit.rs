@@ -4,9 +4,10 @@
 //! <https://github.com/umwelt-ai/rust-reorder>.
 
 use crate::source::line_endings::dominant_line_ending;
-use crate::source::{ItemKind, ParseResult};
+use crate::source::{ItemKind, ParseResult, SourceItem};
 use ahash::AHashMap;
 use anyhow::{Result, ensure};
+use core::fmt;
 
 /// A validated permutation of items.
 ///
@@ -187,8 +188,8 @@ impl ReorderMove {
     }
 }
 
-impl core::fmt::Display for ReorderMove {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl fmt::Display for ReorderMove {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.message())
     }
 }
@@ -208,7 +209,7 @@ impl core::fmt::Display for ReorderMove {
 /// - `items` - the parsed items in their original (input) order.
 /// - `perm` - the validated [`Permutation`] mapping output position to input
 ///   item index.
-pub fn compute_moves(items: &[crate::source::SourceItem], perm: &Permutation) -> Vec<ReorderMove> {
+pub fn compute_moves(items: &[SourceItem], perm: &Permutation) -> Vec<ReorderMove> {
     let mut moves = Vec::new();
     for (to_idx, &item_idx) in perm.order.iter().enumerate() {
         let to = to_idx + 1;
@@ -353,7 +354,7 @@ pub fn emit(parsed: &ParseResult, perm: &Permutation) -> Result<String> {
 }
 
 /// An unambiguous description of a parsed item, used when an item has no name.
-fn describe(item: &crate::source::SourceItem) -> String {
+fn describe(item: &SourceItem) -> String {
     format!("{} at line {}", item.kind(), item.start_line())
 }
 

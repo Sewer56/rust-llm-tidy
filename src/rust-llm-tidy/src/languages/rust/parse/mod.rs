@@ -24,6 +24,7 @@ use self::classify::result_error_type;
 use self::classify::{PendingTrivia, is_attachable, is_transparent_comment};
 pub(in crate::languages::rust) use self::classify::{doc_attribute_content, is_outer_doc};
 use crate::source::{ParseResult, SourceItem};
+use core::mem;
 
 mod classify;
 
@@ -196,7 +197,7 @@ fn collect_item_entries(root: tree_sitter::Node<'_>) -> Vec<RawEntry<'_>> {
         } else if let Some(entry) = item_entry_for(child) {
             entries.push(RawEntry {
                 body: entry,
-                pending: core::mem::take(&mut pending),
+                pending: mem::take(&mut pending),
             });
         } else {
             // Unrecognized non-item top-level node (e.g. a stray

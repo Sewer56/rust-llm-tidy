@@ -9,6 +9,8 @@
 
 use super::{ParsedFile, child_of_kind, visibility_node};
 use ahash::AHashMap;
+use std::collections::HashSet;
+use std::fs;
 use std::path::{Path, PathBuf};
 use tree_sitter::Node;
 
@@ -85,8 +87,7 @@ pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<Mo
     //    visibility span slicing (mirrors walk()).
     let by_path: AHashMap<PathBuf, &ParsedFile> =
         files.iter().map(|f| (f.path.clone(), f)).collect();
-    let known_files: std::collections::HashSet<PathBuf> =
-        files.iter().map(|f| f.path.clone()).collect();
+    let known_files: HashSet<PathBuf> = files.iter().map(|f| f.path.clone()).collect();
 
     // 2. Vec-based stack, so queue.pop() gives depth-first order.
     //
@@ -172,13 +173,13 @@ pub fn discover_crate_root(start: &Path) -> anyhow::Result<PathBuf> {
     // workspace.
     //
     // Member crates would otherwise degrade to standalone narrowing.
-    let canon_manifest = std::fs::canonicalize(&manifest).unwrap_or_else(|_| manifest.clone());
+    let canon_manifest = fs::canonicalize(&manifest).unwrap_or_else(|_| manifest.clone());
     let pkg = meta
         .packages
         .iter()
         .find(|p| {
             let pm: PathBuf = p.manifest_path.as_std_path().to_path_buf();
-            pm == canon_manifest || std::fs::canonicalize(&pm).ok() == Some(canon_manifest.clone())
+            pm == canon_manifest || fs::canonicalize(&pm).ok() == Some(canon_manifest.clone())
         })
         .ok_or_else(|| anyhow::anyhow!("no package owns {}", manifest.display()))?;
     // Prefer a lib target; else main.rs bin.
@@ -234,7 +235,7 @@ fn resolve_mod_children(
     parent: &Path,
     source: &str,
     warnings: &mut Vec<String>,
-    known_files: &std::collections::HashSet<PathBuf>,
+    known_files: &HashSet<PathBuf>,
 ) -> Vec<ModChild> {
     let mut out = Vec::new();
     let mut pending_attrs: Vec<Node> = Vec::new();
@@ -270,8 +271,7 @@ fn resolve_mod_children(
                         path_attr_used = true;
                         let candidate = parent_dir.join(&p);
                         // Canonicalize the candidate for lookup against the known set.
-                        let cand_canon =
-                            std::fs::canonicalize(&candidate).unwrap_or(candidate.clone());
+                        let cand_canon = fs::canonicalize(&candidate).unwrap_or(candidate.clone());
                         if known_files.contains(&cand_canon)
                             || known_files.contains(&candidate)
                             || candidate.is_file()
@@ -349,7 +349,7 @@ fn find_path_attr(attrs: &[Node], source: &str) -> Option<String> {
 fn resolve_mod_file(
     dir: &Path,
     name: &str,
-    known_files: &std::collections::HashSet<PathBuf>,
+    known_files: &HashSet<PathBuf>,
     _warnings: &mut Vec<String>,
     _parent: &Path,
 ) -> Option<PathBuf> {

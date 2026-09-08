@@ -1,7 +1,8 @@
 //! C# project-reference scope and source-versioned parse cache for indexed linting.
 
 use crate::input as paths;
-use crate::languages::CanThrowIndex;
+use crate::languages::{CanThrowIndex, backend_for};
+use crate::pipeline;
 use crate::source::ParseResult;
 use quick_xml::XmlVersion;
 use quick_xml::events::Event;
@@ -28,10 +29,10 @@ impl CSharpIndex {
 
         let parse = |path: &PathBuf| {
             let source = std::fs::read_to_string(path).ok()?;
-            let parsed = crate::languages::backend_for("cs")?.parse(&source).ok()?;
+            let parsed = backend_for("cs")?.parse(&source).ok()?;
             Some((path.clone(), parsed))
         };
-        let parses = if crate::pipeline::should_parallelize(&files) {
+        let parses = if pipeline::should_parallelize(&files) {
             files.par_iter().filter_map(parse).collect()
         } else {
             files.iter().filter_map(parse).collect()
@@ -65,7 +66,7 @@ impl CSharpIndex {
             changed = true;
             self.parses.remove(&key);
             if let Some(source) = source
-                && let Some(backend) = crate::languages::backend_for("cs")
+                && let Some(backend) = backend_for("cs")
                 && let Ok(parsed) = backend.parse(&source)
             {
                 self.parses.insert(key, parsed);

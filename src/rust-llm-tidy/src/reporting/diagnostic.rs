@@ -5,6 +5,7 @@
 //! number plus the item kind and name that produced the finding.
 
 use crate::rules::registry::title_for_code;
+use core::fmt;
 
 /// A single documentation check finding.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,8 +61,8 @@ impl Diagnostic {
     }
 }
 
-impl core::fmt::Display for Diagnostic {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl fmt::Display for Diagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sev = match self.severity {
             Severity::Error => "error",
             Severity::Warning => "warning",

@@ -7,6 +7,8 @@ use super::declaration::{Declaration, THROWING, collect_children};
 use crate::languages::csharp::parse::{
     call_target_name, qualified_call_target, receiver_value_names,
 };
+use crate::source::ParseResult;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 /// Shared throw facts and declaration answers for supplied C# source files.
@@ -30,9 +32,7 @@ impl CanThrowIndex {
     /// Build a shared graph from C# `parses`, ignoring trees with syntax errors.
     ///
     /// Returns cycle-safe throw answers across the supplied files.
-    pub fn from_parses<'a>(
-        parses: impl IntoIterator<Item = &'a crate::source::ParseResult>,
-    ) -> Self {
+    pub fn from_parses<'a>(parses: impl IntoIterator<Item = &'a ParseResult>) -> Self {
         let mut merged = Self::default();
         for parsed in parses {
             if parsed.syntax_tree().root_node().has_error() {
@@ -59,15 +59,12 @@ impl CanThrowIndex {
 
     /// Compose a separately supplied `parsed` file with shared facts when absent.
     /// Existing tree identities borrow the already-computed graph without copying it.
-    pub(crate) fn including<'a>(
-        &'a self,
-        parsed: &crate::source::ParseResult,
-    ) -> std::borrow::Cow<'a, Self> {
+    pub(crate) fn including<'a>(&'a self, parsed: &ParseResult) -> Cow<'a, Self> {
         if self
             .trees
             .contains_key(&parsed.syntax_tree().root_node().id())
         {
-            return std::borrow::Cow::Borrowed(self);
+            return Cow::Borrowed(self);
         }
         let mut declarations = Vec::with_capacity(parsed.items.len());
         collect_children(
@@ -82,7 +79,7 @@ impl CanThrowIndex {
         merged.merge(local);
         merged.connect_qualified_calls();
         merged.propagate();
-        std::borrow::Cow::Owned(merged)
+        Cow::Owned(merged)
     }
 
     /// Add `local` vertices and collision edges without copying its owned facts.

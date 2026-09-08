@@ -2,6 +2,7 @@
 
 use crate::reporting::Diagnostic;
 pub use crate::rules::registry::*;
+use crate::text::measurement;
 pub use crate::text::measurement::{Dialect, DocRegion, RegionLine, line_marker_regions};
 pub(crate) use text::is_narration_marker;
 
@@ -17,7 +18,7 @@ pub(crate) mod text;
 ///
 /// - `regions`: documentation regions with original source line numbers
 pub fn run_region_checks(regions: Vec<DocRegion>) -> Vec<Diagnostic> {
-    text::diagnostics(&crate::text::measurement::measure(regions))
+    text::diagnostics(&measurement::measure(regions))
 }
 
 /// Check raw prose or line-marker documentation selected by extension.
@@ -27,7 +28,7 @@ pub fn run_region_checks(regions: Vec<DocRegion>) -> Vec<Diagnostic> {
 /// - `source`: raw prose or commented source
 /// - `ext`: extension selecting the line-marker family
 pub fn run_text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
-    text::diagnostics(&crate::text::measurement::analyze(source, ext))
+    text::diagnostics(&measurement::analyze(source, ext))
 }
 
 #[cfg(test)]

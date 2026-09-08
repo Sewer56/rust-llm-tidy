@@ -12,6 +12,7 @@ use crate::languages::LanguageBackend;
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::CODE_MISSING_MODULE_DOCS;
 use crate::rules::lint::doc009_missing_module_docs::HEADER_GUIDANCE;
+use crate::rules::lint::run_region_checks;
 use crate::rules::transform::reorder::Permutation;
 use crate::source::ParseResult;
 
@@ -51,9 +52,7 @@ impl LanguageBackend for PythonBackend {
             });
         }
 
-        diagnostics.extend(crate::rules::lint::run_region_checks(
-            text_regions::doc_regions(parsed),
-        ));
+        diagnostics.extend(run_region_checks(text_regions::doc_regions(parsed)));
         diagnostics
     }
 

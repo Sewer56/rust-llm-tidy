@@ -17,6 +17,8 @@
 //!
 //! [`SourceItem`]: crate::source::SourceItem
 
+use super::run_region_checks;
+use crate::languages::rust::text_regions::doc_regions;
 use crate::reporting::Diagnostic;
 use crate::source::{ItemKind, ParseResult, SourceItem, VisibilityTier};
 
@@ -49,9 +51,7 @@ const ARGUMENTS_HEADERS: &[&str] = &[
 /// Run Rust item checks, tree checks, and text checks over one parse.
 pub(crate) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
     let mut diagnostics = run_all(parsed);
-    diagnostics.extend(crate::rules::lint::run_region_checks(
-        crate::languages::rust::text_regions::doc_regions(parsed),
-    ));
+    diagnostics.extend(run_region_checks(doc_regions(parsed)));
     diagnostics.extend(mod002_fn_local_use::check(parsed));
     diagnostics
 }

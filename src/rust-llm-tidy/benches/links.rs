@@ -13,6 +13,7 @@ criterion_group!(benches, link_pass);
 
 criterion_main!(benches);
 
+use core::hint;
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rust_llm_tidy::rules::transform::fix_links;
 
@@ -30,7 +31,7 @@ fn link_pass(c: &mut Criterion) {
         group.bench_function(*name, |bencher| {
             bencher.iter(|| {
                 let out = fix_links(source, DOC_PREFIXES, 1);
-                core::hint::black_box(out);
+                hint::black_box(out);
             });
         });
     }

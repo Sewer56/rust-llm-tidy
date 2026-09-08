@@ -17,6 +17,7 @@ criterion_group!(benches, reorder_pass);
 
 criterion_main!(benches);
 
+use core::hint;
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rust_llm_tidy::languages::{LanguageBackend, RustBackend};
 use rust_llm_tidy::rules::transform::reorder::emit;
@@ -41,7 +42,7 @@ fn reorder_pass(c: &mut Criterion) {
                     .expect("the Rust backend always reorders");
                 let output = emit(&parsed, &permutation).expect("emit must succeed");
                 safety::verify_line_preservation(source, &output).expect("lines must be preserved");
-                core::hint::black_box(output);
+                hint::black_box(output);
             });
         });
     }

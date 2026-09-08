@@ -9,6 +9,7 @@ criterion_group!(benches, lint_pass);
 
 criterion_main!(benches);
 
+use core::hint;
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rust_llm_tidy::languages::LanguageBackend;
 use rust_llm_tidy::languages::rust::RustBackend;
@@ -25,7 +26,7 @@ fn lint_pass(c: &mut Criterion) {
             bencher.iter(|| {
                 let parsed = RustBackend.parse(source).expect("fixture must parse");
                 let diagnostics = RustBackend.lint(&parsed);
-                core::hint::black_box(diagnostics);
+                hint::black_box(diagnostics);
             });
         });
     }

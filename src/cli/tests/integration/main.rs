@@ -27,7 +27,8 @@
 use common::binary;
 use core::sync::atomic::{AtomicU32, Ordering};
 use std::fs;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{self, Command, Output};
 
 // Declared before the fixture modules: `#[macro_use]` puts the fixture
 // macros in scope for every sibling module declared after it.
@@ -50,8 +51,8 @@ static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 // ── Helpers ───────────────────────────────────────────────────────
 
 /// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.
-fn manifest_dir() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+fn manifest_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
 /// Reorder a temp copy of `path` (keeping the given extension, which
@@ -59,7 +60,7 @@ fn manifest_dir() -> std::path::PathBuf {
 ///
 /// Preserves the byte-for-byte "produces the _after fixture" coverage while
 /// dry-run keeps stdout empty.
-fn reorder_in_place(path: &std::path::Path, ext: &str) -> String {
+fn reorder_in_place(path: &Path, ext: &str) -> String {
     let tmp = temp_file_ext(ext);
     fs::copy(path, &tmp).unwrap();
     let output = run_command(&["--include", "reorder"], &tmp);
@@ -79,7 +80,7 @@ fn reorder_in_place(path: &std::path::Path, ext: &str) -> String {
 /// Returns (stdout, stderr, exit_code).
 fn run(content: &str, args: &[&str]) -> (String, String, i32) {
     let dir = std::env::temp_dir();
-    let pid = std::process::id();
+    let pid = process::id();
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let file = dir.join(format!("rust-llm-tidy-test-{}-{}.rs", pid, seq));
     fs::write(&file, content).unwrap();
@@ -99,7 +100,7 @@ fn run(content: &str, args: &[&str]) -> (String, String, i32) {
 /// Read a tempfile after rust-llm-tidy has modified it.
 fn run_and_read(content: &str) -> String {
     let dir = std::env::temp_dir();
-    let pid = std::process::id();
+    let pid = process::id();
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let file = dir.join(format!("rust-llm-tidy-test-{}-{}.rs", pid, seq));
     fs::write(&file, content).unwrap();
@@ -117,7 +118,7 @@ fn run_and_read(content: &str) -> String {
 }
 
 /// Run `rust-llm-tidy` on a directory with optional arguments.
-fn run_dir(dir: &std::path::Path, args: &[&str]) -> (String, String, i32) {
+fn run_dir(dir: &Path, args: &[&str]) -> (String, String, i32) {
     let mut full_args = vec!["--include", "reorder"];
     full_args.extend(args);
     let output = run_command(&full_args, dir);
@@ -130,7 +131,7 @@ fn run_dir(dir: &std::path::Path, args: &[&str]) -> (String, String, i32) {
 
 /// Run `rust-llm-tidy --include reorder --dry-run` on `path` and return
 /// `(stdout, stderr, exit)`.
-fn run_dry_run(path: &std::path::Path) -> (String, String, i32) {
+fn run_dry_run(path: &Path) -> (String, String, i32) {
     let output = run_command(&["--include", "reorder", "--dry-run"], path);
 
     assert!(
@@ -149,7 +150,7 @@ fn run_dry_run(path: &std::path::Path) -> (String, String, i32) {
 
 /// Strip the `path:` label from every stderr line so outputs for the same
 /// content under different file names compare equal.
-fn strip_path_prefix(stderr: &str, path: &std::path::Path) -> String {
+fn strip_path_prefix(stderr: &str, path: &Path) -> String {
     let prefix = format!("{}:", path.display());
     stderr
         .lines()
@@ -159,22 +160,22 @@ fn strip_path_prefix(stderr: &str, path: &std::path::Path) -> String {
 }
 
 /// Create a numbered temporary directory.
-fn temp_dir() -> std::path::PathBuf {
+fn temp_dir() -> PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = std::process::id();
+    let pid = process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-dir-{}-{}", pid, seq))
 }
 
 /// Create a numbered temporary `.rs` file path for fixture copies that
 /// reorder in place.
-fn temp_file() -> std::path::PathBuf {
+fn temp_file() -> PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = std::process::id();
+    let pid = process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-file-{}-{}.rs", pid, seq))
 }
 
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
-fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
+fn run_command(args: &[&str], path: &Path) -> Output {
     let mut cmd = Command::new(binary());
     cmd.args(["--no-config"]).args(args).arg(path);
     cmd.output()
@@ -186,8 +187,8 @@ fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
 /// Fixture copies use the extension to select the language (`.cs`);
 /// case-sensitivity tests need `.RS`/`.MD`/`.TXT` (the local `temp_file`
 /// is fixed to `.rs`).
-fn temp_file_ext(ext: &str) -> std::path::PathBuf {
+fn temp_file_ext(ext: &str) -> PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = std::process::id();
+    let pid = process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-ext-{}-{}.{}", pid, seq, ext))
 }

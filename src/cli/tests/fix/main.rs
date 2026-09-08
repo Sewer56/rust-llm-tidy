@@ -17,7 +17,8 @@
 use common::binary;
 use core::sync::atomic::{AtomicU64, Ordering};
 use std::fs;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{self, Command, Output};
 
 mod command_behavior;
 mod fences;
@@ -34,12 +35,12 @@ static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 // -- Helpers (mirrors doc_check/mod.rs) -------------------------------
 
 /// The directory holding `fix` fixtures.
-fn fixture_dir() -> std::path::PathBuf {
+fn fixture_dir() -> PathBuf {
     manifest_dir().join("tests").join("fixtures").join("fix")
 }
 
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
-fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
+fn run_command(args: &[&str], path: &Path) -> Output {
     let directory = tempfile::tempdir().unwrap();
     let config = directory.path().join(".rust-llm-tidy.yml");
     fs::write(&config, "{}\n").unwrap();
@@ -51,20 +52,20 @@ fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
 }
 
 /// Create a numbered temporary directory.
-fn temp_dir() -> std::path::PathBuf {
+fn temp_dir() -> PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = std::process::id();
+    let pid = process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-fix-dir-{}-{}", pid, seq))
 }
 
 /// Create a numbered temporary file path.
-fn temp_file(ext: &str) -> std::path::PathBuf {
+fn temp_file(ext: &str) -> PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = std::process::id();
+    let pid = process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-fix-{}-{}.{}", pid, seq, ext))
 }
 
 /// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.
-fn manifest_dir() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+fn manifest_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }

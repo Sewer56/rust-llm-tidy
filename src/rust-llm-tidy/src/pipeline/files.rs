@@ -1,17 +1,22 @@
 //! File operations and project-aware visibility context.
 
+use crate::config::ModuleSizeConfig;
 use crate::input as paths;
 use crate::input::file_io as io;
-use crate::languages::registry as langs;
+use crate::languages::{backend_for, registry as langs};
 use crate::project::csharp as csharp_index;
+use crate::reporting::Diagnostic;
 use crate::reporting::change as changes;
 use crate::rules::lint as check;
+use crate::rules::transform::reorder;
 use crate::rules::transform::visibility::rust::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
     discover_crate_root, narrow_vis_in_tree,
 };
 use crate::source::preservation as safety;
+use crate::text::comments;
 use anyhow::Context;
+use core::iter;
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fs;
@@ -50,9 +55,9 @@ pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
     suppress_in_release_notes: bool,
-    module_size: crate::config::ModuleSizeConfig,
+    module_size: ModuleSizeConfig,
     index: Option<&csharp_index::CSharpIndex>,
-) -> anyhow::Result<Vec<(PathBuf, crate::reporting::Diagnostic)>> {
+) -> anyhow::Result<Vec<(PathBuf, Diagnostic)>> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -60,7 +65,7 @@ pub(crate) fn check_file(
 
     let mut diagnostics = Vec::new();
     if profile.backend
-        && let Some(backend) = crate::languages::backend_for(ext)
+        && let Some(backend) = backend_for(ext)
     {
         let owned;
         let parsed = if let Some(parsed) = index.and_then(|i| i.parsed(path)) {
@@ -103,7 +108,7 @@ pub(crate) fn check_file(
     match profile.text_lints {
         langs::TextLints::Prose => diagnostics.extend(check::run_text_checks(&source, ext)),
         langs::TextLints::Lexicon => {
-            diagnostics.extend(crate::text::comments::text_checks(&source, ext));
+            diagnostics.extend(comments::text_checks(&source, ext));
         }
         langs::TextLints::Ast | langs::TextLints::None => {}
     }
@@ -200,7 +205,7 @@ pub(crate) fn reorder_file(
     // 2. Parse through the registered backend - extract items, spans,
     //    comments, members, preamble/trailer.
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let Some(backend) = crate::languages::backend_for(ext) else {
+    let Some(backend) = backend_for(ext) else {
         return Ok(Vec::new());
     };
     let parsed = backend
@@ -216,8 +221,7 @@ pub(crate) fn reorder_file(
     };
 
     // 4. Emit the reordered source.
-    let output = crate::rules::transform::reorder::emit(&parsed, &permutation)
-        .context("failed to emit reordered source")?;
+    let output = reorder::emit(&parsed, &permutation).context("failed to emit reordered source")?;
 
     // 5. Safety check - verify every line is preserved (multiset equality)
     safety::verify_line_preservation(&source, &output).with_context(|| {
@@ -358,14 +362,14 @@ pub(crate) fn vis_file(
                 // tests/). The crate-wide re-export set would miss this
                 // file's own `pub use`.
                 let pf = ParsedFile::new(path.to_path_buf(), source.clone())?;
-                let per_file = collect_crate_reexports(core::iter::once(&pf));
+                let per_file = collect_crate_reexports(iter::once(&pf));
                 narrow_vis_in_tree(&source, None, &per_file)
             }
         }
         None => {
             // Standalone: build a per-file re-export guard from this file only.
             let pf = ParsedFile::new(path.to_path_buf(), source.clone())?;
-            let reexports = collect_crate_reexports(core::iter::once(&pf));
+            let reexports = collect_crate_reexports(iter::once(&pf));
             narrow_vis_in_tree(&source, None, &reexports)
         }
     }

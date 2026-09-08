@@ -47,12 +47,14 @@
 //!
 //! [`text_regions`]: crate::languages::csharp::text_regions
 
+use super::run_region_checks;
 pub use crate::languages::csharp::analysis::can_throw::CanThrowIndex;
 #[cfg(test)]
 use crate::languages::csharp::analysis::declaration::tag_slices;
 use crate::languages::csharp::analysis::declaration::{
     Declaration, THROWING, collect_children, exception_tags,
 };
+use crate::languages::csharp::text_regions::doc_regions;
 use crate::reporting::{Diagnostic, Severity};
 use crate::source::{ItemKind, ParseResult};
 
@@ -152,9 +154,7 @@ pub(crate) fn run_indexed(parsed: &ParseResult, shared: Option<&CanThrowIndex>) 
 
     diagnostics.extend(mod003_qualified_path::check(parsed));
 
-    diagnostics.extend(crate::rules::lint::run_region_checks(
-        crate::languages::csharp::text_regions::doc_regions(parsed),
-    ));
+    diagnostics.extend(run_region_checks(doc_regions(parsed)));
     diagnostics
 }
 

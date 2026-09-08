@@ -91,6 +91,7 @@
 //! [`validate_extension`] is the shared shape check every user-supplied
 //! extension must pass.
 
+use crate::config::CompiledConfig;
 use anyhow::bail;
 use core::cmp::Ordering;
 use std::collections::HashSet;
@@ -376,7 +377,7 @@ impl Profile {
 /// are idempotent. Per-file op gating always re-resolves the profile
 /// from the file's own extension.
 pub(crate) fn allowed_extensions<'a>(
-    config: Option<&'a crate::config::CompiledConfig>,
+    config: Option<&'a CompiledConfig>,
     extensions: &'a [String],
 ) -> Vec<&'a str> {
     // A non-empty `extensions:` list replaces the defaults wholesale.

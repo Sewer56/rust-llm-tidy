@@ -1,5 +1,6 @@
 //! Public text fixes rewrite standalone comment runs, never neighboring source.
 
+use core::iter;
 use rstest::rstest;
 use rust_llm_tidy::reporting::{Change, ChangeKind};
 use rust_llm_tidy::{RunOptions, SourceOptions, config, run, tidy_source};
@@ -181,10 +182,10 @@ fn links_should_count_occurrences_and_emit_definitions_per_run(
     #[case] next_prefix: &str,
     #[case] separator: &str,
 ) {
-    let repeated = core::iter::repeat_n(LINK, LINK_THRESHOLD)
+    let repeated = iter::repeat_n(LINK, LINK_THRESHOLD)
         .collect::<Vec<_>>()
         .join(" ");
-    let references = core::iter::repeat_n("[A]", LINK_THRESHOLD)
+    let references = iter::repeat_n("[A]", LINK_THRESHOLD)
         .collect::<Vec<_>>()
         .join(" ");
     let source = format!("//! {LINK}\n{separator}{next_prefix}{repeated}\n");

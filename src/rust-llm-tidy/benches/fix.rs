@@ -10,6 +10,7 @@ criterion_group!(benches, fix_pass);
 
 criterion_main!(benches);
 
+use core::hint;
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rust_llm_tidy::rules::transform::fix_tables;
 
@@ -44,16 +45,16 @@ fn fix_pass(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(canonical.len() as u64));
         group.bench_function(format!("{name}/aligned"), |bencher| {
             bencher.iter(|| {
-                let out = fix_tables(core::hint::black_box(&canonical), DOC_PREFIXES);
-                core::hint::black_box(out);
+                let out = fix_tables(hint::black_box(&canonical), DOC_PREFIXES);
+                hint::black_box(out);
             });
         });
 
         group.throughput(Throughput::Bytes(misaligned.len() as u64));
         group.bench_function(format!("{name}/misaligned"), |bencher| {
             bencher.iter(|| {
-                let out = fix_tables(core::hint::black_box(&misaligned), DOC_PREFIXES);
-                core::hint::black_box(out);
+                let out = fix_tables(hint::black_box(&misaligned), DOC_PREFIXES);
+                hint::black_box(out);
             });
         });
     }

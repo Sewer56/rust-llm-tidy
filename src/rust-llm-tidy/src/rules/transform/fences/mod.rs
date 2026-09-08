@@ -19,6 +19,7 @@
 
 use crate::rules::transform::tables::{split_terminator, strip_comment_prefix};
 use crate::rules::transform::{FixAnchor, FixKind, FixOutcome};
+use core::iter;
 use scan::is_fence_candidate;
 use std::borrow::Cow;
 // Shared delimiter recognition for the link transformation.
@@ -219,7 +220,7 @@ fn emit_fence(
 ) {
     output.push_str(prefix);
     output.push_str(lead);
-    output.extend(core::iter::repeat_n(marker, run_len));
+    output.extend(iter::repeat_n(marker, run_len));
     output.push_str(info);
     output.push_str(term);
 }

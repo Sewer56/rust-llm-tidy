@@ -29,6 +29,7 @@ use crate::reporting::Diagnostic;
 use crate::rules::lint::run_region_checks;
 use crate::source::ParseResult;
 use crate::text::measurement::{Dialect, DocRegion, RegionLine, line_marker_regions};
+use core::iter;
 
 /// One measured doc node from the tree walk.
 enum DocNode<'a> {
@@ -248,7 +249,7 @@ fn content_fragments<'a>(
     first: tree_sitter::Node<'a>,
 ) -> impl Iterator<Item = tree_sitter::Node<'a>> {
     let mut next = Some(first);
-    core::iter::from_fn(move || {
+    iter::from_fn(move || {
         while let Some(node) = next {
             next = node.next_named_sibling();
             if node.kind() == "string_content" {

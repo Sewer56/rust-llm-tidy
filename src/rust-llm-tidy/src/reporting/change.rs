@@ -16,7 +16,9 @@
 //! [`link_changes`]. Vis records come from diffing the narrowed output against
 //! the source ([`vis_changes`]).
 
-use crate::source::ItemKind;
+use crate::rules::transform::FixAnchor;
+use crate::rules::transform::reorder::{self, Permutation};
+use crate::source::{ItemKind, ParseResult};
 use core::num::NonZeroU32;
 use std::fmt;
 
@@ -120,7 +122,7 @@ impl fmt::Display for Change {
 /// Each anchor stands for one edit - a flipped fence delimiter - anchored at
 /// the entity's first line in that pass's input. `anchors` is empty on a
 /// no-op pass, so the mapping yields zero records.
-pub(crate) fn fence_changes(anchors: &[crate::rules::transform::FixAnchor]) -> Vec<Change> {
+pub(crate) fn fence_changes(anchors: &[FixAnchor]) -> Vec<Change> {
     anchors
         .iter()
         .map(|a| Change {
@@ -169,12 +171,9 @@ pub(crate) fn link_changes(pairs: &[(String, String)]) -> Vec<Change> {
 ///
 /// - `parsed`: the parsed source whose items moved.
 /// - `permutation`: the validated permutation the reorder emitted.
-pub(crate) fn reorder_changes(
-    parsed: &crate::source::ParseResult,
-    permutation: &crate::rules::transform::reorder::Permutation,
-) -> Vec<Change> {
+pub(crate) fn reorder_changes(parsed: &ParseResult, permutation: &Permutation) -> Vec<Change> {
     let mut change_records = Vec::new();
-    for mv in crate::rules::transform::reorder::compute_moves(&parsed.items, permutation) {
+    for mv in reorder::compute_moves(&parsed.items, permutation) {
         // `mv.from()` is the 1-based input sequence position.
         let item = &parsed.items[mv.from() - 1];
         change_records.push(Change {

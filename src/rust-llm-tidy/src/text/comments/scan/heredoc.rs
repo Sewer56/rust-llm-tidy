@@ -5,6 +5,7 @@
 //! selects it; only the queued delimiter lives here.
 
 use super::super::lexicon::{Heredoc, ident_byte, ident_start};
+use core::str;
 
 /// One queued heredoc: its delimiter and whether the terminator line
 /// may carry a lead (`<<~`, `<<-`).
@@ -60,7 +61,7 @@ pub(super) fn heredoc_open(
     while matches!(bytes.get(j), Some(&b) if ident_byte(b)) {
         j += 1;
     }
-    let word = core::str::from_utf8(&bytes[word_start..j]).expect("ASCII identifier");
+    let word = str::from_utf8(&bytes[word_start..j]).expect("ASCII identifier");
     if let Some(q) = quote {
         if bytes.get(j) != Some(&q) {
             return None;

@@ -20,22 +20,22 @@ use tree_sitter::Node;
 /// `doc` nodes are `///` (outer) line/block comments; `attr` nodes are
 /// `#[...]` attribute items. Both attach to the following item.
 #[derive(Default)]
-pub(in crate::languages::rust::parse) struct PendingTrivia<'a> {
+pub(in super::super) struct PendingTrivia<'a> {
     pub(super) nodes: Vec<Node<'a>>,
 }
 
 impl<'a> PendingTrivia<'a> {
-    pub(in crate::languages::rust::parse) fn new() -> Self {
+    pub(in super::super) fn new() -> Self {
         Self { nodes: Vec::new() }
     }
 
-    pub(in crate::languages::rust::parse) fn push(&mut self, node: Node<'a>) {
+    pub(in super::super) fn push(&mut self, node: Node<'a>) {
         self.nodes.push(node);
     }
 
     /// Byte offset of the first attachable trivia node, i.e. the item's
     /// "syn_start" (start of its leading attrs/docs), used for `start_line`.
-    pub(in crate::languages::rust::parse) fn attached_start(&self) -> Option<usize> {
+    pub(in super::super) fn attached_start(&self) -> Option<usize> {
         self.nodes.first().map(|n| n.start_byte())
     }
 }
@@ -106,7 +106,7 @@ pub(super) fn extract_doc_comments(trivia: &[Node], source: &str) -> Vec<String>
 ///
 /// Inner docs (`//!`) and plain comments (`//`) are NOT attachable; they are
 /// transparent to attachment.
-pub(in crate::languages::rust::parse) fn is_attachable(node: Node) -> bool {
+pub(in super::super) fn is_attachable(node: Node) -> bool {
     match node.kind() {
         "attribute_item" => true,
         "line_comment" | "block_comment" => is_outer_doc(node),
@@ -156,7 +156,7 @@ pub(super) fn is_test_module(attrs: &[Node<'_>], source: &str) -> bool {
 ///
 /// These are transparent to attachment (neither
 /// attach to an item nor break the pending run of attachable trivia).
-pub(in crate::languages::rust::parse) fn is_transparent_comment(node: Node) -> bool {
+pub(in super::super) fn is_transparent_comment(node: Node) -> bool {
     if matches!(node.kind(), "line_comment" | "block_comment") {
         !is_outer_doc(node)
     } else {
@@ -189,7 +189,7 @@ pub(in crate::languages::rust::parse) fn is_transparent_comment(node: Node) -> b
 ///
 /// - `item` - the `attribute_item` node to read.
 /// - `source` - the full source text for text extraction.
-pub(in crate::languages::rust) fn doc_attribute_content<'a>(
+pub(in super::super::super) fn doc_attribute_content<'a>(
     item: Node<'a>,
     source: &str,
 ) -> Option<Node<'a>> {
@@ -218,7 +218,7 @@ pub(in crate::languages::rust) fn doc_attribute_content<'a>(
 /// # Arguments
 ///
 /// - `node` - the `line_comment` or `block_comment` node to test.
-pub(in crate::languages::rust) fn is_outer_doc(node: Node) -> bool {
+pub(in super::super::super) fn is_outer_doc(node: Node) -> bool {
     has_field(node, "outer")
 }
 

@@ -46,6 +46,7 @@ pub use module_size_config::ModuleSizeConfig;
 pub use passive_narration_config::PassiveNarrationConfig;
 pub use post_process_step::PostProcessStep;
 pub use raw::{Config, RuleGroup};
+use std::env;
 use std::path::{Path, PathBuf};
 
 mod compiled;
@@ -80,7 +81,7 @@ pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathB
     if let Some(p) = arg {
         return Some(p.to_path_buf());
     }
-    let cwd = std::env::current_dir().ok()?;
+    let cwd = env::current_dir().ok()?;
     let mut dir: &Path = &cwd;
     loop {
         let candidate = dir.join(".rust-llm-tidy.yml");

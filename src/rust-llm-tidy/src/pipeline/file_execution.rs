@@ -3,6 +3,8 @@
 use super::effective_policy;
 use super::files::{self, VisContext};
 use crate::config::{CompiledConfig, ModuleSizeConfig};
+use crate::languages::{backend_for, registry as langs};
+use crate::project::csharp::CSharpIndex;
 use crate::reporting::FileReport;
 use crate::rules::registry as check;
 use std::collections::HashSet;
@@ -28,10 +30,7 @@ pub(super) fn process_one(
     cli_disabled: &HashSet<String>,
     ctx: Option<&VisContext>,
     dry_run: bool,
-    phase: (
-        Option<FileReport>,
-        Option<&crate::project::csharp::CSharpIndex>,
-    ),
+    phase: (Option<FileReport>, Option<&CSharpIndex>),
 ) -> FileReport {
     let (prior, index) = phase;
     let lint_phase = prior.is_some();
@@ -48,13 +47,13 @@ pub(super) fn process_one(
     let enabled = &policy.enabled;
     let disabled = &policy.disabled;
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let profile = crate::languages::registry::profile_for(ext);
+    let profile = langs::profile_for(ext);
     // A fix op qualifies its file for post-processing whenever the profile
     // allows it.
 
     // An AST op also needs the profile's `backend` tier and a
     // backend registered in the language registry (Rust today).
-    let backend = crate::languages::backend_for(ext);
+    let backend = backend_for(ext);
     let ast_op_on = |op: &str| {
         profile.backend
             && profile.op_enabled(op, enabled, disabled)
@@ -110,7 +109,7 @@ pub(super) fn process_one(
     // The non-code size opt-in admits supported data formats to MOD001 only.
     let module_size = config.map_or_else(ModuleSizeConfig::default, CompiledConfig::module_size);
     let non_code_size_on = module_size.include_non_code
-        && profile.module_size == crate::languages::registry::ModuleSize::NonCode
+        && profile.module_size == langs::ModuleSize::NonCode
         && !disabled.contains(check::CODE_MODULE_SIZE)
         && enabled
             .as_ref()

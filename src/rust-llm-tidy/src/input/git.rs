@@ -93,7 +93,7 @@ fn git_stdout(args: &[&str]) -> anyhow::Result<String> {
 }
 
 fn matches_ext(p: &Path, exts: &[&str]) -> bool {
-    crate::input::ext_in(p.extension().and_then(|e| e.to_str()), exts)
+    super::ext_in(p.extension().and_then(|e| e.to_str()), exts)
 }
 
 fn git_stdout_opt(args: &[&str]) -> anyhow::Result<Option<String>> {

@@ -14,8 +14,10 @@ criterion_group!(benches, vis_crate_aware);
 
 criterion_main!(benches);
 
+use core::hint;
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use rust_llm_tidy::rules::transform::visibility::rust::narrow_vis_in_tree;
+use std::path::Path;
 
 #[path = "fixture_setup/languages.rs"]
 mod fixtures;
@@ -34,10 +36,10 @@ fn vis_crate_aware(c: &mut Criterion) {
         group.bench_function(*name, |bencher| {
             bencher.iter(|| {
                 for (path, src) in &owned {
-                    let floor = tree.floor_for(std::path::Path::new(path));
+                    let floor = tree.floor_for(Path::new(path));
                     let out =
                         narrow_vis_in_tree(src, floor, &reexports).expect("fixture must parse");
-                    core::hint::black_box(out);
+                    hint::black_box(out);
                 }
             });
         });

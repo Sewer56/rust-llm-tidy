@@ -30,6 +30,7 @@
 use rust_llm_tidy::rules::transform::visibility::rust::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
 };
+use std::path::PathBuf;
 
 /// Multi-file crate fixtures for the crate-aware vis bench: each entry is a
 /// small crate as `(name, root_relative_path, [(path, source)])`.
@@ -247,11 +248,9 @@ pub fn build_crate_context(
     // and the crate-wide re-export scan (single parse per file).
     let files: Vec<ParsedFile> = owned
         .iter()
-        .map(|(p, s)| {
-            ParsedFile::new(std::path::PathBuf::from(p), s.clone()).expect("fixture must parse")
-        })
+        .map(|(p, s)| ParsedFile::new(PathBuf::from(p), s.clone()).expect("fixture must parse"))
         .collect();
-    let root = std::path::PathBuf::from(&owned[0].0);
+    let root = PathBuf::from(&owned[0].0);
     let tree = build_module_tree(&root, &files).expect("crate fixture must resolve");
     let reexports = collect_crate_reexports(&files);
     (tree, reexports, owned)

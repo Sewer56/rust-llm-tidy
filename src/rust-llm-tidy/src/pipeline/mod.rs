@@ -12,8 +12,10 @@
 //! - `run_options`: explicit permissions and rule selection for `run`
 //! - `source_options`: options for standalone buffer processing
 
-use crate::config::{CompiledConfig, PostProcessStep};
+use crate::config::{self, CompiledConfig, FilePolicy, PostProcessStep};
 use crate::input as paths;
+use crate::languages::registry as langs;
+use crate::project::csharp::CSharpIndex;
 use crate::reporting::{FileReport, PostProcessFailure, RunReport};
 use crate::rules::registry as check;
 pub use buffer::tidy_source;
@@ -98,7 +100,7 @@ impl FileReport {
 pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Result<RunReport> {
     validate_selection(&options.include, &options.exclude, &options.extensions)?;
 
-    let allowed = crate::languages::registry::allowed_extensions(config, &options.extensions);
+    let allowed = langs::allowed_extensions(config, &options.extensions);
     let paths = dedup_inputs(paths::resolve_inputs(
         &options.paths,
         options.git_changed,
@@ -120,11 +122,7 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
                 let policy = effective_policy(path, config, included.as_ref(), &disabled);
                 !policy.skip
                     && paths::ext_in(path.extension().and_then(|ext| ext.to_str()), &["rs"])
-                    && crate::languages::registry::profile_for("rs").op_enabled(
-                        "vis",
-                        &policy.enabled,
-                        &policy.disabled,
-                    )
+                    && langs::profile_for("rs").op_enabled("vis", &policy.enabled, &policy.disabled)
             })
             .cloned()
             .collect()
@@ -143,7 +141,7 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
             set.contains("lints") || check::LINT_CODES.iter().any(|code| set.contains(*code))
         });
     let mut csharp = if lints_may_run {
-        Some(crate::project::csharp::CSharpIndex::build(&paths)?)
+        Some(CSharpIndex::build(&paths)?)
     } else {
         None
     };
@@ -285,7 +283,7 @@ pub(crate) fn validate_selection(
     exclude: &[String],
     extensions: &[String],
 ) -> anyhow::Result<()> {
-    let valid = crate::config::known_rules();
+    let valid = config::known_rules();
     for name in include.iter().chain(exclude) {
         if !valid.contains(&name.as_str()) {
             anyhow::bail!(
@@ -296,7 +294,7 @@ pub(crate) fn validate_selection(
     }
 
     for ext in extensions {
-        crate::languages::registry::validate_extension(ext)?;
+        langs::validate_extension(ext)?;
     }
     Ok(())
 }
@@ -351,7 +349,7 @@ fn effective_policy(
     config: Option<&CompiledConfig>,
     included: Option<&HashSet<String>>,
     disabled: &HashSet<String>,
-) -> crate::config::FilePolicy {
+) -> FilePolicy {
     let mut policy = config
         .map(|config| config.policy_for(path))
         .unwrap_or_default();

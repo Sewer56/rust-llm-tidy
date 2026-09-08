@@ -6,6 +6,7 @@
 
 use crate::csharp::csharp_fixture_dir;
 use crate::{fix_fixture_dir, reorder_fixture_dir, run_command, rust_fixture_dir, temp_file};
+use std::collections::BTreeSet;
 use std::fs;
 
 /// JSON dry-run records the would-be using hoist and member reorder.
@@ -79,7 +80,7 @@ fn csharp_json_output_matches_the_documented_record_shape() {
         "expected exactly the DOC004 finding:\n{stdout}"
     );
 
-    let keys: std::collections::BTreeSet<&str> = array[0]
+    let keys: BTreeSet<&str> = array[0]
         .as_object()
         .expect("the finding is an object")
         .keys()
@@ -433,7 +434,7 @@ fn json_output_reports_all_findings() {
     );
     for finding in array {
         // Pin the exact field set: lint records carry only the base fields.
-        let keys: std::collections::BTreeSet<&str> = finding
+        let keys: BTreeSet<&str> = finding
             .as_object()
             .expect("each record is an object")
             .keys()

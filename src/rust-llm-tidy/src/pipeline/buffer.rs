@@ -2,11 +2,16 @@
 
 use crate::SourceOptions;
 use crate::languages::{backend_for, registry};
-use crate::reporting::{Change, Diagnostic, SourceReport, change};
+use crate::reporting::{Change, ChangeKind, Diagnostic, SourceReport, change};
 use crate::rules::transform::visibility::rust::{
     ParsedFile, collect_crate_reexports, narrow_vis_in_tree,
 };
 use crate::rules::{lint, transform};
+use crate::source::preservation;
+use crate::text::comments;
+use core::iter;
+use core::mem;
+use core::num::NonZeroU32;
 use std::borrow::Cow;
 use std::collections::HashSet;
 
@@ -104,7 +109,7 @@ pub fn tidy_source<'a>(
     }
     if ast_enabled("vis") {
         let parsed = ParsedFile::new("buffer.rs".into(), output.to_string())?;
-        let reexports = collect_crate_reexports(core::iter::once(&parsed));
+        let reexports = collect_crate_reexports(iter::once(&parsed));
         let narrowed = narrow_vis_in_tree(&output, None, &reexports)?;
         changes.extend(change::vis_changes(&output, &narrowed));
         if let Cow::Owned(narrowed) = narrowed {
@@ -185,7 +190,7 @@ pub(super) fn fix_source<'a>(
                     record.line = u32::try_from(run.row)
                         .ok()
                         .and_then(|row| line.get().checked_add(row))
-                        .and_then(core::num::NonZeroU32::new);
+                        .and_then(NonZeroU32::new);
                 }
             }
             changes.extend(records);
@@ -196,9 +201,9 @@ pub(super) fn fix_source<'a>(
     let mut table_reported = false;
     let mut links_reported = HashSet::new();
     changes.retain(|record| {
-        if record.kind == crate::reporting::ChangeKind::Table {
-            !core::mem::replace(&mut table_reported, true)
-        } else if record.kind == crate::reporting::ChangeKind::Link {
+        if record.kind == ChangeKind::Table {
+            !mem::replace(&mut table_reported, true)
+        } else if record.kind == ChangeKind::Link {
             links_reported.insert(record.message.clone())
         } else {
             true
@@ -227,7 +232,7 @@ pub(super) fn reorder_source<'a>(
     };
 
     let output = transform::reorder::emit(&parsed, &permutation)?;
-    crate::source::preservation::verify_line_preservation(source, &output)?;
+    preservation::verify_line_preservation(source, &output)?;
     let changes = change::reorder_changes(&parsed, &permutation);
     let output = if output == source {
         Cow::Borrowed(source)
@@ -285,9 +290,7 @@ fn lint_source(source: &str, ext: &str) -> anyhow::Result<Vec<Diagnostic>> {
 
     match profile.text_lints {
         registry::TextLints::Prose => diagnostics.extend(lint::run_text_checks(source, ext)),
-        registry::TextLints::Lexicon => {
-            diagnostics.extend(crate::text::comments::text_checks(source, ext))
-        }
+        registry::TextLints::Lexicon => diagnostics.extend(comments::text_checks(source, ext)),
         registry::TextLints::Ast | registry::TextLints::None => {}
     }
     Ok(diagnostics)

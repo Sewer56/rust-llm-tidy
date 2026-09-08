@@ -7,6 +7,8 @@
 use super::run_csharp_fixture;
 use crate::common::binary;
 use crate::{assert_has_diagnostic, manifest_dir, run_command, temp_file};
+use std::fs;
+use std::process::Command;
 
 /// DOC002 recursion follows same-file throwers transitively.
 ///
@@ -76,28 +78,28 @@ fn csharp_doc002_errors_on_untagged_throwers() {
 fn csharp_doc002_should_degrade_for_loose_files_and_keep_doc003_warning_exit() {
     let caller = temp_file("cs");
     let helper = temp_file("cs");
-    std::fs::write(
+    fs::write(
         &caller,
         "class A {\n/// <summary>Loads a value.</summary>\npublic void Load() { T.Helper(); }\n}",
     )
     .unwrap();
-    std::fs::write(&helper, "class T { void Helper() { throw new E(); } }").unwrap();
+    fs::write(&helper, "class T { void Helper() { throw new E(); } }").unwrap();
 
     let loose = run_command(&["--include", "lints"], &caller);
-    std::fs::write(
+    fs::write(
         &caller,
         "class A {\n/// <exception>Failure.</exception>\npublic void Load() { T.Helper(); }\n}",
     )
     .unwrap();
-    let paired = std::process::Command::new(binary())
+    let paired = Command::new(binary())
         .args(["--no-config", "--include", "lints"])
         .arg(&caller)
         .arg(&helper)
         .output()
         .unwrap();
     let stderr = String::from_utf8_lossy(&paired.stderr);
-    std::fs::remove_file(caller).unwrap();
-    std::fs::remove_file(helper).unwrap();
+    fs::remove_file(caller).unwrap();
+    fs::remove_file(helper).unwrap();
 
     assert!(loose.status.success());
     assert!(loose.stderr.is_empty());
@@ -116,7 +118,7 @@ fn csharp_doc002_should_find_project_throwers_from_single_or_multiple_inputs() {
     let thrower = root.join("thrower/Thrower.cs");
 
     for multiple in [false, true] {
-        let mut command = std::process::Command::new(binary());
+        let mut command = Command::new(binary());
         command
             .args(["--no-config", "--include", "lints"])
             .arg(&caller);
@@ -142,10 +144,10 @@ fn csharp_doc002_should_refresh_diagnostic_positions_after_reorder() {
     let caller = temp_file("cs");
     let helper = temp_file("cs");
     let source = "class A\n{\n    /// <summary>Loads first.</summary>\n    public void First() { T.Helper(); }\n    /// <summary>Loads second.</summary>\n    public void Second() { First(); }\n}\n";
-    std::fs::write(&caller, source).unwrap();
-    std::fs::write(&helper, "class T { void Helper() { throw new E(); } }").unwrap();
+    fs::write(&caller, source).unwrap();
+    fs::write(&helper, "class T { void Helper() { throw new E(); } }").unwrap();
     let run = |include| {
-        std::process::Command::new(binary())
+        Command::new(binary())
             .args(["--no-config", "--output-mode", "json", "--include", include])
             .arg(&caller)
             .arg(&helper)
@@ -153,7 +155,7 @@ fn csharp_doc002_should_refresh_diagnostic_positions_after_reorder() {
             .unwrap()
     };
 
-    let combined = std::process::Command::new(binary())
+    let combined = Command::new(binary())
         .args([
             "--no-config",
             "--output-mode",
@@ -167,7 +169,7 @@ fn csharp_doc002_should_refresh_diagnostic_positions_after_reorder() {
         .arg(&helper)
         .output()
         .unwrap();
-    let current = std::fs::read_to_string(&caller).unwrap();
+    let current = fs::read_to_string(&caller).unwrap();
     let fresh = run("lints");
     let diagnostics = |output: &[u8]| {
         let records: Vec<serde_json::Value> = serde_json::from_slice(output).unwrap();
@@ -178,8 +180,8 @@ fn csharp_doc002_should_refresh_diagnostic_positions_after_reorder() {
     };
     let combined_records = diagnostics(&combined.stdout);
     let fresh_records = diagnostics(&fresh.stdout);
-    std::fs::remove_file(&caller).unwrap();
-    std::fs::remove_file(&helper).unwrap();
+    fs::remove_file(&caller).unwrap();
+    fs::remove_file(&helper).unwrap();
 
     assert_ne!(current, source);
     assert!(current.find("void Second").unwrap() < current.find("void First").unwrap());

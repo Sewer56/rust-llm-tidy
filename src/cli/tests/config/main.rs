@@ -18,7 +18,8 @@
 //! - `validation`: `--validate` acceptance and failure modes.
 
 use core::sync::atomic::{AtomicU64, Ordering};
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{self, Command};
 
 mod cli_selection;
 mod config_selection;
@@ -38,7 +39,7 @@ static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 // -- Helpers (mirrors fix.rs) -----------------------------------
 
 /// Run Git inside a temporary fixture without changing the process directory.
-fn git(repo: &std::path::Path, args: &[&str]) {
+fn git(repo: &Path, args: &[&str]) {
     let output = Command::new("git")
         .current_dir(repo)
         .args(args)
@@ -53,8 +54,8 @@ fn git(repo: &std::path::Path, args: &[&str]) {
 }
 
 /// Create a numbered temporary directory.
-fn temp_dir() -> std::path::PathBuf {
+fn temp_dir() -> PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = std::process::id();
+    let pid = process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-cfg-dir-{}-{}", pid, seq))
 }

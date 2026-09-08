@@ -6,9 +6,10 @@
 
 use common::binary;
 use core::sync::atomic::{AtomicU64, Ordering};
+use std::env;
 use std::fs;
-use std::path::PathBuf;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{self, Command, Output};
 
 mod common;
 
@@ -116,7 +117,7 @@ fn vis_in_place_write() {
 /// A non-existent path is rejected.
 #[test]
 fn vis_nonexistent_path_fails() {
-    let nonexistent = std::env::temp_dir().join(format!(
+    let nonexistent = env::temp_dir().join(format!(
         "rust-llm-tidy-vis-missing-{}-{}.rs",
         std::process::id(),
         TEST_COUNTER.fetch_add(1, Ordering::Relaxed)
@@ -197,7 +198,7 @@ fn vis_warns_on_unresolved_mod() {
 // -- Helpers (mirrors fix.rs) ----------------------------------------
 
 /// The directory holding `vis` fixtures.
-fn fixture_dir() -> std::path::PathBuf {
+fn fixture_dir() -> PathBuf {
     manifest_dir().join("tests").join("fixtures").join("vis")
 }
 
@@ -207,8 +208,8 @@ fn fixture_dir() -> std::path::PathBuf {
 /// `pub(crate) mod foo;`; `foo.rs` holds bare-`pub` children.
 fn make_temp_crate(lib_src: &str, foo_src: &str) -> PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = std::process::id();
-    let root = std::env::temp_dir().join(format!("rlt-vis-crate-{pid}-{seq}"));
+    let pid = process::id();
+    let root = env::temp_dir().join(format!("rlt-vis-crate-{pid}-{seq}"));
     let src = root.join("src");
     fs::create_dir_all(&src).unwrap();
     fs::write(
@@ -224,7 +225,7 @@ fn make_temp_crate(lib_src: &str, foo_src: &str) -> PathBuf {
 }
 
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
-fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
+fn run_command(args: &[&str], path: &Path) -> Output {
     let mut cmd = Command::new(binary());
     cmd.args(["--no-config"]).args(args).arg(path);
     cmd.output()
@@ -232,18 +233,18 @@ fn run_command(args: &[&str], path: &std::path::Path) -> std::process::Output {
 }
 
 /// Resolve a sibling file in the same src/ dir as `lib_path`.
-fn src_sibling(lib_path: &std::path::Path, name: &str) -> PathBuf {
+fn src_sibling(lib_path: &Path, name: &str) -> PathBuf {
     lib_path.parent().unwrap().join(name)
 }
 
 /// Create a numbered temporary file path.
-fn temp_file(ext: &str) -> std::path::PathBuf {
+fn temp_file(ext: &str) -> PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = std::process::id();
-    std::env::temp_dir().join(format!("rust-llm-tidy-vis-{}-{}.{}", pid, seq, ext))
+    let pid = process::id();
+    env::temp_dir().join(format!("rust-llm-tidy-vis-{}-{}.{}", pid, seq, ext))
 }
 
 /// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.
-fn manifest_dir() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+fn manifest_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }

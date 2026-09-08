@@ -3,6 +3,7 @@
 
 use super::{ReexportSet, is_bare_pub, parse, visibility_node};
 use ahash::AHashSet;
+use core::cmp::Reverse;
 use std::borrow::Cow;
 use tree_sitter::Node;
 
@@ -109,7 +110,7 @@ pub fn narrow_vis_in_tree<'a>(
 /// Capacity is preallocated with that slack to keep `replace_range` from
 /// reallocating.
 fn apply_edits(source: &str, mut edits: Vec<(usize, usize, Cow<'_, str>)>) -> String {
-    edits.sort_by_key(|b| core::cmp::Reverse(b.0));
+    edits.sort_by_key(|b| Reverse(b.0));
     let mut out = String::with_capacity(source.len() + edits.len() * 8);
     out.push_str(source);
     for (start, end, repl) in edits {
