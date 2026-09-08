@@ -1,4 +1,4 @@
-//! The text rules: TEXT001 through TEXT007 over one measured document,
+//! The text rules: TEXT001 through TEXT008 over one measured document,
 //! in source order.
 //!
 //! [`Document`] is the measured input from the plaintext pipeline.
@@ -16,8 +16,9 @@ mod text004_header_opener;
 mod text005_fence_tag;
 mod text006_verbose_synonyms;
 mod text007_passive_narration;
+mod text008_list_density;
 
-/// TEXT001 through TEXT007 diagnostics for one measured document.
+/// TEXT001 through TEXT008 diagnostics for one measured document.
 ///
 /// Called by the `run_text_checks` and `run_region_checks` entry points
 /// in [`crate::rules::registry`]. TEXT005 reads the recorded fence
@@ -30,6 +31,7 @@ pub(crate) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     diags.extend(text005_fence_tag::diagnostics(doc));
     diags.extend(text006_verbose_synonyms::diagnostics(doc));
     diags.extend(text007_passive_narration::diagnostics(doc));
+    diags.extend(text008_list_density::diagnostics(doc));
     diags
 }
 

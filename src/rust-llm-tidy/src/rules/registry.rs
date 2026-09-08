@@ -27,6 +27,7 @@ pub(crate) const CODE_TITLES: &[(&str, &str)] = &[
     (CODE_FENCE_TAG, "untagged fenced code block"),
     (CODE_VERBOSE_SYNONYMS, "verbose synonym"),
     (CODE_PASSIVE_NARRATION, "passive construction"),
+    (CODE_TEXT008, "dense bullet list"),
     (CODE_TEST_NAMING, "non-behavioral test name"),
     (CODE_MODULE_SIZE, "oversized module"),
 ];
@@ -53,6 +54,7 @@ pub const LINT_CODES: &[&str] = &[
     CODE_FENCE_TAG,
     CODE_VERBOSE_SYNONYMS,
     CODE_PASSIVE_NARRATION,
+    CODE_TEXT008,
     CODE_TEST_NAMING,
     CODE_MODULE_SIZE,
 ];
@@ -85,6 +87,8 @@ pub const CODE_PASSIVE_NARRATION: &str = "TEXT007";
 pub const CODE_SENTENCE_LENGTH: &str = "TEXT003";
 /// Rule code for a discouraged test-function name.
 pub const CODE_TEST_NAMING: &str = "TEST001";
+/// Rule code for a bullet list exceeding its source-line budget.
+pub const CODE_TEXT008: &str = "TEXT008";
 /// Rule code for an undocumented parameter.
 pub const CODE_UNDOCUMENTED_PARAM: &str = "DOC005";
 /// Rule code for a vague `# Errors` section.
@@ -105,13 +109,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lint_codes_lists_all_seventeen_codes() {
+    fn lint_codes_lists_all_eighteen_codes() {
         // `LINT_CODES` is the source of truth for CLI rule validation. It must
         // enumerate every code produced by the backends and the text rules.
         assert_eq!(
             LINT_CODES.len(),
-            17,
-            "LINT_CODES must list exactly seventeen codes: {LINT_CODES:?}"
+            18,
+            "LINT_CODES must list exactly eighteen codes: {LINT_CODES:?}"
         );
         for code in [
             CODE_MISSING_DOCS,
@@ -129,6 +133,7 @@ mod tests {
             CODE_FENCE_TAG,
             CODE_VERBOSE_SYNONYMS,
             CODE_PASSIVE_NARRATION,
+            CODE_TEXT008,
             CODE_TEST_NAMING,
             CODE_MODULE_SIZE,
         ] {

@@ -435,6 +435,67 @@ src/lib.rs:1: hint[TEXT007]: passive construction: `are returned`.
 
 `TEXT007` emits hints, grouped after warnings; hints alone exit 0.
 
+## TEXT008 - dense bullet list
+
+A list exceeding 10 source lines warns once at its first line.
+
+Nested bullets count; blank lines do not. Only prose between lists resets
+the budget, not headings, tables, or code blocks alone.
+
+Before:
+
+```md
+- Configuration paths now resolve relative to the config file instead of
+  the working directory, so scheduled jobs use the same inputs as local runs.
+- Unknown configuration fields report their names and source locations,
+  helping users correct typos before a deployment starts.
+- Connection retries use bounded backoff and stop after the configured
+  deadline, preventing unavailable services from blocking shutdown.
+- Failed uploads retain their checkpoints so the next attempt resumes
+  from the last confirmed chunk instead of retransmitting the entire file.
+- Progress output includes completed bytes and the remaining file count,
+  making stalled transfers easier to distinguish from slow connections.
+- Error reports include the affected file and a suggested recovery action,
+  so operators can resolve failures without searching debug logs.
+```
+
+After:
+
+```md
+### Configuration
+
+Catch setup mistakes before deployment.
+
+- Resolve paths relative to the config file for consistent scheduled runs.
+- Report unknown fields with source locations to help correct typos.
+
+### Transfers
+
+Recover from interruptions without blocking shutdown.
+
+- Retry connections with bounded backoff until the configured deadline.
+- Resume failed uploads from the last confirmed chunk.
+
+### Diagnostics
+
+Give operators enough context to identify and resolve failures.
+
+- Show completed bytes and remaining files to distinguish slow transfers.
+- Include the affected file and a recovery action in error reports.
+```
+
+### TEXT008 CLI output
+
+```text
+$ cargo run -p rust-llm-tidy-cli -- --include TEXT008 README.md
+README.md:1: warning[TEXT008]: bullet list spans more than 10 lines.
+  - Long bullet lists can be hard to scan, especially when items wrap across lines.
+  - Tighten each bullet to a single line.
+  - If the list needs more room, split the bullets into groups with subheadings or a table. (file)
+```
+
+`TEXT008` is warning-severity, so its findings do not fail the run.
+
 [`lints`]: ./lints.md
 
 ## Library access

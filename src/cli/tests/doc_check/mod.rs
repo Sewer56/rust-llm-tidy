@@ -21,6 +21,7 @@
 //! - `text004_header_opener`: TEXT004 three-sentence markdown openers
 //! - `text006_verbose_synonyms`: TEXT006 wording hints in markdown
 //! - `text007_passive_narration`: TEXT007 narration and passive-voice hints
+//! - `text008_list_density`: TEXT008 list budgets and CLI rule selection
 //!
 //! The shared setup (diagnostic assertion, runners, and fixture/temp
 //! helpers) lives at the bottom of this file.
@@ -43,6 +44,7 @@ mod text003_sentence_length;
 mod text004_header_opener;
 mod text006_verbose_synonyms;
 mod text007_passive_narration;
+mod text008_list_density;
 // The folder root sits inside `tests/doc_check/`, so the helpers shared by
 // every test binary resolve at their sibling path, not under this folder.
 #[path = "../common/mod.rs"]
