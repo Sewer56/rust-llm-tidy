@@ -49,38 +49,46 @@
 //! are known roots. Other unprefixed roots remain exempt: imports and type
 //! positions do not prove that a name includes its full namespace.
 //!
+//! # Module layout
+//!
+//! - [`walker`]: traversal, occurrence recording, and suggestions
+//! - [`scope`]: the scope-frame data model and its queries
+//! - [`usings`]: `using`-directive import collection
+//! - [`names`]: dotted-chain segments and bound-name extraction
+//! - [`syntax`]: tree-shape predicates and name-leaf readers
+//!
 //! # Code walkthrough: start at `check`
 //!
 //! Read these functions in call order, not their order in the file.
 //!
-//! 1. [`check`] receives an already-parsed file. It creates a [`Walker`], visits
-//!    the syntax tree, and returns the collected diagnostics.
-//! 2. [`Walker::collect_relative_roots`] finds namespace components that could
-//!    make a known root relative rather than absolute.
-//! 3. [`Walker::walk`] visits syntax nodes recursively. Entering a scope pushes
-//!    a [`ScopeFrame`]; leaving a nested scope pops it.
-//! 4. [`is_chain_head`] selects the outermost node of a dotted chain. For
+//! 1. [`check`] receives an already-parsed file. It creates a
+//!    [`walker::Walker`], visits the syntax tree, and returns the diagnostics.
+//! 2. [`walker::Walker::collect_relative_roots`] finds namespace components
+//!    that could make a known root relative rather than absolute.
+//! 3. [`walker::Walker::walk`] visits syntax nodes recursively. Entering
+//!    a scope pushes a [`scope::ScopeFrame`]; leaving a nested scope pops it.
+//! 4. [`syntax::is_chain_head`] selects the outermost node of a dotted chain. For
 //!    `System.Console.WriteLine`, this avoids separate hints for shorter prefixes.
-//!    [`Walker::record_occurrence`] then checks the name's eligibility.
-//! 5. [`Walker::covering_import`] finds the longest visible import prefix.
-//!    [`Walker::suggestion_under`] removes a plain import's prefix or replaces
+//!    [`walker::Walker::record_occurrence`] then checks the name's eligibility.
+//! 5. [`scope::covering_import`] finds the longest visible import prefix.
+//!    [`walker::Walker::suggestion_under`] removes a plain import's prefix or replaces
 //!    an aliased prefix with its alias.
-//! 6. [`Walker::record_occurrence`] adds a hint only when it has advice.
-//!    [`Walker::enclosing_item`] supplies the containing item's kind and name;
+//! 6. [`walker::Walker::record_occurrence`] adds a hint only when it has advice.
+//!    [`walker::Walker::enclosing_item`] supplies the containing item's kind and name;
 //!    the name node supplies the line number. [`check`] returns these hints.
 //!
 //! ## What the stored data means
 //!
-//! - [`Walker`]: source bytes, relative roots, active scopes, and accumulated hints
-//! - [`ScopeFrame`]: imports and bound names in one active scope
-//! - [`Import`]: an imported path, its name, and whether it is an alias
-//! - [`Binding`]: a declared name and the position where it starts counting
-//! - [`Suggestion`]: the import's name for the hint and the replacement text
+//! - [`walker::Walker`]: source bytes, relative roots, scopes, and hints
+//! - [`scope::ScopeFrame`]: imports and bound names in one active scope
+//! - [`scope::Import`]: an imported path, its name, and whether it is an alias
+//! - [`scope::Binding`]: a declared name and the position where it starts counting
+//! - `walker::Suggestion`: the import's name for the hint and the replacement text
 //!
 //! The scope stack models nested visibility, not compiler name resolution.
 //!
-//! [`frame_mentions`] asks whether a scope uses a name; [`frame_shadows`] asks
-//! whether it conflicts with the proposed import.
+//! [`scope::frame_mentions`] asks whether a scope uses a name;
+//! [`scope::frame_shadows`] asks whether it conflicts with the import.
 //!
 //! Imports and declaration names are collected before visiting a scope's children.
 //! A binding's `start` value distinguishes scope-wide declarations from locals
@@ -91,802 +99,36 @@
 //!
 //! ## Trace the first example
 //!
-//! `collect_usings` records `using System.Threading.Tasks;` as a plain import.
+//! `usings::collect_usings` records `using System.Threading.Tasks;` as a
+//! plain import.
 //!
-//! `name_segments` splits the path into `System`, `Threading`, `Tasks`, `Task`,
-//! and `Delay`.
+//! `names::name_segments` splits the path into `System`, `Threading`,
+//! `Tasks`, `Task`, and `Delay`.
 //!
 //! The covering import matches `System.Threading.Tasks`. `suggestion_under`
 //! removes that prefix, leaving `Task.Delay` if the short name does not conflict.
 //!
-//! Next: open [`check`], then follow [`Walker::walk`] to
-//! [`Walker::record_occurrence`] with this example in mind.
+//! Next: open [`check`], then follow [`walker::Walker::walk`] to
+//! [`walker::Walker::record_occurrence`] with this example in mind.
 //!
 //! # Remarks
 //!
 //! Hints are withheld for conflicting short names, unknown expression receivers,
 //! conditional methods or regions, attributes, import text, and generic chains.
 
-use crate::reporting::{Diagnostic, Severity};
-use crate::rules::lint::CODE_QUALIFIED_PATH;
-use crate::source::{ItemKind, ParseResult};
+use crate::reporting::Diagnostic;
+use crate::source::ParseResult;
 use std::collections::HashSet;
-use tree_sitter::Node;
+use walker::Walker;
+
+mod names;
+mod scope;
+mod syntax;
+mod usings;
+mod walker;
 
 /// Known namespace roots, unless syntax shows shadowing or relative use.
 const ROOT_SEGMENTS: &[&str] = &["System", "Microsoft"];
-
-/// What an existing import advises: the covering directive's
-/// name for the hint and the replacement text for the whole path.
-///
-/// An aliased directive (`using W = Nq.Text.Widget;`) binds `W`, so a
-/// covered path suggests the alias plus the remaining segments
-/// (`W.Empty`).
-///
-/// A plain `using` opens its namespace, so the covered prefix
-/// disappears and the remaining segments read unqualified (`Empty`).
-struct Suggestion<'a> {
-    short: &'a str,
-    replacement: String,
-}
-
-/// Lexical scopes and hints collected in source order.
-struct Walker<'a> {
-    bytes: &'a [u8],
-    relative_roots: HashSet<&'a str>,
-    scopes: Vec<ScopeFrame<'a>>,
-    diagnostics: Vec<Diagnostic>,
-}
-
-/// The imports and names one lexical scope introduces during the walk.
-#[derive(Default)]
-struct ScopeFrame<'a> {
-    imports: Vec<Import<'a>>,
-    bindings: Vec<Binding<'a>>,
-}
-
-/// One name a lexical scope binds: a local designation (parameter,
-/// variable, foreach or catch name) or a same-scope declaration.
-///
-/// `start == 0` marks a declaration: visible throughout its scope.
-/// Any other `start` is the binding's byte offset; a local shadows
-/// only from that position onward.
-struct Binding<'a> {
-    name: &'a str,
-    start: usize,
-}
-
-/// One explicit `using` import: its full path, its bound name (an
-/// alias, else the last segment), and whether an alias binds it.
-///
-/// A plain, non-aliased directive binds nothing itself: it opens its
-/// namespace so the namespace's members read unqualified.
-struct Import<'a> {
-    segments: Vec<&'a str>,
-    short: &'a str,
-    aliased: bool,
-    /// Whether the directive bypasses relative name resolution with `global::`.
-    absolute: bool,
-}
-
-impl<'a> Walker<'a> {
-    /// Withhold unprefixed roots declared below another namespace anywhere in the file.
-    ///
-    /// Separate namespace blocks can contribute members to the same namespace,
-    /// so lexical scope alone cannot exclude relative resolution.
-    fn collect_relative_roots(&mut self, node: Node) {
-        if matches!(
-            node.kind(),
-            "namespace_declaration" | "file_scoped_namespace_declaration"
-        ) && let Some(name) = node.child_by_field_name("name")
-            && let Some(segments) = self.name_segments(name)
-        {
-            let top_level = node
-                .parent()
-                .is_some_and(|p| p.kind() == "compilation_unit");
-            self.relative_roots.extend(
-                segments
-                    .into_iter()
-                    .skip(usize::from(top_level))
-                    .map(|s| s.trim_start_matches('@')),
-            );
-        }
-
-        for i in 0..node.named_child_count() as u32 {
-            if let Some(child) = node.named_child(i) {
-                self.collect_relative_roots(child);
-            }
-        }
-    }
-
-    /// Walk `node`'s subtree: maintain scope frames, record
-    /// qualified-path occurrences, and never descend into exempt spans.
-    fn walk(&mut self, node: Node) {
-        if node.kind().starts_with("preproc_if")
-            || (matches!(
-                node.kind(),
-                "method_declaration"
-                    | "constructor_declaration"
-                    | "destructor_declaration"
-                    | "operator_declaration"
-                    | "conversion_operator_declaration"
-                    | "local_function_statement"
-            ) && contains_conditional(node))
-        {
-            return;
-        }
-
-        match node.kind() {
-            // D7 exemptions: `using` text and attribute spans produce
-            // no occurrences; a `using` contributes its imports to the
-            // current scope instead.
-            "using_directive" => return,
-
-            "attribute_list" | "global_attribute" => return,
-            _ => {}
-        }
-
-        let pushed = if is_scope(node.kind()) {
-            self.scopes.push(ScopeFrame::default());
-            // Declarations and usings are visible throughout their scope.
-            for i in 0..node.named_child_count() as u32 {
-                if let Some(child) = node.named_child(i) {
-                    self.record_item_name(child);
-                    if child.kind() == "using_directive" {
-                        self.record_use(child);
-                    }
-                }
-            }
-            true
-        } else {
-            false
-        };
-        self.record_bindings(node);
-        if is_chain_head(node) {
-            self.record_occurrence(node);
-        }
-
-        for i in 0..node.named_child_count() as u32 {
-            if let Some(child) = node.named_child(i) {
-                self.walk(child);
-            }
-        }
-        if pushed && self.scopes.len() > 1 {
-            self.scopes.pop();
-        }
-    }
-
-    /// Add a `using` directive's imports to the innermost scope frame.
-    fn record_use(&mut self, node: Node) {
-        let imports = self.collect_usings(node);
-        let alias = node
-            .child_by_field_name("name")
-            .and_then(|n| self.leaf_text(n));
-
-        if let Some(frame) = self.scopes.last_mut() {
-            // Even unsupported alias targets bind their alias, never a namespace root.
-            if imports.is_empty()
-                && let Some(name) = alias
-            {
-                frame.bindings.push(Binding { name, start: 0 });
-            }
-            frame.imports.extend(imports);
-        }
-    }
-
-    /// Record a declaration node's own name into the current scope
-    /// frame.
-    ///
-    /// Declarations (namespaces, types, members, local functions)
-    /// bind their name in the enclosing scope, order-independent.
-    /// Callers run this before the node's own frame is pushed, so
-    /// member names land around the member, not inside it.
-    fn record_item_name(&mut self, node: Node) {
-        let names: Vec<&'a str> = match node.kind() {
-            "namespace_declaration" => node
-                .child_by_field_name("name")
-                .and_then(|n| self.leftmost_segment(n))
-                .into_iter()
-                .collect(),
-            "extern_alias_directive"
-            | "class_declaration"
-            | "struct_declaration"
-            | "interface_declaration"
-            | "record_declaration"
-            | "record_struct_declaration"
-            | "enum_declaration"
-            | "enum_member_declaration"
-            | "delegate_declaration"
-            | "method_declaration"
-            | "constructor_declaration"
-            | "destructor_declaration"
-            | "operator_declaration"
-            | "conversion_operator_declaration"
-            | "property_declaration"
-            | "indexer_declaration"
-            | "event_declaration"
-            | "local_function_statement" => node
-                .child_by_field_name("name")
-                .and_then(|n| self.leaf_text(n))
-                .into_iter()
-                .collect(),
-            // Fields and event fields declare their variables in
-            // declarator children; the names are visible throughout
-            // the type body.
-            "field_declaration" | "event_field_declaration" => self.declarator_names(node),
-            _ => return,
-        };
-        if let Some(frame) = self.scopes.last_mut() {
-            frame
-                .bindings
-                .extend(names.into_iter().map(|name| Binding { name, start: 0 }));
-        }
-    }
-
-    /// Record the names `node` binds into the current scope frame.
-    ///
-    /// Local designations (declarations, parameters, out-arguments,
-    /// foreach and catch names, pattern designations, query variables)
-    /// bind from their position onward.
-    ///
-    /// A field's declarator lands here too, redundantly with its
-    /// order-independent declaration binding.
-    fn record_bindings(&mut self, node: Node) {
-        let mut names: Vec<(&'a str, usize)> = Vec::new();
-        match node.kind() {
-            "parameter" | "catch_declaration" | "type_parameter" => {
-                names.extend(
-                    node.child_by_field_name("name")
-                        .and_then(|n| self.leaf_text(n))
-                        .map(|name| (name, node.start_byte())),
-                );
-            }
-            // An out-argument (`out var t`) or a positional pattern's
-            // sub-designation (`Pair(int a, int t)`).
-            "declaration_expression" | "from_clause" => {
-                names.extend(self.field_name_binding(node));
-            }
-            // A query's `into` continuation names its range variable:
-            // the identifier sits between clauses without its own node.
-            "query_expression" => {
-                for i in 0..node.named_child_count() as u32 {
-                    if let Some(child) = node.named_child(i)
-                        && child.kind() == "identifier"
-                        && let Some(name) = self.leaf_text(child)
-                    {
-                        names.push((name, child.start_byte()));
-                    }
-                }
-            }
-            // `let t = ...` carries its name as the leading identifier
-            // child, ahead of the value expression.
-            "let_clause" => {
-                if let Some(child) = node.named_child(0)
-                    && child.kind() == "identifier"
-                    && let Some(name) = self.leaf_text(child)
-                {
-                    names.push((name, child.start_byte()));
-                }
-            }
-            // A `join t in ys` clause's range variable is the first
-            // identifier after the clause's optional type; later
-            // identifiers are the source and references.
-            "join_clause" => {
-                let type_id = node.child_by_field_name("type").map(|ty| ty.id());
-                for i in 0..node.named_child_count() as u32 {
-                    let Some(child) = node.named_child(i) else {
-                        continue;
-                    };
-                    if Some(child.id()) == type_id {
-                        continue;
-                    }
-                    if child.kind() == "identifier"
-                        && let Some(name) = self.leaf_text(child)
-                    {
-                        names.push((name, child.start_byte()));
-                    }
-                    break;
-                }
-            }
-            // A `join ... into t` continuation names its range
-            // variable.
-            "join_into_clause" => {
-                for i in 0..node.named_child_count() as u32 {
-                    if let Some(child) = node.named_child(i)
-                        && child.kind() == "identifier"
-                        && let Some(name) = self.leaf_text(child)
-                    {
-                        names.push((name, child.start_byte()));
-                    }
-                }
-            }
-            // A parenthesized designation (`var (a, t)`) binds each
-            // identifier it lists; nested designations recurse by the
-            // walk.
-            "parenthesized_variable_designation" => {
-                for i in 0..node.named_child_count() as u32 {
-                    if let Some(child) = node.named_child(i)
-                        && child.kind() == "identifier"
-                        && let Some(name) = self.leaf_text(child)
-                    {
-                        names.push((name, child.start_byte()));
-                    }
-                }
-            }
-            "variable_declarator" => {
-                names.extend(
-                    node.child_by_field_name("name")
-                        .and_then(|n| self.leaf_text(n))
-                        .map(|name| (name, node.start_byte())),
-                );
-                // A deconstruction declaration (`var (a, b) = ...`)
-                // binds its pattern names instead of a declarator name.
-                for i in 0..node.named_child_count() as u32 {
-                    if let Some(child) = node.named_child(i)
-                        && child.kind() == "tuple_pattern"
-                    {
-                        names.extend(
-                            self.tuple_pattern_names(child)
-                                .into_iter()
-                                .map(|name| (name, node.start_byte())),
-                        );
-                    }
-                }
-            }
-            // An `is` or `case` pattern designation (`o is int t`)
-            // binds its name from the pattern onward.
-            "declaration_pattern" => {
-                names.extend(
-                    node.child_by_field_name("name")
-                        .and_then(|n| self.leaf_text(n))
-                        .map(|name| (name, node.start_byte())),
-                );
-            }
-            // A simple lambda's parameter is its own aliased identifier
-            // node, so the text is the name.
-            "implicit_parameter" => {
-                names.extend(
-                    node.utf8_text(self.bytes)
-                        .ok()
-                        .map(|name| (name, node.start_byte())),
-                );
-            }
-            "foreach_statement" => {
-                if let Some(left) = node.child_by_field_name("left") {
-                    names.extend(
-                        self.designation_names(left)
-                            .into_iter()
-                            .map(|name| (name, node.start_byte())),
-                    );
-                }
-            }
-            _ => {}
-        }
-        if let Some(frame) = self.scopes.last_mut() {
-            frame.bindings.extend(
-                names
-                    .into_iter()
-                    .map(|(name, start)| Binding { name, start }),
-            );
-        }
-    }
-
-    /// The name `node` binds through its `name` field, positioned at
-    /// the name itself.
-    fn field_name_binding(&self, node: Node) -> Option<(&'a str, usize)> {
-        let name = node.child_by_field_name("name")?;
-        self.leaf_text(name).map(|text| (text, name.start_byte()))
-    }
-
-    /// Suggest a readable replacement for one eligible qualified name.
-    fn record_occurrence(&mut self, node: Node) {
-        if node.parent().is_some_and(|parent| {
-            matches!(
-                parent.kind(),
-                "namespace_declaration" | "file_scoped_namespace_declaration"
-            )
-        }) {
-            return;
-        }
-
-        let Some(segments) = self.name_segments(node) else {
-            return; // not a plain dotted chain: file-local text cannot decide
-        };
-        let absolute = self
-            .leftmost_name(node)
-            .is_some_and(|n| n.kind() == "alias_qualified_name");
-        if segments.len() < 2 {
-            return;
-        }
-        if !absolute
-            && (!ROOT_SEGMENTS.contains(&segments[0])
-                || self.relative_roots.contains(segments[0])
-                || self.scopes.iter().any(|frame| {
-                    frame.imports.iter().any(|import| {
-                        import.aliased && import.short.trim_start_matches('@') == segments[0]
-                    }) || frame.bindings.iter().any(|binding| {
-                        binding.name.trim_start_matches('@') == segments[0]
-                            && (binding.start == 0 || binding.start <= node.start_byte())
-                    })
-                }))
-        {
-            return;
-        }
-
-        let line = node.start_position().row + 1;
-        let (kind, name) = self.enclosing_item(node);
-        let covering = self.covering_import(&segments, absolute);
-        let prefix = if absolute { "global::" } else { "" };
-        let path = format!("{prefix}{}", segments.join("."));
-        let advice = if let Some(matched) = covering {
-            self.suggestion_under(matched, &segments, node.start_byte())
-                .map(|suggestion| {
-                    format!(
-                        "- If clear at the use site, use `{}`; `{}` is already imported.",
-                        suggestion.replacement, suggestion.short
-                    )
-                })
-        } else {
-            // Expressions retain everything below the root: syntax cannot
-            // distinguish namespace, type, and static-property segments.
-            let imported_len = if node.kind() == "member_access_expression" {
-                2
-            } else {
-                segments.len()
-            };
-            let short = segments[imported_len - 1];
-            let shadowed = self
-                .scopes
-                .iter()
-                .any(|frame| frame_mentions(frame, short, node.start_byte()));
-            (!shadowed).then(|| {
-                let namespace = format!("{prefix}{}", segments[..imported_len - 1].join("."));
-                let replacement = segments[imported_len - 1..].join(".");
-                format!("- If `{namespace}` is a namespace and the result is clear, add `using {namespace};` at namespace or file scope and use `{replacement}`.")
-            })
-        };
-
-        if let Some(advice) = advice {
-            self.diagnostics.push(Diagnostic {
-                severity: Severity::Hint,
-                code: CODE_QUALIFIED_PATH,
-                message: format!(
-                    "path `{path}` includes the full namespace.\n\
-                     - Shorten with imports or aliases only if the meaning remains clear at the use site.\n\
-                     {advice}\n\
-                     - Retain namespace or type context when needed; use a type alias if the proposed import targets a containing type, not a namespace.\n\
-                     - Keep the full path if shortening would reduce clarity or create a name conflict."
-                ),
-                line,
-                item_kind: kind.to_string(),
-                item_name: name.map(str::to_string),
-            });
-        }
-    }
-
-    /// What to suggest for `segments` under the covering
-    /// import `matched`.
-    ///
-    /// An alias binds its name, so the advice reads the alias plus the
-    /// remaining segments. A plain `using` opens its namespace: the
-    /// covered prefix disappears and the remaining segments read
-    /// unqualified.
-    ///
-    /// A plain `using` covering the exact path has no advice: it
-    /// imports the namespace's members, never the namespace's own
-    /// simple name.
-    ///
-    /// Suppresses when the innermost frame mentioning the name the
-    /// advice references shadows or ambiguates it. That name is the alias
-    /// or the plain using's first remaining segment.
-    ///
-    /// Such mentions are a local designation, a declaration, or an
-    /// import of a different path under the same name. A local
-    /// positioned after the occurrence is not yet a mention.
-    fn suggestion_under(
-        &self,
-        matched: &Import<'a>,
-        segments: &[&str],
-        occurrence_start: usize,
-    ) -> Option<Suggestion<'a>> {
-        let tail = &segments[matched.segments.len()..];
-        let referenced = if matched.aliased {
-            matched.short
-        } else {
-            tail.split_first()?.0
-        };
-        let shadowed = self
-            .scopes
-            .iter()
-            .rev()
-            .find(|frame| frame_mentions(frame, referenced, occurrence_start))
-            .is_some_and(|frame| {
-                frame_shadows(frame, referenced, &matched.segments, occurrence_start)
-                    || frame.imports.iter().any(|import| {
-                        import.short == referenced && import.absolute != matched.absolute
-                    })
-            });
-        if shadowed {
-            return None;
-        }
-        let replacement = if !matched.aliased {
-            tail.join(".")
-        } else if tail.is_empty() {
-            matched.short.to_string()
-        } else {
-            format!("{}.{}", matched.short, tail.join("."))
-        };
-        Some(Suggestion {
-            short: matched.short,
-            replacement,
-        })
-    }
-
-    /// The longest in-scope import covering `segments`: its path equals
-    /// the occurrence path or prefixes it.
-    ///
-    /// The innermost frame wins ties, since its binding shadows outer
-    /// ones. Absolute occurrences only reuse absolute imports, avoiding relative
-    /// targets that happen to have the same spelling.
-    ///
-    /// Root namespace imports such as `using System;` also cover longer paths.
-    fn covering_import(&self, segments: &[&str], absolute: bool) -> Option<&Import<'a>> {
-        let mut covering: Option<&Import<'a>> = None;
-        for frame in self.scopes.iter().rev() {
-            for import in &frame.imports {
-                let covers = segments.starts_with(import.segments.as_slice())
-                    && (!absolute || import.absolute);
-                if covers
-                    && covering
-                        .as_ref()
-                        .is_none_or(|best| import.segments.len() > best.segments.len())
-                {
-                    covering = Some(import);
-                }
-            }
-        }
-        covering
-    }
-
-    /// The explicit imports of one `using` directive.
-    ///
-    /// A plain directive opens its namespace and binds nothing; its
-    /// `short` (the last segment) still feeds the hint's name and the
-    /// mention checks. An aliased directive (`using X = A.B.C;`)
-    /// binds the alias.
-    ///
-    /// Static imports cannot supply named advice without type checking.
-    fn collect_usings(&self, node: Node) -> Vec<Import<'a>> {
-        let mut imports = Vec::new();
-        if self.is_static_using(node) {
-            return imports;
-        }
-
-        let alias = node.child_by_field_name("name");
-        let alias_id = alias.map(|alias| alias.id());
-        for i in 0..node.named_child_count() as u32 {
-            let Some(child) = node.named_child(i) else {
-                continue;
-            };
-            if Some(child.id()) == alias_id
-                || !matches!(
-                    child.kind(),
-                    "identifier" | "generic_name" | "qualified_name" | "alias_qualified_name"
-                )
-            {
-                continue;
-            }
-            let Some(segments) = self.name_segments(child) else {
-                break;
-            };
-            let bound = alias.and_then(|alias| self.leaf_text(alias));
-            let short = bound.unwrap_or_else(|| *segments.last().expect("using path has a name"));
-            imports.push(Import {
-                segments,
-                short,
-                aliased: bound.is_some(),
-                absolute: self
-                    .leftmost_name(child)
-                    .is_some_and(|n| n.kind() == "alias_qualified_name"),
-            });
-            break;
-        }
-        imports
-    }
-
-    /// True when `node` is a `using static` directive: its anonymous
-    /// children carry the `static` modifier token.
-    fn is_static_using(&self, node: Node) -> bool {
-        let mut cursor = node.walk();
-        node.children(&mut cursor)
-            .any(|child| !child.is_named() && child.kind() == "static")
-    }
-
-    /// The leftmost segment of a dotted name chain, without building the
-    /// whole segment list.
-    fn leftmost_segment(&self, node: Node) -> Option<&'a str> {
-        self.leaf_text(self.leftmost_name(node)?)
-    }
-
-    /// Locate the root syntax without mistaking an alias for an ordinary identifier.
-    fn leftmost_name<'tree>(&self, node: Node<'tree>) -> Option<Node<'tree>> {
-        let mut current = node;
-        loop {
-            match current.kind() {
-                "qualified_name" => current = current.child_by_field_name("qualifier")?,
-                "member_access_expression" => {
-                    current = current.child_by_field_name("expression")?
-                }
-                "identifier" | "alias_qualified_name" => return Some(current),
-                _ => return None,
-            }
-        }
-    }
-
-    /// The dot-joined segments of a qualified-name chain, root first.
-    ///
-    /// Handles both shapes a dotted path takes: `qualified_name` in
-    /// type positions and `member_access_expression` in expression
-    /// positions.
-    ///
-    /// Returns `None` when the chain does not bottom out in plain
-    /// identifiers or `global::`. Generic chains are exempt rather than losing
-    /// type arguments in advice; non-global aliases never establish full paths.
-    fn name_segments(&self, node: Node) -> Option<Vec<&'a str>> {
-        let mut segments = Vec::new();
-        let mut current = node;
-        loop {
-            match current.kind() {
-                "qualified_name" => {
-                    let name = current.child_by_field_name("name")?;
-                    if name.kind() != "identifier" {
-                        return None;
-                    }
-                    segments.push(self.leaf_text(name)?);
-                    current = current.child_by_field_name("qualifier")?;
-                }
-                "member_access_expression" => {
-                    let name = current.child_by_field_name("name")?;
-                    if name.kind() != "identifier" {
-                        return None;
-                    }
-                    segments.push(self.leaf_text(name)?);
-                    current = current.child_by_field_name("expression")?;
-                }
-                "alias_qualified_name" => {
-                    if self.leaf_text(current.child_by_field_name("alias")?)? != "global" {
-                        return None;
-                    }
-                    current = current.child_by_field_name("name")?;
-                }
-                "identifier" => {
-                    segments.push(self.leaf_text(current)?);
-                    break;
-                }
-                _ => return None,
-            }
-        }
-        segments.reverse();
-        Some(segments)
-    }
-
-    /// The variable names a field or event-field declaration declares.
-    fn declarator_names(&self, node: Node) -> Vec<&'a str> {
-        let mut names = Vec::new();
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() != "variable_declaration" {
-                continue;
-            }
-            let mut declarators = child.walk();
-            for declarator in child.children(&mut declarators) {
-                if declarator.kind() == "variable_declarator"
-                    && let Some(name) = declarator
-                        .child_by_field_name("name")
-                        .and_then(|name| self.leaf_text(name))
-                {
-                    names.push(name);
-                }
-            }
-        }
-        names
-    }
-
-    /// The names a foreach designation binds: a simple name, a
-    /// destructuring pattern, or a declaration's variable.
-    fn designation_names(&self, node: Node) -> Vec<&'a str> {
-        match node.kind() {
-            "identifier" => self.leaf_text(node).into_iter().collect(),
-            "tuple_pattern" => self.tuple_pattern_names(node),
-            "declaration" | "variable_declaration" => {
-                let mut names = Vec::new();
-                for i in 0..node.named_child_count() as u32 {
-                    if let Some(child) = node.named_child(i) {
-                        names.extend(self.designation_names(child));
-                    }
-                }
-                names
-            }
-            "variable_declarator" => node
-                .child_by_field_name("name")
-                .and_then(|name| self.leaf_text(name))
-                .into_iter()
-                .collect(),
-            _ => Vec::new(),
-        }
-    }
-
-    /// The names a destructuring pattern binds, including nested
-    /// patterns.
-    fn tuple_pattern_names(&self, node: Node) -> Vec<&'a str> {
-        let mut names = Vec::new();
-        for i in 0..node.named_child_count() as u32 {
-            if let Some(child) = node.named_child(i) {
-                match child.kind() {
-                    "identifier" => names.extend(self.leaf_text(child)),
-                    "tuple_pattern" => names.extend(self.tuple_pattern_names(child)),
-                    _ => {}
-                }
-            }
-        }
-        names
-    }
-
-    /// The enclosing declaration of a node: its kind and name, for
-    /// diagnostic context. Nested declarations resolve to the
-    /// innermost one.
-    fn enclosing_item(&self, node: Node) -> (ItemKind, Option<&'a str>) {
-        let mut current = node;
-        while let Some(parent) = current.parent() {
-            let (kind, declarator) = match parent.kind() {
-                "namespace_declaration" => (ItemKind::Namespace, false),
-                "class_declaration" => (ItemKind::Class, false),
-                "struct_declaration" => (ItemKind::Struct, false),
-                "interface_declaration" => (ItemKind::Interface, false),
-                "record_declaration" | "record_struct_declaration" => (ItemKind::Record, false),
-                "enum_declaration" => (ItemKind::Enum, false),
-                "delegate_declaration" => (ItemKind::Delegate, false),
-                "method_declaration" | "local_function_statement" => (ItemKind::Fn, false),
-                "constructor_declaration" => (ItemKind::Constructor, false),
-                "destructor_declaration" => (ItemKind::Destructor, false),
-                "operator_declaration" | "conversion_operator_declaration" => {
-                    (ItemKind::Operator, false)
-                }
-                "property_declaration" | "indexer_declaration" => (ItemKind::Property, false),
-                "event_declaration" => (ItemKind::Event, false),
-                // Fields name their first declared variable, matching
-                // the parser's declaration model.
-                "field_declaration" | "event_field_declaration" => (ItemKind::Const, true),
-                _ => {
-                    current = parent;
-                    continue;
-                }
-            };
-            let name = if declarator {
-                self.declarator_names(parent).into_iter().next()
-            } else {
-                parent
-                    .child_by_field_name("name")
-                    .and_then(|n| self.leaf_text(n))
-            };
-            return (kind, name);
-        }
-        (ItemKind::Other, None)
-    }
-
-    /// Text of a name leaf node (an identifier, or a `generic_name`
-    /// without its type arguments), or `None` for any other kind.
-    fn leaf_text(&self, node: Node) -> Option<&'a str> {
-        match node.kind() {
-            "identifier" => node.utf8_text(self.bytes).ok(),
-            "generic_name" => (0..node.named_child_count() as u32)
-                .filter_map(|i| node.named_child(i))
-                .find(|child| child.kind() == "identifier")
-                .and_then(|identifier| identifier.utf8_text(self.bytes).ok()),
-            _ => None,
-        }
-    }
-}
 
 /// Hint at each eligible name, respecting aliases and conditional compilation.
 ///
@@ -906,83 +148,12 @@ pub(super) fn check(parsed: &ParseResult) -> Vec<Diagnostic> {
     walker.diagnostics
 }
 
-/// Detect conditional regions before reporting any path in a containing method.
-fn contains_conditional(node: Node) -> bool {
-    if node.kind().starts_with("preproc_if") {
-        return true;
-    }
-    let mut cursor = node.walk();
-    node.named_children(&mut cursor).any(contains_conditional)
-}
-
-/// True when `frame` binds `short` at `occurrence_start`.
-///
-/// Counts an import of that name, plus bindings in scope there:
-/// declarations anywhere, a local from its position onward.
-fn frame_mentions(frame: &ScopeFrame<'_>, short: &str, occurrence_start: usize) -> bool {
-    frame.imports.iter().any(|import| import.short == short)
-        || frame.bindings.iter().any(|binding| {
-            binding.name == short && (binding.start == 0 || binding.start <= occurrence_start)
-        })
-}
-
-/// True when `frame` binds `short` to something other than
-/// `segments`: a local designation, or an import of a different path
-/// under the same name.
-///
-/// Either shadows or ambiguates an imported-name suggestion.
-fn frame_shadows(
-    frame: &ScopeFrame<'_>,
-    short: &str,
-    segments: &[&str],
-    occurrence_start: usize,
-) -> bool {
-    frame.bindings.iter().any(|binding| {
-        binding.name == short && (binding.start == 0 || binding.start <= occurrence_start)
-    }) || frame
-        .imports
-        .iter()
-        .any(|import| import.short == short && import.segments.as_slice() != segments)
-}
-
-/// True when `node` is the outermost node of a dotted name chain, so
-/// it carries the whole path.
-///
-/// Inner chain links are covered by their parent: an expression
-/// receiver such as `System.Console` inside
-/// `System.Console.WriteLine` is a link, never a second occurrence,
-/// so call-target receivers are never double-counted.
-fn is_chain_head(node: Node) -> bool {
-    matches!(node.kind(), "qualified_name" | "member_access_expression")
-        && !node.parent().is_some_and(|parent| {
-            matches!(parent.kind(), "qualified_name" | "member_access_expression")
-        })
-}
-
-/// Node kinds that introduce a lexical scope: the file, namespace
-/// and type bodies, method-like declarations with parameters,
-/// closures, loops, and catch clauses.
-fn is_scope(kind: &str) -> bool {
-    matches!(
-        kind,
-        "compilation_unit"
-            | "declaration_list"
-            | "block"
-            | "method_declaration"
-            | "constructor_declaration"
-            | "local_function_statement"
-            | "lambda_expression"
-            | "anonymous_method_expression"
-            | "for_statement"
-            | "foreach_statement"
-            | "catch_clause"
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::languages::csharp::parse::parse;
+    use crate::reporting::Severity;
+    use crate::rules::lint::CODE_QUALIFIED_PATH;
     use rstest::rstest;
 
     /// First occurrences provide complete advice, including aliased static calls.

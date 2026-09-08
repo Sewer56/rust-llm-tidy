@@ -4,7 +4,7 @@
 //! `include_in_file_tests` is enabled. Files under a `tests/` directory are
 //! skipped unless `include_test_files` is enabled ([`is_tests_path`]).
 //!
-//! Warnings guide module-root organization and explain which test lines count.
+//! Warnings suggest split patterns and explain which test lines count.
 //!
 //! The rule is file-level, not item-level: it consumes the whole
 //! [`ParseResult`] plus the file's path and the per-run threshold. The
@@ -197,7 +197,7 @@ fn is_tests_path(path: &Path) -> bool {
         .any(|component| component.as_os_str() == OsStr::new("tests"))
 }
 
-/// Add Rust module-root guidance and the effective test-counting policies.
+/// Add Rust-specific split advice and the effective test-counting policies.
 fn with_rust_guidance(
     mut finding: Diagnostic,
     include_in_file_tests: bool,
@@ -224,13 +224,11 @@ fn with_rust_guidance(
         finding.message,
         "
 
-        - When splitting a Rust module, consider keeping main entry points and
-          high-level orchestration in the module root (`mod.rs` or `foo.rs`).
-          Put implementation details in child modules.
-        - If entry points belong in child modules, consider selective re-exports
-          through the root without widening visibility.
-        - Update root docs to explain the module's purpose and direct readers
-          to main entry points and relevant child modules.
+        - In Rust, the module root (`mod.rs` or `foo.rs`) is the usual home for
+          those entry points.
+        - Selective re-exports can expose child-module entry points without a
+          forwarding wrapper.
+        Counting:
         - Top-level `#[cfg(test)]` test modules are {regions}.
           Other lines count, including comments and blank lines.
         - Rust files in `tests/` directories are {files}.{headers}"
