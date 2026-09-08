@@ -123,5 +123,6 @@ include:
       # - TEXT005 # untagged fenced code block
       # - TEXT006 # verbose synonym
       # - TEXT007 # passive narration; opt-in
+      # - TEXT008 # dense bullet list
       # - TEST001 # non-behavioral test name
       # - MOD001  # oversized code file

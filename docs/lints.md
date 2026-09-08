@@ -46,6 +46,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`TEXT005`] | Warning  | A fenced code block opens with no tag or bare `ignore` (all markdown prose).      |
 | [`TEXT006`] | Hint     | A doc line has a shorter alternative for a word, phrase, or filler.               |
 | [`TEXT007`] | Hint     | A doc line may hold passive voice or implementation history.                      |
+| [`TEXT008`] | Warning  | A bullet list exceeds 10 source lines.                                            |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
 | [`MOD001`]  | Warning  | A code file exceeds `module_size.max_lines` (default 500).                        |
 
@@ -622,6 +623,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`TEXT005`]: ./text-lints.md#text005---fenced-code-block-without-a-language-tag
 [`TEXT006`]: ./text-lints.md#text006---verbose-synonyms
 [`TEXT007`]: ./text-lints.md#text007---passive-voice-and-past-behaviour
+[`TEXT008`]: ./text-lints.md#text008---dense-bullet-list
 [`TEST001`]: #test001---non-behavioral-test-name
 [`MOD001`]: #mod001---oversized-module
 [lints for C#]: ./languages/lints/csharp.md
