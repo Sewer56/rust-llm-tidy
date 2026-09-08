@@ -5,7 +5,7 @@
 //! processing, whitelist or blacklist specific lint/fix rules per path, and run
 //! external post-processing commands (e.g. `rustfmt`) on every processed file.
 //!
-//! All patterns are globs relative to the config file's directory. They are
+//! File patterns are globs relative to the config file's directory. They are
 //! compiled with `literal_separator(true)`, so `*` does not cross `/` and
 //! `**` recurses across directories.
 //!
@@ -20,6 +20,9 @@
 //! include a malformed `extensions`/`extra_extensions` entry or a pattern
 //! matching zero files.
 //!
+//! Symbol rules validate their shape and bounded regex
+//! compilation, not whether any source symbol currently matches them.
+//!
 //! The CLI propagates that error as a non-zero exit on every command.
 //!
 //! The `--validate` flag exists for CI to check the config without processing
@@ -31,34 +34,49 @@
 //! - `compiled`: the validated [`CompiledConfig`] answering `policy_for`
 //!   queries, plus `load_and_compile` (in `compiled::load`)
 //! - `file_policy`: the runtime [`FilePolicy`] computed per file
+//!
+//! Rule settings:
+//!
 //! - `link_config`: `links` hoist-threshold settings
 //! - `method_length_config`: `method_length` threshold settings
 //! - `module_size_config`: `module_size` threshold settings
 //! - `passive_narration_config`: TEXT007 opt-in and suppression settings
+//! - `perf_hint`: PERF001 API-reminder entries
+//! - `symbol_rule`: syntax-only symbol hints and declaration exclusions
+//! - `lint_scope`: shared reporting boundaries
 //! - `post_process_step`: one external post-processing command
 
 use crate::rules::lint::LINT_CODES;
 pub use crate::rules::registry::KNOWN_FIX_OPS;
 pub use compiled::CompiledConfig;
 pub use compiled::load_and_compile;
+#[cfg(test)]
+pub(crate) use compiled::symbol_rules::compile_symbol_rules;
+pub(crate) use compiled::symbol_rules::{CompiledSymbolRule, SymbolMatcher};
 pub use file_policy::FilePolicy;
 pub use link_config::LinkConfig;
+pub use lint_scope::ReportingScope;
 pub use method_length_config::MethodLengthConfig;
 pub use module_size_config::ModuleSizeConfig;
 pub use passive_narration_config::PassiveNarrationConfig;
+pub use perf_hint::PerfHint;
 pub use post_process_step::PostProcessStep;
 pub use raw::{Config, RuleGroup};
 use std::env;
 use std::path::{Path, PathBuf};
+pub use symbol_rule::{ArrayKind, SymbolAction, SymbolLanguage, SymbolRule, SymbolTarget};
 
 mod compiled;
 mod file_policy;
 mod link_config;
+mod lint_scope;
 mod method_length_config;
 mod module_size_config;
 mod passive_narration_config;
+mod perf_hint;
 mod post_process_step;
 mod raw;
+mod symbol_rule;
 
 /// Resolve the config file path.
 ///
@@ -121,7 +139,7 @@ mod tests {
         // MOD), plus the six fix/operation names (including lints).
         for code in [
             "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "DOC008", "DOC009",
-            "TEXT001", "TEXT002", "TEXT003", "TEXT004", "TEST001", "MOD002", "MOD003",
+            "TEXT001", "TEXT002", "TEXT003", "TEXT004", "TEST001", "MOD002", "MOD003", "PERF001",
         ] {
             assert!(rules.contains(&code), "missing lint code {code}");
         }

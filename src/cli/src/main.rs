@@ -3,6 +3,7 @@
 use anyhow::{Context, bail};
 use clap::Parser;
 use rust_llm_tidy::{RunOptions, config, run};
+use std::env;
 
 mod args;
 mod output;
@@ -30,6 +31,10 @@ fn main() -> anyhow::Result<()> {
         paths: cli.paths,
         apply: !cli.dry_run,
         git_changed: true,
+        diff_base: cli
+            .diff_base
+            .or_else(|| env::var("RUST_LLM_TIDY_DIFF_BASE").ok()),
+        lint_scope: cli.lint_scope,
         cargo_discovery: true,
         post_process: true,
         include: cli.include,

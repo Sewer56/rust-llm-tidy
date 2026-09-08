@@ -19,7 +19,13 @@ pub(super) struct CommentRun {
 ///
 /// Runs are returned in ascending source order and never overlap; only
 /// touching ranges with the same prefix merge into one run.
-pub(super) fn comment_runs(source: &str, ext: &str, prefixes: &[&str]) -> Vec<CommentRun> {
+/// Runs overlapping any protected byte range are omitted in full.
+pub(super) fn comment_runs_protected(
+    source: &str,
+    ext: &str,
+    prefixes: &[&str],
+    ranges: &[Range<usize>],
+) -> Vec<CommentRun> {
     // Only a complete, error-free parse can authorize source edits.
     let Some(language) = backend_for(ext).and_then(|backend| backend.language().ok()) else {
         return Vec::new();
@@ -70,6 +76,12 @@ pub(super) fn comment_runs(source: &str, ext: &str, prefixes: &[&str]) -> Vec<Co
                 continue 'walk;
             }
             if !cursor.goto_parent() {
+                // Drop the whole run: partial fixes could change fence/link ownership.
+                runs.retain(|run| {
+                    !ranges
+                        .iter()
+                        .any(|range| run.bytes.start < range.end && range.start < run.bytes.end)
+                });
                 return runs;
             }
         }
@@ -125,4 +137,23 @@ fn standalone_line<'a>(
         start..content_end + terminator,
         prefix.trim_end_matches(' '),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::comment_runs_protected;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::rust("// first\n// protected\nstruct Cache {}\n// sibling\n", "rs")]
+    #[case::csharp("// first\n// protected\nclass Cache {}\n// sibling\n", "cs")]
+    fn comment_runs_should_skip_whole_overlapping_run(#[case] source: &str, #[case] ext: &str) {
+        let marker = source.find("protected").unwrap();
+        let protected = marker..marker + "protected".len();
+
+        let runs = comment_runs_protected(source, ext, &["//"], &[protected]);
+
+        assert_eq!(runs.len(), 1);
+        assert_eq!(&source[runs[0].bytes.clone()], "// sibling\n");
+    }
 }

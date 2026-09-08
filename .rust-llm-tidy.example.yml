@@ -68,6 +68,54 @@
 # method_length:
 #   max_lines: 100  # hint above this budget; >= 1.
 
+# ── API reminders (PERF001) ──
+# PERF001 emits configurable reminder-severity findings on invoked APIs
+# (Rust and C#), such as `Vec::new` -> `Vec::with_capacity`.
+# `perf_hints` replaces the built-ins; `extra_perf_hints` appends.
+
+# perf_hints: []              # Extras only, or no hints.
+# extra_perf_hints:
+#   - pattern: to_string
+#     message: |
+#       Review this conversion.
+#       Why: Ownership may be unnecessary.
+#       Suggestions:
+#       - Borrow when the caller does not need owned text.
+
+# ── Reporting scope ──
+# Reminders default to changed lines; other severities default to all.
+# Precedence: --lint-scope > symbol entry scope > lint_scopes > severity.
+# CLI scopes use changed-lines; YAML uses changed_lines.
+# --diff-base REF (or RUST_LLM_TIDY_DIFF_BASE) uses a local merge-base.
+
+# lint_scopes:
+#   PERF001: all
+#   DOC001: changed_lines
+
+# ── Symbol policies (SYM001) ──
+# Case-sensitive literal component suffixes or whole-name regexes.
+# Extensions are case-insensitive rs/cs without dots. Omit for both;
+# empty lists and unsupported extensions fail validation.
+# Hints require messages; use Why: and Suggestions: as below.
+# See docs/lints.md for constraints, arrays, and exclusion boundaries.
+
+# symbol_rules:
+#   - symbol: new[]
+#     extensions: [CS]
+#     array_kind: explicit_sized_vector
+#     no_initializer: true
+#     message: |
+#       Review array initialization.
+#       Why: Zero values may be required by later reads.
+#       Suggestions:
+#       - Keep regular allocation unless every element is written first.
+#   - regex: 'internal::.*'
+#     extensions: [rs]
+#     target: declaration
+#     action: exclude
+# Exclusions stay active with SYM001 disabled. External post-processing
+# skips protected files. PERF001, PERF002, and SYM001 toggle independently.
+
 # ── Post-processing ──
 # External commands run on every processed file; the file path is appended
 # as the last argument. `extensions` filters (empty = all). Skipped under
@@ -141,3 +189,6 @@ include:
       # - MOD001  # oversized code file
       # - MOD002  # function-local `use` without `#[cfg]`
       # - LEN001  # oversized Rust function or method
+      # - PERF001 # API performance reminder
+      # - PERF002 # C# array allocation reminder
+      # - SYM001  # configured symbol hints

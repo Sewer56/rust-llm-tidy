@@ -7,6 +7,7 @@
 
 use common::binary;
 use core::sync::atomic::{AtomicU64, Ordering};
+use rstest::rstest;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, Output};
@@ -14,6 +15,68 @@ use std::process::{self, Command, Output};
 mod common;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[rstest]
+#[case::new_token("long", "3", "PERF002", None, 1)]
+#[case::size_only("int", "4", "PERF002", None, 0)]
+#[case::all_override("int", "4", "PERF002", Some("all"), 1)]
+#[case::independent_perf001("long", "3", "PERF001", Some("all"), 1)]
+#[case::both_codes("long", "3", "PERF001,PERF002", Some("all"), 2)]
+#[case::custom_array("long", "3", "SYM001", Some("all"), 1)]
+fn array_reminders_should_respect_code_selection_and_changed_anchor(
+    #[case] element: &str,
+    #[case] size: &str,
+    #[case] codes: &str,
+    #[case] scope: Option<&str>,
+    #[case] count: usize,
+) {
+    let repo = init_repo().expect("Git is required for array reminder acceptance");
+    fs::write(
+        repo.join(".rust-llm-tidy.yml"),
+        concat!(
+            "symbol_rules:\n",
+            "  - symbol: new[]\n    extensions: [cS]\n    array_kind: any\n",
+            "    message: custom array reminder\n"
+        ),
+    )
+    .unwrap();
+    let source = |element, size| {
+        format!(
+            "class C {{ void M() {{\nvar a = new {element}[\n{size}];\nvar b = new List<int>();\n}} }}\n"
+        )
+    };
+    fs::write(repo.join("input.CS"), source("int", "3")).unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "--quiet", "-m", "baseline"]);
+    fs::write(repo.join("input.CS"), source(element, size)).unwrap();
+    let mut args = vec!["--json", "--diff-base", "HEAD"];
+    for code in codes.split(',') {
+        args.extend(["--include", code]);
+    }
+    if let Some(scope) = scope {
+        args.extend(["--lint-scope", scope]);
+    }
+
+    let output = run(&repo, &args);
+    let records: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(records.len(), count, "{records:?}");
+    assert!(
+        records
+            .iter()
+            .all(|record| record["severity"] == "reminder")
+    );
+    assert_eq!(
+        fs::read_to_string(repo.join("input.CS")).unwrap(),
+        source(element, size)
+    );
+    cleanup(&repo);
+}
 
 /// No args + only a deleted file -> nothing to do, exit 0.
 #[test]
@@ -228,6 +291,67 @@ fn no_args_selects_uppercase_extension_variants() {
         stderr.contains("success[FIX]"),
         "staged .MD must be selected and table-fixed: {stderr}"
     );
+    cleanup(&repo);
+}
+
+#[test]
+fn no_paths_should_reject_bad_explicit_baseline_without_selected_files() {
+    let repo = init_repo().expect("Git is required for baseline acceptance");
+    fs::write(repo.join(".rust-llm-tidy.yml"), "extensions: [rs]").unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "--quiet", "-m", "baseline"]);
+
+    let output = run(
+        &repo,
+        &["--diff-base", "missing-reference", "--include", "links"],
+    );
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("explicit baseline"));
+    cleanup(&repo);
+}
+
+#[rstest]
+#[case::flag(Some("HEAD~1"), None)]
+#[case::environment(None, Some("HEAD~1"))]
+#[case::flag_wins(Some("HEAD~1"), Some("missing-reference"))]
+fn no_paths_should_report_committed_reminders_against_explicit_baseline(
+    #[case] flag: Option<&str>,
+    #[case] environment: Option<&str>,
+) {
+    let repo = init_repo().expect("Git is required for baseline acceptance");
+    fs::write(repo.join(".rust-llm-tidy.yml"), "{}").unwrap();
+    fs::write(repo.join("input.rs"), "fn f() {}\n").unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "--quiet", "-m", "baseline"]);
+    fs::write(repo.join("input.rs"), "fn f() { Vec::new(); }\n").unwrap();
+    git(&repo, &["add", "input.rs"]);
+    git(&repo, &["commit", "--quiet", "-m", "change"]);
+    assert!(git(&repo, &["status", "--porcelain"]).is_empty());
+
+    let mut command = Command::new(binary());
+    command
+        .current_dir(&repo)
+        .args(["--include", "PERF001", "--json"])
+        .env_remove("RUST_LLM_TIDY_DIFF_BASE");
+    if let Some(flag) = flag {
+        command.args(["--diff-base", flag]);
+    }
+    if let Some(environment) = environment {
+        command.env("RUST_LLM_TIDY_DIFF_BASE", environment);
+    }
+
+    let output = command.output().unwrap();
+    let records: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["code"], "PERF001");
+    assert_eq!(records[0]["severity"], "reminder");
     cleanup(&repo);
 }
 

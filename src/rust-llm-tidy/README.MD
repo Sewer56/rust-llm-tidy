@@ -43,6 +43,11 @@ Source processing returns final transformed text and findings against that text.
 - Project-dependent checks use standalone facts
 - Use `run` for cross-file analysis
 
+`Severity::Reminder` defaults to changed-line reporting, unlike `Hint`.
+Standalone buffers have no input diff, so reminders are hidden by default.
+Set `SourceOptions::lint_scope` to `Some(ReportingScope::All)` for an audit;
+import `ReportingScope` from `rust_llm_tidy::config`.
+
 ### File processing
 
 `RunOptions::default()` previews explicit inputs. It does not discover
@@ -55,6 +60,21 @@ configuration or query Git automatically.
 - Set `post_process` to permit configured subprocesses during an apply run
 - Use `config::load_and_compile` to supply configuration explicitly
 - Inspect `RunReport::ensure_success` after consuming partial results
+
+`RunOptions::lint_scope` overrides every lint's reporting scope.
+`RunOptions::diff_base` grants baseline Git reads and compares against the
+merge-base of that local reference and `HEAD`.
+
+With `git_changed` alone,
+the reporting baseline is `HEAD` versus working content.
+
+Changed-line findings need a usable snapshot. Missing Git permission or
+context produces a warning and skips those findings, not an all-lines
+fallback. An invalid explicit baseline is an error.
+
+Compiled config supplies `symbol_rules` and `lint_scopes` to `run`.
+See [symbol policies] for matching, declaration protection, array rules,
+scope precedence, and conservative post-transform line remapping.
 
 See the [API documentation] for executable examples and error contracts.
 
@@ -77,5 +97,6 @@ See [architecture and migration] for the retired crate mappings.
 Licensed under [Apache 2.0].
 
 [API documentation]: https://docs.rs/rust-llm-tidy
+[symbol policies]: ../../docs/lints.md#sym001---configured-symbol-policies
 [architecture and migration]: ../../docs/architecture.md
 [Apache 2.0]: ../../LICENSE

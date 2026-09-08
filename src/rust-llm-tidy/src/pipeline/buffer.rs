@@ -1,6 +1,8 @@
 //! Shared source-only operations used by buffer and file entry points.
 
 use crate::SourceOptions;
+use crate::config::ReportingScope;
+use crate::input::changed_lines::ChangedLines;
 use crate::languages::{backend_for, registry};
 use crate::reporting::{Change, ChangeKind, Diagnostic, SourceReport, change};
 use crate::rules::transform::visibility::rust::{
@@ -12,6 +14,7 @@ use crate::text::comments;
 use core::iter;
 use core::mem;
 use core::num::NonZeroU32;
+use core::ops::Range;
 use std::borrow::Cow;
 use std::collections::HashSet;
 
@@ -26,6 +29,9 @@ use std::collections::HashSet;
 /// Rust visibility uses only local re-exports, and C# throw analysis uses only
 /// this buffer.
 /// Use [`crate::run`] for project-aware processing.
+///
+/// Reminders have no eligible diff lines here; set [`SourceOptions::lint_scope`]
+/// to [`ReportingScope::All`] for an explicit whole-buffer audit.
 ///
 /// # Arguments
 ///
@@ -119,8 +125,13 @@ pub fn tidy_source<'a>(
 
     let diagnostics = if lints_enabled(profile, &enabled, &disabled) {
         let mut diagnostics = lint_source(&output, ext)?;
+        let changed = ChangedLines::empty();
         diagnostics.retain(|diagnostic| {
             !disabled.contains(diagnostic.code)
+                && options
+                    .lint_scope
+                    .unwrap_or_else(|| ReportingScope::for_severity(diagnostic.severity))
+                    .admits(diagnostic, &changed)
                 && enabled
                     .as_ref()
                     .is_none_or(|set| set.contains("lints") || set.contains(diagnostic.code))
@@ -153,6 +164,55 @@ pub(super) fn fix_source<'a>(
     disabled: &HashSet<String>,
     links_min_occurrences: usize,
 ) -> (Cow<'a, str>, Vec<Change>) {
+    fix_source_protected(
+        source,
+        ext,
+        profile,
+        enabled,
+        disabled,
+        links_min_occurrences,
+        &[],
+    )
+}
+
+/// Reorder supported source and verify line preservation before returning
+/// changes.
+pub(super) fn reorder_source<'a>(
+    source: &'a str,
+    ext: &str,
+) -> anyhow::Result<(Cow<'a, str>, Vec<Change>)> {
+    let Some(backend) = backend_for(ext) else {
+        return Ok((Cow::Borrowed(source), Vec::new()));
+    };
+    let parsed = backend.parse(source)?;
+    let Some(permutation) = backend.reorder_permutation(&parsed)? else {
+        return Ok((Cow::Borrowed(source), Vec::new()));
+    };
+
+    let output = transform::reorder::emit(&parsed, &permutation)?;
+    preservation::verify_line_preservation(source, &output)?;
+    let changes = change::reorder_changes(&parsed, &permutation);
+    let output = if output == source {
+        Cow::Borrowed(source)
+    } else {
+        Cow::Owned(output)
+    };
+    Ok((output, changes))
+}
+
+/// Fix prose or standalone comments, skipping runs overlapping protected bytes.
+///
+/// Ranges must refer to the current source. Protection applies only to parser-
+/// owned comment runs; prose documents retain the ordinary whole-document path.
+pub(super) fn fix_source_protected<'a>(
+    source: &'a str,
+    ext: &str,
+    profile: &registry::Profile,
+    enabled: &Option<HashSet<String>>,
+    disabled: &HashSet<String>,
+    links_min_occurrences: usize,
+    ranges: &[Range<usize>],
+) -> (Cow<'a, str>, Vec<Change>) {
     if profile.text_lints == registry::TextLints::Prose {
         return fix_text(source, profile, enabled, disabled, links_min_occurrences);
     }
@@ -163,7 +223,7 @@ pub(super) fn fix_source<'a>(
         return (Cow::Borrowed(source), Vec::new());
     }
 
-    let runs = super::comment_fixes::comment_runs(source, ext, profile.prefixes);
+    let runs = super::comment_fixes::comment_runs_protected(source, ext, profile.prefixes, ranges);
     let mut output: Option<String> = None;
     let mut copied = 0;
     let mut changes = Vec::new();
@@ -217,31 +277,6 @@ pub(super) fn fix_source<'a>(
     }
 }
 
-/// Reorder supported source and verify line preservation before returning
-/// changes.
-pub(super) fn reorder_source<'a>(
-    source: &'a str,
-    ext: &str,
-) -> anyhow::Result<(Cow<'a, str>, Vec<Change>)> {
-    let Some(backend) = backend_for(ext) else {
-        return Ok((Cow::Borrowed(source), Vec::new()));
-    };
-    let parsed = backend.parse(source)?;
-    let Some(permutation) = backend.reorder_permutation(&parsed)? else {
-        return Ok((Cow::Borrowed(source), Vec::new()));
-    };
-
-    let output = transform::reorder::emit(&parsed, &permutation)?;
-    preservation::verify_line_preservation(source, &output)?;
-    let changes = change::reorder_changes(&parsed, &permutation);
-    let output = if output == source {
-        Cow::Borrowed(source)
-    } else {
-        Cow::Owned(output)
-    };
-    Ok((output, changes))
-}
-
 /// Run text engines on an already authorized document or comment run.
 fn fix_text<'a>(
     source: &'a str,
@@ -283,7 +318,17 @@ fn lint_source(source: &str, ext: &str) -> anyhow::Result<Vec<Diagnostic>> {
     let mut diagnostics = if profile.backend
         && let Some(backend) = backend_for(ext)
     {
-        backend.lint(&backend.parse(source)?)
+        let parsed = backend.parse(source)?;
+        let mut diagnostics = backend.lint(&parsed);
+        let context = super::lint_context::LintContext::new(None, None);
+        diagnostics.extend(
+            context
+                .observe(&parsed, ext, &HashSet::new())?
+                .hints
+                .into_iter()
+                .map(|hint| hint.diagnostic),
+        );
+        diagnostics
     } else {
         Vec::new()
     };
@@ -312,4 +357,51 @@ fn lints_enabled(
             }
             None => profile.op_enabled("lints", enabled, disabled),
         }
+}
+
+#[cfg(test)]
+mod protection_tests {
+    use super::*;
+
+    #[test]
+    fn fix_source_should_preserve_owned_comments_and_fix_siblings() {
+        let source = "/// | A | B |\n/// |---|---|\n/// | long | x |\nfn keep() {}\n/// | A | B |\n/// |---|---|\n/// | long | x |\nfn change() {}\n";
+        let parsed = backend_for("rs").unwrap().parse(source).unwrap();
+        let protected = crate::source::symbols::declarations(&parsed, "rs")
+            .unwrap()
+            .into_iter()
+            .find(|item| item.path.as_ref() == "keep")
+            .unwrap()
+            .bytes;
+        let enabled = Some(HashSet::from(["tables".into()]));
+        let disabled = HashSet::new();
+
+        let (output, changes) = fix_source_protected(
+            source,
+            "rs",
+            registry::profile_for("rs"),
+            &enabled,
+            &disabled,
+            2,
+            core::slice::from_ref(&protected),
+        );
+
+        assert!(output.starts_with(&source[protected]));
+        assert_ne!(&*output, source);
+        assert_eq!(changes.len(), 1);
+    }
+
+    #[test]
+    fn fix_source_should_match_original_when_ranges_empty() {
+        let source = "/// | A | B |\n/// |---|---|\n/// | long | x |\nfn change() {}\n";
+        let enabled = Some(HashSet::from(["tables".into()]));
+        let disabled = HashSet::new();
+        let profile = registry::profile_for("rs");
+
+        let original = fix_source(source, "rs", profile, &enabled, &disabled, 2);
+        let protected = fix_source_protected(source, "rs", profile, &enabled, &disabled, 2, &[]);
+
+        assert_eq!(protected.0, original.0);
+        assert_eq!(protected.1, original.1);
+    }
 }

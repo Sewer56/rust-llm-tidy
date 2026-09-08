@@ -29,6 +29,9 @@ mod buffer;
 mod comment_fixes;
 mod file_execution;
 mod files;
+mod lint_context;
+#[cfg(test)]
+mod lint_context_tests;
 mod run_options;
 mod source_options;
 
@@ -92,6 +95,14 @@ impl FileReport {
 /// - Project discovery failure: a C# project source directory cannot be
 ///   traversed
 ///
+/// Changed-line reporting failures:
+///
+/// - Explicit baseline failure: the reference or HEAD cannot resolve locally,
+///   or their merge-base is unavailable, even when no inputs are selected
+/// - Snapshot failure: a scoped input or baseline cannot be read as bounded
+///   UTF-8 source, or Git output exceeds the collection limits in
+///   [`crate::input::changed_lines`]
+///
 /// # Remarks
 ///
 /// License documents are excluded by default for all path selections. Set
@@ -101,20 +112,27 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
     validate_selection(&options.include, &options.exclude, &options.extensions)?;
 
     let allowed = langs::allowed_extensions(config, &options.extensions);
+    let discovery = [PathBuf::from(".")];
+    let inputs = if options.paths.is_empty() && options.diff_base.is_some() {
+        discovery.as_slice()
+    } else {
+        &options.paths
+    };
     let paths = dedup_inputs(paths::resolve_inputs(
-        &options.paths,
+        inputs,
         options.git_changed,
         &allowed,
         config.is_none_or(CompiledConfig::exclude_license_documents),
     )?);
     let mut report = RunReport::default();
-    if paths.is_empty() {
-        return Ok(report);
-    }
-
     let included: Option<HashSet<String>> =
         (!options.include.is_empty()).then(|| options.include.iter().cloned().collect());
     let disabled: HashSet<String> = options.exclude.iter().cloned().collect();
+    let mut lint_context = lint_context::LintContext::new(config, options.lint_scope);
+    report.warnings = lint_context.capture(&paths, options, included.as_ref(), &disabled)?;
+    if paths.is_empty() {
+        return Ok(report);
+    }
     let visibility_inputs: Vec<_> = if options.cargo_discovery {
         paths
             .iter()
@@ -140,21 +158,19 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
         && included.as_ref().is_none_or(|set| {
             set.contains("lints") || check::LINT_CODES.iter().any(|code| set.contains(*code))
         });
-    let mut csharp = if lints_may_run {
-        Some(CSharpIndex::build(&paths)?)
-    } else {
-        None
-    };
+    let mut csharp = lints_may_run
+        .then(|| CSharpIndex::build(&paths))
+        .transpose()?;
 
     let mutate = |path: &PathBuf| {
         file_execution::process_one(
             path,
-            config,
             included.as_ref(),
             &disabled,
             context.as_ref(),
             !options.apply,
             (None, None),
+            &lint_context,
         )
     };
     let results: Vec<_> = if parallel {
@@ -173,12 +189,12 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
         }
         file_execution::process_one(
             path,
-            config,
             included.as_ref(),
             &disabled,
             context.as_ref(),
             !options.apply,
             (Some(out), csharp.as_ref()),
+            &lint_context,
         )
     };
     report.files = if parallel {
@@ -195,12 +211,7 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
         && options.post_process
         && let Some(config) = config
     {
-        let processed: Vec<_> = report
-            .files
-            .iter()
-            .filter(|file| file.processed)
-            .map(|file| file.path.clone())
-            .collect();
+        let processed = files::post_process_inputs(&mut report, lint_context.rules());
         report.post_process_failures = run_post_process(config.post_process_steps(), &processed);
     }
     Ok(report)
@@ -439,12 +450,12 @@ mod tests {
             fs::write(&path, source).unwrap();
             let mutated = process_one(
                 &path,
-                None,
                 Some(&included),
                 &disabled,
                 None,
                 false,
                 (None, None),
+                &super::lint_context::LintContext::new(None, None),
             );
             assert!(mutated.processed, "{label}");
             if remove {
@@ -453,12 +464,12 @@ mod tests {
 
             let linted = process_one(
                 &path,
-                None,
                 Some(&included),
                 &disabled,
                 None,
                 false,
                 (Some(mutated), None),
+                &super::lint_context::LintContext::new(None, None),
             );
 
             assert_eq!(linted.failure.is_some(), remove, "{label}");

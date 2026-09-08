@@ -6,6 +6,7 @@
 
 use crate::rules::registry::title_for_code;
 use core::fmt;
+use serde::Deserialize;
 
 /// A single documentation check finding.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,13 +35,11 @@ pub struct Diagnostic {
 /// to investigate, such as a possible pre-allocation. They never fail a run
 /// and surface separately from errors and warnings.
 ///
-/// # Remarks
-///
-/// Adding `Hint` is additive, not free for every consumer.
-///
-/// - Exhaustive downstream matches on this enum need a new arm.
-/// - Strict severity parsers must accept the `hint` value.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// `Reminder` findings are conditional guidance, not proven defects. By default
+/// they report only when their diagnostic line changed in the input diff.
+/// Errors, warnings, and hints default to whole-file reporting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Severity {
     /// A gating finding (missing docs, missing `# Errors` section).
     Error,
@@ -49,6 +48,8 @@ pub enum Severity {
     /// A suggestion for an LLM or human to investigate; see the enum
     /// documentation for gating and compatibility.
     Hint,
+    /// Non-gating guidance reported on changed input lines by default.
+    Reminder,
 }
 
 impl Diagnostic {
@@ -67,6 +68,7 @@ impl fmt::Display for Diagnostic {
             Severity::Error => "error",
             Severity::Warning => "warning",
             Severity::Hint => "hint",
+            Severity::Reminder => "reminder",
         };
         match &self.item_name {
             Some(name) => write!(

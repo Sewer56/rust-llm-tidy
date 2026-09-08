@@ -1,9 +1,11 @@
 //! Deserialized `.rust-llm-tidy.yml` model (`Config`) and its rule groups.
 
 use super::{
-    LinkConfig, MethodLengthConfig, ModuleSizeConfig, PassiveNarrationConfig, PostProcessStep,
+    LinkConfig, MethodLengthConfig, ModuleSizeConfig, PassiveNarrationConfig, PerfHint,
+    PostProcessStep, ReportingScope, SymbolRule,
 };
 use serde::Deserialize;
+use std::collections::HashMap;
 
 /// Raw serde view of `.rust-llm-tidy.yml`. Paths/globs are relative to the
 /// config file's directory.
@@ -52,6 +54,20 @@ pub struct Config {
     /// the section defaults (see [`PassiveNarrationConfig`]).
     #[serde(default)]
     pub passive_narration: Option<PassiveNarrationConfig>,
+    /// PERF001 API reminders; absent keeps each language's built-ins. A
+    /// present (even empty) list replaces them.
+    #[serde(default)]
+    pub perf_hints: Option<Vec<PerfHint>>,
+    /// Extra PERF001 reminders, appended after the replacement
+    /// list or the built-ins.
+    #[serde(default)]
+    pub extra_perf_hints: Vec<PerfHint>,
+    /// Per-lint reporting boundaries. Keys must be registered lint codes.
+    #[serde(default)]
+    pub lint_scopes: HashMap<String, ReportingScope>,
+    /// Ordered symbol hints and independent declaration exclusions.
+    #[serde(default)]
+    pub symbol_rules: Vec<SymbolRule>,
 }
 
 /// One entry under `include` or `exclude`: path globs plus the rule names to
@@ -81,6 +97,10 @@ impl Default for Config {
             extensions: Vec::new(),
             extra_extensions: Vec::new(),
             passive_narration: None,
+            perf_hints: None,
+            extra_perf_hints: Vec::new(),
+            lint_scopes: HashMap::new(),
+            symbol_rules: Vec::new(),
         }
     }
 }

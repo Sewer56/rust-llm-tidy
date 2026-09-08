@@ -1,8 +1,12 @@
 //! Read, parse, validate, and compile a config file into a `CompiledConfig`.
 
+use super::symbol_rules::{
+    MAX_MESSAGE_BYTES, MAX_PATTERN_BYTES, MAX_SYMBOL_RULES, compile_symbol_rules, validate_text,
+};
 use super::{CompiledConfig, CompiledRuleGroup};
 use crate::config::{Config, RuleGroup, known_rules};
 use crate::languages::registry;
+use crate::rules::registry::LINT_CODES;
 use anyhow::{Context, anyhow, bail};
 use glob::glob as fs_glob;
 use globset::{GlobBuilder, GlobSet};
@@ -39,13 +43,29 @@ static COMPILE_COUNTER: core::sync::atomic::AtomicU64 = core::sync::atomic::Atom
 ///
 /// Returns `anyhow::Error` if:
 /// - The file cannot be read or parsed as YAML.
-/// - The config path has no parent directory.
-/// - The config directory cannot be canonicalized.
+/// - The config path has no parent directory or cannot be canonicalized.
 /// - `include` and `exclude` are both non-empty.
 /// - Any `extensions` or `extra_extensions` entry is empty or contains a dot,
 ///   a path separator, or whitespace.
 /// - `module_size.max_lines` or `method_length.max_lines` is below 1.
+/// - Any `perf_hints` or `extra_perf_hints` entry has an empty or
+///   whitespace-only pattern or message.
+///
+/// Symbol policy errors:
+///
 /// - Any rule name is not in [`known_rules()`].
+/// - A `lint_scopes` key is not a registered lint code.
+/// - A symbol rule has both or neither `symbol` and `regex`, a blank pattern,
+///   an invalid literal path, or a regex that fails bounded compilation.
+/// - A symbol hint lacks a nonblank message, or an exclusion has a message,
+///   scope, usage target, or usage constraint.
+/// - A declaration hint has an argument or initializer constraint.
+/// - Symbol rules exceed the rule-count, pattern-byte, or message-byte limits
+///   enforced by the symbol compiler.
+/// - Legacy hint lists exceed those same count or text limits.
+///
+/// File pattern errors:
+///
 /// - Any glob pattern has invalid syntax.
 /// - Any pattern matches zero files under the config directory.
 ///
@@ -65,6 +85,47 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
     }
 
     validate_thresholds(&config)?;
+
+    for code in config.lint_scopes.keys() {
+        if !LINT_CODES.contains(&code.as_str()) {
+            bail!("unknown lint code `{code}` in lint_scopes; use a registered lint code");
+        }
+    }
+    let symbol_rules = compile_symbol_rules(&config.symbol_rules)?;
+
+    if config
+        .perf_hints
+        .as_ref()
+        .map_or(0, Vec::len)
+        .saturating_add(config.extra_perf_hints.len())
+        > MAX_SYMBOL_RULES
+    {
+        bail!(
+            "perf_hints and extra_perf_hints exceed {MAX_SYMBOL_RULES} entries; reduce the lists"
+        );
+    }
+
+    // PERF001 reminders are structural data; only shape is validated
+    // here. An empty pattern or message would never match or never say
+    // anything.
+    for (key, hints) in [
+        (
+            "perf_hints",
+            config.perf_hints.as_deref().unwrap_or_default(),
+        ),
+        ("extra_perf_hints", config.extra_perf_hints.as_slice()),
+    ] {
+        for hint in hints {
+            if hint.pattern.trim().is_empty() {
+                bail!("{key} entry pattern must not be empty");
+            }
+            if hint.message.trim().is_empty() {
+                bail!("{key} entry message must not be empty");
+            }
+            validate_text(&hint.pattern, MAX_PATTERN_BYTES, &format!("{key} pattern"))?;
+            validate_text(&hint.message, MAX_MESSAGE_BYTES, &format!("{key} message"))?;
+        }
+    }
 
     let valid = known_rules();
 
@@ -104,6 +165,10 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         extensions: config.extensions,
         extra_extensions: config.extra_extensions,
         passive_narration: config.passive_narration.unwrap_or_default(),
+        configured_perf_hints: config.perf_hints,
+        extra_perf_hints: config.extra_perf_hints,
+        lint_scopes: config.lint_scopes,
+        symbol_rules,
     })
 }
 
@@ -283,6 +348,9 @@ fn compile_glob_set(patterns: &[String], _config_dir: &Path) -> anyhow::Result<G
 mod tests {
     use super::compile;
     use super::load_and_compile;
+    use super::{MAX_MESSAGE_BYTES, MAX_PATTERN_BYTES};
+    use crate::config::PerfHint;
+    use rstest::rstest;
 
     #[test]
     fn empty_config_compiles_to_no_op() {
@@ -391,6 +459,182 @@ mod tests {
         assert!(
             !cc.policy_for(&nested).skip,
             "*.rs must NOT cross / and match a nested file"
+        );
+    }
+
+    // ── perf_hints / extra_perf_hints ──
+
+    /// An absent `perf_hints` key yields `None` so the pipeline applies
+    /// the per-language built-ins; a present list (even empty) is kept
+    /// verbatim and replaces them.
+    #[test]
+    fn perf_hints_should_be_none_until_configured() {
+        assert_eq!(
+            compile("exclude_files: []\n", &[]).configured_perf_hints(),
+            None,
+            "an absent key lets the pipeline apply the built-ins"
+        );
+
+        let replaced = compile(
+            "perf_hints:\n  - pattern: to_uppercase\n    message: hoist the to_uppercase call\n",
+            &[],
+        );
+        assert_eq!(
+            replaced.configured_perf_hints(),
+            Some(
+                &[PerfHint {
+                    pattern: "to_uppercase".into(),
+                    message: "hoist the to_uppercase call".into(),
+                }][..]
+            ),
+            "a present list replaces the built-ins entirely"
+        );
+
+        assert_eq!(
+            compile("perf_hints: []\n", &[]).configured_perf_hints(),
+            Some(&[][..]),
+            "an explicitly empty list disables the base reminders"
+        );
+    }
+
+    /// `extra_perf_hints` stays empty until configured, then keeps its
+    /// entries in order, independent of the replacement list.
+    #[test]
+    fn extra_perf_hints_should_keep_configured_entries_in_order() {
+        assert!(
+            compile("exclude_files: []\n", &[])
+                .extra_perf_hints()
+                .is_empty(),
+            "an absent key contributes no extras"
+        );
+        assert!(
+            compile("extra_perf_hints: []\n", &[])
+                .extra_perf_hints()
+                .is_empty(),
+            "an explicitly empty list contributes no extras"
+        );
+
+        let yaml = concat!(
+            "extra_perf_hints:\n",
+            "  - pattern: to_uppercase\n    message: first reminder\n",
+            "  - pattern: format!\n    message: second reminder\n",
+        );
+        assert_eq!(
+            compile(yaml, &[]).extra_perf_hints(),
+            &[
+                PerfHint {
+                    pattern: "to_uppercase".into(),
+                    message: "first reminder".into(),
+                },
+                PerfHint {
+                    pattern: "format!".into(),
+                    message: "second reminder".into(),
+                },
+            ],
+            "extras keep their configured order"
+        );
+    }
+
+    /// Load a YAML config from a fresh temp dir and return the rendered
+    /// error, if any.
+    fn load_error(yaml: &str) -> String {
+        let dir = std::env::temp_dir().join(format!(
+            "rlt-cfg-hint-{}-{}",
+            std::process::id(),
+            super::COMPILE_COUNTER.fetch_add(1, core::sync::atomic::Ordering::Relaxed,)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_path = dir.join(".rust-llm-tidy.yml");
+        std::fs::write(&cfg_path, yaml).unwrap();
+        let result = load_and_compile(&cfg_path);
+        let _ = std::fs::remove_dir_all(&dir);
+        match result {
+            Ok(_) => panic!("config should not compile: {yaml}"),
+            Err(err) => format!("{err:#}"),
+        }
+    }
+
+    #[rstest]
+    #[case::unknown_code("NOPE")]
+    #[case::fix_operation("tables")]
+    #[case::lint_group("lints")]
+    fn lint_scopes_should_reject_non_lint_keys(#[case] code: &str) {
+        let error = load_error(&format!("lint_scopes: {{{code}: all}}"));
+
+        assert!(error.contains("unknown lint code") && error.contains(code));
+    }
+
+    #[rstest]
+    #[case::base_pattern("perf_hints", "pattern", MAX_PATTERN_BYTES)]
+    #[case::extra_pattern("extra_perf_hints", "pattern", MAX_PATTERN_BYTES)]
+    #[case::base_message("perf_hints", "message", MAX_MESSAGE_BYTES)]
+    #[case::extra_message("extra_perf_hints", "message", MAX_MESSAGE_BYTES)]
+    fn legacy_hints_should_reject_oversized_text(
+        #[case] key: &str,
+        #[case] field: &str,
+        #[case] limit: usize,
+    ) {
+        let value = "x".repeat(limit + 1);
+        let entry = if field == "pattern" {
+            format!("pattern: {value}, message: reminder")
+        } else {
+            format!("pattern: run, message: {value}")
+        };
+
+        let error = load_error(&format!("{key}: [{{{entry}}}]"));
+
+        assert!(error.contains(&format!("{key} {field} exceeds {limit} bytes")));
+    }
+
+    #[test]
+    fn legacy_hints_should_bound_combined_list_count() {
+        let base = "  - {pattern: run, message: reminder}\n".repeat(super::MAX_SYMBOL_RULES);
+        let yaml =
+            format!("perf_hints:\n{base}extra_perf_hints: [{{pattern: run, message: reminder}}]");
+
+        let error = load_error(&yaml);
+
+        assert!(error.contains("perf_hints and extra_perf_hints exceed"));
+    }
+
+    /// A reminder entry with an empty or whitespace-only pattern or
+    /// message fails the config load, naming the offending key.
+    #[rstest]
+    #[case("perf_hints", "pattern", "")]
+    #[case("perf_hints", "pattern", "  ")]
+    #[case("perf_hints", "message", "")]
+    #[case("perf_hints", "message", "  ")]
+    #[case("extra_perf_hints", "pattern", "")]
+    #[case("extra_perf_hints", "pattern", "  ")]
+    #[case("extra_perf_hints", "message", "")]
+    #[case("extra_perf_hints", "message", "  ")]
+    fn reminder_entries_with_blank_fields_are_rejected(
+        #[case] key: &str,
+        #[case] field: &str,
+        #[case] value: &str,
+    ) {
+        let entry = if field == "pattern" {
+            format!("  - pattern: \"{value}\"\n    message: reminder\n")
+        } else {
+            format!("  - pattern: to_uppercase\n    message: \"{value}\"\n")
+        };
+        let err = load_error(&format!("{key}:\n{entry}"));
+        assert!(
+            err.contains(&format!("{key} entry {field} must not be empty")),
+            "the error must name the key and field:\n{err}"
+        );
+    }
+
+    /// Entries carrying an unknown `kind` field are rejected at parse
+    /// time instead of silently accepting a meaningless field.
+    #[test]
+    fn reminder_entries_with_kind_are_rejected() {
+        let err = load_error(
+            "perf_hints:\n  - kind: reminder\n    pattern: Vec::new\n    message: reminder\n",
+        );
+        assert!(
+            err.contains("unknown field") && err.contains("kind"),
+            "the unknown kind field must be rejected:\n{err}"
         );
     }
 }

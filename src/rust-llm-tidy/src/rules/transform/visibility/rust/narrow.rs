@@ -4,6 +4,7 @@
 use super::{ReexportSet, is_bare_pub, parse, visibility_node};
 use ahash::AHashSet;
 use core::cmp::Reverse;
+use core::ops::Range;
 use std::borrow::Cow;
 use tree_sitter::Node;
 
@@ -13,7 +14,7 @@ use tree_sitter::Node;
 /// The cross-file visibility is the file's effective floor from a
 /// [`ModuleTree`]; the guard is a [`ReexportSet`].
 ///
-/// This is the sole entry point. A standalone file (no crate context) is
+/// A standalone file (no crate context) is
 /// narrowed with `floor = None` and a per-file re-export set built by the
 /// caller.
 ///
@@ -73,8 +74,30 @@ pub fn narrow_vis_in_tree<'a>(
     floor: Option<&'a str>,
     crate_reexports: &ReexportSet,
 ) -> anyhow::Result<Cow<'a, str>> {
+    narrow_vis_in_tree_protected(source, floor, crate_reexports, &[])
+}
+
+/// Narrow visibility while leaving edits overlapping protected bytes untouched.
+///
+/// Ranges must refer to `source`. Protected declarations remain available as
+/// context for narrowing their unprotected siblings. With nonempty protection,
+/// syntax-error trees are returned unchanged.
+///
+/// # Errors
+///
+/// Returns an error if the Rust grammar cannot load, the parser rejects it, or
+/// parsing returns no tree, as for [`narrow_vis_in_tree`].
+pub(crate) fn narrow_vis_in_tree_protected<'a>(
+    source: &'a str,
+    floor: Option<&'a str>,
+    crate_reexports: &ReexportSet,
+    ranges: &[Range<usize>],
+) -> anyhow::Result<Cow<'a, str>> {
     let tree = parse(source)?;
     let root = tree.root_node();
+    if !ranges.is_empty() && root.has_error() {
+        return Ok(Cow::Borrowed(source));
+    }
     let mut edits: Vec<(usize, usize, Cow<'a, str>)> = Vec::new();
     let names = crate_reexports.names();
 
@@ -92,6 +115,11 @@ pub fn narrow_vis_in_tree<'a>(
     // Inline-mod recursion: tighter inline floors propagate; floor slices here
     // ARE into `source` (zero-alloc).
     walk(root, floor, source, Some(names), &mut edits);
+    edits.retain(|(start, end, _)| {
+        !ranges
+            .iter()
+            .any(|range| *start < range.end && range.start < *end)
+    });
 
     if edits.is_empty() {
         Ok(Cow::Borrowed(source))
@@ -270,6 +298,55 @@ mod tests {
         ParsedFile, ReexportSet, collect_crate_reexports,
     };
     use std::path::PathBuf;
+
+    #[test]
+    fn protected_narrowing_should_leave_syntax_error_tree_unchanged() {
+        let source = "pub fn change() {} fn broken(";
+
+        let output = super::narrow_vis_in_tree_protected(
+            source,
+            Some("pub(crate)"),
+            &ReexportSet::new(),
+            core::slice::from_ref(&(source.len() - 1..source.len())),
+        )
+        .unwrap();
+
+        assert_eq!(output, source);
+    }
+
+    #[test]
+    fn protected_narrowing_should_preserve_declaration_and_narrow_sibling() {
+        let source = "pub(crate) mod m {\n /// Keep.\n #[inline]\n pub fn keep() {}\n pub fn change() {}\n}\n";
+        let parsed = RustBackend.parse(source).unwrap();
+        let protected = crate::source::symbols::declarations(&parsed, "rs")
+            .unwrap()
+            .into_iter()
+            .find(|item| item.path.as_ref() == "m::keep")
+            .unwrap()
+            .bytes;
+
+        let output =
+            super::narrow_vis_in_tree_protected(source, None, &ReexportSet::new(), &[protected])
+                .unwrap();
+
+        assert_eq!(
+            output,
+            "pub(crate) mod m {\n /// Keep.\n #[inline]\n pub fn keep() {}\n pub(crate) fn change() {}\n}\n"
+        );
+    }
+
+    #[test]
+    fn protected_narrowing_should_match_original_when_ranges_empty() {
+        let source = "pub fn change() {}\n";
+        let reexports = ReexportSet::new();
+
+        let original = narrow_vis_in_tree(source, Some("pub(crate)"), &reexports).unwrap();
+        let protected =
+            super::narrow_vis_in_tree_protected(source, Some("pub(crate)"), &reexports, &[])
+                .unwrap();
+
+        assert_eq!(protected, original);
+    }
 
     /// Tree-only and shared-model parsing produce identical narrowed source,
     /// including recovery syntax and re-export guards.

@@ -6,7 +6,7 @@ The `lints` op runs read-only checks.
 
 - It is on by default in the pipeline and never mutates files.
 - Exits non-zero when any error-severity finding is present (warnings and
-  hints do not fail).
+  hints and reminders do not fail).
 
 The lint codes are sub-checks of `lints`; they stay individually
 toggleable through the same rule namespace as the ops.
@@ -16,7 +16,7 @@ So `exclude: [{rules: [DOC001]}]` turns off just missing-docs and
 
 Which codes run depends on the language:
 
-- Rust: every code, read from a tree-sitter parse.
+- Rust: documentation, text, test, module, length, and symbol checks.
 - C#: checks XML documentation and test names ([lints for C#]).
 - Python: checks module docstrings ([`DOC009`]).
 
@@ -52,6 +52,78 @@ Text lints for other languages use these sources ([text lints]):
 | [`MOD002`]  | Error    | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
 | [`MOD003`]  | Hint     | A path includes the full namespace.                                               |
 | [`LEN001`]  | Hint     | A Rust fn body exceeds `method_length.max_lines` (default 100).                   |
+| [`PERF001`] | Reminder | A built-in or configured API is invoked.                                          |
+| [`PERF002`] | Reminder | C# creates an explicit sized vector without an initializer.                       |
+| [`SYM001`]  | Reminder | A configured symbol hint matches; severity is configurable.                       |
+
+## Reporting scope
+
+`Reminder` defaults to changed lines. `Hint`, warnings, and errors default
+to all eligible lines.
+
+Only errors fail the run. Scope filters findings, not transformations or
+file selection.
+Scope precedence, highest first:
+
+1. Run override: `--lint-scope all|changed-lines`.
+2. Symbol entry `scope`.
+3. `lint_scopes` entry for the lint code.
+4. Severity default.
+
+Config uses snake case:
+
+```yaml
+lint_scopes:
+  PERF001: all
+  DOC001: changed_lines
+```
+
+Only lint codes are valid `lint_scopes` keys, not operations or `lints`.
+Unknown keys and scope values fail configuration loading.
+
+Use `--lint-scope all` for an audit of existing code. Without a usable Git
+context, changed-line findings are skipped with a warning, never widened
+to whole-file findings. An invalid explicit baseline fails the run.
+
+### Baselines and file selection
+
+The default baseline is local `HEAD` versus working content.
+
+Staged and unstaged edits count only through their net result. Reverting
+a staged edit back to `HEAD` leaves no eligible line. Selected new files
+have all lines eligible; deletions alone add no eligible lines.
+
+`--diff-base REF` compares working content with the merge-base of local
+`REF` and `HEAD`. `RUST_LLM_TIDY_DIFF_BASE` supplies the same reference;
+the flag wins. The CLI does not fetch missing history or references.
+
+With no paths and no explicit baseline, the CLI selects tracked Git changes.
+With an explicit baseline and no paths, it discovers allowed files beneath
+the current directory. Explicit paths retain their normal selection rules.
+
+This repository's PR workflow sets `RUST_LLM_TIDY_DIFF_BASE` to the PR base
+SHA and checks out full history. Its `changed-files: false` still selects
+the whole repository; the baseline only limits scoped findings.
+
+The environment reaches the cargo-built CLI through the pinned composite
+action's shell invocation. This is repository workflow wiring, not a new
+published action input.
+
+### Reported lines after transformations
+
+Eligibility is captured from input before transformations.
+
+Filtering uses each finding's reported line, not its enclosing declaration
+or adjacent lines. Symbol findings use the last name-token line; arrays
+use `new`.
+
+After edits, exact unchanged or moved lines retain eligibility only when
+every input copy was eligible and the output has no more copies. Line
+endings participate in matching.
+
+Rewritten lines and mixed-eligibility duplicates can lose findings. This
+conservative text map cannot distinguish a move from an identical
+replacement. Use an all-lines audit when this limitation matters.
 
 ## Examples
 
@@ -718,6 +790,291 @@ Suggestions:
 
 `LEN001` is hint-severity, so the run exits 0.
 
+### PERF001 - API performance reminder
+
+Emit a configurable, reminder-severity finding when Rust or C# code invokes a
+built-in or configured API.
+
+Legacy `perf_hints` and `extra_perf_hints` remain supported. They normalize
+into the shared symbol engine while retaining their matching rules and
+`PERF001` code. They do not replace custom `symbol_rules` or `PERF002`.
+
+#### PERF001 matching
+
+- Rust call paths (`Vec::new`) match by trailing components, so
+  qualification (`std::vec::Vec::new`) and turbofish
+  (`Vec::<u8>::new`) both match.
+- Rust method (`to_string`) and macro (`format!`) patterns match the
+  name alone.
+- C# creations (`List::new`) match `new T()` by the type's base name;
+  C# calls (`ToString`) match the invocation's final name.
+- C# creations match only explicit `new T(...)` syntax; target-typed
+  `new()` and collection expressions (`[1, 2]`) are out of scope.
+
+Constructor patterns end in `new` and match only zero-argument
+constructions.
+
+- `new List<int>(capacity)` and `new List<int> { 1, 2 }` stay silent.
+- `Vec::with_capacity(n)` stays silent: `with_capacity` matches no
+  built-in pattern.
+- Bare `new()` stays silent: a pattern longer than the callee never
+  matches.
+- Separator-only patterns (`::`) match nothing, not every call.
+- Matching is syntax-only: mentions in comments, strings, declarations,
+  and non-invoked references never fire.
+- Matching is by written name only: a method-name hint matches every
+  type with that method name; type resolution is out of scope.
+
+Before:
+
+```rust
+fn collect(items: &[u32]) -> Vec<u32> {
+    let mut out = Vec::new();
+    for item in items {
+        out.push(item * 2);
+    }
+    out
+}
+```
+
+After:
+
+```rust
+fn collect(items: &[u32]) -> Vec<u32> {
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        out.push(item * 2);
+    }
+    out
+}
+```
+
+`Vec::new()` alone already fires; no following loop is required.
+
+#### PERF001 built-in reminders
+
+The built-in lists cover standard-library containers with a
+capacity-setting alternative:
+
+- [Rust built-ins]
+- [C# built-ins]
+
+Built-in messages follow the shared diagnostic shape: the finding, a
+human-facing `Why:`, and `Suggestions:` an LLM could take. This
+includes keeping the current API when the final size is unknown.
+
+Note the capacity constructor may require a newer .NET target for some
+types (`PriorityQueue` needs .NET 6+).
+
+Conversion and formatting calls (`to_string`, `format!`, `ToString`,
+`Format`) are not built in: an API name alone is not evidence a change
+helps. Configure them as extras if wanted.
+
+#### PERF001 config
+
+| `perf_hints` | `extra_perf_hints` | Effective reminders           |
+| ------------ | ------------------ | ----------------------------- |
+| absent       | absent or empty    | built-ins                     |
+| absent       | non-empty          | built-ins, then extras        |
+| non-empty    | absent or empty    | replacement list              |
+| non-empty    | non-empty          | replacement list, then extras |
+| `[]`         | absent or empty    | none                          |
+| `[]`         | non-empty          | extras only                   |
+
+Both keys take the same entries and apply to Rust and C# alike.
+
+Order is preserved; base entries precede extras, and the first matching
+entry wins without duplicate findings.
+
+```yaml
+perf_hints: []              # extras only, or no hints.
+extra_perf_hints:
+  - pattern: to_string
+    message: |
+      Review this conversion.
+      Why: Ownership may be unnecessary.
+      Suggestions:
+      - Borrow instead when the caller does not need owned text.
+  - pattern: format!
+    message: |
+      Review this formatting allocation.
+      Why: A destination buffer may already exist.
+      Suggestions:
+      - Write into that buffer when doing so preserves error handling.
+```
+
+Entries are `pattern` plus `message`. The `message` renders verbatim as
+the diagnostic body.
+
+Include `Why:` and `Suggestions:` sections in custom
+messages, following the built-in convention. Validation requires nonblank
+text, but does not enforce these section names.
+
+Unknown fields (including `kind`) fail config load, as do empty or
+whitespace-only patterns and messages. `perf_hints: []` clears the base
+list only; any configured extras still run.
+
+#### PERF001 CLI output
+
+```text
+$ rust-llm-tidy --include PERF001 --lint-scope all src/lib.rs
+src/lib.rs:2: reminder[PERF001]: `Vec::new()` starts with zero capacity.
+
+Why: filling it afterwards can repeatedly reallocate as it grows.
+
+Suggestions:
+- If the expected element count is known, use `Vec::with_capacity(count)`.
+- Keep `Vec::new()` when the final size is unknown; a wrong guess wastes memory. (call `Vec::new`)
+```
+
+With an empty config and the Before source, `PERF001` exits 0.
+
+### PERF002 - array allocation reminder
+
+C# `new T[length]` without an initializer emits a reminder about
+`GC.AllocateUninitializedArray<T>(length)`.
+
+It is a built-in symbol rule,
+not a separate loop analysis. No following overwrite loop is required.
+
+The rule matches `new[]` with `array_kind: explicit_sized_vector` and
+`no_initializer: true`. Initializers, implicit arrays, multidimensional
+arrays, and jagged arrays do not match this built-in rule.
+
+Only consider the alternative when the runtime supports it and every
+element is initialized before any read. Keep regular allocation when zeros
+are required. Arrays containing references may still be zeroed; no speedup
+is guaranteed.
+
+`PERF001`, `PERF002`, and custom `SYM001` hints are independently toggleable.
+A custom array rule can report alongside `PERF002`.
+
+### SYM001 - configured symbol policies
+
+`symbol_rules` is an ordered list of syntax-only hints and declaration
+exclusions for Rust and C#.
+
+The first matching hint wins per occurrence.
+Exclusions are collected independently, regardless of their position.
+
+```yaml
+symbol_rules:
+  - symbol: Vec::new
+    extensions: [RS]
+    zero_arguments: true
+    message: |
+      Review the initial capacity.
+      Why: Repeated growth may allocate again.
+      Suggestions:
+      - Use with_capacity only when the expected size is known.
+  - regex: 'internal::.*'
+    extensions: [rs]
+    target: declaration
+    action: exclude
+```
+
+#### Matching and fields
+
+Set exactly one matcher: `symbol` or `regex`.
+
+`symbol` is a literal component suffix. `regex` matches the entire normalized
+name with implicit `\A(?:...)\z` anchors.
+Names are case-sensitive; literal `Vec::new` also matches
+`std::vec::Vec::new`, but not `OtherVec::new`.
+
+Qualification uses `::` for both languages; generic arguments are omitted.
+Rust methods expose only the method name, macros retain `!`, and explicit
+C# object creations append `::new` to the written type path.
+
+Imports, aliases, overloads, receiver types, and macro expansions are not
+resolved. Comments, strings, and non-invoked references are not usages.
+Target-typed C# `new()` is not a named object usage.
+
+- `extensions`: case-insensitive `rs` and `cs`, without dots. Omit to
+  enable both. Empty lists, dotted values, and unsupported values fail.
+- `language`: optional `rust` or `csharp`; intersects `extensions`.
+  Symbol extensions do not expand file discovery.
+- `target`: `usage` (default) or `declaration`.
+- `action`: `hint` (default) or `exclude`.
+
+Hint output:
+
+- `message`: required nonblank text for hints. Include `Why:` and
+  `Suggestions:`; these headings are a convention, not schema validation.
+- `severity`: `reminder` (default), `hint`, `warning`, or `error`.
+  Exclusions ignore severity.
+- `scope`: `all` or `changed_lines`, for hints only.
+
+Usage constraints:
+
+- `zero_arguments`: optional boolean constraint on usage call arguments.
+- `no_initializer`: optional boolean constraint on usage initializers.
+- `array_kind`: optional C# array shape constraint on usages.
+
+Absent usage constraints impose no restriction. Declaration rules forbid
+all three usage constraints.
+
+#### Array usages
+
+The synthetic symbol `new[]` covers explicit and implicit C# array creations.
+
+This includes initialized, multidimensional, and jagged arrays.
+Declarations, collection expressions, and `stackalloc` are not array usages.
+
+`array_kind: any` selects all array creations.
+`array_kind: explicit_sized_vector` selects one sized rank with a non-array
+element type. It still allows initializers unless `no_initializer: true`.
+
+Array sizes and initializer elements are not call arguments, so arrays
+satisfy `zero_arguments: true`. Their findings anchor on the `new` line;
+changing only a later size or initializer line does not admit a reminder.
+
+#### Declaration exclusions
+
+Use `target: declaration` with `action: exclude`. Do not set `message`,
+`scope`, or usage constraints.
+
+Exclusions stay active even when `SYM001`
+or all lints are disabled, and are independent of reporting scope.
+
+Declaration paths follow lexical modules, namespaces, types, and members.
+Rust impls use their written target path without generic arguments;
+matching a type also matches impls with that path. Each C# field name
+protects the entire shared multi-field declaration.
+
+Protection includes the body and adjacent leading standalone comments and
+attributes, but not Rust module-doc comments. It suppresses findings on
+overlapping lines except file-level `MOD001` and `DOC009` checks.
+
+Comment transformations skip overlapping comment runs. Visibility edits
+skip protected spans. Reordering pins overlapping items and members;
+a nested exclusion pins its enclosing item. Free members may still reorder
+on either side of a protected member, preserving original whitespace.
+
+Configured external post-processing skips the entire protected file with
+a warning: arbitrary commands cannot preserve selected byte ranges.
+
+Applicable declaration policies encountering a syntax-error tree fail
+processing rather than permitting unprotected edits.
+
+#### Configuration errors
+
+Unknown fields and enum values fail YAML parsing.
+
+Symbol compilation errors
+identify the one-based `symbol_rules` entry. Fix the named field and run
+`rust-llm-tidy --config config.yml --validate` again.
+
+- Supply exactly one nonblank matcher. Literal components must be names
+  separated by `::`; use `regex` for patterns, or `new[]` for arrays.
+- Keep patterns within 4096 UTF-8 bytes and messages within 16384 bytes.
+- Keep `symbol_rules` within 256 entries. The combined legacy hint lists
+  have a separate 256-entry limit and the same text-size limits.
+- Simplify regexes that fail syntax or bounded compilation: nesting is
+  limited to 64, with 256 KiB program and lazy DFA cache budgets.
+- Correct unsupported extensions and incompatible action/target fields
+  as described above. Symbol patterns need not match a current file.
+
 ## Config
 
 ```yaml
@@ -769,9 +1126,9 @@ in both in-place and `--dry-run` runs.
 
 Fields:
 
-- `severity` - `"error"`, `"warning"`, or `"hint"` for lint findings,
+- `severity` - `"error"`, `"warning"`, `"hint"`, or `"reminder"` for findings,
   `"success"` for change records (applied or would-be changes)
-- `line` - 1-based item start line; `null` when the record has no
+- `line` - 1-based reported line; `null` when the record has no
   specific line (e.g. link/table fixes)
 - `item_name` - item name, `null` when unnamed
 - `title` - friendly per-code title for lint findings, `null` for change
@@ -784,13 +1141,17 @@ document, in both in-place and `--dry-run` runs.
 
 ## Hints
 
-`hint` is an advisory severity for suggestions an LLM or human may want to
-investigate, such as a possible pre-allocation.
+`hint` is an advisory severity for suggestions such as shorter wording.
+`reminder` is a separate advisory severity for checks such as `PERF001`.
 
 - Hints never gate the exit code; only `error` findings do.
 - Text mode prints them in a separate group at the end, in the usual
   `path:line: hint[CODE]: ...` shape.
 - JSON mode records them with `severity: "hint"` and the usual lint fields.
+
+Reminders likewise never fail the run. Text mode gives them their own group
+with `reminder[CODE]`; JSON uses `severity: "reminder"`. Their default
+reporting boundary is [changed lines], unlike hints.
 
 ## Change reporting
 
@@ -853,6 +1214,11 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`MOD003`]: #mod003---full-namespace-qualification-in-code
 [C# MOD003]: languages/lints/csharp.md#mod003---full-namespace-qualification-in-code
 [`LEN001`]: #len001---oversized-function-or-method
+[`PERF001`]: #perf001---api-performance-reminder
+[`PERF002`]: #perf002---array-allocation-reminder
+[`SYM001`]: #sym001---configured-symbol-policies
+[Rust built-ins]: ../src/rust-llm-tidy/src/rules/lint/rust/perf001_allocation_hints/default_hints.rs
+[C# built-ins]: ../src/rust-llm-tidy/src/rules/lint/csharp/perf001_allocation_hints/default_hints.rs
 [lints for C#]: ./languages/lints/csharp.md
 [text lints]: ./text-lints.md
 
@@ -863,3 +1229,4 @@ For complete processing and project context, see [library entry points].
 
 [library entry points]: architecture.md#library-entry-points
 [opt-in below]: #mod001-counting-options
+[changed lines]: #reporting-scope

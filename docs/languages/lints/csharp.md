@@ -23,8 +23,27 @@ against misread declarations.
 | `TEXT006` | Hint     | Shorter-wording suggestions for words, phrases, redundancies, and filler in doc text             |
 | `TEST001` | Warning  | A `TestMethod`/`Test`/`Fact`/`Theory` method uses a `test_*`, `case_*`, or `test` + digits name. |
 | `MOD003`  | Hint     | A path includes the full namespace.                                                              |
+| `PERF001` | Reminder | A built-in or configured API is invoked.                                                         |
+| `PERF002` | Reminder | An explicit sized vector has no initializer.                                                     |
+| `SYM001`  | Reminder | A configured symbol hint matches; severity is configurable.                                      |
 
-Errors fail the run with a non-zero exit; warnings and hints do not.
+Errors fail the run with a non-zero exit; warnings, hints, and reminders do
+not. Reminders default to changed lines; use `--lint-scope all` for an audit.
+
+See [reporting scope] for Git baselines and per-entry overrides.
+The [symbol policies] reference owns C# name normalization, `new[]` array
+matching, declaration exclusions, and configuration errors.
+
+`PERF002` uses the shared symbol engine to match `new T[length]` without
+an initializer. It does not inspect subsequent loops. Its finding anchors
+at `new`, not a later size expression.
+
+See [array allocation reminder] for
+safe handling and excluded array shapes.
+
+[reporting scope]: ../../lints.md#reporting-scope
+[symbol policies]: ../../lints.md#sym001---configured-symbol-policies
+[array allocation reminder]: ../../lints.md#perf002---array-allocation-reminder
 
 ## Examples
 

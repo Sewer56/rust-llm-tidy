@@ -20,6 +20,7 @@ use crate::languages::RustBackend;
 use ahash::AHashSet;
 pub use modules::{ModuleTree, build_module_tree, discover_crate_root};
 pub use narrow::narrow_vis_in_tree;
+pub(crate) use narrow::narrow_vis_in_tree_protected;
 use std::path::PathBuf;
 use tree_sitter::{Node, Tree};
 
