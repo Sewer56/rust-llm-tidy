@@ -25,9 +25,10 @@ fn csharp_doc002_errors_on_indirect_throwers() {
     assert_has_diagnostic(&stderr, "DOC002", Some("Load"));
     assert_has_diagnostic(&stderr, "DOC002", Some("LoadTwice"));
     assert!(
-        !stderr.contains("`Validate`")
-            && !stderr.contains("`Parse`")
-            && !stderr.contains("`LoadGuarded`"),
+        !stderr.lines().any(|line| line.contains("[DOC002]")
+            && (line.contains("`Validate`")
+                || line.contains("`Parse`")
+                || line.contains("`LoadGuarded`"))),
         "private throwers, framework calls, and tagged callers pass:\n{stderr}"
     );
     assert_eq!(
@@ -58,7 +59,8 @@ fn csharp_doc002_errors_on_untagged_throwers() {
         "DOC002 carries error severity:\n{stderr}"
     );
     assert!(
-        !stderr.contains("`Tagged`") && !stderr.contains("`Hidden`"),
+        !stderr.lines().any(|line| line.contains("[DOC002]")
+            && (line.contains("`Tagged`") || line.contains("`Hidden`"))),
         "tagged and private throwers pass:\n{stderr}"
     );
     assert_eq!(

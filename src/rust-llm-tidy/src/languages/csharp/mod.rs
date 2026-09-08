@@ -25,6 +25,7 @@
 //! records and never write.
 
 use crate::languages::LanguageBackend;
+use crate::reporting::Diagnostic;
 use crate::rules::lint::csharp as lints;
 use crate::rules::transform::reorder::Permutation;
 use crate::source::ParseResult;
@@ -52,15 +53,11 @@ impl LanguageBackend for CSharpBackend {
         &["reorder", "lints"]
     }
 
-    fn lint(&self, parsed: &ParseResult) -> Vec<crate::reporting::Diagnostic> {
+    fn lint(&self, parsed: &ParseResult) -> Vec<Diagnostic> {
         lints::run(parsed)
     }
 
-    fn lint_indexed(
-        &self,
-        parsed: &ParseResult,
-        index: &CanThrowIndex,
-    ) -> Vec<crate::reporting::Diagnostic> {
+    fn lint_indexed(&self, parsed: &ParseResult, index: &CanThrowIndex) -> Vec<Diagnostic> {
         lints::run_indexed(parsed, Some(index))
     }
 
@@ -78,4 +75,37 @@ impl LanguageBackend for CSharpBackend {
 /// version).
 fn c_sharp_language() -> anyhow::Result<tree_sitter::Language> {
     Ok(tree_sitter_c_sharp::LANGUAGE.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Both entry points consume the same MOD003 diagnostics.
+    #[test]
+    fn lint_entry_points_should_run_the_same_mod003_composition() {
+        let repeated = concat!(
+            "class C {\n",
+            "    void M() {\n",
+            "        System.Console.WriteLine(1);\n",
+            "        System.Console.WriteLine(2);\n",
+            "        System.Console.WriteLine(3);\n",
+            "    }\n",
+            "}\n",
+        );
+        let parsed = parse::parse(repeated).unwrap();
+
+        let via_lint = CSharpBackend.lint(&parsed);
+        let via_indexed = CSharpBackend.lint_indexed(&parsed, &CanThrowIndex::default());
+
+        assert_eq!(via_indexed, via_lint);
+        assert_eq!(
+            via_lint
+                .iter()
+                .filter(|d| d.code == crate::rules::lint::CODE_QUALIFIED_PATH)
+                .count(),
+            3,
+            "MOD003 must fire through every dispatch shape"
+        );
+    }
 }

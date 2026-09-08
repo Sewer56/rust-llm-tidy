@@ -16,8 +16,9 @@
 //! Any config error causes [`load_and_compile`] to return `Err`.
 //!
 //! Errors include bad YAML, bad glob syntax, unknown rule name, or a
-//! `links` or `module_size` value below 1. They also include a malformed
-//! `extensions`/`extra_extensions` entry or a pattern matching zero files.
+//! `links` or `module_size` value below 1. They also
+//! include a malformed `extensions`/`extra_extensions` entry or a pattern
+//! matching zero files.
 //!
 //! The CLI propagates that error as a non-zero exit on every command.
 //!
@@ -112,11 +113,11 @@ mod tests {
     #[test]
     fn known_rules_lists_every_code_and_op() {
         let rules = known_rules();
-        // Sample lint codes (not every code is pinned here) plus the six
-        // fix/operation names (including lints).
+        // Sample lint codes from every prefix group (DOC, TEXT, TEST, and
+        // MOD), plus the six fix/operation names (including lints).
         for code in [
             "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "DOC008", "DOC009",
-            "TEXT001", "TEXT002", "TEXT003", "TEXT004", "TEST001", "MOD002",
+            "TEXT001", "TEXT002", "TEXT003", "TEXT004", "TEST001", "MOD002", "MOD003",
         ] {
             assert!(rules.contains(&code), "missing lint code {code}");
         }

@@ -165,6 +165,36 @@ impl CompiledConfig {
 mod tests {
     use super::load::compile;
 
+    /// `MOD003` resolves as a rule name in both whitelist and blacklist
+    /// groups.
+    #[test]
+    fn mod003_should_be_valid_in_rule_groups() {
+        let include = compile(
+            "include:\n  - paths: [\"lib.rs\"]\n    rules: [\"MOD003\"]\n",
+            &[("lib.rs", "pub fn x() {}\n")],
+        );
+        let dir = include.config_dir_canonical_for_test();
+        let policy = include.policy_for(&dir.join("lib.rs"));
+        assert!(
+            policy
+                .enabled
+                .as_ref()
+                .is_some_and(|rules| rules.contains("MOD003")),
+            "include should enable MOD003: {policy:?}"
+        );
+
+        let exclude = compile(
+            "exclude:\n  - paths: [\"lib.rs\"]\n    rules: [\"MOD003\"]\n",
+            &[("lib.rs", "pub fn x() {}\n")],
+        );
+        let dir = exclude.config_dir_canonical_for_test();
+        let policy = exclude.policy_for(&dir.join("lib.rs"));
+        assert!(
+            policy.disabled.contains("MOD003"),
+            "exclude should disable MOD003: {policy:?}"
+        );
+    }
+
     #[test]
     fn policy_for_matches_relative_path() {
         let cc = compile(

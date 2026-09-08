@@ -307,6 +307,23 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The removed MOD003 threshold key must fail as unknown, not load
+    /// as a silent no-op.
+    #[test]
+    fn removed_qualified_paths_key_is_rejected() {
+        let dir = std::env::temp_dir().join(format!("rlt-cfg-qp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_path = dir.join(".rust-llm-tidy.yml");
+        std::fs::write(&cfg_path, "qualified_paths:\n  repeat_threshold: 2\n").unwrap();
+        let err = load_and_compile(&cfg_path).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("qualified_paths"),
+            "the removed key should be reported as unknown: {msg}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn non_matching_pattern_is_rejected() {
         let dir = std::env::temp_dir().join(format!("rlt-cfg-nomatch-{}", std::process::id()));

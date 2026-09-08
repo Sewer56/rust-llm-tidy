@@ -208,6 +208,27 @@ fn run_python_fixture(name: &str) -> (String, i32) {
     )
 }
 
+/// Run MOD003 on hermetic source with an explicit, empty configuration.
+fn run_qualified_path_source(source: &str, extension: &str) -> (String, i32) {
+    let directory = tempfile::tempdir().unwrap();
+    let config = directory.path().join(".rust-llm-tidy.yml");
+    let path = directory.path().join(format!("example.{extension}"));
+    fs::write(&config, "{}\n").unwrap();
+    fs::write(&path, source).unwrap();
+
+    let output = Command::new(binary())
+        .arg("--config")
+        .arg(config)
+        .args(["--include", "MOD003"])
+        .arg(&path)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()));
+    (
+        String::from_utf8_lossy(&output.stderr).to_string(),
+        output.status.code().unwrap_or(-1),
+    )
+}
+
 /// Writes `content` to a numbered temp `.md` file and returns its path.
 fn temp_md(content: &str) -> std::path::PathBuf {
     let path = temp_file("md");

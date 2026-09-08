@@ -15,7 +15,9 @@ fn csharp_doc003_warns_on_vague_exception_crefs() {
     assert_eq!(exit, 0, "DOC003 warnings must not fail the run");
     assert_has_diagnostic(&stderr, "DOC003", Some("Vague"));
     assert!(
-        !stderr.contains("`Concrete`"),
+        !stderr
+            .lines()
+            .any(|line| line.contains("[DOC003]") && line.contains("`Concrete`")),
         "a concrete cref passes:\n{stderr}"
     );
     assert_eq!(

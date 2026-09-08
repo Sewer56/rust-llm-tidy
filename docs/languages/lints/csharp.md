@@ -22,6 +22,7 @@ against misread declarations.
 | `TEXT003` | Warning  | A doc sentence whose tag-stripped inner text exceeds 25 words.                                   |
 | `TEXT006` | Hint     | Shorter-wording suggestions for words, phrases, redundancies, and filler in doc text             |
 | `TEST001` | Warning  | A `TestMethod`/`Test`/`Fact`/`Theory` method uses a `test_*`, `case_*`, or `test` + digits name. |
+| `MOD003`  | Hint     | A fully-qualified name makes code harder to read.                                                |
 
 Errors fail the run with a non-zero exit; warnings and hints do not.
 
@@ -554,6 +555,54 @@ public class Loader
 ```
 
 [text lints]: ../../text-lints.md
+
+### MOD003 - fully-qualified names reduce readability
+
+Shorten qualified names with imports.
+
+Before (`example.cs`):
+
+```csharp
+class C { void M() { System.Console.WriteLine(1); } }
+```
+
+After:
+
+```csharp
+using Console = System.Console;
+
+class C { void M() { Console.WriteLine(1); } }
+```
+
+With a `config.yml` containing `{}`, the local CLI renders:
+
+```text
+$ cargo run -p rust-llm-tidy-cli -- --config config.yml --include MOD003 example.cs
+example.cs:1: hint[MOD003]: fully-qualified path `System.Console.WriteLine` makes code harder to read.
+- Add `using Console = System.Console;` at namespace or file scope.
+- Replace this path with `Console.WriteLine`. (fn `M`)
+```
+
+Hints suggest aliases for missing imports and reuse existing imports:
+
+- Namespace imports: `using System.Threading.Tasks;` shortens
+  `System.Threading.Tasks.Task.Delay` to `Task.Delay`.
+- Aliases: `using Log = System.Console;` shortens
+  `System.Console.WriteLine` to `Log.WriteLine`.
+
+#### MOD003 exceptions
+
+MOD003 skips:
+
+- Imports and attributes.
+- Paths whose shorter name would be ambiguous or shadowed.
+- Expression receivers not recognized as namespace or type paths.
+- Code guarded by `#if`, including the whole method containing the directive.
+
+Hints never fail the run or rewrite source.
+See [shared MOD003 policy] for Rust behavior.
+
+[shared MOD003 policy]: ../../lints.md#mod003---fully-qualified-paths-reduce-readability
 
 ## Library access
 

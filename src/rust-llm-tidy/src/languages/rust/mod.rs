@@ -132,4 +132,31 @@ mod tests {
             "file-level DOC009, then item rules in code order per item, then the text tier"
         );
     }
+
+    /// Both entry points consume the same MOD003 diagnostics.
+    #[test]
+    fn lint_entry_points_should_run_the_same_mod003_composition() {
+        let repeated = concat!(
+            "fn f() {\n",
+            "    std::mem::drop(1);\n",
+            "    std::mem::drop(2);\n",
+            "    std::mem::drop(3);\n",
+            "}\n",
+        );
+        let parsed = parse::parse_source(repeated).unwrap();
+
+        let via_lint = RustBackend.lint(&parsed);
+        let via_indexed =
+            RustBackend.lint_indexed(&parsed, &crate::languages::CanThrowIndex::default());
+
+        assert_eq!(via_indexed, via_lint);
+        assert_eq!(
+            via_lint
+                .iter()
+                .filter(|d| d.code == crate::rules::lint::CODE_QUALIFIED_PATH)
+                .count(),
+            3,
+            "MOD003 must fire through every dispatch shape"
+        );
+    }
 }

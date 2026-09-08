@@ -18,6 +18,7 @@
 //! Size, naming, and text modules:
 //!
 //! - `mod001_module_size`: MOD001 rust-specific counting and selection
+//! - `mod003_qualified_path`: MOD003 fully-qualified path hints
 //! - `test001_test_naming`: TEST001 discouraged test-function names
 //! - `text001_paragraph_size`: TEXT001 over-budget doc paragraphs
 //! - `text002_line_length`: TEXT002 over-long doc lines
@@ -37,6 +38,7 @@ mod doc006_placeholder;
 mod doc008_error_variant_order;
 mod doc009_missing_module_docs;
 mod mod001_module_size;
+mod mod003_qualified_path;
 mod test001_test_naming;
 mod text001_paragraph_size;
 mod text002_line_length;

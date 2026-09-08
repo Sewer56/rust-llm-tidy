@@ -31,6 +31,10 @@ pub(crate) const CODE_TITLES: &[(&str, &str)] = &[
     (CODE_TEST_NAMING, "non-behavioral test name"),
     (CODE_MODULE_SIZE, "oversized module"),
     (CODE_MOD002, "fn-local `use` without `#[cfg]`"),
+    (
+        CODE_QUALIFIED_PATH,
+        "fully-qualified path reduces readability",
+    ),
 ];
 /// Selectable transformations and the lint group, in pipeline order.
 pub const KNOWN_FIX_OPS: &[&str] = &["tables", "fences", "links", "reorder", "vis", "lints"];
@@ -59,6 +63,7 @@ pub const LINT_CODES: &[&str] = &[
     CODE_TEST_NAMING,
     CODE_MODULE_SIZE,
     CODE_MOD002,
+    CODE_QUALIFIED_PATH,
 ];
 /// Rule code for placeholder text in doc comments.
 pub const CODE_DOC_PLACEHOLDER: &str = "DOC006";
@@ -88,6 +93,8 @@ pub const CODE_MODULE_SIZE: &str = "MOD001";
 pub const CODE_PARAGRAPH_SIZE: &str = "TEXT001";
 /// Rule code for passive constructions and past-behavior narration.
 pub const CODE_PASSIVE_NARRATION: &str = "TEXT007";
+/// Rule code for a fully-qualified path that reduces readability.
+pub const CODE_QUALIFIED_PATH: &str = "MOD003";
 /// Rule code for an over-limit sentence of measured prose.
 pub const CODE_SENTENCE_LENGTH: &str = "TEXT003";
 /// Rule code for a discouraged test-function name.
@@ -114,13 +121,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lint_codes_lists_all_nineteen_codes() {
+    fn lint_codes_lists_all_twenty_codes() {
         // `LINT_CODES` is the source of truth for CLI rule validation. It must
         // enumerate every code produced by the backends and the text rules.
         assert_eq!(
             LINT_CODES.len(),
-            19,
-            "LINT_CODES must list exactly nineteen codes: {LINT_CODES:?}"
+            20,
+            "LINT_CODES must list exactly twenty codes: {LINT_CODES:?}"
         );
         for code in [
             CODE_MISSING_DOCS,
@@ -142,6 +149,7 @@ mod tests {
             CODE_TEST_NAMING,
             CODE_MODULE_SIZE,
             CODE_MOD002,
+            CODE_QUALIFIED_PATH,
         ] {
             assert!(LINT_CODES.contains(&code), "LINT_CODES is missing {code}");
         }

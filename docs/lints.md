@@ -50,6 +50,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
 | [`MOD001`]  | Warning  | A code file exceeds `module_size.max_lines` (default 500).                        |
 | [`MOD002`]  | Error    | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
+| [`MOD003`]  | Hint     | A fully-qualified path makes code harder to read.                                 |
 
 ## Examples
 
@@ -535,6 +536,56 @@ Error: found 1 error(s)
 
 `MOD002` is error-severity, so the run exits non-zero.
 
+### MOD003 - fully-qualified paths reduce readability
+
+Use imports to keep code paths short.
+
+Before (`example.rs`):
+
+```rust
+fn f() { std::sync::Arc::new(1); }
+```
+
+After:
+
+```rust
+use std::sync::Arc;
+
+fn f() { Arc::new(1); }
+```
+
+#### MOD003 CLI output
+
+With a `config.yml` containing `{}`, the local CLI renders:
+
+```text
+$ cargo run -p rust-llm-tidy-cli -- --config config.yml --include MOD003 example.rs
+example.rs:1: hint[MOD003]: fully-qualified path `std::sync::Arc::new` makes code harder to read.
+- Add `use std::sync::Arc;` at module scope.
+- Replace this path with `Arc::new`. (fn `f`)
+```
+
+If `use std::sync::Arc;` already exists, the advice is instead:
+
+```text
+- Replace this path with `Arc::new`; `Arc` is already imported. (fn `f`)
+```
+
+Hints use existing aliases, such as `Shared::new` for `Arc as Shared`.
+They never fail the run or rewrite source.
+
+#### MOD003 exceptions
+
+MOD003 skips:
+
+- Imports, Rust macros, and attributes.
+- Paths whose shorter name would be ambiguous or shadowed.
+- C# expression receivers not recognized as namespace or type paths.
+- Code guarded by Rust `cfg`/`cfg_attr` or C# `#if`, including the whole
+  function or method containing the condition.
+
+See [C# MOD003] for C# alias advice.
+
 ## Config
 
 ```yaml
@@ -667,6 +718,8 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`TEST001`]: #test001---non-behavioral-test-name
 [`MOD001`]: #mod001---oversized-module
 [`MOD002`]: #mod002---function-local-use-without-cfg
+[`MOD003`]: #mod003---fully-qualified-paths-reduce-readability
+[C# MOD003]: languages/lints/csharp.md#mod003---fully-qualified-names-reduce-readability
 [lints for C#]: ./languages/lints/csharp.md
 [text lints]: ./text-lints.md
 

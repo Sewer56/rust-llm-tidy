@@ -8,6 +8,8 @@
 //!
 //! [`mod001_module_size`] is file-level instead: the
 //! pipeline runs it from `check_file`, outside [`run_all`].
+//! [`mod003_qualified_path`] walks the whole retained tree once per
+//! file at the end of [`run_all`].
 //!
 //! The C# backend's `lints` module implements the same codes over its own
 //! parse; both consume the shared code constants from
@@ -28,6 +30,7 @@ mod doc008_error_variant_order;
 mod doc009_missing_module_docs;
 pub(crate) mod mod001_module_size;
 mod mod002_fn_local_use;
+mod mod003_qualified_path;
 mod test001_test_naming;
 
 /// Accepted rustdoc headers for documenting function parameters.
@@ -152,8 +155,10 @@ fn is_pub_result_fn(item: &SourceItem) -> bool {
 /// Run every Rust rule over `parsed` and return all diagnostics.
 ///
 /// File-level diagnostics precede item diagnostics, which follow source
-/// order and then rule code order: DOC*, then TEST*. The returned
-/// `Vec` is empty when the file and every item pass every rule.
+/// order and then rule code order: DOC*, then TEST*.
+///
+/// The returned `Vec` is empty only when the file and every item pass
+/// every rule.
 ///
 /// # Arguments
 ///
@@ -179,6 +184,7 @@ fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
         diags.extend(doc008_error_variant_order::check(item, &enums));
         diags.extend(test001_test_naming::check(item));
     }
+    diags.extend(mod003_qualified_path::check(parsed));
     diags
 }
 

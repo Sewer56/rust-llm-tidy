@@ -13,6 +13,7 @@
 //! - `doc005_undocumented_param`: DOC005 omitted parameter names
 //! - `doc006_placeholder`: DOC006 doc-comment placeholder markers
 //! - `doc009_missing_module_docs`: module-header rule silence
+//! - `mod003_qualified_path`: MOD003 fully-qualified path hints
 //! - `test001_test_naming`: TEST001 discouraged test-method names
 
 use crate::{manifest_dir, run_command};
@@ -24,6 +25,7 @@ mod doc004_missing_param_tags;
 mod doc005_undocumented_param;
 mod doc006_placeholder;
 mod doc009_missing_module_docs;
+mod mod003_qualified_path;
 mod test001_test_naming;
 
 /// Run `rust-llm-tidy --include lints` on a C# fixture and return its

@@ -1,8 +1,7 @@
 //! C# lint checks: the XML doc-comment dialect over the same codes and
 //! [`Diagnostic`] shape the Rust checks emit.
 //!
-//! One module per rule, named by lint code: `doc001_missing_docs` through
-//! `test001_test_naming`.
+//! One module per rule, named by lint code.
 //!
 //! [`run`] walks the compilation unit and every declaration list in
 //! document order, collecting one [`Declaration`] fact set per
@@ -13,7 +12,7 @@
 //! non-private throwing methods and constructors the closure flags.
 //!
 //! Every rule then runs over the collected facts in the same code order
-//! the Rust backend emits (DOC*, then TEST001).
+//! the Rust backend emits.
 //!
 //! The text checks (TEXT*) follow from the same
 //! parse's doc regions.
@@ -39,6 +38,8 @@
 //!
 //! - TEST001: `TestMethod`/`Test`/`Fact`/`Theory`-marked methods with
 //!   discouraged (`test_*`, `case_*`, `test` + digits) names.
+//! - MOD003: fully-qualified dotted paths an in-scope `using` covers
+//!   or that repeat past the configured threshold (hint severity).
 //! - TEXT*: `///` doc-comment prose measured with the XML doc
 //!   dialect; findings carry original file lines. The dialect rules live
 //!   with the lint module's measuring core; see [`text_regions`]
@@ -61,6 +62,7 @@ mod doc003_vague_exception;
 mod doc004_missing_param_tags;
 mod doc005_undocumented_param;
 mod doc006_placeholder;
+mod mod003_qualified_path;
 mod test001_test_naming;
 
 /// Kinds whose non-private declarations need doc comments.
@@ -94,11 +96,12 @@ impl Declaration<'_> {
     }
 }
 
-/// Run every C# check over `parsed`, returning all diagnostics in document
-/// order.
+/// Run every C# check over `parsed`, returning all diagnostics:
+/// declaration checks first, then the MOD003 hints, then the text
+/// checks.
 ///
-/// The declaration checks run first, then the text checks (TEXT*) over the
-/// same parse's doc regions.
+/// The declaration checks run first, then the whole-file MOD003 walk,
+/// then the text checks (TEXT*) over the same parse's doc regions.
 ///
 /// Returns no diagnostics when the parse tree carries error nodes: a
 /// broken tree would report findings against misread declarations. The
@@ -108,7 +111,8 @@ pub(crate) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
 }
 
 /// Run checks on `parsed` with optional shared throw answers from `shared`.
-/// Returns diagnostics in document order, or none for a tree with syntax errors.
+/// Returns diagnostics tiered as [`run`], or none for a tree with syntax
+/// errors.
 pub(crate) fn run_indexed(parsed: &ParseResult, shared: Option<&CanThrowIndex>) -> Vec<Diagnostic> {
     if parsed.syntax_tree().root_node().has_error() {
         return Vec::new();
@@ -146,6 +150,8 @@ pub(crate) fn run_indexed(parsed: &ParseResult, shared: Option<&CanThrowIndex>) 
         check_declaration(decl, &mut diagnostics);
     }
 
+    diagnostics.extend(mod003_qualified_path::check(parsed));
+
     diagnostics.extend(crate::rules::lint::run_region_checks(
         crate::languages::csharp::text_regions::doc_regions(parsed),
     ));
@@ -165,7 +171,7 @@ fn check_declaration(decl: &Declaration<'_>, diagnostics: &mut Vec<Diagnostic>) 
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::{run, tag_slices};
+    use super::{Diagnostic, run, tag_slices};
     use crate::rules::lint::CODE_MISSING_ERRORS;
     use std::collections::{HashMap, HashSet};
 
@@ -203,6 +209,7 @@ pub(crate) mod tests {
                 }
                 super::check_declaration(decl, &mut expected);
             }
+            expected.extend(super::mod003_qualified_path::check(&parsed));
             expected.extend(crate::languages::csharp::text_regions::text_checks(&parsed));
 
             let actual = run(&parsed);
@@ -297,7 +304,7 @@ pub(crate) mod tests {
 
     /// Full C# lint pass over `source`: the entry point every rule
     /// observes, shared by the can-throw tests.
-    fn lint(source: &str) -> Vec<crate::reporting::Diagnostic> {
+    fn lint(source: &str) -> Vec<Diagnostic> {
         let parsed =
             crate::languages::csharp::parse::parse(source).expect("test source must parse");
         run(&parsed)
