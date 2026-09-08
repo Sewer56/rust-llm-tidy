@@ -1,20 +1,55 @@
 //! Warn when a source file exceeds the MOD001 line budget.
 //!
-//! Non-Rust files count every physical line, including blanks, comments, and
-//! tests. The Rust rule supplies its test-aware count to [`diagnostic`].
-//! Diagnostics encourage cohesive splits rather than mechanical line reduction.
+//! Non-Rust files count every physical line, including blanks, comments,
+//! and tests. A recognized module header leaves the count when exclusion
+//! is enabled ([`crate::text::comments::header_lines`]).
+//!
+//! The Rust rule supplies its test-aware count to [`diagnostic`].
+//! Diagnostics encourage cohesive splits rather than mechanical line
+//! reduction.
 
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::CODE_MODULE_SIZE;
+use crate::text::comments;
 
 /// Check a whole file against the resolved `module_size.max_lines` budget.
 ///
 /// Exactly `max_lines` stays silent. A final line without a newline counts;
-/// a trailing newline does not create an extra line. Reports at `max_lines + 1`.
-pub(crate) fn check(source: &str, max_lines: usize) -> Option<Diagnostic> {
-    let lines = source.lines().count();
+/// a trailing newline does not create an extra line.
+///
+/// With `exclude_module_headers`, the file's leading module-header lines
+/// leave the count first. The reported line is then the physical line
+/// holding the first counted line past the budget. Reports at
+/// `max_lines + 1` otherwise.
+///
+/// # Arguments
+///
+/// - `source`: the file's raw text.
+/// - `ext`: the file extension without the leading dot; selects the
+///   header syntax.
+/// - `max_lines`: the resolved `module_size.max_lines` budget.
+/// - `exclude_module_headers`: the resolved `module_size.exclude_module_headers`.
+pub(crate) fn check(
+    source: &str,
+    ext: &str,
+    max_lines: usize,
+    exclude_module_headers: bool,
+) -> Option<Diagnostic> {
+    let header = if exclude_module_headers {
+        comments::header_lines(source, ext)
+    } else {
+        0
+    };
+    let lines = source.lines().count() - header;
+    let exclusions = if header > 0 {
+        " outside module headers"
+    } else {
+        ""
+    };
 
-    (lines > max_lines).then(|| diagnostic(lines, max_lines + 1, max_lines, ""))
+    // The header is a contiguous prefix, so the `max_lines + 1`-th
+    // counted line is the `max_lines + header + 1`-th physical line.
+    (lines > max_lines).then(|| diagnostic(lines, max_lines + header + 1, max_lines, exclusions))
 }
 
 /// Build the shared warning with a language-specific description of excluded lines.
@@ -67,7 +102,7 @@ mod tests {
         #[case] max_lines: usize,
         #[case] expected_line: Option<usize>,
     ) {
-        let finding = check(source, max_lines);
+        let finding = check(source, "js", max_lines, false);
 
         assert_eq!(finding.as_ref().map(|d| d.line), expected_line);
         if let Some(finding) = finding {
@@ -76,6 +111,37 @@ mod tests {
             assert!(finding.message.starts_with("file has 3 lines,\n"));
             assert_eq!(finding.item_kind, "file");
             assert!(finding.item_name.is_none());
+        }
+    }
+
+    /// The module header leaves the count; the crossing line keeps its
+    /// physical position. Disabling the exclusion counts it again.
+    #[rstest]
+    #[case::docstring("py", "# header\n\"\"\"Doc.\n\"\"\"\nx = 1\ny = 2\n", 3, Some(5), true)]
+    #[case::line_comments("js", "// note\n// note\nx = 1\ny = 2\n", 2, Some(4), true)]
+    #[case::block_comments("cs", "/* Note. */\nclass A {{}}\nclass B {{}}\n", 1, Some(3), true)]
+    #[case::no_header("py", "x = 1\ny = 2\n", 0, Some(2), true)]
+    #[case::exclusion_disabled("js", "// note\nx = 1\n", 0, Some(2), false)]
+    fn check_should_exclude_module_headers_from_the_budget(
+        #[case] ext: &str,
+        #[case] source: &str,
+        #[case] header: usize,
+        #[case] expected_line: Option<usize>,
+        #[case] exclude_module_headers: bool,
+    ) {
+        let finding = check(source, ext, 1, exclude_module_headers);
+
+        assert_eq!(finding.as_ref().map(|d| d.line), expected_line);
+        if let (true, true, Some(finding)) = (exclude_module_headers, header > 0, finding.as_ref())
+        {
+            let counted = source.lines().count() - header;
+            assert!(
+                finding.message.starts_with(&format!(
+                    "file has {counted} lines outside module headers,\n"
+                )),
+                "{}",
+                finding.message
+            );
         }
     }
 }

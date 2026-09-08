@@ -44,8 +44,11 @@
 #   by_extension: { rs: 2 }   # per-extension override; unknown keys are inert.
 
 # ── File size (MOD001) ──
-# Code files count all physical lines, including blanks and comments.
+# Code files count all physical lines: blanks, comments, tests. Recognized
+# module headers (leading file comments, `//!` docs, Python's module
+# docstring) stay out of the count by default.
 # Rust excludes top-level #[cfg(test)] mod regions by default.
+
 # Enable MOD001 or lints in the whitelist below to run this check.
 
 # module_size:
@@ -53,6 +56,7 @@
 #   include_non_code: false       # also check selected config/data/prose files.
 #   include_in_file_tests: false  # include Rust's in-file test modules.
 #   include_test_files: false     # include Rust files under tests/ directories.
+#   exclude_module_headers: true  # keep module headers out of the count.
 # Other languages always count inline tests and test files.
 # Non-code opt-in preserves discovery and exclusions. INI/JSON still need
 # extension selection; unsupported extensions remain exempt.

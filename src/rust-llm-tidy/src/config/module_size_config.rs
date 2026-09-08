@@ -34,6 +34,15 @@ pub struct ModuleSizeConfig {
     /// Other languages always include test files.
     #[serde(default)]
     pub include_test_files: bool,
+    /// Exclude recognized module headers from the counted lines.
+    ///
+    /// Defaults to true: leading file comments, Rust module docs (`//!`),
+    /// and Python's module docstring stay out of the budget.
+    ///
+    /// Item documentation and body comments still count. Set false to
+    /// count header lines again; the Rust test exclusions are unaffected.
+    #[serde(default = "default_exclude_module_headers")]
+    pub exclude_module_headers: bool,
 }
 
 impl Default for ModuleSizeConfig {
@@ -43,8 +52,15 @@ impl Default for ModuleSizeConfig {
             include_non_code: false,
             include_in_file_tests: false,
             include_test_files: false,
+            exclude_module_headers: true,
         }
     }
+}
+
+/// `serde` default helper: an absent `exclude_module_headers` keeps
+/// module headers out of the count.
+fn default_exclude_module_headers() -> bool {
+    true
 }
 
 /// `serde` default helper: an absent `max_lines` keeps the default
@@ -56,6 +72,7 @@ fn default_module_size_max_lines() -> usize {
 #[cfg(test)]
 mod tests {
     use crate::config::compiled::load::compile;
+    use rstest::rstest;
 
     /// Threshold resolution: an absent or empty `module_size` section keeps
     /// the 500 default; an explicit `max_lines` wins.
@@ -69,5 +86,22 @@ mod tests {
 
         let configured = compile("module_size:\n  max_lines: 300\n", &[]);
         assert_eq!(configured.module_size_max_lines(), 300);
+    }
+
+    /// Header exclusion defaults to on: an absent key, an absent
+    /// section, and an explicit true all exclude; false counts headers.
+    #[rstest]
+    #[case::absent_section("exclude_files: []\n", true)]
+    #[case::empty_section("module_size: {}\n", true)]
+    #[case::explicit_true("module_size:\n  exclude_module_headers: true\n", true)]
+    #[case::explicit_false("module_size:\n  exclude_module_headers: false\n", false)]
+    fn module_size_exclude_module_headers_should_default_to_true(
+        #[case] config: &str,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(
+            compile(config, &[]).module_size().exclude_module_headers,
+            expected
+        );
     }
 }

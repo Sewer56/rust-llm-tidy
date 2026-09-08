@@ -14,14 +14,17 @@
 use crate::reporting::Diagnostic;
 use crate::rules::lint::mod001_module_size::{check, diagnostic};
 use crate::source::ParseResult;
+use crate::text::comments;
 use core::fmt::Write;
 use std::ffi::OsStr;
 use std::path::Path;
 
 /// Warn when a Rust file exceeds its configured line budget.
 ///
-/// Counts every physical line of `parsed.source` (blank lines included),
-/// then, unless `include_in_file_tests` is enabled, subtracts every top-level
+/// Counts every physical line of `parsed.source` (blank lines included).
+///
+/// Subtracts the module header when `exclude_module_headers` is enabled
+/// and, unless `include_in_file_tests` is enabled, every top-level
 /// `#[cfg(test)]`-gated `mod` item span, attributes through closing brace.
 ///
 /// A line that shares a test-module span with production code still
@@ -43,31 +46,47 @@ use std::path::Path;
 /// - `path`: the file's path, checked for an exact `tests` directory component.
 /// - `max_lines`: the resolved `module_size.max_lines` budget.
 /// - `include_in_file_tests`: count the whole file instead of subtracting test
-///   regions; the message omits exclusions.
+///   regions; the message omits test exclusions.
 /// - `include_test_files`: check Rust files under `tests/` using the same budget
 ///   and inline-test policy as other Rust files.
+/// - `exclude_module_headers`: keep the module header's lines out of the count,
+///   as `module_size.exclude_module_headers` resolves it.
 pub(crate) fn check_with_options(
     parsed: &ParseResult,
     path: &Path,
     max_lines: usize,
     include_in_file_tests: bool,
     include_test_files: bool,
+    exclude_module_headers: bool,
 ) -> Option<Diagnostic> {
     if !include_test_files && is_tests_path(path) {
         return None;
     }
 
+    let header = if exclude_module_headers {
+        comments::header_lines(&parsed.source, "rs")
+    } else {
+        0
+    };
+
     if include_in_file_tests {
-        return check(&parsed.source, max_lines)
-            .map(|finding| with_rust_guidance(finding, true, include_test_files));
+        return check(&parsed.source, "rs", max_lines, exclude_module_headers)
+            .map(|finding| with_rust_guidance(finding, true, include_test_files, header > 0));
     }
 
-    let test_spans: Vec<(usize, usize)> = parsed
-        .items
-        .iter()
-        .filter(|item| item.is_test_module())
-        .map(|item| (item.start, item.end))
-        .collect();
+    // The header span covers its lines' bytes without the final newline,
+    // so a blank line after the header still counts.
+    let mut spans = Vec::with_capacity(usize::from(header > 0));
+    if header > 0 {
+        spans.push((0, header_span_end(&parsed.source, header)));
+    }
+    spans.extend(
+        parsed
+            .items
+            .iter()
+            .filter(|item| item.is_test_module())
+            .map(|item| (item.start, item.end)),
+    );
     // File-order items keep the start lines sorted, as the count requires.
     let production_start_lines: Vec<usize> = parsed
         .items
@@ -75,12 +94,14 @@ pub(crate) fn check_with_options(
         .filter(|item| !item.is_test_module())
         .map(|item| item.start_line())
         .collect();
-    let (non_test_lines, crossing_line) = count_lines_outside_spans(
-        &parsed.source,
-        &test_spans,
-        &production_start_lines,
-        max_lines,
-    );
+    let (non_test_lines, crossing_line) =
+        count_lines_outside_spans(&parsed.source, &spans, &production_start_lines, max_lines);
+
+    let exclusions = if header > 0 {
+        " outside `#[cfg(test)]` mod regions and module headers"
+    } else {
+        " outside `#[cfg(test)]` mod regions"
+    };
 
     (non_test_lines > max_lines).then(|| {
         with_rust_guidance(
@@ -88,10 +109,11 @@ pub(crate) fn check_with_options(
                 non_test_lines,
                 crossing_line.unwrap_or(1),
                 max_lines,
-                " outside `#[cfg(test)]` mod regions",
+                exclusions,
             ),
             false,
             include_test_files,
+            header > 0,
         )
     })
 }
@@ -153,6 +175,19 @@ fn count_lines_outside_spans(
     (non_test_lines, crossing_line)
 }
 
+/// The byte offset just past the header's last content byte, before its
+/// line's newline: the span that owns exactly the header's lines.
+fn header_span_end(source: &str, header: usize) -> usize {
+    let mut offset = 0;
+    for line in source.split('\n').take(header) {
+        offset += line.len() + 1;
+    }
+    // `offset` sits one past the newline (or past the source end for a
+    // final unterminated line). Back up one byte so the next line stays
+    // outside the span.
+    (offset - 1).min(source.len())
+}
+
 /// Whether `path` has a `tests` directory component (e.g.
 /// `tests/csharp/main.rs`, `src/cli/tests/config/main.rs`).
 ///
@@ -167,6 +202,7 @@ fn with_rust_guidance(
     mut finding: Diagnostic,
     include_in_file_tests: bool,
     include_test_files: bool,
+    excludes_header: bool,
 ) -> Diagnostic {
     let regions = if include_in_file_tests {
         "counted"
@@ -177,6 +213,11 @@ fn with_rust_guidance(
         "checked"
     } else {
         "skipped"
+    };
+    let headers = if excludes_header {
+        "\n- Module headers are excluded from the count."
+    } else {
+        ""
     };
 
     indoc::writedoc!(
@@ -192,7 +233,7 @@ fn with_rust_guidance(
           to main entry points and relevant child modules.
         - Top-level `#[cfg(test)]` test modules are {regions}.
           Other lines count, including comments and blank lines.
-        - Rust files in `tests/` directories are {files}."
+        - Rust files in `tests/` directories are {files}.{headers}"
     )
     .expect("writing to a String cannot fail");
     finding
@@ -207,7 +248,7 @@ mod tests {
 
     /// Exercise the default test-excluding policy in existing Rust cases.
     fn check(parsed: &ParseResult, path: &Path, max_lines: usize) -> Option<Diagnostic> {
-        check_with_options(parsed, path, max_lines, false, false)
+        check_with_options(parsed, path, max_lines, false, false, true)
     }
 
     /// Parse `source` with the Rust backend's parser.
@@ -393,6 +434,132 @@ mod tests {
         let diagnostic = check(&parsed, Path::new("src/lib.rs"), 3).expect("4 counted > 3");
 
         assert_eq!(diagnostic.line, 7);
+    }
+
+    // ── module-header exclusion ──
+
+    // The header span and the test-module spans leave the count together.
+    #[test]
+    fn stacks_header_exclusion_with_test_module_exclusion() {
+        let source = format!("//! Docs.\n{}#[cfg(test)]\nmod t {{\n}}\n", fn_lines(3));
+        let parsed = parse(&source);
+
+        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 2).expect("3 counted > 2");
+
+        assert!(
+            diagnostic.message.starts_with(
+                "file has 3 lines outside `#[cfg(test)]` mod regions and module headers,\n"
+            ),
+            "{}",
+            diagnostic.message
+        );
+        assert_eq!(diagnostic.line, 4, "fn filler_3 is the third counted line");
+    }
+
+    // A blank line after the header is an ordinary counted blank: the
+    // header span stops before the header's final newline on purpose.
+    #[test]
+    fn counts_a_blank_line_after_the_header() {
+        let parsed = parse("//! Docs.\n\nfn a() {}\n");
+
+        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 1).expect("blank + fn > 1");
+
+        assert_eq!(
+            diagnostic.line, 3,
+            "the fn line crosses; the blank stayed counted"
+        );
+    }
+
+    // With inline tests counted, only the header leaves the count.
+    #[test]
+    fn excludes_the_header_when_inline_tests_are_counted() {
+        let source = "//! Docs.\nfn a() {}\n#[cfg(test)]\nmod t {}\n";
+        let parsed = parse(source);
+
+        let diagnostic = check_with_options(&parsed, Path::new("src/lib.rs"), 2, true, false, true)
+            .expect("3 non-header lines > 2");
+
+        assert!(
+            diagnostic
+                .message
+                .starts_with("file has 3 lines outside module headers,\n"),
+            "{}",
+            diagnostic.message
+        );
+        assert_eq!(diagnostic.line, 4);
+    }
+
+    // `//!` module docs and leading file comments leave the count; the
+    // message says so next to the test exclusion.
+    #[test]
+    fn excludes_module_headers_from_the_count() {
+        let source = format!("//! Module docs.\n// Note.\n{}", fn_lines(3));
+        let parsed = parse(&source);
+
+        let diagnostic =
+            check(&parsed, Path::new("src/lib.rs"), 2).expect("3 non-header lines > 2");
+
+        assert!(
+            diagnostic.message.starts_with(
+                "file has 3 lines outside `#[cfg(test)]` mod regions and module headers,\n"
+            ),
+            "{}",
+            diagnostic.message
+        );
+        assert_eq!(diagnostic.line, 5, "the first counted line past the budget");
+    }
+
+    // Inner attributes and item documentation stay counted: they are not
+    // module headers even when they sit at the file's top.
+    #[test]
+    fn counts_inner_attributes_and_item_docs() {
+        let source = "#![allow(dead_code)]\n/// Item doc.\nfn a() {}\nfn b() {}\n";
+        let parsed = parse(source);
+
+        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 3).expect("4 lines > 3");
+
+        assert!(
+            diagnostic
+                .message
+                .starts_with("file has 4 lines outside `#[cfg(test)]` mod regions,\n"),
+            "{}",
+            diagnostic.message
+        );
+        assert_eq!(diagnostic.line, 4);
+    }
+
+    // `exclude_module_headers: false` restores counting header lines,
+    // with the plain test-exclusion message.
+    #[test]
+    fn counts_module_headers_when_exclusion_is_disabled() {
+        let source = format!("//! Module docs.\n{}", fn_lines(3));
+        let parsed = parse(&source);
+
+        let diagnostic =
+            check_with_options(&parsed, Path::new("src/lib.rs"), 3, false, false, false)
+                .expect("4 lines > 3");
+
+        assert!(
+            diagnostic
+                .message
+                .starts_with("file has 4 lines outside `#[cfg(test)]` mod regions,\n"),
+            "{}",
+            diagnostic.message
+        );
+        assert_eq!(diagnostic.line, 4);
+    }
+
+    // A blank line between banner and module docs joins the header
+    // without counting itself.
+    #[test]
+    fn excludes_a_header_split_by_a_blank_line() {
+        let source = format!("// Banner.\n\n//! Docs.\n{}", fn_lines(2));
+        let parsed = parse(&source);
+
+        assert!(
+            check(&parsed, Path::new("src/lib.rs"), 3).is_none(),
+            "the header block's 3 lines (banner, blank, docs) never count; only 2 remain"
+        );
     }
 
     // ── tests/ path skip ──
