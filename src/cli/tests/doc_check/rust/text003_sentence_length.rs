@@ -1,6 +1,6 @@
 //! TEXT003 over-budget Rust doc sentences.
 //!
-//! The test runs `--include lints` on a fixture in
+//! The test runs the built CLI binary on a fixture in
 //! `tests/fixtures/doc/rust/` and asserts on its exit code and stderr
 //! diagnostics. The shared runner helper lives in `mod.rs`.
 
@@ -14,7 +14,8 @@ use super::run_rust_fixture;
 /// - Warnings keep the exit code at 0.
 #[test]
 fn rs_long_doc_sentences_warn_text003() {
-    let (stderr, exit) = run_rust_fixture("text-003_sentence_budgets.rs");
+    let (stderr, exit) =
+        run_rust_fixture("text-003_sentence_budgets.rs", "TEXT001,TEXT002,TEXT003");
 
     assert_eq!(exit, 0, "TEXT003 warnings must not fail the run:\n{stderr}");
     assert!(

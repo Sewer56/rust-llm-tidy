@@ -1,6 +1,6 @@
 //! DOC002 missing `# Errors` sections over the Rust fixtures.
 //!
-//! Every test runs `--include lints` on a fixture in
+//! Every test runs `--include DOC002` on a fixture in
 //! `tests/fixtures/doc/rust/` and asserts on its exit code and stderr
 //! diagnostics. The shared runner helper lives in `mod.rs`.
 
@@ -10,7 +10,7 @@ use crate::assert_has_diagnostic;
 /// `save` in the fixture has a complete `# Errors` section and is not flagged.
 #[test]
 fn doc002_documented_not_flagged() {
-    let (stderr, _exit) = run_rust_fixture("doc002_missing_errors_section.rs");
+    let (stderr, _exit) = run_rust_fixture("doc002_missing_errors_section.rs", "DOC002");
     assert!(
         !stderr.contains("save"),
         "fn with complete # Errors should not be flagged:\n{stderr}"
@@ -21,7 +21,7 @@ fn doc002_documented_not_flagged() {
 /// a `# Errors` section.
 #[test]
 fn doc002_missing_errors_section() {
-    let (stderr, exit) = run_rust_fixture("doc002_missing_errors_section.rs");
+    let (stderr, exit) = run_rust_fixture("doc002_missing_errors_section.rs", "DOC002");
     assert_ne!(exit, 0, "missing # Errors should fail");
 
     assert_has_diagnostic(&stderr, "DOC002", Some("load"));
@@ -38,7 +38,7 @@ fn doc002_missing_errors_section() {
 /// `count` returns a non-Result type and is not flagged.
 #[test]
 fn doc002_non_result_not_flagged() {
-    let (stderr, _exit) = run_rust_fixture("doc002_missing_errors_section.rs");
+    let (stderr, _exit) = run_rust_fixture("doc002_missing_errors_section.rs", "DOC002");
     assert!(
         !stderr.contains("count"),
         "non-Result pub fns should not be flagged:\n{stderr}"
@@ -48,7 +48,7 @@ fn doc002_non_result_not_flagged() {
 /// `load_private` is private and not flagged even though it returns Result.
 #[test]
 fn doc002_private_not_flagged() {
-    let (stderr, _exit) = run_rust_fixture("doc002_missing_errors_section.rs");
+    let (stderr, _exit) = run_rust_fixture("doc002_missing_errors_section.rs", "DOC002");
     assert!(
         !stderr.contains("load_private"),
         "private fns should not be flagged:\n{stderr}"

@@ -1,6 +1,6 @@
 //! DOC006 doc-comment placeholders over the Rust fixtures.
 //!
-//! Every test runs `--include lints` on a fixture in
+//! Every test runs `--include DOC006` on a fixture in
 //! `tests/fixtures/doc/rust/` and asserts on its exit code and stderr
 //! diagnostics. The shared runner helper lives in `mod.rs`.
 
@@ -10,7 +10,7 @@ use crate::assert_has_diagnostic;
 /// `done` has a clean doc comment and is not flagged by DOC006.
 #[test]
 fn doc006_clean_not_flagged() {
-    let (stderr, _exit) = run_rust_fixture("doc006_placeholders.rs");
+    let (stderr, _exit) = run_rust_fixture("doc006_placeholders.rs", "DOC006");
     assert!(
         !stderr.contains("done"),
         "fn with clean doc should not be flagged:\n{stderr}"
@@ -20,7 +20,7 @@ fn doc006_clean_not_flagged() {
 /// `doc006_placeholders.rs` warns on TODO/FIXME/TBD doc-comment markers.
 #[test]
 fn doc006_placeholders() {
-    let (stderr, exit) = run_rust_fixture("doc006_placeholders.rs");
+    let (stderr, exit) = run_rust_fixture("doc006_placeholders.rs", "DOC006");
 
     // DOC006 is a warning - it should not fail the run.
     assert_eq!(exit, 0, "DOC006 warnings should not fail the run");

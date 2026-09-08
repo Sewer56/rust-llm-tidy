@@ -1,9 +1,9 @@
 //! Rust lint tests for the `check` subcommand over the `.rs` fixtures in
 //! `tests/fixtures/doc/rust/`.
 //!
-//! Every test runs the built CLI binary with `--include lints` and
-//! asserts on its exit code and stderr diagnostics. The composition test
-//! also parses its JSON stdout.
+//! Rule tests select their relevant lint codes and assert on exit codes
+//! and stderr diagnostics. Clean-file and composition tests run all lints;
+//! the composition test also parses its JSON stdout.
 //!
 //! Child modules:
 //! - `doc001_missing_docs`: DOC001 undocumented public items
@@ -40,7 +40,7 @@ mod text004_header_opener;
 /// `clean.rs` is fully documented and produces zero diagnostics.
 #[test]
 fn clean_file_no_diagnostics() {
-    let (stderr, exit) = run_rust_fixture("clean.rs");
+    let (stderr, exit) = run_rust_fixture("clean.rs", "lints");
     assert_eq!(exit, 0, "clean file should pass");
     assert!(
         stderr.is_empty(),
@@ -125,11 +125,16 @@ fn rs_diagnostics_match_direct_check_composition() {
     }
 }
 
-/// Run `rust-llm-tidy --include lints` on a Rust fixture and return its
-/// (stderr, exit_code).
-fn run_rust_fixture(name: &str) -> (String, i32) {
+/// Run the selected comma-separated lint codes on a Rust fixture and return
+/// its (stderr, exit_code).
+fn run_rust_fixture(name: &str, codes: &str) -> (String, i32) {
     let path = rust_fixture_dir().join(name);
-    let output = run_command(&["--include", "lints"], &path);
+    let args: Vec<_> = codes
+        .split(',')
+        .flat_map(|code| ["--include", code])
+        .collect();
+    let output = run_command(&args, &path);
+
     (
         String::from_utf8_lossy(&output.stderr).to_string(),
         output.status.code().unwrap_or(-1),

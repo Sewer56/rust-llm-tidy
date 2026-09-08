@@ -24,7 +24,7 @@ fn mod001_should_exclude_cfg_test_mod_lines_from_the_count() {
     )
     .unwrap();
 
-    let output = run_command(&["--include", "lints"], &path);
+    let output = run_command(&["--include", "MOD001"], &path);
     let _ = fs::remove_file(&path);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -74,7 +74,7 @@ fn mod001_should_follow_the_configured_max_lines_threshold() {
     let configured = Command::new(binary())
         .arg("--config")
         .arg(dir.join(".rust-llm-tidy.yml"))
-        .args(["--include", "lints"])
+        .args(["--include", "MOD001"])
         .arg(&file)
         .output()
         .unwrap();
@@ -89,7 +89,7 @@ fn mod001_should_follow_the_configured_max_lines_threshold() {
         "the 300 budget must move the firing point:\n{configured_stderr}"
     );
 
-    let default = run_command(&["--include", "lints"], &file);
+    let default = run_command(&["--include", "MOD001"], &file);
     let _ = fs::remove_dir_all(&dir);
     let default_stderr = String::from_utf8_lossy(&default.stderr);
     assert!(
@@ -113,7 +113,7 @@ fn mod001_should_skip_files_under_a_tests_directory_while_other_codes_run() {
     )
     .unwrap();
 
-    let output = run_command(&["--include", "lints"], &tests_dir);
+    let output = run_command(&["--include", "MOD001", "--include", "DOC001"], &tests_dir);
     let _ = fs::remove_dir_all(&dir);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -133,7 +133,7 @@ fn mod001_should_stay_silent_at_exactly_the_default_budget() {
     let path = temp_file("rs");
     fs::write(&path, mod001_module_source(500)).unwrap();
 
-    let output = run_command(&["--include", "lints"], &path);
+    let output = run_command(&["--include", "MOD001"], &path);
     let _ = fs::remove_file(&path);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -149,7 +149,7 @@ fn mod001_should_suppress_when_excluded_by_code() {
     let path = temp_file("rs");
     fs::write(&path, mod001_module_source(501)).unwrap();
 
-    let output = run_command(&["--include", "lints", "--exclude", "MOD001"], &path);
+    let output = run_command(&["--include", "MOD001", "--exclude", "MOD001"], &path);
     let _ = fs::remove_file(&path);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -187,7 +187,7 @@ fn mod001_should_warn_when_non_test_lines_exceed_the_default_budget() {
     let path = temp_file("rs");
     fs::write(&path, mod001_module_source(501)).unwrap();
 
-    let output = run_command(&["--include", "lints"], &path);
+    let output = run_command(&["--include", "MOD001"], &path);
     let _ = fs::remove_file(&path);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -219,8 +219,7 @@ fn mod001_module_with_config(count: usize, yaml: &str) -> (std::path::PathBuf, s
     (dir, file)
 }
 
-/// `count` private fn lines with zero-padded names: no other lint code
-/// fires on them and reordering keeps the source order.
+/// Generate `count` private fn lines with zero-padded names.
 fn mod001_module_source(count: usize) -> String {
     (0..count)
         .map(|i| format!("fn filler_{i:03}() {{}}\n"))

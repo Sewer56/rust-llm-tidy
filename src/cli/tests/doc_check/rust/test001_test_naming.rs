@@ -1,6 +1,6 @@
 //! TEST001 discouraged test-function names over the Rust fixtures.
 //!
-//! Every test runs `--include lints` on `test001_test_naming.rs` and
+//! Every test runs `--include TEST001` on `test001_test_naming.rs` and
 //! asserts on its exit code and stderr diagnostics. The shared runner
 //! helper lives in `mod.rs`.
 
@@ -10,7 +10,7 @@ use crate::assert_has_diagnostic;
 /// `should_pass_when_valid` is a behavioral name and is not flagged.
 #[test]
 fn test001_behavioral_not_flagged() {
-    let (stderr, _exit) = run_rust_fixture("test001_test_naming.rs");
+    let (stderr, _exit) = run_rust_fixture("test001_test_naming.rs", "TEST001");
     assert!(
         !stderr.contains("should_pass_when_valid"),
         "behavioral test name should not be flagged:\n{stderr}"
@@ -20,7 +20,7 @@ fn test001_behavioral_not_flagged() {
 /// `test001_test_naming.rs` warns on discouraged test-function names.
 #[test]
 fn test001_test_naming() {
-    let (stderr, exit) = run_rust_fixture("test001_test_naming.rs");
+    let (stderr, exit) = run_rust_fixture("test001_test_naming.rs", "TEST001");
 
     // TEST001 is a warning - it should not fail the run.
     assert_eq!(exit, 0, "TEST001 warnings should not fail the run");

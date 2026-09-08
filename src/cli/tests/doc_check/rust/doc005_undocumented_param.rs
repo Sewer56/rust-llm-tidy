@@ -1,6 +1,6 @@
 //! DOC005 undocumented parameters over the Rust fixtures.
 //!
-//! Every test runs `--include lints` on a fixture in
+//! Every test runs `--include DOC005` on a fixture in
 //! `tests/fixtures/doc/rust/` and asserts on its exit code and stderr
 //! diagnostics. The shared runner helper lives in `mod.rs`.
 
@@ -10,7 +10,7 @@ use crate::assert_has_diagnostic;
 /// `render` documents both parameters and is not flagged by DOC005.
 #[test]
 fn doc005_documented_not_flagged() {
-    let (stderr, _exit) = run_rust_fixture("doc005_undocumented_param.rs");
+    let (stderr, _exit) = run_rust_fixture("doc005_undocumented_param.rs", "DOC005");
     assert!(
         !stderr.contains("render"),
         "fn with complete # Arguments should not be flagged:\n{stderr}"
@@ -21,7 +21,7 @@ fn doc005_documented_not_flagged() {
 /// parameter name.
 #[test]
 fn doc005_undocumented_param() {
-    let (stderr, exit) = run_rust_fixture("doc005_undocumented_param.rs");
+    let (stderr, exit) = run_rust_fixture("doc005_undocumented_param.rs", "DOC005");
 
     // DOC005 is a warning - it should not fail the run.
     assert_eq!(exit, 0, "DOC005 warnings should not fail the run");

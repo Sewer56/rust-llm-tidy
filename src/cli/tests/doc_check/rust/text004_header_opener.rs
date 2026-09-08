@@ -1,6 +1,6 @@
 //! TEXT004 three-sentence Rust doc openers.
 //!
-//! Every test runs the built CLI binary on a Rust fixture and asserts on
+//! Tests run the built CLI binary on a Rust fixture and assert on
 //! its exit code and stderr diagnostics. The shared runner helper lives
 //! in `mod.rs`.
 
@@ -36,7 +36,7 @@ fn rs_text004_selectable_by_include_code() {
 /// - Warnings keep the exit code at 0.
 #[test]
 fn rs_three_sentence_doc_openers_warn_text004() {
-    let (stderr, exit) = run_rust_fixture("text-004_header_openers.rs");
+    let (stderr, exit) = run_rust_fixture("text-004_header_openers.rs", "TEXT001,TEXT002,TEXT004");
 
     assert_eq!(exit, 0, "TEXT004 warnings must not fail the run:\n{stderr}");
     assert!(

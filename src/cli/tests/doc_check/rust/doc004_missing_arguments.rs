@@ -1,6 +1,6 @@
 //! DOC004 missing `# Arguments` sections over the Rust fixtures.
 //!
-//! Every test runs `--include lints` on a fixture in
+//! Every test runs `--include DOC004` on a fixture in
 //! `tests/fixtures/doc/rust/` and asserts on its exit code and stderr
 //! diagnostics. The shared runner helper lives in `mod.rs`.
 
@@ -11,7 +11,7 @@ use crate::assert_has_diagnostic;
 /// `# Arguments` section.
 #[test]
 fn doc004_missing_arguments() {
-    let (stderr, exit) = run_rust_fixture("doc004_missing_arguments.rs");
+    let (stderr, exit) = run_rust_fixture("doc004_missing_arguments.rs", "DOC004");
 
     // DOC004 is a warning - it should not fail the run.
     assert_eq!(exit, 0, "DOC004 warnings should not fail the run");
@@ -28,7 +28,7 @@ fn doc004_missing_arguments() {
 /// `no_args` has no parameters and is not flagged by DOC004.
 #[test]
 fn doc004_no_params_not_flagged() {
-    let (stderr, _exit) = run_rust_fixture("doc004_missing_arguments.rs");
+    let (stderr, _exit) = run_rust_fixture("doc004_missing_arguments.rs", "DOC004");
     assert!(
         !stderr.contains("no_args"),
         "fn with no parameters should not be flagged:\n{stderr}"

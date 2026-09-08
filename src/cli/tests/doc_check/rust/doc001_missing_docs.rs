@@ -1,6 +1,6 @@
 //! DOC001 missing doc comments over the Rust fixtures.
 //!
-//! Every test runs `--include lints` on a fixture in
+//! Every test runs `--include DOC001` on a fixture in
 //! `tests/fixtures/doc/rust/` and asserts on its exit code and stderr
 //! diagnostics. The shared runner helper lives in `mod.rs`.
 
@@ -10,7 +10,7 @@ use crate::assert_has_diagnostic;
 /// The documented function in `doc001_missing_docs.rs` is not flagged.
 #[test]
 fn doc001_documented_not_flagged() {
-    let (stderr, _exit) = run_rust_fixture("doc001_missing_docs.rs");
+    let (stderr, _exit) = run_rust_fixture("doc001_missing_docs.rs", "DOC001");
     assert!(
         !stderr.contains("`documented`"),
         "documented functions should not be flagged:\n{stderr}"
@@ -21,7 +21,7 @@ fn doc001_documented_not_flagged() {
 /// item, skips private items and `pub use`.
 #[test]
 fn doc001_missing_docs() {
-    let (stderr, exit) = run_rust_fixture("doc001_missing_docs.rs");
+    let (stderr, exit) = run_rust_fixture("doc001_missing_docs.rs", "DOC001");
     assert_ne!(exit, 0, "missing docs should fail");
 
     // Every undocumented public item is flagged.
@@ -45,7 +45,7 @@ fn doc001_missing_docs() {
 /// The private function in `doc001_missing_docs.rs` is not flagged.
 #[test]
 fn doc001_private_not_flagged() {
-    let (stderr, _exit) = run_rust_fixture("doc001_missing_docs.rs");
+    let (stderr, _exit) = run_rust_fixture("doc001_missing_docs.rs", "DOC001");
     assert!(
         !stderr.contains("`helper`"),
         "private functions should not be flagged:\n{stderr}"
@@ -55,7 +55,7 @@ fn doc001_private_not_flagged() {
 /// `pub use` is not a documentable kind and must not be flagged.
 #[test]
 fn doc001_pub_use_not_flagged() {
-    let (stderr, _exit) = run_rust_fixture("doc001_missing_docs.rs");
+    let (stderr, _exit) = run_rust_fixture("doc001_missing_docs.rs", "DOC001");
     // The diagnostic kind for a use item would be `(use)`; verify it never
     // appears. Using a bare "use" substring would false-match the file path.
     assert!(

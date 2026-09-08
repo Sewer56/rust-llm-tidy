@@ -1,6 +1,6 @@
 //! TEXT001 over-budget Rust doc paragraphs.
 //!
-//! The test runs `--include lints` on a fixture in
+//! The test runs the built CLI binary on a fixture in
 //! `tests/fixtures/doc/rust/` and asserts on its exit code and stderr
 //! diagnostics. The shared runner helper lives in `mod.rs`.
 
@@ -14,7 +14,10 @@ use super::run_rust_fixture;
 /// - TEXT002 warns on the 81-char block and attribute lines.
 #[test]
 fn rs_block_and_attribute_docs_fire_text_budgets() {
-    let (stderr, exit) = run_rust_fixture("text-001_text-002_block_attr_budgets.rs");
+    let (stderr, exit) = run_rust_fixture(
+        "text-001_text-002_block_attr_budgets.rs",
+        "TEXT001,TEXT002,DOC001",
+    );
 
     assert_ne!(exit, 0, "the TEXT001 errors must fail the run:\n{stderr}");
     assert!(

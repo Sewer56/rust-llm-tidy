@@ -7,13 +7,13 @@ use crate::{run_command, temp_file};
 use std::fs;
 
 /// Rust comments flow through the same text checks: an 81-char `///` line
-/// warns with TEXT002 while tree-sitter checks stay quiet on a private fn.
+/// warns with TEXT002 at the original source line.
 #[test]
 fn rs_long_doc_comment_warns_text002() {
     let path = temp_file("rs");
     fs::write(&path, format!("/// {}\nfn hidden() {{}}\n", "w".repeat(81))).unwrap();
 
-    let output = run_command(&["--include", "lints"], &path);
+    let output = run_command(&["--include", "TEXT002"], &path);
     let _ = fs::remove_file(&path);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
