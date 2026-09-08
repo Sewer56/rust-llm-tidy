@@ -142,7 +142,12 @@ fn walk<'a>(
             "function_item" => {
                 if let Some(body) = node.child_by_field_name("body") {
                     functions.push(FnBody {
-                        inner: (body.start_byte() + 1)..body.end_byte().saturating_sub(1),
+                        // Clamp so an EOF-truncated body no wider than its
+                        // `{` cannot invert the range and panic on slicing.
+                        inner: {
+                            let start = body.start_byte() + 1;
+                            start..body.end_byte().saturating_sub(1).max(start)
+                        },
                         line: node.start_position().row + 1,
                         name: node
                             .child_by_field_name("name")
