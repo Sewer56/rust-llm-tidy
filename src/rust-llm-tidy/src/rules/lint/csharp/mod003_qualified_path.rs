@@ -1,4 +1,4 @@
-//! `MOD003`: shorten qualified names to make code easier to read.
+//! `MOD003`: shorten paths that include the full namespace.
 //!
 //! A qualified name spells out where a name lives, such as `System.Console`.
 //! This rule reads the file's syntax and emits hints; it does not rewrite code
@@ -12,15 +12,15 @@
 //! longest import matching the beginning of a name.
 //!
 //! ```csharp
-//! using System;
+//! using System.Threading.Tasks;
 //!
-//! System.Console.WriteLine("before");
-//! Console.WriteLine("after");
+//! System.Threading.Tasks.Task.Delay(1);
+//! Task.Delay(1);
 //! ```
 //!
-//! Here, `using System;` makes `Console` available without `System.`. An alias
-//! instead supplies a replacement name: with `using Log = System.Console;`,
-//! the hint suggests `Log.WriteLine("before")`.
+//! Here, `using System.Threading.Tasks;` makes `Task` available without its
+//! namespace. An alias supplies a replacement name: `using Log = System.Console;`
+//! allows `Log.WriteLine("before")`.
 //!
 //! # Explanation 2: suggest a missing import
 //!
@@ -42,9 +42,9 @@
 //! Console.WriteLine("hello");
 //! ```
 //!
-//! `System` is a known namespace root. Other roots need evidence from imports,
-//! namespace declarations, or qualified names used as types; a dotted expression
-//! alone could just be an object's members.
+//! `global::` explicitly roots a path. Unshadowed `System` and `Microsoft`
+//! are known roots. Other unprefixed roots remain exempt: imports and type
+//! positions do not prove that a name includes its full namespace.
 //!
 //! # Code walkthrough: start at `check`
 //!
@@ -52,9 +52,8 @@
 //!
 //! 1. [`check`] receives an already-parsed file. It creates a [`Walker`], visits
 //!    the syntax tree, and returns the collected diagnostics.
-//! 2. [`Walker::collect_roots`] gathers possible namespace roots from imports,
-//!    namespace declarations, and qualified type names. These join
-//!    [`ROOT_SEGMENTS`] before any expressions are checked.
+//! 2. [`Walker::collect_relative_roots`] finds namespace components that could
+//!    make a known root relative rather than absolute.
 //! 3. [`Walker::walk`] visits syntax nodes recursively. Entering a scope pushes
 //!    a [`ScopeFrame`]; leaving a nested scope pops it.
 //! 4. [`is_chain_head`] selects the outermost node of a dotted chain. For
@@ -69,7 +68,7 @@
 //!
 //! ## What the stored data means
 //!
-//! - [`Walker`]: source bytes, known roots, active scopes, and accumulated hints
+//! - [`Walker`]: source bytes, relative roots, active scopes, and accumulated hints
 //! - [`ScopeFrame`]: imports and bound names in one active scope
 //! - [`Import`]: an imported path, its name, and whether it is an alias
 //! - [`Binding`]: a declared name and the position where it starts counting
@@ -89,12 +88,13 @@
 //!
 //! ## Trace the first example
 //!
-//! `collect_usings` records `using System;` as a plain import, not an alias.
+//! `collect_usings` records `using System.Threading.Tasks;` as a plain import.
 //!
-//! `name_segments` splits the call's name into `System`, `Console`, `WriteLine`.
+//! `name_segments` splits the path into `System`, `Threading`, `Tasks`, `Task`,
+//! and `Delay`.
 //!
-//! The covering import matches `System`. `suggestion_under` removes that prefix,
-//! leaving `Console.WriteLine`, provided the short name does not conflict.
+//! The covering import matches `System.Threading.Tasks`. `suggestion_under`
+//! removes that prefix, leaving `Task.Delay` if the short name does not conflict.
 //!
 //! Next: open [`check`], then follow [`Walker::walk`] to
 //! [`Walker::record_occurrence`] with this example in mind.
@@ -102,7 +102,7 @@
 //! # Remarks
 //!
 //! Hints are withheld for conflicting short names, unknown expression receivers,
-//! conditional methods or regions, attributes, and import text.
+//! conditional methods or regions, attributes, import text, and generic chains.
 
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::CODE_QUALIFIED_PATH;
@@ -110,11 +110,7 @@ use crate::source::{ItemKind, ParseResult};
 use std::collections::HashSet;
 use tree_sitter::Node;
 
-/// First path segments that always root a fully-qualified path: the
-/// standard library namespaces.
-///
-/// Imports, namespace declarations, and qualified type positions supply
-/// more file-local root evidence.
+/// Known namespace roots, unless syntax shows shadowing or relative use.
 const ROOT_SEGMENTS: &[&str] = &["System", "Microsoft"];
 
 /// What an existing import advises: the covering directive's
@@ -134,7 +130,7 @@ struct Suggestion<'a> {
 /// Lexical scopes and hints collected in source order.
 struct Walker<'a> {
     bytes: &'a [u8],
-    roots: HashSet<&'a str>,
+    relative_roots: HashSet<&'a str>,
     scopes: Vec<ScopeFrame<'a>>,
     diagnostics: Vec<Diagnostic>,
 }
@@ -166,52 +162,36 @@ struct Import<'a> {
     segments: Vec<&'a str>,
     short: &'a str,
     aliased: bool,
+    /// Whether the directive bypasses relative name resolution with `global::`.
+    absolute: bool,
 }
 
 impl<'a> Walker<'a> {
-    /// Collect root evidence: the first segment of every `using`
-    /// path, plain or `using static`.
+    /// Withhold unprefixed roots declared below another namespace anywhere in the file.
     ///
-    /// Namespace declarations and type-position qualified names add
-    /// their leftmost segment.
-    fn collect_roots(&mut self, node: Node) {
-        // Type-position qualified names and namespace declarations provide
-        // syntactic evidence; expression member chains alone do not.
+    /// Separate namespace blocks can contribute members to the same namespace,
+    /// so lexical scope alone cannot exclude relative resolution.
+    fn collect_relative_roots(&mut self, node: Node) {
         if matches!(
             node.kind(),
-            "qualified_name" | "namespace_declaration" | "file_scoped_namespace_declaration"
-        ) {
-            let name = node
-                .child_by_field_name("name")
-                .filter(|_| {
-                    matches!(
-                        node.kind(),
-                        "namespace_declaration" | "file_scoped_namespace_declaration"
-                    )
-                })
-                .unwrap_or(node);
-            if let Some(first) = self.leftmost_segment(name) {
-                self.roots.insert(first);
-            }
+            "namespace_declaration" | "file_scoped_namespace_declaration"
+        ) && let Some(name) = node.child_by_field_name("name")
+            && let Some(segments) = self.name_segments(name)
+        {
+            let top_level = node
+                .parent()
+                .is_some_and(|p| p.kind() == "compilation_unit");
+            self.relative_roots.extend(
+                segments
+                    .into_iter()
+                    .skip(usize::from(top_level))
+                    .map(|s| s.trim_start_matches('@')),
+            );
         }
 
-        if node.kind() == "using_directive" {
-            let (imports, wildcards) = self.collect_usings(node);
-            for import in &imports {
-                if let Some(first) = import.segments.first() {
-                    self.roots.insert(first);
-                }
-            }
-            for wildcard in &wildcards {
-                if let Some(first) = wildcard.first() {
-                    self.roots.insert(first);
-                }
-            }
-            return;
-        }
         for i in 0..node.named_child_count() as u32 {
             if let Some(child) = node.named_child(i) {
-                self.collect_roots(child);
+                self.collect_relative_roots(child);
             }
         }
     }
@@ -239,7 +219,7 @@ impl<'a> Walker<'a> {
             // current scope instead.
             "using_directive" => return,
 
-            "attribute_list" => return,
+            "attribute_list" | "global_attribute" => return,
             _ => {}
         }
 
@@ -275,8 +255,18 @@ impl<'a> Walker<'a> {
 
     /// Add a `using` directive's imports to the innermost scope frame.
     fn record_use(&mut self, node: Node) {
-        let (imports, _wildcards) = self.collect_usings(node);
+        let imports = self.collect_usings(node);
+        let alias = node
+            .child_by_field_name("name")
+            .and_then(|n| self.leaf_text(n));
+
         if let Some(frame) = self.scopes.last_mut() {
+            // Even unsupported alias targets bind their alias, never a namespace root.
+            if imports.is_empty()
+                && let Some(name) = alias
+            {
+                frame.bindings.push(Binding { name, start: 0 });
+            }
             frame.imports.extend(imports);
         }
     }
@@ -290,7 +280,12 @@ impl<'a> Walker<'a> {
     /// member names land around the member, not inside it.
     fn record_item_name(&mut self, node: Node) {
         let names: Vec<&'a str> = match node.kind() {
-            "namespace_declaration"
+            "namespace_declaration" => node
+                .child_by_field_name("name")
+                .and_then(|n| self.leftmost_segment(n))
+                .into_iter()
+                .collect(),
+            "extern_alias_directive"
             | "class_declaration"
             | "struct_declaration"
             | "interface_declaration"
@@ -336,7 +331,7 @@ impl<'a> Walker<'a> {
     fn record_bindings(&mut self, node: Node) {
         let mut names: Vec<(&'a str, usize)> = Vec::new();
         match node.kind() {
-            "parameter" | "catch_declaration" => {
+            "parameter" | "catch_declaration" | "type_parameter" => {
                 names.extend(
                     node.child_by_field_name("name")
                         .and_then(|n| self.leaf_text(n))
@@ -494,22 +489,32 @@ impl<'a> Walker<'a> {
         let Some(segments) = self.name_segments(node) else {
             return; // not a plain dotted chain: file-local text cannot decide
         };
-        if segments.len() < 2 || !self.roots.contains(segments[0]) {
+        let absolute = self
+            .leftmost_name(node)
+            .is_some_and(|n| n.kind() == "alias_qualified_name");
+        if segments.len() < 2 {
             return;
         }
-        if self.scopes.iter().any(|frame| {
-            frame.bindings.iter().any(|binding| {
-                binding.name == segments[0]
-                    && (binding.start == 0 || binding.start <= node.start_byte())
-            })
-        }) {
+        if !absolute
+            && (!ROOT_SEGMENTS.contains(&segments[0])
+                || self.relative_roots.contains(segments[0])
+                || self.scopes.iter().any(|frame| {
+                    frame.imports.iter().any(|import| {
+                        import.aliased && import.short.trim_start_matches('@') == segments[0]
+                    }) || frame.bindings.iter().any(|binding| {
+                        binding.name.trim_start_matches('@') == segments[0]
+                            && (binding.start == 0 || binding.start <= node.start_byte())
+                    })
+                }))
+        {
             return;
         }
 
         let line = node.start_position().row + 1;
         let (kind, name) = self.enclosing_item(node);
-        let covering = self.covering_import(&segments);
-        let path = segments.join(".");
+        let covering = self.covering_import(&segments, absolute);
+        let prefix = if absolute { "global::" } else { "" };
+        let path = format!("{prefix}{}", segments.join("."));
         let advice = if let Some(matched) = covering {
             self.suggestion_under(matched, &segments, node.start_byte())
                 .map(|suggestion| {
@@ -532,7 +537,7 @@ impl<'a> Walker<'a> {
                 .iter()
                 .any(|frame| frame_mentions(frame, short, node.start_byte()));
             (!shadowed).then(|| {
-                let imported = segments[..imported_len].join(".");
+                let imported = format!("{prefix}{}", segments[..imported_len].join("."));
                 let replacement = segments[imported_len - 1..].join(".");
                 format!("- Add `using {short} = {imported};` at namespace or file scope.\n- Replace this path with `{replacement}`.")
             })
@@ -542,9 +547,7 @@ impl<'a> Walker<'a> {
             self.diagnostics.push(Diagnostic {
                 severity: Severity::Hint,
                 code: CODE_QUALIFIED_PATH,
-                message: format!(
-                    "fully-qualified path `{path}` makes code harder to read.\n{advice}"
-                ),
+                message: format!("path `{path}` includes the full namespace.\n{advice}"),
                 line,
                 item_kind: kind.to_string(),
                 item_name: name.map(str::to_string),
@@ -590,6 +593,9 @@ impl<'a> Walker<'a> {
             .find(|frame| frame_mentions(frame, referenced, occurrence_start))
             .is_some_and(|frame| {
                 frame_shadows(frame, referenced, &matched.segments, occurrence_start)
+                    || frame.imports.iter().any(|import| {
+                        import.short == referenced && import.absolute != matched.absolute
+                    })
             });
         if shadowed {
             return None;
@@ -611,15 +617,18 @@ impl<'a> Walker<'a> {
     /// the occurrence path or prefixes it.
     ///
     /// The innermost frame wins ties, since its binding shadows outer
-    /// ones. One-segment imports never cover: the rule stays
-    /// conservative with a directive whose path is a lone namespace
-    /// name.
-    fn covering_import(&self, segments: &[&str]) -> Option<&Import<'a>> {
+    /// ones. Absolute occurrences only reuse absolute imports, avoiding relative
+    /// targets that happen to have the same spelling.
+    ///
+    /// One-segment imports never cover: the rule stays conservative with lone
+    /// namespace names.
+    fn covering_import(&self, segments: &[&str], absolute: bool) -> Option<&Import<'a>> {
         let mut covering: Option<&Import<'a>> = None;
         for frame in self.scopes.iter().rev() {
             for import in &frame.imports {
-                let covers =
-                    import.segments.len() >= 2 && segments.starts_with(import.segments.as_slice());
+                let covers = import.segments.len() >= 2
+                    && segments.starts_with(import.segments.as_slice())
+                    && (!absolute || import.absolute);
                 if covers
                     && covering
                         .as_ref()
@@ -632,20 +641,20 @@ impl<'a> Walker<'a> {
         covering
     }
 
-    /// The explicit imports and wildcard prefixes of one `using`
-    /// directive.
+    /// The explicit imports of one `using` directive.
     ///
     /// A plain directive opens its namespace and binds nothing; its
     /// `short` (the last segment) still feeds the hint's name and the
     /// mention checks. An aliased directive (`using X = A.B.C;`)
     /// binds the alias.
     ///
-    /// `using static` directives are C#'s glob: their names cannot be
-    /// enumerated without type checking. They return as wildcard
-    /// prefixes that root paths but never enable imported-name advice.
-    fn collect_usings(&self, node: Node) -> (Vec<Import<'a>>, Vec<Vec<&'a str>>) {
+    /// Static imports cannot supply named advice without type checking.
+    fn collect_usings(&self, node: Node) -> Vec<Import<'a>> {
         let mut imports = Vec::new();
-        let mut wildcards = Vec::new();
+        if self.is_static_using(node) {
+            return imports;
+        }
+
         let alias = node.child_by_field_name("name");
         let alias_id = alias.map(|alias| alias.id());
         for i in 0..node.named_child_count() as u32 {
@@ -663,21 +672,19 @@ impl<'a> Walker<'a> {
             let Some(segments) = self.name_segments(child) else {
                 break;
             };
-            if self.is_static_using(node) {
-                wildcards.push(segments);
-            } else {
-                let bound = alias.and_then(|alias| self.leaf_text(alias));
-                let short =
-                    bound.unwrap_or_else(|| *segments.last().expect("using path has a name"));
-                imports.push(Import {
-                    segments,
-                    short,
-                    aliased: bound.is_some(),
-                });
-            }
+            let bound = alias.and_then(|alias| self.leaf_text(alias));
+            let short = bound.unwrap_or_else(|| *segments.last().expect("using path has a name"));
+            imports.push(Import {
+                segments,
+                short,
+                aliased: bound.is_some(),
+                absolute: self
+                    .leftmost_name(child)
+                    .is_some_and(|n| n.kind() == "alias_qualified_name"),
+            });
             break;
         }
-        (imports, wildcards)
+        imports
     }
 
     /// True when `node` is a `using static` directive: its anonymous
@@ -691,11 +698,19 @@ impl<'a> Walker<'a> {
     /// The leftmost segment of a dotted name chain, without building the
     /// whole segment list.
     fn leftmost_segment(&self, node: Node) -> Option<&'a str> {
+        self.leaf_text(self.leftmost_name(node)?)
+    }
+
+    /// Locate the root syntax without mistaking an alias for an ordinary identifier.
+    fn leftmost_name<'tree>(&self, node: Node<'tree>) -> Option<Node<'tree>> {
         let mut current = node;
         loop {
             match current.kind() {
                 "qualified_name" => current = current.child_by_field_name("qualifier")?,
-                "identifier" | "generic_name" => return self.leaf_text(current),
+                "member_access_expression" => {
+                    current = current.child_by_field_name("expression")?
+                }
+                "identifier" | "alias_qualified_name" => return Some(current),
                 _ => return None,
             }
         }
@@ -708,23 +723,36 @@ impl<'a> Walker<'a> {
     /// positions.
     ///
     /// Returns `None` when the chain does not bottom out in plain
-    /// name segments (an expression receiver, a predefined type, or a
-    /// `global::` alias root). The path text then cannot be decided
-    /// file-locally.
+    /// identifiers or `global::`. Generic chains are exempt rather than losing
+    /// type arguments in advice; non-global aliases never establish full paths.
     fn name_segments(&self, node: Node) -> Option<Vec<&'a str>> {
         let mut segments = Vec::new();
         let mut current = node;
         loop {
             match current.kind() {
                 "qualified_name" => {
-                    segments.push(self.leaf_text(current.child_by_field_name("name")?)?);
+                    let name = current.child_by_field_name("name")?;
+                    if name.kind() != "identifier" {
+                        return None;
+                    }
+                    segments.push(self.leaf_text(name)?);
                     current = current.child_by_field_name("qualifier")?;
                 }
                 "member_access_expression" => {
-                    segments.push(self.leaf_text(current.child_by_field_name("name")?)?);
+                    let name = current.child_by_field_name("name")?;
+                    if name.kind() != "identifier" {
+                        return None;
+                    }
+                    segments.push(self.leaf_text(name)?);
                     current = current.child_by_field_name("expression")?;
                 }
-                "identifier" | "generic_name" => {
+                "alias_qualified_name" => {
+                    if self.leaf_text(current.child_by_field_name("alias")?)? != "global" {
+                        return None;
+                    }
+                    current = current.child_by_field_name("name")?;
+                }
+                "identifier" => {
                     segments.push(self.leaf_text(current)?);
                     break;
                 }
@@ -861,14 +889,12 @@ impl<'a> Walker<'a> {
 pub(super) fn check(parsed: &ParseResult) -> Vec<Diagnostic> {
     let mut walker = Walker {
         bytes: parsed.source.as_bytes(),
-        roots: ROOT_SEGMENTS.iter().copied().collect(),
+        relative_roots: HashSet::new(),
         scopes: Vec::new(),
         diagnostics: Vec::new(),
     };
     let root = parsed.syntax_tree().root_node();
-    // Root resolution needs every `using` path in the file up front: an
-    // import anywhere in the file roots paths above it.
-    walker.collect_roots(root);
+    walker.collect_relative_roots(root);
     walker.walk(root);
     walker.diagnostics
 }
@@ -969,9 +995,7 @@ mod tests {
         assert_eq!(diagnostics[0].severity, Severity::Hint);
         assert_eq!(
             diagnostics[0].message,
-            format!(
-                "fully-qualified path `System.Console.WriteLine` makes code harder to read.\n{advice}"
-            )
+            format!("path `System.Console.WriteLine` includes the full namespace.\n{advice}")
         );
     }
 
@@ -993,22 +1017,47 @@ mod tests {
         );
     }
 
-    /// Custom roots require syntax evidence rather than capitalization guesses.
+    /// Unknown and partial roots stay exempt regardless of depth or type usage.
     #[rstest]
-    #[case::type_position("class C { Vendor.Net.Client field; }", 1)]
-    #[case::generic_type_position("class C { Vendor.Net.Widget<int> field; }", 1)]
+    #[case::type_position("class C { Vendor.Net.Client field; }", 0)]
+    #[case::generic_type_position("class C { Vendor.Net.Widget<int> field; }", 0)]
     #[case::namespace(
         "namespace Vendor.Net { class C { void M() { Vendor.Net.Client.Open(); } } }",
-        1
+        0
     )]
     #[case::file_scoped_namespace(
         "namespace Vendor.Net;\nclass C { void M() { Vendor.Net.Client.Open(); } }",
-        1
+        0
     )]
     #[case::unknown_receiver("class C { void M() { Vendor.Net.Client.Open(); } }", 0)]
     #[case::ordinary_member("class C { void M() { obj.Member.Open(); } }", 0)]
-    #[case::shadowed("class Client {} class C { Vendor.Net.Client field; }", 0)]
-    #[case::later_shadow("class C { Vendor.Net.Client field; } class Client {}", 0)]
+    #[case::shadowed("class Client {} class C { global::Vendor.Net.Client field; }", 0)]
+    #[case::later_shadow("class C { global::Vendor.Net.Client field; } class Client {}", 0)]
+    #[case::partial_type("using System; class C { Threading.Tasks.Task field; }", 0)]
+    #[case::partial_expression(
+        "using System; class C { void M() { Threading.Tasks.Task.Factory.StartNew(); } }",
+        0
+    )]
+    #[case::partial_import(
+        "namespace Work { using Threading.Tasks; class C { Threading.Tasks.Task field; } }",
+        0
+    )]
+    #[case::unknown_import("using Vendor.Net; class C { Vendor.Net.Client field; }", 0)]
+    #[case::unknown_static_import(
+        "using static Vendor.Net.Client; class C { void M() { Vendor.Net.Client.Open(); } }",
+        0
+    )]
+    #[case::nested_namespace(
+        "namespace Work { namespace Vendor.Net {} class C { Vendor.Net.Client field; } }",
+        0
+    )]
+    #[case::known_type("class C { System.Threading.Tasks.Task field; }", 1)]
+    #[case::microsoft("class C { Microsoft.Win32.RegistryKey field; }", 1)]
+    #[case::absolute_custom("class C { global::Vendor.Net.Client field; }", 1)]
+    #[case::long_absolute(
+        "class C { void M() { global::Vendor.Net.Client.Factory.Instance.Open(); } }",
+        1
+    )]
     #[case::receiver_shadow(
         "using System.Threading.Tasks; class C { void M(object System) { System.Threading.Tasks.Task.Delay(1); } }",
         0
@@ -1017,6 +1066,92 @@ mod tests {
         let diagnostics = lint(source);
 
         assert_eq!(diagnostics.len(), expected);
+    }
+
+    /// Aliases and relative namespace members are not global roots.
+    #[rstest]
+    #[case::alias("using System = Vendor.Net; class C { System.Client field; }")]
+    #[case::global_using_alias(
+        "global using System = Vendor.Net; class C { System.Client field; }"
+    )]
+    #[case::alias_qualified("using S = System; class C { S::Threading.Tasks.Task field; }")]
+    #[case::extern_alias("extern alias System; class C { System::Threading.Tasks.Task field; }")]
+    #[case::alias_dotted("using S = System; class C { S.Threading.Tasks.Task field; }")]
+    #[case::generic_alias("using System = Vendor.Container<int>; class C { System.Nested field; }")]
+    #[case::nested_namespace(
+        "namespace Work { namespace System.Threading {} class C { System.Threading.Task field; } }"
+    )]
+    #[case::separate_namespace(
+        "namespace Work.System.Threading {} namespace Work { class C { System.Threading.Task field; } }"
+    )]
+    #[case::file_scoped_namespace(
+        "namespace Work.System; class C { System.Threading.Tasks.Task field; }"
+    )]
+    #[case::escaped_namespace(
+        "namespace Work.@System {} namespace Work { class C { System.Console field; } }"
+    )]
+    #[case::type_parameter("class C<System> { System.Threading.Tasks.Task field; }")]
+    #[case::escaped_binding("class C { void M(object @System) { System.Console.WriteLine(1); } }")]
+    #[case::type_binding("class System {} class C { System.Console field; }")]
+    #[case::ambiguous_absolute_alias(
+        "using C = global::System.Console; using C = System.Console; class X { global::System.Console field; }"
+    )]
+    fn check_should_exempt_aliases_and_relative_roots(#[case] source: &str) {
+        let diagnostics = lint(source);
+
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
+
+    /// Absolute advice keeps its root even when a relative root is shadowed.
+    #[rstest]
+    #[case::type_path(
+        "class C { global::Vendor.Net.Client field; }",
+        "global::Vendor.Net.Client",
+        "Client = global::Vendor.Net.Client",
+        "Client"
+    )]
+    #[case::expression_path(
+        "class C { void M(object System) { global::System.Console.Out.WriteLine(1); } }",
+        "global::System.Console.Out.WriteLine",
+        "Console = global::System.Console",
+        "Console.Out.WriteLine"
+    )]
+    #[case::relative_import(
+        "namespace Work { using Vendor.Net; class C { global::Vendor.Net.Client field; } }",
+        "global::Vendor.Net.Client",
+        "Client = global::Vendor.Net.Client",
+        "Client"
+    )]
+    fn check_should_preserve_absolute_import_advice(
+        #[case] source: &str,
+        #[case] path: &str,
+        #[case] import: &str,
+        #[case] replacement: &str,
+    ) {
+        let diagnostics = lint(source);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].message,
+            format!(
+                "path `{path}` includes the full namespace.\n- Add `using {import};` at namespace or file scope.\n- Replace this path with `{replacement}`."
+            )
+        );
+    }
+
+    /// Generic chains are withheld instead of suggesting code without type arguments.
+    #[rstest]
+    #[case::type_path("class C { System.Collections.Generic.List<int> field; }")]
+    #[case::absolute_type("class C { global::System.Collections.Generic.List<int> field; }")]
+    #[case::method("class C { void M() { System.Array.Empty<int>(); } }")]
+    #[case::nested_type("class C { global::Vendor.Container<int>.Nested field; }")]
+    #[case::imported(
+        "using System.Collections.Generic; class C { System.Collections.Generic.List<int> field; }"
+    )]
+    fn check_should_exempt_generic_chains(#[case] source: &str) {
+        let diagnostics = lint(source);
+
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     /// Conditional compilation exempts the containing method, not its sibling.
@@ -1108,8 +1243,8 @@ mod tests {
     #[test]
     fn fires_for_qualified_type_positions() {
         let diags = lint(concat!(
-            "using Nq.Text;\n",
-            "class C { Nq.Text.Widget Make() { return null; } }\n",
+            "using global::Nq.Text;\n",
+            "class C { global::Nq.Text.Widget Make() { return null; } }\n",
         ));
 
         assert_eq!(diags.len(), 1);
@@ -1124,8 +1259,8 @@ mod tests {
     #[test]
     fn field_qualified_type_reports_the_field_as_enclosing_item() {
         let diags = lint(concat!(
-            "using Nq.Text;\n",
-            "class C { Nq.Text.Widget field; }\n",
+            "using global::Nq.Text;\n",
+            "class C { global::Nq.Text.Widget field; }\n",
         ));
 
         assert_eq!(diags.len(), 1);
@@ -1138,14 +1273,14 @@ mod tests {
     #[test]
     fn fires_with_the_alias_when_using_renames() {
         let diags = lint(concat!(
-            "using Widget = Nq.Text.Widget;\n",
+            "using Widget = global::Nq.Text.Widget;\n",
             "class C {\n",
-            "    Nq.Text.Widget Make() { return null; }\n",
+            "    global::Nq.Text.Widget Make() { return null; }\n",
             "}\n",
         ));
 
         assert_eq!(diags.len(), 1);
-        assert!(diags[0].message.contains("`Nq.Text.Widget`"));
+        assert!(diags[0].message.contains("`global::Nq.Text.Widget`"));
         assert!(diags[0].message.contains("`Widget` is already imported"));
         assert!(diags[0].message.contains("Replace this path with `Widget`"));
     }
@@ -1155,14 +1290,14 @@ mod tests {
     #[test]
     fn fires_with_the_alias_plus_tail_when_an_alias_covers_a_prefix() {
         let diags = lint(concat!(
-            "using W = Nq.Text.Widget;\n",
+            "using W = global::Nq.Text.Widget;\n",
             "class C {\n",
-            "    void M() { var a = Nq.Text.Widget.Empty; }\n",
+            "    void M() { var a = global::Nq.Text.Widget.Empty; }\n",
             "}\n",
         ));
 
         assert_eq!(diags.len(), 1);
-        assert!(diags[0].message.contains("`Nq.Text.Widget.Empty`"));
+        assert!(diags[0].message.contains("`global::Nq.Text.Widget.Empty`"));
         assert!(diags[0].message.contains("`W` is already imported"));
         assert!(
             diags[0]
@@ -1175,9 +1310,9 @@ mod tests {
     #[test]
     fn fires_in_nested_namespaces_under_a_file_level_using() {
         let diags = lint(concat!(
-            "using Nq.Text;\n",
+            "using global::Nq.Text;\n",
             "namespace Work {\n",
-            "    class C { void M() { var a = Nq.Text.Widget.Empty; } }\n",
+            "    class C { void M() { var a = global::Nq.Text.Widget.Empty; } }\n",
             "}\n",
         ));
 
@@ -1189,14 +1324,18 @@ mod tests {
     #[test]
     fn check_should_suggest_import_when_existing_using_is_out_of_scope() {
         let diags = lint(concat!(
-            "namespace Inner { using Nq.Text; }\n",
+            "namespace Inner { using global::Nq.Text; }\n",
             "namespace Work {\n",
-            "    class C { void M() { var a = Nq.Text.Widget.Empty; } }\n",
+            "    class C { void M() { var a = global::Nq.Text.Widget.Empty; } }\n",
             "}\n",
         ));
 
         assert_eq!(diags.len(), 1);
-        assert!(diags[0].message.contains("Add `using Text = Nq.Text;`"));
+        assert!(
+            diags[0]
+                .message
+                .contains("Add `using Text = global::Nq.Text;`")
+        );
     }
 
     // A plain using covering the exact path has no advice: it opens
@@ -1204,8 +1343,8 @@ mod tests {
     #[test]
     fn silent_when_a_plain_using_covers_the_path_exactly() {
         let diags = lint(concat!(
-            "using Nq.Text.Widget;\n",
-            "class C { void M() { var a = Nq.Text.Widget; } }\n",
+            "using global::Nq.Text.Widget;\n",
+            "class C { void M() { var a = global::Nq.Text.Widget; } }\n",
         ));
 
         assert!(diags.is_empty());
@@ -1330,12 +1469,12 @@ mod tests {
     #[test]
     fn silent_inside_attribute_list_spans() {
         let diags = lint(concat!(
-            "using Nq;\n",
-            "[Nq.Probe.Mark]\n",
+            "using global::Nq;\n",
+            "[global::Nq.Probe.Mark]\n",
             "class A { }\n",
-            "[Nq.Probe.Mark]\n",
+            "[global::Nq.Probe.Mark]\n",
             "class B { }\n",
-            "[Nq.Probe.Mark]\n",
+            "[global::Nq.Probe.Mark]\n",
             "class C { }\n",
         ));
 
@@ -1348,8 +1487,8 @@ mod tests {
     fn using_directive_text_is_never_flagged() {
         let diags = lint(concat!(
             "using System.Text;\n",
-            "using Nq.Text.Widget;\n",
-            "using W = Nq.Text.Widget;\n",
+            "using global::Nq.Text.Widget;\n",
+            "using W = global::Nq.Text.Widget;\n",
             "using static System.Math;\n",
             "class C { }\n",
         ));
@@ -1361,10 +1500,10 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_a_parameter_or_local() {
         let diags = lint(concat!(
-            "using Nq.Text.Widget;\n",
+            "using global::Nq.Text.Widget;\n",
             "class C {\n",
-            "    void P(int Empty) { var a = Nq.Text.Widget.Empty; }\n",
-            "    void L() { var Empty = 1; var b = Nq.Text.Widget.Empty; }\n",
+            "    void P(int Empty) { var a = global::Nq.Text.Widget.Empty; }\n",
+            "    void L() { var Empty = 1; var b = global::Nq.Text.Widget.Empty; }\n",
             "}\n",
         ));
 
@@ -1376,12 +1515,12 @@ mod tests {
     #[test]
     fn fires_before_and_suppresses_after_a_shadowing_local() {
         let diags = lint(concat!(
-            "using Nq.Text.Widget;\n",
+            "using global::Nq.Text.Widget;\n",
             "class C {\n",
             "    void M() {\n",
-            "        var a = Nq.Text.Widget.Empty;\n",
+            "        var a = global::Nq.Text.Widget.Empty;\n",
             "        var Empty = 1;\n",
-            "        var b = Nq.Text.Widget.Empty;\n",
+            "        var b = global::Nq.Text.Widget.Empty;\n",
             "    }\n",
             "}\n",
         ));
@@ -1396,13 +1535,13 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_a_foreach_or_catch_designation() {
         let diags = lint(concat!(
-            "using Nq.Text.Widget;\n",
+            "using global::Nq.Text.Widget;\n",
             "class C {\n",
             "    void F() {\n",
-            "        foreach (var Empty in items) { var a = Nq.Text.Widget.Empty; }\n",
+            "        foreach (var Empty in items) { var a = global::Nq.Text.Widget.Empty; }\n",
             "    }\n",
             "    void H() {\n",
-            "        try { } catch (Exception Empty) { var b = Nq.Text.Widget.Empty; }\n",
+            "        try { } catch (Exception Empty) { var b = global::Nq.Text.Widget.Empty; }\n",
             "    }\n",
             "}\n",
         ));
@@ -1414,10 +1553,10 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_a_lambda_parameter() {
         let diags = lint(concat!(
-            "using Nq.Text.Widget;\n",
+            "using global::Nq.Text.Widget;\n",
             "class C {\n",
             "    void M() {\n",
-            "        Func<int, int> f = Empty => Nq.Text.Widget.Empty.Value;\n",
+            "        Func<int, int> f = Empty => global::Nq.Text.Widget.Empty.Value;\n",
             "    }\n",
             "}\n",
         ));
@@ -1430,9 +1569,9 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_a_same_named_declaration() {
         let diags = lint(concat!(
-            "using Nq.Text.Widget;\n",
+            "using global::Nq.Text.Widget;\n",
             "class Empty { }\n",
-            "class C { void M() { var a = Nq.Text.Widget.Empty; } }\n",
+            "class C { void M() { var a = global::Nq.Text.Widget.Empty; } }\n",
         ));
 
         assert!(diags.is_empty());
@@ -1443,12 +1582,16 @@ mod tests {
     #[test]
     fn one_segment_usings_never_cover_a_path() {
         let diags = lint(concat!(
-            "using Nq;\n",
-            "class C { void M() { var a = Nq.Text.Widget.Empty; } }\n",
+            "using global::Nq;\n",
+            "class C { void M() { var a = global::Nq.Text.Widget.Empty; } }\n",
         ));
 
         assert_eq!(diags.len(), 1);
-        assert!(diags[0].message.contains("Add `using Text = Nq.Text;`"));
+        assert!(
+            diags[0]
+                .message
+                .contains("Add `using Text = global::Nq.Text;`")
+        );
     }
 
     // Shadowed imports never fall back to missing-import advice.
@@ -1472,11 +1615,11 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_a_deconstruction_pattern() {
         let diags = lint(concat!(
-            "using Nq.Text.Widget;\n",
+            "using global::Nq.Text.Widget;\n",
             "class C {\n",
             "    void M() {\n",
             "        var (d, Empty) = (1, 2);\n",
-            "        var a = Nq.Text.Widget.Empty;\n",
+            "        var a = global::Nq.Text.Widget.Empty;\n",
             "    }\n",
             "}\n",
         ));
@@ -1489,10 +1632,10 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_a_pattern_designation() {
         let diags = lint(concat!(
-            "using Nq.Text.Widget;\n",
+            "using global::Nq.Text.Widget;\n",
             "class C {\n",
             "    void M(object o) {\n",
-            "        if (o is int Empty) { var a = Nq.Text.Widget.Empty; }\n",
+            "        if (o is int Empty) { var a = global::Nq.Text.Widget.Empty; }\n",
             "    }\n",
             "}\n",
         ));
@@ -1505,11 +1648,11 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_out_var_and_positional_designations() {
         let diags = lint(concat!(
-            "using Nq.Text.Widget;\n",
+            "using global::Nq.Text.Widget;\n",
             "class C {\n",
-            "    void P() { Try(out var Empty, out var b); var a = Nq.Text.Widget.Empty; }\n",
-            "    void Q(object o) { if (o is Pair(int a, int Empty)) { var b = Nq.Text.Widget.Empty; } }\n",
-            "    void R(object o) { switch (o) { case var (a, Empty): break; } var c = Nq.Text.Widget.Empty; }\n",
+            "    void P() { Try(out var Empty, out var b); var a = global::Nq.Text.Widget.Empty; }\n",
+            "    void Q(object o) { if (o is Pair(int a, int Empty)) { var b = global::Nq.Text.Widget.Empty; } }\n",
+            "    void R(object o) { switch (o) { case var (a, Empty): break; } var c = global::Nq.Text.Widget.Empty; }\n",
             "}\n",
         ));
 
@@ -1521,22 +1664,22 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_query_variables() {
         let diags = lint(concat!(
-            "using Nq.Text.Widget;\n",
+            "using global::Nq.Text.Widget;\n",
             "class C {\n",
             "    void F() {\n",
-            "        var q = from Empty in xs select Nq.Text.Widget.Empty;\n",
+            "        var q = from Empty in xs select global::Nq.Text.Widget.Empty;\n",
             "    }\n",
             "    void L() {\n",
-            "        var q = from x in xs let Empty = x select Nq.Text.Widget.Empty;\n",
+            "        var q = from x in xs let Empty = x select global::Nq.Text.Widget.Empty;\n",
             "    }\n",
             "    void I() {\n",
-            "        var q = from x in xs select x into Empty select Nq.Text.Widget.Empty;\n",
+            "        var q = from x in xs select x into Empty select global::Nq.Text.Widget.Empty;\n",
             "    }\n",
             "    void J() {\n",
-            "        var q = from x in xs join Empty in ys on x.K equals ys.K select Nq.Text.Widget.Empty;\n",
+            "        var q = from x in xs join Empty in ys on x.K equals ys.K select global::Nq.Text.Widget.Empty;\n",
             "    }\n",
             "    void K() {\n",
-            "        var q = from x in xs join y in ys on x.K equals y.K into Empty select Nq.Text.Widget.Empty;\n",
+            "        var q = from x in xs join y in ys on x.K equals y.K into Empty select global::Nq.Text.Widget.Empty;\n",
             "    }\n",
             "}\n",
         ));
@@ -1548,10 +1691,10 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_a_typed_join_range_variable() {
         let diags = lint(concat!(
-            "using Nq.Text.Widget;\n",
+            "using global::Nq.Text.Widget;\n",
             "class C {\n",
             "    void T() {\n",
-            "        var q = from x in xs join Foo Empty in ys on x.K equals ys.K select Nq.Text.Widget.Empty;\n",
+            "        var q = from x in xs join Foo Empty in ys on x.K equals ys.K select global::Nq.Text.Widget.Empty;\n",
             "    }\n",
             "}\n",
         ));
@@ -1563,10 +1706,10 @@ mod tests {
     #[test]
     fn fires_when_only_the_join_binder_is_renamed() {
         let diags = lint(concat!(
-            "using Nq.Text.Widget;\n",
+            "using global::Nq.Text.Widget;\n",
             "class C {\n",
             "    void R() {\n",
-            "        var q = from x in xs join y in ys on x.K equals y.K select Nq.Text.Widget.Empty;\n",
+            "        var q = from x in xs join y in ys on x.K equals y.K select global::Nq.Text.Widget.Empty;\n",
             "    }\n",
             "}\n",
         ));
@@ -1582,13 +1725,13 @@ mod tests {
     #[test]
     fn silent_when_a_top_level_declaration_shares_the_short_name() {
         let diags = lint(concat!(
-            "using Nq;\n",
+            "using global::Nq;\n",
             "class Util { }\n",
             "class C {\n",
             "    void M() {\n",
-            "        Nq.Util.Helper.Run();\n",
-            "        Nq.Util.Helper.Run();\n",
-            "        Nq.Util.Helper.Run();\n",
+            "        global::Nq.Util.Helper.Run();\n",
+            "        global::Nq.Util.Helper.Run();\n",
+            "        global::Nq.Util.Helper.Run();\n",
             "    }\n",
             "}\n",
         ));
@@ -1618,27 +1761,31 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_ambiguous_across_usings() {
         let diags = lint(concat!(
-            "using Na.X;\n",
-            "using Nb.X;\n",
+            "using global::Na.X;\n",
+            "using global::Nb.X;\n",
             "class C {\n",
-            "    void M() { var a = Na.X; var b = Na.X; var c = Na.X; }\n",
+            "    void M() { var a = global::Na.X; var b = global::Na.X; var c = global::Na.X; }\n",
             "}\n",
         ));
 
         assert!(diags.is_empty());
     }
 
-    // ── `using static` roots ──
+    // ── Static imports ──
 
-    // Static usings provide root evidence, not a known imported name.
+    // Static usings do not supply a known imported name.
     #[test]
     fn check_should_suggest_alias_when_only_static_using_exists() {
         let diags = lint(concat!(
-            "using static Nq.Thing;\n",
-            "class C { void M() { Nq.Thing.Op(1); } }\n",
+            "using static global::Nq.Thing;\n",
+            "class C { void M() { global::Nq.Thing.Op(1); } }\n",
         ));
 
         assert_eq!(diags.len(), 1);
-        assert!(diags[0].message.contains("Add `using Thing = Nq.Thing;`"));
+        assert!(
+            diags[0]
+                .message
+                .contains("Add `using Thing = global::Nq.Thing;`")
+        );
     }
 }

@@ -31,10 +31,7 @@ pub(crate) const CODE_TITLES: &[(&str, &str)] = &[
     (CODE_TEST_NAMING, "non-behavioral test name"),
     (CODE_MODULE_SIZE, "oversized module"),
     (CODE_MOD002, "fn-local `use` without `#[cfg]`"),
-    (
-        CODE_QUALIFIED_PATH,
-        "fully-qualified path reduces readability",
-    ),
+    (CODE_QUALIFIED_PATH, "full namespace qualification in code"),
 ];
 /// Selectable transformations and the lint group, in pipeline order.
 pub const KNOWN_FIX_OPS: &[&str] = &["tables", "fences", "links", "reorder", "vis", "lints"];
@@ -93,7 +90,7 @@ pub const CODE_MODULE_SIZE: &str = "MOD001";
 pub const CODE_PARAGRAPH_SIZE: &str = "TEXT001";
 /// Rule code for passive constructions and past-behavior narration.
 pub const CODE_PASSIVE_NARRATION: &str = "TEXT007";
-/// Rule code for a fully-qualified path that reduces readability.
+/// Rule code for full namespace qualification in code.
 pub const CODE_QUALIFIED_PATH: &str = "MOD003";
 /// Rule code for an over-limit sentence of measured prose.
 pub const CODE_SENTENCE_LENGTH: &str = "TEXT003";

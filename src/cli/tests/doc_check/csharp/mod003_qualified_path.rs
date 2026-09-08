@@ -1,4 +1,4 @@
-//! MOD003 rendered C# advice and hint-only exit behavior.
+//! MOD003 full-namespace C# advice and hint-only exit behavior.
 
 use crate::run_qualified_path_source;
 use rstest::rstest;
@@ -49,9 +49,33 @@ fn cli_should_exempt_conditionally_compiled_type() {
 /// Import text, attributes, and ambiguous aliases stay exempt through the CLI.
 #[rstest]
 #[case::imports("using System.Threading.Tasks;")]
-#[case::attributes("[Vendor.Marker] class C {}")]
-#[case::ambiguous("using X = A.X; using X = B.X; class C { A.X field; }")]
+#[case::attributes("[global::Vendor.Marker] class C {}")]
+#[case::global_attributes("[assembly: global::Vendor.Marker] class C {}")]
+#[case::ambiguous("using X = global::A.X; using X = global::B.X; class C { global::A.X field; }")]
 fn cli_should_exempt_non_code_and_ambiguous_paths(#[case] source: &str) {
+    let (stderr, exit) = run_qualified_path_source(source, "cs");
+
+    assert_eq!(exit, 0, "{stderr}");
+    assert!(stderr.is_empty(), "{stderr}");
+}
+
+/// Partial paths, aliases, and uncertain roots stay silent at any depth.
+#[rstest]
+#[case::partial_type("using System; class C { Threading.Tasks.Task field; }")]
+#[case::partial_expression(
+    "using System; class C { void M() { Threading.Tasks.Task.Factory.StartNew(); } }"
+)]
+#[case::unknown_type("class C { Vendor.Net.Client field; }")]
+#[case::unknown_import("using Vendor.Net; class C { Vendor.Net.Client field; }")]
+#[case::alias("using System = Vendor.Net; class C { System.Client field; }")]
+#[case::alias_qualified("using S = System; class C { S::Threading.Tasks.Task field; }")]
+#[case::relative_namespace(
+    "namespace Work.System {} namespace Work { class C { System.Threading.Tasks.Task field; } }"
+)]
+#[case::receiver_shadow("class C { void M(object System) { System.Console.Out.WriteLine(1); } }")]
+#[case::generic_type("class C { global::System.Collections.Generic.List<int> field; }")]
+#[case::generic_method("class C { void M() { global::System.Array.Empty<int>(); } }")]
+fn cli_should_exempt_paths_without_reliable_full_namespace_advice(#[case] source: &str) {
     let (stderr, exit) = run_qualified_path_source(source, "cs");
 
     assert_eq!(exit, 0, "{stderr}");
@@ -79,10 +103,28 @@ fn cli_should_exempt_non_code_and_ambiguous_paths(#[case] source: &str) {
     "Log.WriteLine"
 )]
 #[case::custom(
-    "class C { Vendor.Net.Client field; }",
-    "Vendor.Net.Client",
-    "Add `using Client = Vendor.Net.Client;`",
+    "class C { global::Vendor.Net.Client field; }",
+    "global::Vendor.Net.Client",
+    "Add `using Client = global::Vendor.Net.Client;`",
     "Client"
+)]
+#[case::absolute_expression(
+    "class C { void M(object System) { global::System.Console.Out.WriteLine(1); } }",
+    "global::System.Console.Out.WriteLine",
+    "Add `using Console = global::System.Console;`",
+    "Console.Out.WriteLine"
+)]
+#[case::absolute_alias(
+    "using Log = global::System.Console; class C { void M() { global::System.Console.WriteLine(1); } }",
+    "global::System.Console.WriteLine",
+    "`Log` is already imported.",
+    "Log.WriteLine"
+)]
+#[case::long_full_path(
+    "class C { void M() { Microsoft.Win32.Registry.CurrentUser.OpenSubKey(); } }",
+    "Microsoft.Win32.Registry.CurrentUser.OpenSubKey",
+    "Add `using Win32 = Microsoft.Win32;`",
+    "Win32.Registry.CurrentUser.OpenSubKey"
 )]
 fn cli_should_render_first_occurrence_hint(
     #[case] source: &str,
@@ -95,9 +137,7 @@ fn cli_should_render_first_occurrence_hint(
     assert_eq!(exit, 0, "{stderr}");
     assert_eq!(stderr.matches("hint[MOD003]").count(), 1, "{stderr}");
     assert!(
-        stderr.contains(&format!(
-            "fully-qualified path `{path}` makes code harder to read."
-        )),
+        stderr.contains(&format!("path `{path}` includes the full namespace.")),
         "{stderr}"
     );
     assert!(stderr.contains(import_advice), "{stderr}");

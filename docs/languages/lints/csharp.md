@@ -22,7 +22,7 @@ against misread declarations.
 | `TEXT003` | Warning  | A doc sentence whose tag-stripped inner text exceeds 25 words.                                   |
 | `TEXT006` | Hint     | Shorter-wording suggestions for words, phrases, redundancies, and filler in doc text             |
 | `TEST001` | Warning  | A `TestMethod`/`Test`/`Fact`/`Theory` method uses a `test_*`, `case_*`, or `test` + digits name. |
-| `MOD003`  | Hint     | A fully-qualified name makes code harder to read.                                                |
+| `MOD003`  | Hint     | A path includes the full namespace.                                                              |
 
 Errors fail the run with a non-zero exit; warnings and hints do not.
 
@@ -556,9 +556,18 @@ public class Loader
 
 [text lints]: ../../text-lints.md
 
-### MOD003 - fully-qualified names reduce readability
+### MOD003 - full namespace qualification in code
 
-Shorten qualified names with imports.
+Use imports for full namespaces; partial paths and aliases are allowed
+at any depth.
+
+Recognized roots:
+
+- `global::`, including custom namespaces
+- `System` and `Microsoft`, unless shadowed or potentially relative
+
+Other unprefixed roots stay silent. Imports, type names, and namespace
+declarations do not prove a full root.
 
 Before (`example.cs`):
 
@@ -578,7 +587,7 @@ With a `config.yml` containing `{}`, the local CLI renders:
 
 ```text
 $ cargo run -p rust-llm-tidy-cli -- --config config.yml --include MOD003 example.cs
-example.cs:1: hint[MOD003]: fully-qualified path `System.Console.WriteLine` makes code harder to read.
+example.cs:1: hint[MOD003]: path `System.Console.WriteLine` includes the full namespace.
 - Add `using Console = System.Console;` at namespace or file scope.
 - Replace this path with `Console.WriteLine`. (fn `M`)
 ```
@@ -589,6 +598,10 @@ Hints suggest aliases for missing imports and reuse existing imports:
   `System.Threading.Tasks.Task.Delay` to `Task.Delay`.
 - Aliases: `using Log = System.Console;` shortens
   `System.Console.WriteLine` to `Log.WriteLine`.
+- Absolute paths: `global::Vendor.Net.Client` suggests
+  `using Client = global::Vendor.Net.Client;` without dropping `global::`.
+
+Absolute paths only reuse explicitly absolute imports to avoid relative targets.
 
 #### MOD003 exceptions
 
@@ -597,12 +610,14 @@ MOD003 skips:
 - Imports and attributes.
 - Paths whose shorter name would be ambiguous or shadowed.
 - Expression receivers not recognized as namespace or type paths.
+- Generic chains, rather than suggesting replacements that lose type arguments.
+- Unprefixed roots also declared below another namespace anywhere in the file.
 - Code guarded by `#if`, including the whole method containing the directive.
 
 Hints never fail the run or rewrite source.
 See [shared MOD003 policy] for Rust behavior.
 
-[shared MOD003 policy]: ../../lints.md#mod003---fully-qualified-paths-reduce-readability
+[shared MOD003 policy]: ../../lints.md#mod003---full-namespace-qualification-in-code
 
 ## Library access
 

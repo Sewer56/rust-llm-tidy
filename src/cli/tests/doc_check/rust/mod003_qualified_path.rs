@@ -3,6 +3,21 @@
 use crate::run_qualified_path_source;
 use rstest::rstest;
 
+/// Partial qualification stays silent at any path or body depth.
+#[rstest]
+#[case::module_import("use std::fs; fn f() { fs::create_dir_all(dir); }")]
+#[case::alias("use std::fs as io; fn f() { io::create_dir_all(dir); }")]
+#[case::deep_partial("use std::os; fn f() { os::unix::fs::symlink(a, b); }")]
+#[case::relative("fn f() { self::storage::write(); super::storage::write(); }")]
+#[case::unknown("fn f() { vendor::net::Client::new(); }")]
+#[case::nested("mod inner { use std::fs; fn f() { { fs::create_dir_all(dir); } } }")]
+fn cli_should_allow_partial_paths(#[case] source: &str) {
+    let (stderr, exit) = run_qualified_path_source(source, "rs");
+
+    assert_eq!(exit, 0, "{stderr}");
+    assert!(stderr.is_empty(), "{stderr}");
+}
+
 /// Comments and strings do not suppress real paths; repeats each receive a hint.
 #[rstest]
 #[case::comment("// #[cfg(test)]\nstd::mem::drop(1);", 1)]
@@ -42,7 +57,7 @@ fn cli_should_exempt_conditional_function(#[case] guarded: &str) {
 #[rstest]
 #[case::imports("use std::sync::Arc;")]
 #[case::attributes("#[vendor::marker] fn f() {}")]
-#[case::ambiguous("use a::X; use b::X; fn f() { a::X; }")]
+#[case::ambiguous("use crate::a::X; use crate::b::X; fn f() { crate::a::X; }")]
 fn cli_should_exempt_non_code_and_ambiguous_paths(#[case] source: &str) {
     let (stderr, exit) = run_qualified_path_source(source, "rs");
 
@@ -50,7 +65,22 @@ fn cli_should_exempt_non_code_and_ambiguous_paths(#[case] source: &str) {
     assert!(stderr.is_empty(), "{stderr}");
 }
 
-/// First occurrences render both the readability reason and actionable advice.
+/// A module-qualified replacement must not receive another hint.
+#[test]
+fn cli_should_only_flag_full_path_when_module_import_exists() {
+    let source = "use std::fs; fn f() { std::fs::create_dir_all(dir); fs::create_dir_all(dir); }";
+
+    let (stderr, exit) = run_qualified_path_source(source, "rs");
+
+    assert_eq!(exit, 0, "{stderr}");
+    assert_eq!(stderr.matches("hint[MOD003]").count(), 1, "{stderr}");
+    assert!(stderr.contains("path `std::fs::create_dir_all` includes the full namespace."));
+    assert!(
+        stderr.contains("Replace this path with `fs::create_dir_all`; `fs` is already imported.")
+    );
+}
+
+/// First occurrences identify full qualification and provide import advice.
 #[rstest]
 #[case::missing(
     "fn f() { std::sync::Arc::new(1); }",
@@ -71,9 +101,9 @@ fn cli_should_exempt_non_code_and_ambiguous_paths(#[case] source: &str) {
     "Shared::new"
 )]
 #[case::custom(
-    "fn f() { vendor::net::Client::new(); }",
-    "vendor::net::Client::new",
-    "Add `use vendor::net::Client;`",
+    "fn f() { ::vendor::net::Client::new(); }",
+    "::vendor::net::Client::new",
+    "Add `use ::vendor::net::Client;`",
     "Client::new"
 )]
 fn cli_should_render_first_occurrence_hint(
@@ -87,9 +117,7 @@ fn cli_should_render_first_occurrence_hint(
     assert_eq!(exit, 0, "{stderr}");
     assert_eq!(stderr.matches("hint[MOD003]").count(), 1, "{stderr}");
     assert!(
-        stderr.contains(&format!(
-            "fully-qualified path `{path}` makes code harder to read."
-        )),
+        stderr.contains(&format!("path `{path}` includes the full namespace.")),
         "{stderr}"
     );
     assert!(stderr.contains(import_advice), "{stderr}");

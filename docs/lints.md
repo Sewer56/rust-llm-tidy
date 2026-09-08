@@ -50,7 +50,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
 | [`MOD001`]  | Warning  | A code file exceeds `module_size.max_lines` (default 500).                        |
 | [`MOD002`]  | Error    | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
-| [`MOD003`]  | Hint     | A fully-qualified path makes code harder to read.                                 |
+| [`MOD003`]  | Hint     | A path includes the full namespace.                                               |
 
 ## Examples
 
@@ -536,9 +536,19 @@ Error: found 1 error(s)
 
 `MOD002` is error-severity, so the run exits non-zero.
 
-### MOD003 - fully-qualified paths reduce readability
+### MOD003 - full namespace qualification in code
 
-Use imports to keep code paths short.
+Use imports for full namespaces; partial paths are allowed at any depth.
+With `use std::fs;`, prefer `fs::create_dir_all` over `std::fs::create_dir_all`.
+
+Recognized roots:
+
+- `crate::` and absolute `::`
+- Unshadowed `std`, `core`, and `alloc`
+- Visible, unconditional `extern crate` names
+
+Unknown roots and glob-ambiguous crate names stay silent. Imports alone do not
+prove a crate root.
 
 Before (`example.rs`):
 
@@ -560,7 +570,7 @@ With a `config.yml` containing `{}`, the local CLI renders:
 
 ```text
 $ cargo run -p rust-llm-tidy-cli -- --config config.yml --include MOD003 example.rs
-example.rs:1: hint[MOD003]: fully-qualified path `std::sync::Arc::new` makes code harder to read.
+example.rs:1: hint[MOD003]: path `std::sync::Arc::new` includes the full namespace.
 - Add `use std::sync::Arc;` at module scope.
 - Replace this path with `Arc::new`. (fn `f`)
 ```
@@ -579,6 +589,7 @@ They never fail the run or rewrite source.
 MOD003 skips:
 
 - Imports, Rust macros, and attributes.
+- Partial paths, including `self::`, `super::`, imported modules, and aliases.
 - Paths whose shorter name would be ambiguous or shadowed.
 - C# expression receivers not recognized as namespace or type paths.
 - Code guarded by Rust `cfg`/`cfg_attr` or C# `#if`, including the whole
@@ -718,8 +729,8 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`TEST001`]: #test001---non-behavioral-test-name
 [`MOD001`]: #mod001---oversized-module
 [`MOD002`]: #mod002---function-local-use-without-cfg
-[`MOD003`]: #mod003---fully-qualified-paths-reduce-readability
-[C# MOD003]: languages/lints/csharp.md#mod003---fully-qualified-names-reduce-readability
+[`MOD003`]: #mod003---full-namespace-qualification-in-code
+[C# MOD003]: languages/lints/csharp.md#mod003---full-namespace-qualification-in-code
 [lints for C#]: ./languages/lints/csharp.md
 [text lints]: ./text-lints.md
 

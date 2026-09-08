@@ -1,4 +1,4 @@
-//! `MOD003`: shorten qualified paths to make code easier to read.
+//! `MOD003`: replace full namespace paths with imports.
 //!
 //! A qualified path spells out where a name lives, such as `std::sync::Arc`.
 //! This rule reads the file's syntax and emits hints; it does not rewrite code
@@ -47,9 +47,8 @@
 //!
 //! 1. [`check`] receives an already-parsed file. It creates a [`Walker`], visits
 //!    the syntax tree, and returns the collected diagnostics.
-//! 2. [`Walker::collect_roots`] gathers possible path beginnings from imports.
-//!    These join [`ROOT_SEGMENTS`], such as `std` and `crate`. This first pass
-//!    lets an import below a use site contribute evidence above it.
+//! 2. [`ROOT_SEGMENTS`] identifies standard crates and `crate`. Explicit
+//!    `extern crate` declarations supply other roots within their scopes.
 //! 3. [`Walker::walk`] visits syntax nodes recursively. Entering a scope pushes
 //!    a [`ScopeFrame`]; leaving a nested scope pops it.
 //! 4. [`is_chain_head`] selects the outermost node of a path. For
@@ -65,7 +64,7 @@
 //!
 //! ## What the stored data means
 //!
-//! - [`Walker`]: source bytes, known roots, active scopes, and accumulated hints
+//! - [`Walker`]: source bytes, active scopes, and accumulated hints
 //! - [`ScopeFrame`]: imports and bound names in one active scope
 //! - [`Import`]: a full imported path and its short name or alias
 //! - [`Binding`]: a declared name and the position where it starts counting
@@ -100,18 +99,17 @@
 //!
 //! Hints are withheld for conflicting short names and exempt syntax, including
 //! imports, macros, attributes, and conditionally compiled regions or functions.
+//!
+//! Partial paths, `self`/`super`, and uncertain crate roots remain exempt.
+//! Absolute `::` paths retain their root in import advice.
 
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::CODE_QUALIFIED_PATH;
 use crate::source::{ItemKind, ParseResult};
-use std::collections::HashSet;
 use tree_sitter::Node;
 
-/// First path segments that always root a fully-qualified path: the
-/// module roots and the standard crates.
-///
-/// Imported roots and lowercase crate/module names are also eligible.
-const ROOT_SEGMENTS: &[&str] = &["crate", "self", "super", "std", "core", "alloc"];
+/// Known crate roots, unless a visible declaration or import shadows them.
+const ROOT_SEGMENTS: &[&str] = &["crate", "std", "core", "alloc"];
 
 /// What an existing import advises: the imported short name
 /// and the replacement text for the whole path.
@@ -127,7 +125,6 @@ struct Suggestion<'a> {
 /// Lexical scopes and hints collected in source order.
 struct Walker<'a> {
     bytes: &'a [u8],
-    roots: HashSet<&'a str>,
     scopes: Vec<ScopeFrame<'a>>,
     diagnostics: Vec<Diagnostic>,
 }
@@ -137,6 +134,12 @@ struct Walker<'a> {
 struct ScopeFrame<'a> {
     imports: Vec<Import<'a>>,
     bindings: Vec<Binding<'a>>,
+    /// Explicit external crate names visible throughout this scope.
+    external_crates: Vec<&'a str>,
+    /// A glob may introduce a relative module with a known root's name.
+    has_glob: bool,
+    /// Module boundaries stop lexical lookup of external crate declarations.
+    module_scope: bool,
 }
 
 /// One name a lexical scope binds: a local binding (`let`,
@@ -158,30 +161,6 @@ struct Import<'a> {
 }
 
 impl<'a> Walker<'a> {
-    /// Collect the first segments of every `use` path (imports and
-    /// globs) into the root set.
-    fn collect_roots(&mut self, node: Node) {
-        if node.kind() == "use_declaration" {
-            let (imports, globs) = self.collect_use(node);
-            for import in &imports {
-                if let Some(first) = import.segments.first() {
-                    self.roots.insert(first);
-                }
-            }
-            for glob in &globs {
-                if let Some(first) = glob.first() {
-                    self.roots.insert(first);
-                }
-            }
-            return;
-        }
-        for i in 0..node.named_child_count() as u32 {
-            if let Some(child) = node.named_child(i) {
-                self.collect_roots(child);
-            }
-        }
-    }
-
     /// Walk `node`'s subtree: maintain scope frames, record
     /// qualified-path occurrences, and never descend into exempt spans.
     fn walk(&mut self, node: Node) {
@@ -211,7 +190,13 @@ impl<'a> Walker<'a> {
         }
 
         let pushed = if is_scope(node.kind()) {
-            self.scopes.push(ScopeFrame::default());
+            self.scopes.push(ScopeFrame {
+                module_scope: node.kind() == "source_file"
+                    || node
+                        .parent()
+                        .is_some_and(|parent| parent.kind() == "mod_item"),
+                ..ScopeFrame::default()
+            });
             // Items and imports are visible before their declaration.
             for i in 0..node.named_child_count() as u32 {
                 if let Some(child) = node.named_child(i) {
@@ -246,9 +231,10 @@ impl<'a> Walker<'a> {
 
     /// Add a `use` declaration's imports to the innermost scope frame.
     fn record_use(&mut self, node: Node) {
-        let (imports, _globs) = self.collect_use(node);
+        let (imports, globs) = self.collect_use(node);
         if let Some(frame) = self.scopes.last_mut() {
             frame.imports.extend(imports);
+            frame.has_glob |= !globs.is_empty();
         }
     }
 
@@ -258,8 +244,9 @@ impl<'a> Walker<'a> {
     /// short name stays reserved, so missing-import advice cannot advise
     /// a duplicate of it.
     fn record_conditional_use(&mut self, node: Node) {
-        let (imports, _globs) = self.collect_use(node);
+        let (imports, globs) = self.collect_use(node);
         if let Some(frame) = self.scopes.last_mut() {
+            frame.has_glob |= !globs.is_empty();
             frame
                 .bindings
                 .extend(imports.into_iter().map(|import| Binding {
@@ -276,6 +263,25 @@ impl<'a> Walker<'a> {
     /// frame is pushed, so `fn` names land around the function, not
     /// inside it.
     fn record_item_name(&mut self, node: Node) {
+        if node.kind() == "extern_crate_declaration" {
+            let name = node
+                .child_by_field_name("alias")
+                .or_else(|| node.child_by_field_name("name"))
+                .and_then(|name| self.leaf_text(name));
+
+            if let Some(name) = name {
+                let conditional = has_conditional_attribute(node, self.bytes);
+                if let Some(frame) = self.scopes.last_mut() {
+                    if conditional {
+                        frame.bindings.push(Binding { name, start: 0 });
+                    } else {
+                        frame.external_crates.push(name);
+                    }
+                }
+            }
+            return;
+        }
+
         let name = match node.kind() {
             "function_item" | "struct_item" | "enum_item" | "union_item" | "type_item"
             | "trait_item" | "const_item" | "static_item" | "mod_item" | "macro_definition" => node
@@ -300,6 +306,14 @@ impl<'a> Walker<'a> {
     fn record_bindings(&mut self, node: Node) {
         let mut names: Vec<(&'a str, usize)> = Vec::new();
         match node.kind() {
+            "type_parameter" => {
+                if let Some(name) = node
+                    .child_by_field_name("name")
+                    .and_then(|name| self.leaf_text(name))
+                {
+                    names.push((name, 0));
+                }
+            }
             "let_declaration" | "let_condition" | "parameter" | "for_expression" | "match_arm"
             | "closure_parameters" => {
                 if let Some(pattern) = node.child_by_field_name("pattern") {
@@ -336,30 +350,7 @@ impl<'a> Walker<'a> {
         let Some(segments) = self.scoped_segments(node) else {
             return; // not a plain `::` path: file-local text cannot decide
         };
-        if segments.len() < 2
-            || matches!(
-                segments[0],
-                "str"
-                    | "bool"
-                    | "char"
-                    | "u8"
-                    | "u16"
-                    | "u32"
-                    | "u64"
-                    | "u128"
-                    | "usize"
-                    | "i8"
-                    | "i16"
-                    | "i32"
-                    | "i64"
-                    | "i128"
-                    | "isize"
-                    | "f32"
-                    | "f64"
-            )
-            || (!self.roots.contains(segments[0])
-                && !segments[0].starts_with(|c: char| c.is_ascii_lowercase()))
-        {
+        if !self.is_full_path(&segments, node.start_byte()) {
             return;
         }
 
@@ -392,14 +383,51 @@ impl<'a> Walker<'a> {
             self.diagnostics.push(Diagnostic {
                 severity: Severity::Hint,
                 code: CODE_QUALIFIED_PATH,
-                message: format!(
-                    "fully-qualified path `{path}` makes code harder to read.\n{advice}"
-                ),
+                message: format!("path `{path}` includes the full namespace.\n{advice}"),
                 line,
                 item_kind: kind.to_string(),
                 item_name: name.map(str::to_string),
             });
         }
+    }
+
+    /// Accept explicit roots and unshadowed crate names, never import-relative paths.
+    fn is_full_path(&self, segments: &[&str], start: usize) -> bool {
+        let Some(root) = segments.first().copied() else {
+            return false;
+        };
+        if root.is_empty() {
+            return segments.len() >= 3;
+        }
+        if segments.len() < 2 || matches!(root, "self" | "super") {
+            return false;
+        }
+        if root == "crate" {
+            return true;
+        }
+
+        for frame in self.scopes.iter().rev() {
+            if frame.has_glob
+                || frame.bindings.iter().any(|binding| {
+                    binding.name.trim_start_matches("r#") == root
+                        && (binding.start == 0 || binding.start <= start)
+                })
+                || frame.imports.iter().any(|import| {
+                    import.short.trim_start_matches("r#") == root
+                        && import.segments.as_slice() != [root]
+                })
+            {
+                return false;
+            }
+            if frame.external_crates.contains(&root) {
+                return true;
+            }
+            if frame.module_scope {
+                break;
+            }
+        }
+
+        ROOT_SEGMENTS.contains(&root)
     }
 
     /// What to suggest for `segments` under the covering
@@ -442,8 +470,9 @@ impl<'a> Walker<'a> {
         let mut covering: Option<&Import<'a>> = None;
         for frame in self.scopes.iter().rev() {
             for import in &frame.imports {
-                let covers =
-                    import.segments.len() >= 2 && segments.starts_with(import.segments.as_slice());
+                let root_len = usize::from(import.segments.first() == Some(&"")) + 1;
+                let covers = import.segments.len() > root_len
+                    && segments.starts_with(import.segments.as_slice());
                 if covers
                     && covering
                         .as_ref()
@@ -460,8 +489,7 @@ impl<'a> Walker<'a> {
     ///
     /// Groups flatten to one import per member (`use a::{B, C}`
     /// imports `a::B` and `a::C`); an alias binds the alias name. Glob
-    /// prefixes return separately: they root paths but never enable
-    /// imported-name advice.
+    /// prefixes return separately to mark uncertain root resolution.
     fn collect_use(&self, node: Node) -> (Vec<Import<'a>>, Vec<Vec<&'a str>>) {
         let mut imports = Vec::new();
         let mut globs = Vec::new();
@@ -568,7 +596,7 @@ impl<'a> Walker<'a> {
         }
     }
 
-    /// The `::`-joined segments of a scoped path node, root first.
+    /// Path segments, with an empty first segment preserving a leading `::`.
     ///
     /// Returns `None` when the chain does not bottom out in plain
     /// segments (a generic or bracketed root such as
@@ -581,7 +609,10 @@ impl<'a> Walker<'a> {
             let name = current.child_by_field_name("name")?;
             segments.push(self.leaf_text(name)?);
             match current.child_by_field_name("path") {
-                None => break,
+                None => {
+                    segments.push("");
+                    break;
+                }
                 Some(path) => match path.kind() {
                     "identifier" | "type_identifier" | "crate" | "self" | "super" => {
                         segments.push(self.leaf_text(path)?);
@@ -670,14 +701,10 @@ impl<'a> Walker<'a> {
 pub(super) fn check(parsed: &ParseResult) -> Vec<Diagnostic> {
     let mut walker = Walker {
         bytes: parsed.source.as_bytes(),
-        roots: ROOT_SEGMENTS.iter().copied().collect(),
         scopes: Vec::new(),
         diagnostics: Vec::new(),
     };
     let root = parsed.syntax_tree().root_node();
-    // Root resolution needs every `use` path in the file up front: an
-    // import anywhere in the file roots paths above it.
-    walker.collect_roots(root);
     walker.walk(root);
     walker.diagnostics
 }
@@ -816,38 +843,129 @@ mod tests {
     #[rstest]
     #[case::missing(
         "fn f() { std::sync::Arc::new(1); }",
+        "std::sync::Arc::new",
         "- Add `use std::sync::Arc;` at module scope.\n- Replace this path with `Arc::new`."
     )]
     #[case::imported(
         "use std::sync::Arc; fn f() { std::sync::Arc::new(1); }",
+        "std::sync::Arc::new",
         "- Replace this path with `Arc::new`; `Arc` is already imported."
     )]
     #[case::aliased(
         "use std::sync::Arc as Shared; fn f() { std::sync::Arc::new(1); }",
+        "std::sync::Arc::new",
         "- Replace this path with `Shared::new`; `Shared` is already imported."
     )]
-    fn check_should_explain_first_occurrence(#[case] source: &str, #[case] advice: &str) {
+    #[case::absolute(
+        "fn f() { ::vendor::net::Client::new(); }",
+        "::vendor::net::Client::new",
+        "- Add `use ::vendor::net::Client;` at module scope.\n- Replace this path with `Client::new`."
+    )]
+    #[case::absolute_imported(
+        "use ::std::sync::Arc; fn f() { ::std::sync::Arc::new(1); }",
+        "::std::sync::Arc::new",
+        "- Replace this path with `Arc::new`; `Arc` is already imported."
+    )]
+    #[case::absolute_crate_import(
+        "use ::std; fn f() { ::std::sync::Arc::new(1); }",
+        "::std::sync::Arc::new",
+        "- Add `use ::std::sync::Arc;` at module scope.\n- Replace this path with `Arc::new`."
+    )]
+    #[case::mixed_full_and_partial(
+        "use std::fs; fn f() { std::fs::create_dir_all(\"a\"); fs::create_dir_all(\"b\"); }",
+        "std::fs::create_dir_all",
+        "- Replace this path with `fs::create_dir_all`; `fs` is already imported."
+    )]
+    fn check_should_explain_first_occurrence(
+        #[case] source: &str,
+        #[case] path: &str,
+        #[case] advice: &str,
+    ) {
         let diagnostics = lint(source);
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].severity, Severity::Hint);
         assert_eq!(
             diagnostics[0].message,
-            format!(
-                "fully-qualified path `std::sync::Arc::new` makes code harder to read.\n{advice}"
-            )
+            format!("path `{path}` includes the full namespace.\n{advice}")
         );
     }
 
-    /// Custom roots need no existing import; type-relative paths remain exempt.
+    /// Only explicit roots receive advice; partial and uncertain paths stay unchanged.
     #[rstest]
-    #[case::custom_type("fn f() { vendor::net::Client::new(); }", 1)]
-    #[case::custom_function("fn f() { vendor::connect(); }", 1)]
+    #[case::imported_module("use std::fs; fn f() { fs::create_dir_all(\"a\"); }", 0)]
+    #[case::imported_alias("use std::fs as io; fn f() { io::create_dir_all(\"a\"); }", 0)]
+    #[case::deep_partial("use std::os; fn f() { os::unix::fs::symlink(\"a\", \"b\"); }", 0)]
+    #[case::relative_self("fn f() { self::net::connect(); }", 0)]
+    #[case::relative_super("mod m { fn f() { super::net::connect(); } }", 0)]
+    #[case::uncertain_type("fn f() { vendor::net::Client::new(); }", 0)]
+    #[case::uncertain_function("fn f() { vendor::connect(); }", 0)]
+    #[case::uncertain_import("use vendor::net::Client; fn f() { vendor::net::Client::new(); }", 0)]
+    #[case::relative_import("use self::vendor; fn f() { vendor::net::Client::new(); }", 0)]
     #[case::associated("fn f() { Client::new(); }", 0)]
-    #[case::shadowed("struct Client; fn f() { vendor::net::Client::new(); }", 0)]
-    #[case::later_shadow("fn f() { vendor::net::Client::new(); } struct Client;", 0)]
+    #[case::shadowed("struct Client; fn f() { ::vendor::net::Client::new(); }", 0)]
+    #[case::later_shadow("fn f() { ::vendor::net::Client::new(); } struct Client;", 0)]
     #[case::primitive("fn f() { str::to_string(\"a\"); }", 0)]
-    fn check_should_distinguish_custom_roots(#[case] source: &str, #[case] expected: usize) {
+    #[case::standard_std("fn f() { std::fs::create_dir_all(\"a\"); }", 1)]
+    #[case::standard_core("fn f() { core::mem::drop(1); }", 1)]
+    #[case::standard_alloc("fn f() { alloc::vec::Vec::new(); }", 1)]
+    #[case::crate_root("fn f() { crate::net::connect(); }", 1)]
+    #[case::absolute_std("fn f() { ::std::fs::create_dir_all(\"a\"); }", 1)]
+    #[case::absolute_vendor("fn f() { ::vendor::net::Client::new(); }", 1)]
+    #[case::declared_extern("extern crate vendor; fn f() { vendor::net::Client::new(); }", 1)]
+    #[case::later_extern("fn f() { vendor::connect(); } extern crate vendor;", 1)]
+    #[case::extern_alias("extern crate vendor as net; fn f() { net::Client::new(); }", 1)]
+    #[case::extern_original_after_alias(
+        "extern crate vendor as net; fn f() { vendor::Client::new(); }",
+        0
+    )]
+    #[case::local_std("mod std {} fn f() { std::fs::create_dir_all(\"a\"); }", 0)]
+    #[case::aliased_std(
+        "use crate::local as std; fn f() { std::fs::create_dir_all(\"a\"); }",
+        0
+    )]
+    #[case::raw_local_std("mod r#std {} fn f() { std::fs::create_dir_all(\"a\"); }", 0)]
+    #[case::raw_aliased_std(
+        "use crate::local as r#std; fn f() { std::fs::create_dir_all(\"a\"); }",
+        0
+    )]
+    #[case::absolute_shadowed_std("mod std {} fn f() { ::std::mem::drop(1); }", 1)]
+    #[case::nested_module("mod m { fn f() { std::mem::drop(1); } }", 1)]
+    #[case::nested_block("fn f() { { std::mem::drop(1); } }", 1)]
+    #[case::nested_module_extern("mod m { extern crate vendor; fn f() { vendor::connect(); } }", 1)]
+    #[case::nested_block_extern("fn f() { { extern crate vendor; vendor::connect(); } }", 1)]
+    #[case::nested_module_shadow("mod m { mod std {} fn f() { std::mem::drop(1); } }", 0)]
+    #[case::nested_block_shadow("fn f() { { use crate::local as std; std::mem::drop(1); } }", 0)]
+    #[case::sibling_module_extern(
+        "mod m { extern crate vendor; } fn f() { vendor::connect(); }",
+        0
+    )]
+    #[case::sibling_block_extern("fn f() { { extern crate vendor; } vendor::connect(); }", 0)]
+    #[case::sibling_function_extern(
+        "fn f() { extern crate vendor; } fn g() { vendor::connect(); }",
+        0
+    )]
+    #[case::glob_uncertain_std("use crate::local::*; fn f() { std::mem::drop(1); }", 0)]
+    #[case::glob_absolute_std("use crate::local::*; fn f() { ::std::mem::drop(1); }", 1)]
+    #[case::conditional_glob("#[cfg(unix)] use crate::local::*; fn f() { std::mem::drop(1); }", 0)]
+    #[case::conditional_extern(
+        "#[cfg(unix)] extern crate vendor; fn f() { vendor::connect(); }",
+        0
+    )]
+    #[case::conditional_extern_alias(
+        "#[cfg(unix)] extern crate vendor as std; fn f() { std::mem::drop(1); }",
+        0
+    )]
+    #[case::type_parameter("fn f<std>() { std::mem::drop(1); }", 0)]
+    #[case::raw_type_parameter("fn f<r#std>() { std::mem::drop(1); }", 0)]
+    #[case::nested_module_does_not_inherit_extern(
+        "extern crate vendor; mod inner { fn f() { vendor::connect(); } }",
+        0
+    )]
+    fn check_should_distinguish_full_and_partial_paths(
+        #[case] source: &str,
+        #[case] expected: usize,
+    ) {
         let diagnostics = lint(source);
 
         assert_eq!(diagnostics.len(), expected);
@@ -960,13 +1078,13 @@ mod tests {
     }
 
     // `self` inside a group binds the group's prefix path: `use
-    // a::b::{self}` imports `a::b` as `b`.
+    // crate::a::b::{self}` imports `crate::a::b` as `b`.
     #[test]
     fn self_in_a_group_binds_the_group_prefix() {
         let diags = lint(
-            "use a::b::{self};\n\
+            "use crate::a::b::{self};\n\
              fn f() {\n\
-             let _ = a::b;\n\
+             let _ = crate::a::b;\n\
              }\n",
         );
 
@@ -978,9 +1096,9 @@ mod tests {
     #[test]
     fn fires_for_each_member_of_a_grouped_import() {
         let diags = lint(
-            "use a::b::{C, D};\n\
+            "use crate::a::b::{C, D};\n\
              fn f() {\n\
-             let _ = (a::b::C, a::b::D);\n\
+             let _ = (crate::a::b::C, crate::a::b::D);\n\
              }\n",
         );
 
@@ -994,14 +1112,14 @@ mod tests {
     #[test]
     fn fires_with_the_alias_when_import_renames() {
         let diags = lint(
-            "use a::b::E as F;\n\
+            "use crate::a::b::E as F;\n\
              fn f() {\n\
-             let _ = a::b::E;\n\
+             let _ = crate::a::b::E;\n\
              }\n",
         );
 
         assert_eq!(diags.len(), 1);
-        assert!(diags[0].message.contains("`a::b::E`"));
+        assert!(diags[0].message.contains("`crate::a::b::E`"));
         assert!(diags[0].message.contains("`F` is already imported"));
     }
 
@@ -1009,10 +1127,10 @@ mod tests {
     #[test]
     fn fires_in_nested_modules_under_a_top_level_import() {
         let diags = lint(
-            "use a::b::C;\n\
+            "use crate::a::b::C;\n\
              mod tests {\n\
              fn t() {\n\
-             let _ = a::b::C;\n\
+             let _ = crate::a::b::C;\n\
              }\n\
              }\n",
         );
@@ -1026,15 +1144,15 @@ mod tests {
     fn check_should_suggest_import_when_existing_import_is_out_of_scope() {
         let diags = lint(
             "mod inner {\n\
-             pub use a::b::C;\n\
+             pub use crate::a::b::C;\n\
              }\n\
              fn f() {\n\
-             a::b::C;\n\
+             crate::a::b::C;\n\
              }\n",
         );
 
         assert_eq!(diags.len(), 1);
-        assert!(diags[0].message.contains("Add `use a::b::C;`"));
+        assert!(diags[0].message.contains("Add `use crate::a::b::C;`"));
     }
 
     // A `use` after the occurrence still selects imported-name advice:
@@ -1154,8 +1272,8 @@ mod tests {
     fn use_declaration_text_is_never_flagged() {
         let diags = lint(
             "use std::collections::HashMap;\n\
-             use a::b::{C, D};\n\
-             use a::b::E as F;\n",
+             use crate::a::b::{C, D};\n\
+             use crate::a::b::E as F;\n",
         );
 
         assert!(diags.is_empty());
@@ -1165,13 +1283,13 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_a_local_binding() {
         let diags = lint(
-            "use a::b::C;\n\
+            "use crate::a::b::C;\n\
              fn f(C: u8) {\n\
-             let _ = a::b::C;\n\
+             let _ = crate::a::b::C;\n\
              }\n\
              fn g() {\n\
              let C = 1;\n\
-             let _ = a::b::C;\n\
+             let _ = crate::a::b::C;\n\
              }\n",
         );
 
@@ -1182,10 +1300,10 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_a_same_named_item() {
         let diags = lint(
-            "use a::b::C;\n\
+            "use crate::a::b::C;\n\
              struct C;\n\
              fn f() {\n\
-             let _ = a::b::C;\n\
+             let _ = crate::a::b::C;\n\
              }\n",
         );
 
@@ -1230,11 +1348,11 @@ mod tests {
     #[test]
     fn fires_before_and_suppresses_after_a_shadowing_let() {
         let diags = lint(
-            "use a::b::C;\n\
+            "use crate::a::b::C;\n\
              fn g() {\n\
-             let _ = a::b::C;\n\
+             let _ = crate::a::b::C;\n\
              let C = 1;\n\
-             let _ = a::b::C;\n\
+             let _ = crate::a::b::C;\n\
              }\n",
         );
 
@@ -1248,10 +1366,10 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_an_if_let_pattern() {
         let diags = lint(
-            "use a::b::C;\n\
+            "use crate::a::b::C;\n\
              fn g() {\n\
              if let C = 1 {}\n\
-             let _ = a::b::C;\n\
+             let _ = crate::a::b::C;\n\
              }\n",
         );
 
@@ -1262,10 +1380,10 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_a_destructuring_let() {
         let diags = lint(
-            "use a::b::C;\n\
+            "use crate::a::b::C;\n\
              fn g() {\n\
              let (d, C) = (1, 2);\n\
-             let _ = a::b::C;\n\
+             let _ = crate::a::b::C;\n\
              }\n",
         );
 
@@ -1276,10 +1394,10 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_a_loop_pattern() {
         let diags = lint(
-            "use a::b::C;\n\
+            "use crate::a::b::C;\n\
              fn g() {\n\
              for C in 0..1 {\n\
-             let _ = a::b::C;\n\
+             let _ = crate::a::b::C;\n\
              }\n\
              }\n",
         );
@@ -1291,9 +1409,9 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_a_closure_parameter() {
         let diags = lint(
-            "use a::b::C;\n\
+            "use crate::a::b::C;\n\
              fn g() {\n\
-             let h = |C| a::b::C;\n\
+             let h = |C| crate::a::b::C;\n\
              }\n",
         );
 
@@ -1304,10 +1422,10 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_shadowed_by_a_match_arm_pattern() {
         let diags = lint(
-            "use a::b::C;\n\
+            "use crate::a::b::C;\n\
              fn g() {\n\
              match 1 {\n\
-             C => a::b::C,\n\
+             C => crate::a::b::C,\n\
              _ => 2,\n\
              };\n\
              }\n",
@@ -1351,12 +1469,12 @@ mod tests {
     #[test]
     fn silent_when_short_name_is_ambiguous_across_imports() {
         let diags = lint(
-            "use a::X;\n\
-             use b::X;\n\
+            "use crate::a::X;\n\
+             use crate::b::X;\n\
              fn f() {\n\
-             let _ = a::X;\n\
-             let _ = a::X;\n\
-             let _ = a::X;\n\
+             let _ = crate::a::X;\n\
+             let _ = crate::a::X;\n\
+             let _ = crate::a::X;\n\
              }\n",
         );
 
@@ -1365,18 +1483,18 @@ mod tests {
 
     // ── Root resolution and globs ──
 
-    // Glob imports provide root evidence, not a known imported name.
+    // An absolute root remains certain, but a glob supplies no known short name.
     #[test]
     fn check_should_suggest_explicit_import_when_only_glob_exists() {
         let diags = lint(
-            "use a::b::*;\n\
+            "use ::a::b::*;\n\
              fn f() {\n\
-             let _ = a::b::C;\n\
+             let _ = ::a::b::C;\n\
              }\n",
         );
 
         assert_eq!(diags.len(), 1);
-        assert!(diags[0].message.contains("Add `use a::b::C;`"));
+        assert!(diags[0].message.contains("Add `use ::a::b::C;`"));
     }
 
     // Hints follow occurrence order across different paths.
