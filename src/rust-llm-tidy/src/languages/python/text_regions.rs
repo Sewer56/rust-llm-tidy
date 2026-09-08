@@ -58,9 +58,10 @@ pub(crate) fn doc_regions(parsed: &ParseResult) -> Vec<DocRegion> {
 /// Whether the module of `parsed` has top-level content but no module
 /// docstring.
 ///
-/// The module docstring is the first non-comment statement, found by
-/// the same [`docstring_region`] logic the region walk applies to
-/// module bodies. Leading comments never displace it.
+/// The module docstring is any string literal (except a bytes literal)
+/// as the first non-comment statement, judged by
+/// [`first_statement_is_docstring`]. Leading comments never displace
+/// it.
 ///
 /// Comment-only and blank files carry no module content to document,
 /// so they never report. Error trees stay silent, matching
@@ -71,7 +72,7 @@ pub(crate) fn module_doc_missing(parsed: &ParseResult) -> bool {
         return false;
     }
 
-    first_statement(root).is_some() && docstring_region(root, &parsed.source).is_none()
+    first_statement(root).is_some() && !first_statement_is_docstring(root, &parsed.source)
 }
 
 /// Parses `source` with the pinned Python grammar into the shared item
@@ -115,6 +116,38 @@ pub(crate) fn parse(source: &str) -> anyhow::Result<ParseResult> {
 /// version).
 pub(crate) fn language() -> anyhow::Result<tree_sitter::Language> {
     Ok(tree_sitter_python::LANGUAGE.into())
+}
+
+/// Whether `body`'s first statement is a string literal that can serve
+/// as a docstring: any string, except a bytes literal.
+///
+/// Unlike [`docstring_region`], this is a semantic predicate only: it
+/// accepts single-quoted one-liners and never extracts text.
+fn first_statement_is_docstring(body: tree_sitter::Node<'_>, source: &str) -> bool {
+    let Some(first) = first_statement(body) else {
+        return false;
+    };
+    if first.kind() != "expression_statement" {
+        return false;
+    }
+    let mut stmt_cursor = first.walk();
+    let Some(string) = first.named_children(&mut stmt_cursor).next() else {
+        return false;
+    };
+    if string.kind() != "string" {
+        return false;
+    }
+    // A `b`/`B` in the prefix (before the quote) marks a bytes literal,
+    // which is not a docstring.
+    let Some(open) = string.child(0) else {
+        return false;
+    };
+    if open.kind() != "string_start" {
+        return false;
+    }
+    let prefix = &source[open.start_byte()..open.end_byte()];
+    let quote = prefix.find(['"', '\'']).unwrap_or(prefix.len());
+    !prefix[..quote].contains(['b', 'B'])
 }
 
 /// Walks `node`'s subtree in document order, appending docstring and
@@ -546,6 +579,32 @@ mod tests {
             assert!(
                 codes(&checks(source), CODE_MISSING_MODULE_DOCS).is_empty(),
                 "content-less files never report: {source:?}"
+            );
+        }
+    }
+
+    // An ordinary single- or double-quoted string as the first
+    // statement is a module docstring; a bytes literal is not.
+    #[test]
+    fn doc009_accepts_any_first_string_but_rejects_bytes() {
+        for source in [
+            "'Loads records.'\nVALUE = 1\n",
+            "\"Loads records.\"\nVALUE = 1\n",
+        ] {
+            assert!(
+                codes(&checks(source), CODE_MISSING_MODULE_DOCS).is_empty(),
+                "an ordinary string docstring satisfies DOC009: {source:?}"
+            );
+        }
+
+        for source in [
+            "b'Loads records.'\nVALUE = 1\n",
+            "B\"Loads records.\"\nVALUE = 1\n",
+        ] {
+            assert_eq!(
+                codes(&checks(source), CODE_MISSING_MODULE_DOCS).len(),
+                1,
+                "a bytes literal is not a docstring: {source:?}"
             );
         }
     }
