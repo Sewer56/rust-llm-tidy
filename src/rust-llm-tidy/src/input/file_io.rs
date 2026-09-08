@@ -1,5 +1,6 @@
-// Vendored from rust-reorder (MIT).
-// Atomic file write via tempfile + rename.
+//! Atomic file write via tempfile + rename.
+//!
+//! Vendored from rust-reorder (MIT).
 
 use anyhow::{Context, Result};
 use std::fs;

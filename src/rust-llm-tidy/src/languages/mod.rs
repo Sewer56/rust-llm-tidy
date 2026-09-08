@@ -25,7 +25,7 @@ static BACKED_EXTENSIONS: &[(&str, &dyn LanguageBackend)] = &[
 ];
 /// The C# backend - the tree-sitter-c-sharp parse setup.
 static CSHARP: CSharpBackend = CSharpBackend;
-/// The Python backend - the tree-sitter-python parse setup, doc regions
+/// The Python backend - the tree-sitter-python parse setup, `lints`
 /// only.
 static PYTHON: PythonBackend = PythonBackend;
 /// The Rust backend - the parser the pipeline has always used for `.rs`.
@@ -152,15 +152,17 @@ mod tests {
         assert_eq!(backend.ast_ops(), ["reorder", "lints"].as_slice());
     }
 
-    /// `py`/`pyi` resolve to the Python backend, which carries no AST
-    /// ops: its parse serves the docstring text checks only.
+    /// Python extensions resolve to a backend supporting only `lints`.
     #[test]
-    fn py_resolves_with_no_ast_ops() {
+    fn py_resolves_with_lints_only() {
         for ext in ["py", "pyi", "PY"] {
             let backend = backend_for(ext).expect("py must resolve to a backend");
 
-            let no_ops: [&str; 0] = [];
-            assert_eq!(backend.ast_ops(), no_ops, ".{ext}: no AST ops");
+            assert_eq!(
+                backend.ast_ops(),
+                ["lints"].as_slice(),
+                ".{ext}: lints only"
+            );
         }
     }
 

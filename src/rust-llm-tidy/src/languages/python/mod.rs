@@ -1,20 +1,22 @@
 //! The Python backend: the tree-sitter-python parse setup for `py` and
 //! `pyi` sources.
 //!
-//! Python registers no AST ops - it parses for the TEXT* text
-//! checks only. The checks source from [`text_regions`]'
-//! docstring and `#`-comment walk of the same parse. Reorder
-//! declines every source.
+//! Python supports linting through [`text_regions`], which checks module
+//! docstrings and produces text regions from the same parse.
+//! Reorder declines every source.
 //!
 //! [`text_regions`]: text_regions
 
 use crate::languages::LanguageBackend;
+use crate::reporting::{Diagnostic, Severity};
+use crate::rules::lint::CODE_MISSING_MODULE_DOCS;
 use crate::rules::transform::reorder::Permutation;
 use crate::source::ParseResult;
 
 pub(crate) mod text_regions;
 
-/// The `py`/`pyi` backend - doc regions only, no AST ops.
+/// The `py`/`pyi` backend - the tree-sitter-python parse setup, `lints`
+/// only.
 pub(crate) struct PythonBackend;
 
 impl LanguageBackend for PythonBackend {
@@ -27,11 +29,26 @@ impl LanguageBackend for PythonBackend {
     }
 
     fn ast_ops(&self) -> &'static [&'static str] {
-        &[]
+        &["lints"]
     }
 
-    fn lint(&self, parsed: &ParseResult) -> Vec<crate::reporting::Diagnostic> {
-        crate::rules::lint::run_region_checks(text_regions::doc_regions(parsed))
+    fn lint(&self, parsed: &ParseResult) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+        if text_regions::module_doc_missing(parsed) {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Error,
+                code: CODE_MISSING_MODULE_DOCS,
+                message: "module file is missing a module docstring".to_string(),
+                line: 1,
+                item_kind: "file".to_string(),
+                item_name: None,
+            });
+        }
+
+        diagnostics.extend(crate::rules::lint::run_region_checks(
+            text_regions::doc_regions(parsed),
+        ));
+        diagnostics
     }
 
     fn reorder_permutation(&self, _parsed: &ParseResult) -> anyhow::Result<Option<Permutation>> {

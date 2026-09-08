@@ -18,6 +18,7 @@ Which codes run depends on the language:
 
 - Rust: every code, read from a tree-sitter parse.
 - C#: checks XML documentation and test names ([lints for C#]).
+- Python: checks module docstrings ([`DOC009`]).
 
 Text lints for other languages use these sources ([text lints]):
 
@@ -37,6 +38,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`DOC005`]  | Warning  | A `# Arguments` section does not mention every parameter name.                    |
 | [`DOC006`]  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).                   |
 | [`DOC008`]  | Error    | An `# Errors` section lists enum variants out of alphabetical order.              |
+| [`DOC009`]  | Error    | A module file has no top-level module docs (`//!` in Rust, docstring in Python).  |
 | [`TEXT001`] | Error    | A doc paragraph over 240 chars of full text (bullets warn).                       |
 | [`TEXT002`] | Warning  | A doc line over 80 chars of full text (code blocks, tables, link defs exempt).    |
 | [`TEXT003`] | Warning  | A doc sentence over 25 words (words join across wrapped lines).                   |
@@ -348,6 +350,39 @@ Error: found 1 error(s)
 
 `DOC008` is error-severity, so the run exits non-zero.
 
+### DOC009 - module file without top-level docs
+
+A module file with top-level content needs module docs, reported once at
+line 1.
+
+- Rust: a `//!` line before the first top-level item; `///` on the
+  first item does not count.
+- Python: a module docstring before the first statement.
+- Empty modules never fire; there is no module purpose to document.
+
+Before:
+
+```rust
+pub fn load() {}
+```
+
+After:
+
+```rust
+//! Loads the configured data.
+pub fn load() {}
+```
+
+#### DOC009 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include DOC009 src/lib.rs
+src/lib.rs:1: error[DOC009]: module file is missing `//!` module docs (file)
+Error: found 1 error(s)
+```
+
+`DOC009` is error-severity, so the run exits non-zero.
+
 ### TEST001 - non-behavioral test name
 
 Test-attributed functions should describe behavior, not use `test`, `test_*`,
@@ -547,6 +582,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`DOC005`]: #doc005---undocumented-parameter
 [`DOC006`]: #doc006---placeholder-text
 [`DOC008`]: #doc008---error-variants-out-of-alphabetical-order
+[`DOC009`]: #doc009---module-file-without-top-level-docs
 [`TEXT001`]: ./text-lints.md#text001---oversized-paragraph
 [`TEXT002`]: ./text-lints.md#text002---long-line
 [`TEXT003`]: ./text-lints.md#text003---long-sentence

@@ -7,6 +7,10 @@
 /// to the code; they are static so a lookup allocates nothing.
 pub(crate) const CODE_TITLES: &[(&str, &str)] = &[
     (CODE_MISSING_DOCS, "missing documentation"),
+    (
+        CODE_MISSING_MODULE_DOCS,
+        "module file without top-level docs",
+    ),
     (CODE_MISSING_ERRORS, "missing `# Errors` section"),
     (CODE_VAGUE_ERRORS, "vague `# Errors` section"),
     (
@@ -35,6 +39,7 @@ pub const KNOWN_FIX_OPS: &[&str] = &["tables", "fences", "links", "reorder", "vi
 /// `KNOWN_FIX_OPS` in the library's `config` module.
 pub const LINT_CODES: &[&str] = &[
     CODE_MISSING_DOCS,
+    CODE_MISSING_MODULE_DOCS,
     CODE_MISSING_ERRORS,
     CODE_VAGUE_ERRORS,
     CODE_ERROR_VARIANT_ORDER,
@@ -68,6 +73,8 @@ pub const CODE_MISSING_ARGUMENTS: &str = "DOC004";
 pub const CODE_MISSING_DOCS: &str = "DOC001";
 /// Rule code for a missing `# Errors` section.
 pub const CODE_MISSING_ERRORS: &str = "DOC002";
+/// Rule code for a module file without top-level docs.
+pub const CODE_MISSING_MODULE_DOCS: &str = "DOC009";
 /// Rule code for a source file over its language's line budget.
 pub const CODE_MODULE_SIZE: &str = "MOD001";
 /// Rule code for an over-limit paragraph of stripped doc text.
@@ -98,16 +105,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lint_codes_lists_all_sixteen_codes() {
+    fn lint_codes_lists_all_seventeen_codes() {
         // `LINT_CODES` is the source of truth for CLI rule validation. It must
         // enumerate every code produced by the backends and the text rules.
         assert_eq!(
             LINT_CODES.len(),
-            16,
-            "LINT_CODES must list exactly sixteen codes: {LINT_CODES:?}"
+            17,
+            "LINT_CODES must list exactly seventeen codes: {LINT_CODES:?}"
         );
         for code in [
             CODE_MISSING_DOCS,
+            CODE_MISSING_MODULE_DOCS,
             CODE_MISSING_ERRORS,
             CODE_VAGUE_ERRORS,
             CODE_ERROR_VARIANT_ORDER,

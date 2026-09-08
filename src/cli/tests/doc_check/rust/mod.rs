@@ -13,6 +13,7 @@
 //! - `doc005_undocumented_param`: DOC005 omitted parameter names
 //! - `doc006_placeholder`: DOC006 doc-comment placeholder markers
 //! - `doc008_error_variant_order`: DOC008 out-of-order error variants
+//! - `doc009_missing_module_docs`: missing module documentation
 //! - `mod001_module_size`: MOD001 rust-specific counting and selection
 //! - `test001_test_naming`: TEST001 discouraged test-function names
 //! - `text001_paragraph_size`: TEXT001 over-budget doc paragraphs
@@ -30,6 +31,7 @@ mod doc004_missing_arguments;
 mod doc005_undocumented_param;
 mod doc006_placeholder;
 mod doc008_error_variant_order;
+mod doc009_missing_module_docs;
 mod mod001_module_size;
 mod test001_test_naming;
 mod text001_paragraph_size;

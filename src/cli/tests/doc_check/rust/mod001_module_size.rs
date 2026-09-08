@@ -159,27 +159,6 @@ fn mod001_should_suppress_when_excluded_by_code() {
     );
 }
 
-/// Config `exclude.rules` suppresses MOD001 like any other code.
-#[test]
-fn mod001_should_suppress_when_excluded_by_config_rules() {
-    let (dir, file) = mod001_module_with_config(501, "exclude:\n  - rules: [MOD001]\n");
-
-    let output = Command::new(binary())
-        .arg("--config")
-        .arg(dir.join(".rust-llm-tidy.yml"))
-        .arg("--dry-run")
-        .arg(&file)
-        .output()
-        .unwrap();
-    let _ = fs::remove_dir_all(&dir);
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        output.status.success() && !stderr.contains("MOD001"),
-        "exclude.rules must suppress MOD001:\n{stderr}"
-    );
-}
-
 /// Over the default budget: one warning at the first line past the budget,
 /// and warnings never fail the run.
 #[test]

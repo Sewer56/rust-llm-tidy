@@ -231,8 +231,7 @@ const NON_CODE_COMMENTS: Profile = Profile {
     ..COMMENT_LINTS
 };
 /// Python: `#` comments for the fix passes plus the tree-sitter-python
-/// backend's docstring-dialect text checks (docstrings and `#`
-/// comments); no AST ops.
+/// backend's `lints` op; no `reorder`/`vis`.
 const PYTHON: Profile = Profile {
     ops: &["tables", "fences", "lints"],
     prefixes: &["#"],
@@ -671,10 +670,6 @@ mod tests {
     /// `lints` allows both the parser-driven codes and the text checks, so
     /// a backend implementing parser-driven codes implies `lints` is
     /// allowed: never dead backend work.
-    ///
-    /// `lints` without parser-driven codes is legitimate exactly for the
-    /// doc-regions-only backends (`py`/`pyi`), whose `lints` op is the
-    /// text tier alone.
     #[test]
     fn backend_column_matches_the_backend_registry() {
         for (ext, profile) in LANG_ENTRIES {

@@ -1,6 +1,6 @@
 //! C# lint tests: the XML doc dialect over the same lint codes as Rust.
 //!
-//! The lint tests run the built CLI binary with `--include lints` on a
+//! The lint tests run the built CLI binary with selected lint codes on a
 //! fixture in `tests/fixtures/doc/csharp/`. The JSON record tests live
 //! in `crate::json_output`; the text-budget tests in
 //! `crate::comment_lexicons`.
@@ -12,6 +12,7 @@
 //! - `doc004_missing_param_tags`: DOC004 missing `<param>` tags
 //! - `doc005_undocumented_param`: DOC005 omitted parameter names
 //! - `doc006_placeholder`: DOC006 doc-comment placeholder markers
+//! - `doc009_missing_module_docs`: module-header rule silence
 //! - `test001_test_naming`: TEST001 discouraged test-method names
 
 use crate::{manifest_dir, run_command};
@@ -22,6 +23,7 @@ mod doc003_vague_exception;
 mod doc004_missing_param_tags;
 mod doc005_undocumented_param;
 mod doc006_placeholder;
+mod doc009_missing_module_docs;
 mod test001_test_naming;
 
 /// Run `rust-llm-tidy --include lints` on a C# fixture and return its

@@ -1,6 +1,8 @@
 //! The Python doc-region producer: docstring and `#`-comment regions for
 //! the TEXT* text checks of `py` and `pyi` sources.
 //!
+//! [`module_doc_missing`] shares the walk's module-docstring detection.
+//!
 //! `doc_regions` walks one tree-sitter-python parse in document order
 //! and emits two kinds of [`DocRegion`] for the lint module's measuring
 //! core:
@@ -22,6 +24,7 @@
 //! string in a broken tree would risk measuring string content as
 //! prose.
 //!
+//! A half-read module could equally report its docstring as missing.
 //! Invalid sources stay silent instead of guessed.
 //!
 //! [`DocRegion`]: crate::text::measurement::DocRegion
@@ -52,12 +55,31 @@ pub(crate) fn doc_regions(parsed: &ParseResult) -> Vec<DocRegion> {
     regions
 }
 
+/// Whether the module of `parsed` has top-level content but no module
+/// docstring.
+///
+/// The module docstring is the first non-comment statement, found by
+/// the same [`docstring_region`] logic the region walk applies to
+/// module bodies. Leading comments never displace it.
+///
+/// Comment-only and blank files carry no module content to document,
+/// so they never report. Error trees stay silent, matching
+/// [`doc_regions`]'s fail-closed rule.
+pub(crate) fn module_doc_missing(parsed: &ParseResult) -> bool {
+    let root = parsed.syntax_tree().root_node();
+    if root.has_error() {
+        return false;
+    }
+
+    first_statement(root).is_some() && docstring_region(root, &parsed.source).is_none()
+}
+
 /// Parses `source` with the pinned Python grammar into the shared item
 /// model.
 ///
-/// Python implements no AST ops, so the result carries zero items. The
-/// parse exists for [text_checks]' doc-region walk, which reads the tree
-/// and the source through it.
+/// The result carries zero items: the parse exists for [text_checks]'
+/// doc-region walk and [`module_doc_missing`]'s module-docstring check,
+/// which read the tree and the source through it.
 ///
 /// # Arguments
 ///
@@ -185,17 +207,11 @@ fn comment_region(
 /// The docstring region of `body`, or `None` when its first statement is
 /// not a triple-quoted string.
 ///
-/// Comments are not statements, so leading comment rows never displace
-/// the first statement.
-///
 /// The region's lines are the string's content between the quote
 /// delimiters, numbered from the original file lines and dedented by the
 /// docstring's common continuation indent.
 fn docstring_region(body: tree_sitter::Node<'_>, source: &str) -> Option<DocRegion> {
-    let mut body_cursor = body.walk();
-    let first = body
-        .named_children(&mut body_cursor)
-        .find(|child| child.kind() != "comment")?;
+    let first = first_statement(body)?;
     if first.kind() != "expression_statement" {
         return None;
     }
@@ -275,13 +291,23 @@ fn close_run(run: &mut Option<DocRegion>, regions: &mut Vec<DocRegion>) {
     }
 }
 
+/// The body's first non-comment named child: its first statement.
+///
+/// Comments are not statements, so leading comment rows never displace
+/// the first statement.
+fn first_statement(body: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
+    let mut cursor = body.walk();
+    body.named_children(&mut cursor)
+        .find(|child| child.kind() != "comment")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::reporting::Severity;
-    use crate::rules::registry::{CODE_LINE_LENGTH, CODE_PARAGRAPH_SIZE};
+    use crate::rules::registry::{CODE_LINE_LENGTH, CODE_MISSING_MODULE_DOCS, CODE_PARAGRAPH_SIZE};
 
-    /// Parses `source` and runs its text checks.
+    /// Parses `source` and runs the backend's lints.
     fn checks(source: &str) -> Vec<Diagnostic> {
         let backend = crate::languages::backend_for("py").unwrap();
         backend.lint(&backend.parse(source).unwrap())
@@ -479,6 +505,85 @@ mod tests {
         let found = codes(&diags, CODE_LINE_LENGTH);
         let lines: Vec<usize> = found.iter().map(|d| d.line).collect();
         assert_eq!(lines, [1, 2], "trailing comment first, docstring second");
+    }
+
+    // ── DOC009: module file without top-level docs ──
+
+    // Module content with no docstring -> one error at the file's first
+    // line. The full shape is pinned here; the rendered wording is a
+    // stable contract.
+    #[test]
+    fn doc009_fires_when_module_content_has_no_docstring() {
+        let diags = checks("VALUE = 1\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, CODE_MISSING_MODULE_DOCS);
+        assert_eq!(diags[0].severity, Severity::Error);
+        assert_eq!(diags[0].line, 1);
+        assert_eq!(diags[0].item_kind, "file");
+        assert_eq!(diags[0].item_name, None);
+        assert_eq!(
+            diags[0].message,
+            "module file is missing a module docstring"
+        );
+    }
+
+    // A module docstring as the first statement satisfies the check,
+    // with or without a leading comment run.
+    #[test]
+    fn doc009_stays_silent_when_the_module_opens_with_a_docstring() {
+        for source in [
+            "\"\"\"Loads records.\"\"\"\nVALUE = 1\n",
+            "# lead\n\"\"\"Loads records.\"\"\"\nVALUE = 1\n",
+        ] {
+            assert!(
+                codes(&checks(source), CODE_MISSING_MODULE_DOCS).is_empty(),
+                "the module docstring satisfies DOC009: {source:?}"
+            );
+        }
+    }
+
+    // Comment-only and blank files carry no module content, so there is
+    // no module purpose to document.
+    #[test]
+    fn doc009_stays_silent_for_content_less_files() {
+        for source in ["# Only a comment.\n\n# Another.\n", "\n"] {
+            assert!(
+                codes(&checks(source), CODE_MISSING_MODULE_DOCS).is_empty(),
+                "content-less files never report: {source:?}"
+            );
+        }
+    }
+
+    // A nested docstring never counts: the module's own first
+    // statement must be the docstring.
+    #[test]
+    fn doc009_fires_when_only_nested_docstrings_exist() {
+        let source = "class Loader:\n    \"\"\"Loads records.\"\"\"\n";
+        assert_eq!(
+            codes(&checks(source), CODE_MISSING_MODULE_DOCS).len(),
+            1,
+            "a class docstring is not a module docstring"
+        );
+    }
+
+    // One lint pass emits DOC009 and each TEXT* check exactly once.
+    //
+    // The backend's `lint` is the single emission point for both
+    // tiers, so the `lints` op never duplicates output.
+    #[test]
+    fn doc009_and_text_checks_each_appear_exactly_once_per_lint_pass() {
+        let long = "x".repeat(81);
+        let run: String = (0..5)
+            .map(|_| "# filler words pad the paragraph past the two hundred forty limit\n")
+            .collect();
+        // The long comment line warns TEXT002; it joins the run past the
+        // TEXT001 paragraph budget; the module lacks a docstring.
+        let source = format!("#{long}\n{run}VALUE = 1\n");
+
+        let diags = checks(&source);
+        assert_eq!(codes(&diags, CODE_MISSING_MODULE_DOCS).len(), 1);
+        assert_eq!(codes(&diags, CODE_LINE_LENGTH).len(), 1);
+        assert_eq!(codes(&diags, CODE_PARAGRAPH_SIZE).len(), 1);
     }
 
     // ── Fail-closed ──

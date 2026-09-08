@@ -1,7 +1,7 @@
-// Partially vendored from rust-reorder (MIT).
-// Modified based on https://github.com/umwelt-ai/rust-reorder.
-//
-// Provides permutation validation and byte-slice emit.
+//! Permutation validation and byte-slice emit.
+//!
+//! Partially vendored from rust-reorder (MIT); modified based on
+//! <https://github.com/umwelt-ai/rust-reorder>.
 
 use crate::source::line_endings::dominant_line_ending;
 use crate::source::{ItemKind, ParseResult};
