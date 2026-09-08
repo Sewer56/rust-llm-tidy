@@ -1,4 +1,4 @@
-//! `MOD003`: shorten paths that include the full namespace.
+//! `MOD003`: flag paths that include the full namespace.
 //!
 //! A qualified name spells out where a name lives, such as `System.Console`.
 //! This rule reads the file's syntax and emits hints; it does not rewrite code
@@ -24,23 +24,26 @@
 //!
 //! # Explanation 2: suggest a missing import
 //!
-//! Without a matching import, the rule can suggest an alias at namespace or
-//! file scope.
+//! Without a matching import, the rule suggests a namespace `using` at namespace
+//! or file scope, subject to checking that the prefix is a namespace.
 //!
-//! For an expression, it aliases the first two segments and keeps
-//! the rest, rather than trying to import a method or property.
+//! Type positions suggest importing the parent; expressions suggest importing
+//! only the root, preserving possible type and property segments.
 //!
 //! ```csharp
 //! // Before: no import is needed for the long spelling.
-//! System.Console.WriteLine("hello");
+//! class C { System.Text.StringBuilder Create() => new(); }
 //! ```
 //!
 //! ```csharp
-//! // After: alias the type, not its method `WriteLine`.
-//! using Console = System.Console;
+//! // After: import the namespace, not the type.
+//! using System.Text;
 //!
-//! Console.WriteLine("hello");
+//! class C { StringBuilder Create() => new(); }
 //! ```
+//!
+//! Syntax does not distinguish namespaces from containing types. If the proposed
+//! prefix is a type, use a type alias or retain qualification instead.
 //!
 //! `global::` explicitly roots a path. Unshadowed `System` and `Microsoft`
 //! are known roots. Other unprefixed roots remain exempt: imports and type
@@ -83,7 +86,7 @@
 //! A binding's `start` value distinguishes scope-wide declarations from locals
 //! that count only from their position.
 //!
-//! Without a covering import, `record_occurrence` builds the alias advice
+//! Without a covering import, `record_occurrence` builds the namespace advice
 //! shown in Explanation 2. It also rejects roots bound to a local or declaration.
 //!
 //! ## Trace the first example
@@ -519,13 +522,13 @@ impl<'a> Walker<'a> {
             self.suggestion_under(matched, &segments, node.start_byte())
                 .map(|suggestion| {
                     format!(
-                        "- Replace this path with `{}`; `{}` is already imported.",
+                        "- If clear at the use site, use `{}`; `{}` is already imported.",
                         suggestion.replacement, suggestion.short
                     )
                 })
         } else {
-            // Alias the root's immediate member in expressions: later
-            // segments may be static properties, which cannot be aliased.
+            // Expressions retain everything below the root: syntax cannot
+            // distinguish namespace, type, and static-property segments.
             let imported_len = if node.kind() == "member_access_expression" {
                 2
             } else {
@@ -537,9 +540,9 @@ impl<'a> Walker<'a> {
                 .iter()
                 .any(|frame| frame_mentions(frame, short, node.start_byte()));
             (!shadowed).then(|| {
-                let imported = format!("{prefix}{}", segments[..imported_len].join("."));
+                let namespace = format!("{prefix}{}", segments[..imported_len - 1].join("."));
                 let replacement = segments[imported_len - 1..].join(".");
-                format!("- Add `using {short} = {imported};` at namespace or file scope.\n- Replace this path with `{replacement}`.")
+                format!("- If `{namespace}` is a namespace and the result is clear, add `using {namespace};` at namespace or file scope and use `{replacement}`.")
             })
         };
 
@@ -547,7 +550,13 @@ impl<'a> Walker<'a> {
             self.diagnostics.push(Diagnostic {
                 severity: Severity::Hint,
                 code: CODE_QUALIFIED_PATH,
-                message: format!("path `{path}` includes the full namespace.\n{advice}"),
+                message: format!(
+                    "path `{path}` includes the full namespace.\n\
+                     - Shorten with imports or aliases only if the meaning remains clear at the use site.\n\
+                     {advice}\n\
+                     - Retain namespace or type context when needed; use a type alias if the proposed import targets a containing type, not a namespace.\n\
+                     - Keep the full path if shortening would reduce clarity or create a name conflict."
+                ),
                 line,
                 item_kind: kind.to_string(),
                 item_name: name.map(str::to_string),
@@ -620,14 +629,12 @@ impl<'a> Walker<'a> {
     /// ones. Absolute occurrences only reuse absolute imports, avoiding relative
     /// targets that happen to have the same spelling.
     ///
-    /// One-segment imports never cover: the rule stays conservative with lone
-    /// namespace names.
+    /// Root namespace imports such as `using System;` also cover longer paths.
     fn covering_import(&self, segments: &[&str], absolute: bool) -> Option<&Import<'a>> {
         let mut covering: Option<&Import<'a>> = None;
         for frame in self.scopes.iter().rev() {
             for import in &frame.imports {
-                let covers = import.segments.len() >= 2
-                    && segments.starts_with(import.segments.as_slice())
+                let covers = segments.starts_with(import.segments.as_slice())
                     && (!absolute || import.absolute);
                 if covers
                     && covering
@@ -982,11 +989,11 @@ mod tests {
     #[rstest]
     #[case::missing(
         "class C { void M() { System.Console.WriteLine(1); } }",
-        "- Add `using Console = System.Console;` at namespace or file scope.\n- Replace this path with `Console.WriteLine`."
+        "- If `System` is a namespace and the result is clear, add `using System;` at namespace or file scope and use `Console.WriteLine`."
     )]
     #[case::aliased(
         "using Log = System.Console; class C { void M() { System.Console.WriteLine(1); } }",
-        "- Replace this path with `Log.WriteLine`; `Log` is already imported."
+        "- If clear at the use site, use `Log.WriteLine`; `Log` is already imported."
     )]
     fn check_should_explain_first_occurrence(#[case] source: &str, #[case] advice: &str) {
         let diagnostics = lint(source);
@@ -995,25 +1002,55 @@ mod tests {
         assert_eq!(diagnostics[0].severity, Severity::Hint);
         assert_eq!(
             diagnostics[0].message,
-            format!("path `System.Console.WriteLine` includes the full namespace.\n{advice}")
+            format!(
+                "path `System.Console.WriteLine` includes the full namespace.\n\
+                 - Shorten with imports or aliases only if the meaning remains clear at the use site.\n\
+                 {advice}\n\
+                 - Retain namespace or type context when needed; use a type alias if the proposed import targets a containing type, not a namespace.\n\
+                 - Keep the full path if shortening would reduce clarity or create a name conflict."
+            )
         );
     }
 
-    /// Static property chains must alias a namespace or type, not a property.
+    /// Type advice prefers namespace imports without assuming parents are namespaces.
+    #[rstest]
+    #[case::string_builder(
+        "class C { System.Text.StringBuilder Create() => new(); }",
+        "System.Text",
+        "StringBuilder"
+    )]
+    #[case::nested_type(
+        "namespace N { class Outer { public class Inner {} } } class C { global::N.Outer.Inner field; }",
+        "global::N.Outer",
+        "Inner"
+    )]
+    fn check_should_condition_namespace_advice_on_parent_kind(
+        #[case] source: &str,
+        #[case] namespace: &str,
+        #[case] replacement: &str,
+    ) {
+        let diagnostics = lint(source);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].message.contains(&format!(
+            "- If `{namespace}` is a namespace and the result is clear, add `using {namespace};` at namespace or file scope and use `{replacement}`."
+        )));
+        assert!(diagnostics[0].message.contains(
+            "use a type alias if the proposed import targets a containing type, not a namespace."
+        ));
+    }
+
+    /// Static property chains retain their type and property segments.
     #[test]
     fn check_should_keep_static_property_tail_in_replacement() {
         let diagnostics = lint("class C { void M() { System.Console.Out.WriteLine(1); } }");
 
         assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].message.contains("add `using System;`"));
         assert!(
             diagnostics[0]
                 .message
-                .contains("Add `using Console = System.Console;`")
-        );
-        assert!(
-            diagnostics[0]
-                .message
-                .contains("Replace this path with `Console.Out.WriteLine`")
+                .contains("use `Console.Out.WriteLine`")
         );
     }
 
@@ -1093,6 +1130,9 @@ mod tests {
     #[case::type_parameter("class C<System> { System.Threading.Tasks.Task field; }")]
     #[case::escaped_binding("class C { void M(object @System) { System.Console.WriteLine(1); } }")]
     #[case::type_binding("class System {} class C { System.Console field; }")]
+    #[case::root_import_shadowed(
+        "using System; class C { void M(int Console) { System.Console.WriteLine(1); } }"
+    )]
     #[case::ambiguous_absolute_alias(
         "using C = global::System.Console; using C = System.Console; class X { global::System.Console field; }"
     )]
@@ -1107,19 +1147,19 @@ mod tests {
     #[case::type_path(
         "class C { global::Vendor.Net.Client field; }",
         "global::Vendor.Net.Client",
-        "Client = global::Vendor.Net.Client",
+        "global::Vendor.Net",
         "Client"
     )]
     #[case::expression_path(
         "class C { void M(object System) { global::System.Console.Out.WriteLine(1); } }",
         "global::System.Console.Out.WriteLine",
-        "Console = global::System.Console",
+        "global::System",
         "Console.Out.WriteLine"
     )]
     #[case::relative_import(
         "namespace Work { using Vendor.Net; class C { global::Vendor.Net.Client field; } }",
         "global::Vendor.Net.Client",
-        "Client = global::Vendor.Net.Client",
+        "global::Vendor.Net",
         "Client"
     )]
     fn check_should_preserve_absolute_import_advice(
@@ -1134,7 +1174,11 @@ mod tests {
         assert_eq!(
             diagnostics[0].message,
             format!(
-                "path `{path}` includes the full namespace.\n- Add `using {import};` at namespace or file scope.\n- Replace this path with `{replacement}`."
+                "path `{path}` includes the full namespace.\n\
+                 - Shorten with imports or aliases only if the meaning remains clear at the use site.\n\
+                 - If `{import}` is a namespace and the result is clear, add `using {import};` at namespace or file scope and use `{replacement}`.\n\
+                 - Retain namespace or type context when needed; use a type alias if the proposed import targets a containing type, not a namespace.\n\
+                 - Keep the full path if shortening would reduce clarity or create a name conflict."
             )
         );
     }
@@ -1232,11 +1276,7 @@ mod tests {
                 .contains("`System.Threading.Tasks.Task.Delay`")
         );
         assert!(diags[0].message.contains("`Tasks` is already imported"));
-        assert!(
-            diags[0]
-                .message
-                .contains("Replace this path with `Task.Delay`")
-        );
+        assert!(diags[0].message.contains("use `Task.Delay`"));
     }
 
     // A qualified type position (return type) counts as one occurrence.
@@ -1282,7 +1322,7 @@ mod tests {
         assert_eq!(diags.len(), 1);
         assert!(diags[0].message.contains("`global::Nq.Text.Widget`"));
         assert!(diags[0].message.contains("`Widget` is already imported"));
-        assert!(diags[0].message.contains("Replace this path with `Widget`"));
+        assert!(diags[0].message.contains("use `Widget`"));
     }
 
     // An aliased using covering a prefix suggests the alias plus the
@@ -1299,11 +1339,7 @@ mod tests {
         assert_eq!(diags.len(), 1);
         assert!(diags[0].message.contains("`global::Nq.Text.Widget.Empty`"));
         assert!(diags[0].message.contains("`W` is already imported"));
-        assert!(
-            diags[0]
-                .message
-                .contains("Replace this path with `W.Empty`")
-        );
+        assert!(diags[0].message.contains("use `W.Empty`"));
     }
 
     // A file-level using stays in scope inside nested namespaces.
@@ -1331,11 +1367,7 @@ mod tests {
         ));
 
         assert_eq!(diags.len(), 1);
-        assert!(
-            diags[0]
-                .message
-                .contains("Add `using Text = global::Nq.Text;`")
-        );
+        assert!(diags[0].message.contains("add `using global::Nq;`"));
     }
 
     // A plain using covering the exact path has no advice: it opens
@@ -1374,11 +1406,7 @@ mod tests {
         assert_eq!(diags[0].item_kind, "fn");
         assert_eq!(diags[0].item_name.as_deref(), Some("M"));
         assert!(diags[0].message.contains("`System.Console.WriteLine`"));
-        assert!(
-            diags[0]
-                .message
-                .contains("Add `using Console = System.Console;`")
-        );
+        assert!(diags[0].message.contains("add `using System;`"));
     }
 
     // Existing imports affect advice, not the number of hints.
@@ -1577,21 +1605,34 @@ mod tests {
         assert!(diags.is_empty());
     }
 
-    // A one-segment using never covers: the rule stays conservative
-    // with a directive whose path is a lone namespace name.
-    #[test]
-    fn one_segment_usings_never_cover_a_path() {
-        let diags = lint(concat!(
-            "using global::Nq;\n",
-            "class C { void M() { var a = global::Nq.Text.Widget.Empty; } }\n",
-        ));
+    /// Root namespace imports supply partially qualified replacements.
+    #[rstest]
+    #[case::system(
+        "using System; class C { void M() { System.Console.WriteLine(1); } }",
+        "Console.WriteLine",
+        "System"
+    )]
+    #[case::absolute(
+        "using global::Nq; class C { void M() { var value = global::Nq.Text.Widget.Empty; } }",
+        "Text.Widget.Empty",
+        "Nq"
+    )]
+    #[case::global_using(
+        "global using System; class C { System.Text.StringBuilder Create() => new(); }",
+        "Text.StringBuilder",
+        "System"
+    )]
+    fn check_should_reuse_root_namespace_import(
+        #[case] source: &str,
+        #[case] replacement: &str,
+        #[case] imported: &str,
+    ) {
+        let diags = lint(source);
 
         assert_eq!(diags.len(), 1);
-        assert!(
-            diags[0]
-                .message
-                .contains("Add `using Text = global::Nq.Text;`")
-        );
+        assert!(diags[0].message.contains(&format!(
+            "- If clear at the use site, use `{replacement}`; `{imported}` is already imported."
+        )));
     }
 
     // Shadowed imports never fall back to missing-import advice.
@@ -1782,10 +1823,6 @@ mod tests {
         ));
 
         assert_eq!(diags.len(), 1);
-        assert!(
-            diags[0]
-                .message
-                .contains("Add `using Thing = global::Nq.Thing;`")
-        );
+        assert!(diags[0].message.contains("add `using global::Nq;`"));
     }
 }

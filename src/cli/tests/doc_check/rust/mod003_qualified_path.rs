@@ -75,9 +75,9 @@ fn cli_should_only_flag_full_path_when_module_import_exists() {
     assert_eq!(exit, 0, "{stderr}");
     assert_eq!(stderr.matches("hint[MOD003]").count(), 1, "{stderr}");
     assert!(stderr.contains("path `std::fs::create_dir_all` includes the full namespace."));
-    assert!(
-        stderr.contains("Replace this path with `fs::create_dir_all`; `fs` is already imported.")
-    );
+    assert!(stderr.contains(
+        "If clear at the call site, use `fs::create_dir_all`; `fs` is already imported."
+    ));
 }
 
 /// First occurrences identify full qualification and provide import advice.
@@ -85,7 +85,7 @@ fn cli_should_only_flag_full_path_when_module_import_exists() {
 #[case::missing(
     "fn f() { std::sync::Arc::new(1); }",
     "std::sync::Arc::new",
-    "Add `use std::sync::Arc;`",
+    "add `use std::sync::Arc;`",
     "Arc::new"
 )]
 #[case::imported(
@@ -103,8 +103,20 @@ fn cli_should_only_flag_full_path_when_module_import_exists() {
 #[case::custom(
     "fn f() { ::vendor::net::Client::new(); }",
     "::vendor::net::Client::new",
-    "Add `use ::vendor::net::Client;`",
+    "add `use ::vendor::net::Client;`",
     "Client::new"
+)]
+#[case::process_id_missing(
+    "fn f() { std::process::id(); }",
+    "std::process::id",
+    "add `use std::process::id;`",
+    "id"
+)]
+#[case::process_id_imported(
+    "use std::process::id; fn f() { std::process::id(); }",
+    "std::process::id",
+    "`id` is already imported.",
+    "id"
 )]
 fn cli_should_render_first_occurrence_hint(
     #[case] source: &str,
@@ -121,8 +133,25 @@ fn cli_should_render_first_occurrence_hint(
         "{stderr}"
     );
     assert!(stderr.contains(import_advice), "{stderr}");
+    assert!(stderr.contains(&format!("use `{replacement}`")), "{stderr}");
+    assert_eq!(
+        stderr.lines().filter(|line| line.starts_with("- ")).count(),
+        4
+    );
+    assert!(stderr.contains("- If clear at the call site,"), "{stderr}");
     assert!(
-        stderr.contains(&format!("- Replace this path with `{replacement}`")),
+        stderr
+            .contains("- Shorten with imports only if the meaning remains clear at the call site."),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("- Import a parent module if the bare name loses context: for example, import `std::process` and use `process::id()`, not `id()`."),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(
+            "- Keep the full path if shortening would reduce clarity or create a name conflict."
+        ),
         "{stderr}"
     );
 }

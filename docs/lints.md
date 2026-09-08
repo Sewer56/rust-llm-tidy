@@ -538,8 +538,8 @@ Error: found 1 error(s)
 
 ### MOD003 - full namespace qualification in code
 
-Use imports for full namespaces; partial paths are allowed at any depth.
-With `use std::fs;`, prefer `fs::create_dir_all` over `std::fs::create_dir_all`.
+Flags paths that include the full namespace;
+partial paths are allowed at any depth.
 
 Recognized roots:
 
@@ -571,14 +571,16 @@ With a `config.yml` containing `{}`, the local CLI renders:
 ```text
 $ cargo run -p rust-llm-tidy-cli -- --config config.yml --include MOD003 example.rs
 example.rs:1: hint[MOD003]: path `std::sync::Arc::new` includes the full namespace.
-- Add `use std::sync::Arc;` at module scope.
-- Replace this path with `Arc::new`. (fn `f`)
+- Shorten with imports only if the meaning remains clear at the call site.
+- If clear at the call site, add `use std::sync::Arc;` at module scope and use `Arc::new`.
+- Import a parent module if the bare name loses context: for example, import `std::process` and use `process::id()`, not `id()`.
+- Keep the full path if shortening would reduce clarity or create a name conflict. (fn `f`)
 ```
 
-If `use std::sync::Arc;` already exists, the advice is instead:
+If `use std::sync::Arc;` already exists, the second bullet is instead:
 
 ```text
-- Replace this path with `Arc::new`; `Arc` is already imported. (fn `f`)
+- If clear at the call site, use `Arc::new`; `Arc` is already imported.
 ```
 
 Hints use existing aliases, such as `Shared::new` for `Arc as Shared`.
@@ -595,7 +597,7 @@ MOD003 skips:
 - Code guarded by Rust `cfg`/`cfg_attr` or C# `#if`, including the whole
   function or method containing the condition.
 
-See [C# MOD003] for C# alias advice.
+See [C# MOD003] for C# import advice.
 
 ## Config
 

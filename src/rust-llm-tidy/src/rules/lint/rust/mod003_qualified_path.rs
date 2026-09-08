@@ -1,8 +1,11 @@
-//! `MOD003`: replace full namespace paths with imports.
+//! `MOD003`: suggest imports without losing call-site context.
 //!
 //! A qualified path spells out where a name lives, such as `std::sync::Arc`.
 //! This rule reads the file's syntax and emits hints; it does not rewrite code
 //! or ask the compiler to resolve names.
+//!
+//! Import advice is conditional on readability: retain a parent module or the
+//! full path when a bare name loses meaning at the call site.
 //!
 //! # Explanation 1: reuse an existing import
 //!
@@ -362,7 +365,7 @@ impl<'a> Walker<'a> {
             self.suggestion_under(matched, &segments, node.start_byte())
                 .map(|suggestion| {
                     format!(
-                        "- Replace this path with `{}`; `{}` is already imported.",
+                        "- If clear at the call site, use `{}`; `{}` is already imported.",
                         suggestion.replacement, suggestion.short
                     )
                 })
@@ -375,7 +378,7 @@ impl<'a> Walker<'a> {
                 .any(|frame| frame_mentions(frame, short, node.start_byte()));
             (!shadowed).then(|| {
                 let replacement = &path[imported.len() - short.len()..];
-                format!("- Add `use {imported};` at module scope.\n- Replace this path with `{replacement}`.")
+                format!("- If clear at the call site, add `use {imported};` at module scope and use `{replacement}`.")
             })
         };
 
@@ -383,7 +386,13 @@ impl<'a> Walker<'a> {
             self.diagnostics.push(Diagnostic {
                 severity: Severity::Hint,
                 code: CODE_QUALIFIED_PATH,
-                message: format!("path `{path}` includes the full namespace.\n{advice}"),
+                message: format!(
+                    "path `{path}` includes the full namespace.\n\
+                     - Shorten with imports only if the meaning remains clear at the call site.\n\
+                     {advice}\n\
+                     - Import a parent module if the bare name loses context: for example, import `std::process` and use `process::id()`, not `id()`.\n\
+                     - Keep the full path if shortening would reduce clarity or create a name conflict."
+                ),
                 line,
                 item_kind: kind.to_string(),
                 item_name: name.map(str::to_string),
@@ -844,37 +853,47 @@ mod tests {
     #[case::missing(
         "fn f() { std::sync::Arc::new(1); }",
         "std::sync::Arc::new",
-        "- Add `use std::sync::Arc;` at module scope.\n- Replace this path with `Arc::new`."
+        "- If clear at the call site, add `use std::sync::Arc;` at module scope and use `Arc::new`."
     )]
     #[case::imported(
         "use std::sync::Arc; fn f() { std::sync::Arc::new(1); }",
         "std::sync::Arc::new",
-        "- Replace this path with `Arc::new`; `Arc` is already imported."
+        "- If clear at the call site, use `Arc::new`; `Arc` is already imported."
     )]
     #[case::aliased(
         "use std::sync::Arc as Shared; fn f() { std::sync::Arc::new(1); }",
         "std::sync::Arc::new",
-        "- Replace this path with `Shared::new`; `Shared` is already imported."
+        "- If clear at the call site, use `Shared::new`; `Shared` is already imported."
     )]
     #[case::absolute(
         "fn f() { ::vendor::net::Client::new(); }",
         "::vendor::net::Client::new",
-        "- Add `use ::vendor::net::Client;` at module scope.\n- Replace this path with `Client::new`."
+        "- If clear at the call site, add `use ::vendor::net::Client;` at module scope and use `Client::new`."
     )]
     #[case::absolute_imported(
         "use ::std::sync::Arc; fn f() { ::std::sync::Arc::new(1); }",
         "::std::sync::Arc::new",
-        "- Replace this path with `Arc::new`; `Arc` is already imported."
+        "- If clear at the call site, use `Arc::new`; `Arc` is already imported."
     )]
     #[case::absolute_crate_import(
         "use ::std; fn f() { ::std::sync::Arc::new(1); }",
         "::std::sync::Arc::new",
-        "- Add `use ::std::sync::Arc;` at module scope.\n- Replace this path with `Arc::new`."
+        "- If clear at the call site, add `use ::std::sync::Arc;` at module scope and use `Arc::new`."
     )]
     #[case::mixed_full_and_partial(
         "use std::fs; fn f() { std::fs::create_dir_all(\"a\"); fs::create_dir_all(\"b\"); }",
         "std::fs::create_dir_all",
-        "- Replace this path with `fs::create_dir_all`; `fs` is already imported."
+        "- If clear at the call site, use `fs::create_dir_all`; `fs` is already imported."
+    )]
+    #[case::process_id_missing(
+        "fn f() { std::process::id(); }",
+        "std::process::id",
+        "- If clear at the call site, add `use std::process::id;` at module scope and use `id`."
+    )]
+    #[case::process_id_imported(
+        "use std::process::id; fn f() { std::process::id(); }",
+        "std::process::id",
+        "- If clear at the call site, use `id`; `id` is already imported."
     )]
     fn check_should_explain_first_occurrence(
         #[case] source: &str,
@@ -887,7 +906,13 @@ mod tests {
         assert_eq!(diagnostics[0].severity, Severity::Hint);
         assert_eq!(
             diagnostics[0].message,
-            format!("path `{path}` includes the full namespace.\n{advice}")
+            format!(
+                "path `{path}` includes the full namespace.\n\
+                 - Shorten with imports only if the meaning remains clear at the call site.\n\
+                 {advice}\n\
+                 - Import a parent module if the bare name loses context: for example, import `std::process` and use `process::id()`, not `id()`.\n\
+                 - Keep the full path if shortening would reduce clarity or create a name conflict."
+            )
         );
     }
 
@@ -1065,11 +1090,7 @@ mod tests {
                 .iter()
                 .all(|d| d.message.contains("`Arc` is already imported"))
         );
-        assert!(
-            diags
-                .iter()
-                .all(|d| d.message.contains("Replace this path with `Arc::new`"))
-        );
+        assert!(diags.iter().all(|d| d.message.contains("use `Arc::new`")));
         assert!(
             diags
                 .iter()
@@ -1152,7 +1173,7 @@ mod tests {
         );
 
         assert_eq!(diags.len(), 1);
-        assert!(diags[0].message.contains("Add `use crate::a::b::C;`"));
+        assert!(diags[0].message.contains("add `use crate::a::b::C;`"));
     }
 
     // A `use` after the occurrence still selects imported-name advice:
@@ -1186,7 +1207,7 @@ mod tests {
         assert_eq!(diags[0].item_kind, "fn");
         assert_eq!(diags[0].item_name.as_deref(), Some("f"));
         assert!(diags[0].message.contains("`std::mem::drop`"));
-        assert!(diags[0].message.contains("Replace this path with `drop`"));
+        assert!(diags[0].message.contains("use `drop`"));
         assert!(diags[0].message.contains("use std::mem::drop;"));
     }
 
@@ -1461,7 +1482,7 @@ mod tests {
         );
 
         assert_eq!(diags.len(), 1);
-        assert!(diags[0].message.contains("Add `use std::mem::drop;`"));
+        assert!(diags[0].message.contains("add `use std::mem::drop;`"));
     }
 
     // Two imports binding one short name make the advice ambiguous:
@@ -1494,7 +1515,7 @@ mod tests {
         );
 
         assert_eq!(diags.len(), 1);
-        assert!(diags[0].message.contains("Add `use ::a::b::C;`"));
+        assert!(diags[0].message.contains("add `use ::a::b::C;`"));
     }
 
     // Hints follow occurrence order across different paths.

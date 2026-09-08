@@ -558,8 +558,8 @@ public class Loader
 
 ### MOD003 - full namespace qualification in code
 
-Use imports for full namespaces; partial paths and aliases are allowed
-at any depth.
+Flags paths that include the full namespace;
+partial paths and aliases are allowed at any depth.
 
 Recognized roots:
 
@@ -572,34 +572,44 @@ declarations do not prove a full root.
 Before (`example.cs`):
 
 ```csharp
-class C { void M() { System.Console.WriteLine(1); } }
+class C { System.Text.StringBuilder Create() => new(); }
 ```
 
 After:
 
 ```csharp
-using Console = System.Console;
+using System.Text;
 
-class C { void M() { Console.WriteLine(1); } }
+class C { StringBuilder Create() => new(); }
 ```
 
 With a `config.yml` containing `{}`, the local CLI renders:
 
 ```text
 $ cargo run -p rust-llm-tidy-cli -- --config config.yml --include MOD003 example.cs
-example.cs:1: hint[MOD003]: path `System.Console.WriteLine` includes the full namespace.
-- Add `using Console = System.Console;` at namespace or file scope.
-- Replace this path with `Console.WriteLine`. (fn `M`)
+example.cs:1: hint[MOD003]: path `System.Text.StringBuilder` includes the full namespace.
+- Shorten with imports or aliases only if the meaning remains clear at the use site.
+- If `System.Text` is a namespace and the result is clear, add `using System.Text;` at namespace or file scope and use `StringBuilder`.
+- Retain namespace or type context when needed; use a type alias if the proposed import targets a containing type, not a namespace.
+- Keep the full path if shortening would reduce clarity or create a name conflict. (fn `Create`)
 ```
 
-Hints suggest aliases for missing imports and reuse existing imports:
+Import advice:
 
+- Missing imports: suggest a namespace `using`, conditional on the prefix
+  being a namespace rather than a containing type.
 - Namespace imports: `using System.Threading.Tasks;` shortens
   `System.Threading.Tasks.Task.Delay` to `Task.Delay`.
+- Root imports: `using System;` shortens `System.Console.WriteLine` to
+  `Console.WriteLine`.
 - Aliases: `using Log = System.Console;` shortens
   `System.Console.WriteLine` to `Log.WriteLine`.
 - Absolute paths: `global::Vendor.Net.Client` suggests
-  `using Client = global::Vendor.Net.Client;` without dropping `global::`.
+  `using global::Vendor.Net;` when the prefix is a namespace.
+
+Type positions suggest importing the parent; expressions import only the root
+to retain possible type and property segments. For containing types, use a type
+alias or retain qualification instead.
 
 Absolute paths only reuse explicitly absolute imports to avoid relative targets.
 

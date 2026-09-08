@@ -62,6 +62,8 @@ fn cli_should_exempt_non_code_and_ambiguous_paths(#[case] source: &str) {
 /// Partial paths, aliases, and uncertain roots stay silent at any depth.
 #[rstest]
 #[case::partial_type("using System; class C { Threading.Tasks.Task field; }")]
+#[case::namespace_import_fix("using System.Text; class C { StringBuilder Create() => new(); }")]
+#[case::root_import_fix("using System; class C { void M() { Console.WriteLine(1); } }")]
 #[case::partial_expression(
     "using System; class C { void M() { Threading.Tasks.Task.Factory.StartNew(); } }"
 )]
@@ -87,7 +89,7 @@ fn cli_should_exempt_paths_without_reliable_full_namespace_advice(#[case] source
 #[case::missing(
     "class C { void M() { System.Console.WriteLine(1); } }",
     "System.Console.WriteLine",
-    "Add `using Console = System.Console;`",
+    "add `using System;`",
     "Console.WriteLine"
 )]
 #[case::imported(
@@ -105,13 +107,13 @@ fn cli_should_exempt_paths_without_reliable_full_namespace_advice(#[case] source
 #[case::custom(
     "class C { global::Vendor.Net.Client field; }",
     "global::Vendor.Net.Client",
-    "Add `using Client = global::Vendor.Net.Client;`",
+    "add `using global::Vendor.Net;`",
     "Client"
 )]
 #[case::absolute_expression(
     "class C { void M(object System) { global::System.Console.Out.WriteLine(1); } }",
     "global::System.Console.Out.WriteLine",
-    "Add `using Console = global::System.Console;`",
+    "add `using global::System;`",
     "Console.Out.WriteLine"
 )]
 #[case::absolute_alias(
@@ -123,8 +125,20 @@ fn cli_should_exempt_paths_without_reliable_full_namespace_advice(#[case] source
 #[case::long_full_path(
     "class C { void M() { Microsoft.Win32.Registry.CurrentUser.OpenSubKey(); } }",
     "Microsoft.Win32.Registry.CurrentUser.OpenSubKey",
-    "Add `using Win32 = Microsoft.Win32;`",
+    "add `using Microsoft;`",
     "Win32.Registry.CurrentUser.OpenSubKey"
+)]
+#[case::string_builder(
+    "class C { System.Text.StringBuilder Create() => new(); }",
+    "System.Text.StringBuilder",
+    "add `using System.Text;`",
+    "StringBuilder"
+)]
+#[case::root_imported(
+    "using System; class C { void M() { System.Console.WriteLine(1); } }",
+    "System.Console.WriteLine",
+    "`System` is already imported.",
+    "Console.WriteLine"
 )]
 fn cli_should_render_first_occurrence_hint(
     #[case] source: &str,
@@ -141,8 +155,26 @@ fn cli_should_render_first_occurrence_hint(
         "{stderr}"
     );
     assert!(stderr.contains(import_advice), "{stderr}");
+    assert!(stderr.contains(&format!("use `{replacement}`")), "{stderr}");
+    assert_eq!(
+        stderr.lines().filter(|line| line.starts_with("- ")).count(),
+        4
+    );
+    assert!(stderr.contains("- If "), "{stderr}");
     assert!(
-        stderr.contains(&format!("- Replace this path with `{replacement}`")),
+        stderr.contains(
+            "- Shorten with imports or aliases only if the meaning remains clear at the use site."
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("- Retain namespace or type context when needed; use a type alias if the proposed import targets a containing type, not a namespace."),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(
+            "- Keep the full path if shortening would reduce clarity or create a name conflict."
+        ),
         "{stderr}"
     );
 }
