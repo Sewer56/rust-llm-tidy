@@ -147,33 +147,55 @@ fn mod001_should_exclude_rust_test_modules_by_default(#[case] path: &str) {
 
 /// The rendered warning guides modular design without encouraging arbitrary splits.
 #[rstest]
-#[case::rust("source.rs", " outside `#[cfg(test)]` mod regions")]
-#[case::python("source.py", "")]
-fn mod001_should_explain_focused_module_boundaries(#[case] path: &str, #[case] exclusions: &str) {
-    let mut expected = format!(
-        "warning[MOD001]: file has 2 lines{exclusions}, \
-         over the 1-line budget (module_size.max_lines).\n  \
-         - Large files make readers search farther and keep more context in mind.\n  \
-         - Put new, distinct responsibilities in focused modules instead of growing this file.\n  \
-         - Plan new code around clear module boundaries from the start.\n  \
-         - Keep closely related code together; name modules for the responsibility they own.\n  \
-         - Do not split mechanically or remove useful comments just to meet the line budget."
-    );
+#[case::rust_without_tests("source.rs", false, " outside `#[cfg(test)]` mod regions")]
+#[case::rust_with_tests("source.rs", true, "")]
+#[case::python("source.py", false, "")]
+#[case::csharp("source.cs", false, "")]
+fn mod001_should_explain_focused_module_boundaries(
+    #[case] path: &str,
+    #[case] include_in_file_tests: bool,
+    #[case] exclusions: &str,
+) {
+    let config =
+        format!("module_size:\n  max_lines: 1\n  include_in_file_tests: {include_in_file_tests}\n");
+    let mut expected = indoc::formatdoc! {"
+        warning[MOD001]: file has 2 lines{exclusions},
+        over the 1-line budget (module_size.max_lines).
+        - Large files make readers search farther and keep more context in mind.
+        - Split distinct responsibilities into focused, domain-named modules.
+          Keep closely related code together.
+        - Keep a clear starting point for callers and readers. Consider keeping
+          main entry points and high-level orchestration together, with
+          implementation details in focused modules or types.
+        - Preserve the intended interface without widening visibility or
+          adding forwarding wrappers just to centralize entry points.
+        - Update module or type overview docs, where supported, to explain
+          responsibilities and direct readers to relevant entry points.
+        - Do not split mechanically or remove useful documentation to meet
+          the line budget."};
     if path.ends_with(".rs") {
-        expected.push_str(
-            "\n  - Test modules marked `#[cfg(test)]` at the file's top level are excluded. \
-             Other lines count, including comments and blank lines.\n  \
-             - Rust files in `tests/` directories are skipped.",
-        );
+        let regions = if include_in_file_tests {
+            "counted"
+        } else {
+            "excluded"
+        };
+
+        expected.push_str(&indoc::formatdoc! {"
+
+            - When splitting a Rust module, consider keeping main entry points and
+              high-level orchestration in the module root (`mod.rs` or `foo.rs`).
+              Put implementation details in child modules.
+            - If entry points belong in child modules, consider selective re-exports
+              through the root without widening visibility.
+            - Update root docs to explain the module's purpose and direct readers
+              to main entry points and relevant child modules.
+            - Top-level `#[cfg(test)]` test modules are {regions}.
+              Other lines count, including comments and blank lines.
+            - Rust files in `tests/` directories are skipped."});
     }
     expected.push_str(" (file)");
 
-    let output = run(
-        "\n\n",
-        path,
-        "module_size:\n  max_lines: 1\n",
-        &["--include", "MOD001"],
-    );
+    let output = run("\n\n", path, &config, &["--include", "MOD001"]);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{stderr}");
@@ -202,7 +224,7 @@ fn mod001_should_explain_test_counting_in_plain_language(
     assert!(output.status.success(), "{stderr}");
     assert!(
         stderr.contains(&format!(
-            "Test modules marked `#[cfg(test)]` at the file's top level are {regions}. \
+            "Top-level `#[cfg(test)]` test modules are {regions}.\n  \
              Other lines count, including comments and blank lines."
         )),
         "{stderr}"
@@ -384,7 +406,7 @@ fn mod001_should_warn_once_for_oversized_code(#[case] path: &str) {
         "{stderr}"
     );
     assert!(
-        stderr.contains(&format!("file has {over_budget} lines, ")),
+        stderr.contains(&format!("file has {over_budget} lines,\n")),
         "{stderr}"
     );
     assert!(!stderr.contains("#[cfg(test)]"), "{stderr}");

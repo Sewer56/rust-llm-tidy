@@ -3,6 +3,7 @@
 //!
 //! Python supports linting through [`text_regions`], which checks module
 //! docstrings and produces text regions from the same parse.
+//! Missing-docstring diagnostics guide concise, purpose-first module headers.
 //! Reorder declines every source.
 //!
 //! [`text_regions`]: text_regions
@@ -10,6 +11,7 @@
 use crate::languages::LanguageBackend;
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::CODE_MISSING_MODULE_DOCS;
+use crate::rules::lint::doc009_missing_module_docs::HEADER_GUIDANCE;
 use crate::rules::transform::reorder::Permutation;
 use crate::source::ParseResult;
 
@@ -38,7 +40,11 @@ impl LanguageBackend for PythonBackend {
             diagnostics.push(Diagnostic {
                 severity: Severity::Error,
                 code: CODE_MISSING_MODULE_DOCS,
-                message: "module file is missing a module docstring".to_string(),
+                message: indoc::formatdoc! {"
+                    module file is missing a module docstring.
+                    Fix: add a module docstring as the first statement.
+
+                    {HEADER_GUIDANCE}"},
                 line: 1,
                 item_kind: "file".to_string(),
                 item_name: None,

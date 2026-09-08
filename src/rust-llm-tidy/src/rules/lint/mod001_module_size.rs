@@ -2,6 +2,7 @@
 //!
 //! Non-Rust files count every physical line, including blanks, comments, and
 //! tests. The Rust rule supplies its test-aware count to [`diagnostic`].
+//! Diagnostics encourage cohesive splits rather than mechanical line reduction.
 
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::CODE_MODULE_SIZE;
@@ -26,15 +27,21 @@ pub(super) fn diagnostic(
     Diagnostic {
         severity: Severity::Warning,
         code: CODE_MODULE_SIZE,
-        message: format!(
-            "file has {lines} lines{exclusions}, \
-             over the {max_lines}-line budget (module_size.max_lines).\n  \
-             - Large files make readers search farther and keep more context in mind.\n  \
-             - Put new, distinct responsibilities in focused modules instead of growing this file.\n  \
-             - Plan new code around clear module boundaries from the start.\n  \
-             - Keep closely related code together; name modules for the responsibility they own.\n  \
-             - Do not split mechanically or remove useful comments just to meet the line budget."
-        ),
+        message: indoc::formatdoc! {"
+            file has {lines} lines{exclusions},
+            over the {max_lines}-line budget (module_size.max_lines).
+            - Large files make readers search farther and keep more context in mind.
+            - Split distinct responsibilities into focused, domain-named modules.
+              Keep closely related code together.
+            - Keep a clear starting point for callers and readers. Consider keeping
+              main entry points and high-level orchestration together, with
+              implementation details in focused modules or types.
+            - Preserve the intended interface without widening visibility or
+              adding forwarding wrappers just to centralize entry points.
+            - Update module or type overview docs, where supported, to explain
+              responsibilities and direct readers to relevant entry points.
+            - Do not split mechanically or remove useful documentation to meet
+              the line budget."},
         line: crossing_line,
         item_kind: "file".to_string(),
         item_name: None,
@@ -66,7 +73,7 @@ mod tests {
         if let Some(finding) = finding {
             assert_eq!(finding.code, CODE_MODULE_SIZE);
             assert_eq!(finding.severity, Severity::Warning);
-            assert!(finding.message.starts_with("file has 3 lines, "));
+            assert!(finding.message.starts_with("file has 3 lines,\n"));
             assert_eq!(finding.item_kind, "file");
             assert!(finding.item_name.is_none());
         }

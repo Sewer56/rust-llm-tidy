@@ -357,7 +357,7 @@ line 1.
 
 - Rust: a `//!` line before the first top-level item; `///` on the
   first item does not count.
-- Python: a module docstring before the first statement.
+- Python: a module docstring as the first statement.
 - Empty modules never fire; there is no module purpose to document.
 
 Before:
@@ -377,7 +377,21 @@ pub fn load() {}
 
 ```text
 $ rust-llm-tidy --no-config --include DOC009 src/lib.rs
-src/lib.rs:1: error[DOC009]: module file is missing `//!` module docs (file)
+src/lib.rs:1: error[DOC009]: module file is missing `//!` module docs.
+Fix: add `//!` docs before the first top-level item.
+
+Help readers unfamiliar with the codebase understand the module's purpose
+without reading its implementation.
+- Read the module and relevant callers; document only supported facts.
+- Start with one concise sentence explaining what the module does and why.
+  Do not just restate its name. A simple module needs no more.
+- If more detail is useful, put it below the summary, separated by a blank
+  doc line. Outline major responsibilities, entry points, or non-obvious
+  constraints. Use bullets for multiple topics.
+- Link to item docs instead of repeating their details.
+- For a module root (`mod.rs`, or `foo.rs` with child modules), identify
+  main entry points and relevant child-module responsibilities.
+  This is header-writing guidance, not a request to move code. (file)
 Error: found 1 error(s)
 ```
 
@@ -452,12 +466,30 @@ Discovery and exclusions are unchanged; unsupported extensions remain exempt.
 
 ```text
 $ rust-llm-tidy --no-config --include MOD001 src/big.rs
-src/big.rs:501: warning[MOD001]: file has 612 lines outside `#[cfg(test)]` mod regions, over the 500-line budget (module_size.max_lines).
-  - Large files make readers search farther and keep more context in mind.
-  - Put new, distinct responsibilities in focused modules instead of growing this file.
-  - Plan new code around clear module boundaries from the start.
-  - Keep closely related code together; name modules for the responsibility they own.
-  - Do not split mechanically or remove useful comments just to meet the line budget. (file)
+src/big.rs:501: warning[MOD001]: file has 612 lines outside `#[cfg(test)]` mod regions,
+over the 500-line budget (module_size.max_lines).
+- Large files make readers search farther and keep more context in mind.
+- Split distinct responsibilities into focused, domain-named modules.
+  Keep closely related code together.
+- Keep a clear starting point for callers and readers. Consider keeping
+  main entry points and high-level orchestration together, with
+  implementation details in focused modules or types.
+- Preserve the intended interface without widening visibility or
+  adding forwarding wrappers just to centralize entry points.
+- Update module or type overview docs, where supported, to explain
+  responsibilities and direct readers to relevant entry points.
+- Do not split mechanically or remove useful documentation to meet
+  the line budget.
+- When splitting a Rust module, consider keeping main entry points and
+  high-level orchestration in the module root (`mod.rs` or `foo.rs`).
+  Put implementation details in child modules.
+- If entry points belong in child modules, consider selective re-exports
+  through the root without widening visibility.
+- Update root docs to explain the module's purpose and direct readers
+  to main entry points and relevant child modules.
+- Top-level `#[cfg(test)]` test modules are excluded.
+  Other lines count, including comments and blank lines.
+- Rust files in `tests/` directories are skipped. (file)
 ```
 
 `MOD001` is warning-severity, so the run exits 0.

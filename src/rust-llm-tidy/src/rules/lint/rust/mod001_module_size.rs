@@ -4,7 +4,7 @@
 //! `include_in_file_tests` is enabled. Files under a `tests/` directory are
 //! skipped unless `include_test_files` is enabled ([`is_tests_path`]).
 //!
-//! Warnings explain whether test-module regions and test files count.
+//! Warnings guide module-root organization and explain which test lines count.
 //!
 //! The rule is file-level, not item-level: it consumes the whole
 //! [`ParseResult`] plus the file's path and the per-run threshold. The
@@ -58,7 +58,7 @@ pub(crate) fn check_with_options(
 
     if include_in_file_tests {
         return crate::rules::lint::mod001_module_size::check(&parsed.source, max_lines)
-            .map(|finding| with_test_policy(finding, true, include_test_files));
+            .map(|finding| with_rust_guidance(finding, true, include_test_files));
     }
 
     let test_spans: Vec<(usize, usize)> = parsed
@@ -82,7 +82,7 @@ pub(crate) fn check_with_options(
     );
 
     (non_test_lines > max_lines).then(|| {
-        with_test_policy(
+        with_rust_guidance(
             diagnostic(
                 non_test_lines,
                 crossing_line.unwrap_or(1),
@@ -161,8 +161,8 @@ fn is_tests_path(path: &Path) -> bool {
         .any(|component| component.as_os_str() == std::ffi::OsStr::new("tests"))
 }
 
-/// Explain the effective Rust test-region and test-directory policies.
-fn with_test_policy(
+/// Add Rust module-root guidance and the effective test-counting policies.
+fn with_rust_guidance(
     mut finding: Diagnostic,
     include_in_file_tests: bool,
     include_test_files: bool,
@@ -178,11 +178,20 @@ fn with_test_policy(
         "skipped"
     };
 
-    write!(
+    indoc::writedoc!(
         finding.message,
-        "\n  - Test modules marked `#[cfg(test)]` at the file's top level are {regions}. \
-         Other lines count, including comments and blank lines.\n  \
-         - Rust files in `tests/` directories are {files}."
+        "
+
+        - When splitting a Rust module, consider keeping main entry points and
+          high-level orchestration in the module root (`mod.rs` or `foo.rs`).
+          Put implementation details in child modules.
+        - If entry points belong in child modules, consider selective re-exports
+          through the root without widening visibility.
+        - Update root docs to explain the module's purpose and direct readers
+          to main entry points and relevant child modules.
+        - Top-level `#[cfg(test)]` test modules are {regions}.
+          Other lines count, including comments and blank lines.
+        - Rust files in `tests/` directories are {files}."
     )
     .expect("writing to a String cannot fail");
     finding
@@ -229,7 +238,7 @@ mod tests {
         assert!(diagnostic.item_name.is_none());
         assert!(
             diagnostic.message.starts_with(
-                "file has 3 lines outside `#[cfg(test)]` mod regions, \
+                "file has 3 lines outside `#[cfg(test)]` mod regions,\n\
                  over the 2-line budget (module_size.max_lines).\n"
             ),
             "the Rust warning must explain the test exclusion: {}",

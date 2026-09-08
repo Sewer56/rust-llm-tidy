@@ -510,21 +510,17 @@ mod tests {
     // ── DOC009: module file without top-level docs ──
 
     // Module content with no docstring -> one error at the file's first
-    // line. The full shape is pinned here; the rendered wording is a
-    // stable contract.
+    // line. Metadata is pinned here; the CLI test pins the rendered guidance.
     #[test]
     fn doc009_fires_when_module_content_has_no_docstring() {
         let diags = checks("VALUE = 1\n");
+
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_MISSING_MODULE_DOCS);
         assert_eq!(diags[0].severity, Severity::Error);
         assert_eq!(diags[0].line, 1);
         assert_eq!(diags[0].item_kind, "file");
         assert_eq!(diags[0].item_name, None);
-        assert_eq!(
-            diags[0].message,
-            "module file is missing a module docstring"
-        );
     }
 
     // A module docstring as the first statement satisfies the check,

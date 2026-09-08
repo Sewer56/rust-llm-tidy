@@ -3,9 +3,12 @@
 //! [`check`] fires once per file that has top-level items but no `//!`
 //! module-doc line in its preamble. `///` outer docs on the first item
 //! do not count, and item-less files never fire.
+//!
+//! The diagnostic guides header writing and module-root navigation, not code moves.
 
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::CODE_MISSING_MODULE_DOCS;
+use crate::rules::lint::doc009_missing_module_docs::HEADER_GUIDANCE;
 use crate::source::ParseResult;
 
 /// `DOC009` - module files must carry `//!` top-level docs.
@@ -42,7 +45,14 @@ pub(super) fn check(parsed: &ParseResult) -> Vec<Diagnostic> {
     vec![Diagnostic {
         severity: Severity::Error,
         code: CODE_MISSING_MODULE_DOCS,
-        message: "module file is missing `//!` module docs".to_string(),
+        message: indoc::formatdoc! {"
+            module file is missing `//!` module docs.
+            Fix: add `//!` docs before the first top-level item.
+
+            {HEADER_GUIDANCE}
+            - For a module root (`mod.rs`, or `foo.rs` with child modules), identify
+              main entry points and relevant child-module responsibilities.
+              This is header-writing guidance, not a request to move code."},
         line: 1,
         item_kind: "file".to_string(),
         item_name: None,
@@ -62,17 +72,17 @@ mod tests {
     // ── DOC009: module file without top-level docs ──
 
     // Items with no module docs -> one error at the file's first line.
-    // The full shape is pinned here; the rendered wording is a stable contract.
+    // Metadata is pinned here; the CLI test pins the full rendered guidance.
     #[test]
     fn fires_when_items_have_no_module_docs() {
         let diags = lint("pub fn load() {}\n");
+
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_MISSING_MODULE_DOCS);
         assert_eq!(diags[0].severity, Severity::Error);
         assert_eq!(diags[0].line, 1);
         assert_eq!(diags[0].item_kind, "file");
         assert_eq!(diags[0].item_name, None);
-        assert_eq!(diags[0].message, "module file is missing `//!` module docs");
     }
 
     // `///` outer docs attach to the first item, not the preamble.
