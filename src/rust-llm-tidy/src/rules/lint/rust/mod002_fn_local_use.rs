@@ -92,7 +92,7 @@ fn check_use<'a>(node: tree_sitter::Node<'a>, source: &str, out: &mut Vec<Diagno
     });
 }
 
-/// True when `node` is directly preceded by a `#[cfg(...)]` attribute.
+/// True when `node`'s contiguous preceding attributes include a `#[cfg(...)]`.
 ///
 /// The grammar attaches outer attributes as previous siblings of the
 /// item, so the scan walks the named previous siblings while they are
