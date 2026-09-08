@@ -69,7 +69,13 @@ pub(super) fn check(item: &SourceItem, enums: &[DeclaredEnum<'_>]) -> Vec<Diagno
     vec![Diagnostic {
         severity: Severity::Error,
         code: CODE_ERROR_VARIANT_ORDER,
-        message: format!("`# Errors` lists variants of `{error_enum}` out of alphabetical order"),
+        message: format!(
+            "`# Errors` lists variants of `{error_enum}` out of alphabetical order.\n\n\
+             Why: Alphabetical entries help readers locate a known error variant.\n\n\
+             Suggestions:\n\
+             - Reorder the documented entries by variant name, keeping each trigger with its variant.\n\
+             - Do not reorder the enum or change error behavior."
+        ),
         line: item.start_line(),
         item_kind: item.kind().to_string(),
         item_name: item.name().map(str::to_string),
@@ -215,13 +221,22 @@ mod tests {
 
     // Variants listed out of alphabetical order -> error.
     #[test]
-    fn fires_when_variants_out_of_order() {
+    fn check_should_request_documentation_reordering_when_variants_are_out_of_order() {
         let source = documented_fn("/// Returns [Error::NotFound] then [Error::Denied].");
+
         let diags = lint(&source);
+
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_ERROR_VARIANT_ORDER);
         assert_eq!(diags[0].severity, Severity::Error);
-        assert!(diags[0].message.contains("Error"));
+        assert_eq!(
+            diags[0].message,
+            "`# Errors` lists variants of `Error` out of alphabetical order.\n\n\
+             Why: Alphabetical entries help readers locate a known error variant.\n\n\
+             Suggestions:\n\
+             - Reorder the documented entries by variant name, keeping each trigger with its variant.\n\
+             - Do not reorder the enum or change error behavior."
+        );
     }
 
     // Alphabetical listing (equal neighbors allowed) -> silent.

@@ -16,9 +16,42 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
         return Vec::new();
     }
 
-    vec![decl.diagnostic(
-        Severity::Warning,
-        CODE_MISSING_ARGUMENTS,
-        "member with parameters is missing `<param>` doc tags".to_string(),
-    )]
+    vec![
+        decl.diagnostic(
+            Severity::Warning,
+            CODE_MISSING_ARGUMENTS,
+            "member with parameters is missing `<param>` doc tags.\n\n\
+         Why: Readers need parameter roles and constraints to supply appropriate inputs.\n\n\
+         Suggestions:\n\
+         - Add a `<param name=\"...\">` tag for each declared parameter, describing \
+         its role and any constraints supported by the existing contract."
+                .to_string(),
+        ),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::languages::csharp::parse::parse;
+
+    #[test]
+    fn diagnostic_should_request_parameter_roles_and_existing_constraints() {
+        let parsed = parse("class Cache { public void Load(string key) {} }").unwrap();
+
+        let diagnostics = super::super::run(&parsed);
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == CODE_MISSING_ARGUMENTS)
+            .unwrap();
+
+        assert_eq!(
+            diagnostic.message,
+            "member with parameters is missing `<param>` doc tags.\n\n\
+             Why: Readers need parameter roles and constraints to supply appropriate inputs.\n\n\
+             Suggestions:\n\
+             - Add a `<param name=\"...\">` tag for each declared parameter, describing \
+             its role and any constraints supported by the existing contract."
+        );
+    }
 }

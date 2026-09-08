@@ -82,7 +82,6 @@ fn is_opener(doc: &Document, headings: &[usize], index: usize, para: &Paragraph)
 /// TEXT004 Warning for one opener paragraph, reported at its first line.
 fn opener_diagnostic(para: &Paragraph, summary: &str) -> Diagnostic {
     let bullets = [
-        "Keep the opener brief so readers can find the main point quickly.".to_string(),
         "Lead with the main point, ideally in one short sentence.".to_string(),
         format!("Keep a plain opener to {OPENER_CHAR_LIMIT} measured chars or fewer."),
         "Move supporting details below the opener without losing necessary \
@@ -94,7 +93,11 @@ fn opener_diagnostic(para: &Paragraph, summary: &str) -> Diagnostic {
     Diagnostic {
         severity: Severity::Warning,
         code: CODE_HEADER_OPENER,
-        message: bulleted(summary, &bullets),
+        message: bulleted(
+            summary,
+            "A long opener delays the main point and makes the section harder to scan.",
+            &bullets,
+        ),
         line: para.first_line,
         item_kind: "file".to_string(),
         item_name: None,
@@ -141,6 +144,7 @@ mod tests {
     use crate::rules::lint::run_text_checks;
     use crate::rules::lint::tests::codes;
     use indoc::formatdoc;
+    use rstest::rstest;
 
     // ── Sentence count ──
 
@@ -440,14 +444,20 @@ mod tests {
 
     // The summary reports the sentence count against the limit, with the
     // guidance bullets.
-    #[test]
-    fn text_checks_message_states_sentence_cause_and_guidance() {
-        let source = "# T\n\nOne. Two. Three.\n";
-        let diags = run_text_checks(source, "md");
+    #[rstest]
+    #[case::sentences("Sentence. ".repeat(OPENER_SENTENCE_LIMIT + 1), "opener paragraph has")]
+    #[case::chars("x".repeat(OPENER_CHAR_LIMIT + 1), "opener paragraph is")]
+    fn text_checks_should_explain_opener_cause_and_guidance(
+        #[case] source: String,
+        #[case] summary: &str,
+    ) {
+        let diags = run_text_checks(&source, "md");
+
         let found = codes(&diags, CODE_HEADER_OPENER);
         assert_eq!(found.len(), 1);
         let msg = &found[0].message;
-        assert!(msg.starts_with("opener paragraph has 3 sentences; maximum is 2.\n"));
+        assert!(msg.starts_with(summary));
+        assert!(msg.contains("\nWhy: A long opener delays the main point and makes the section harder to scan.\nSuggestions:\n  - "));
         assert!(msg.contains("main point"));
         assert!(msg.contains("one fact per bullet"));
     }

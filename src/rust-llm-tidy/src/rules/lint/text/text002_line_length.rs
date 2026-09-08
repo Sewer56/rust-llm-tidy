@@ -42,11 +42,9 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
 /// TEXT002 Warning for one over-limit line; `len` is the full line length.
 fn line_length_diagnostic(line: &StrippedLine, len: usize) -> Diagnostic {
     let bullets = [
-        format!(
-            "Lines over {LINE_LIMIT} chars strain short attention spans \
-             and need wide monitors."
-        ),
-        "Split it at the nearest idea change with a blank line.".to_string(),
+        format!("Wrap prose at word boundaries to {LINE_LIMIT} chars or fewer per line."),
+        "Preserve paragraph and list structure; do not split code identifiers, code spans, or URLs."
+            .to_string(),
         "Code spans, URLs, and link targets count.".to_string(),
         "Code blocks, table rows, and link definitions are exempt.".to_string(),
         "Borders are ignored.".to_string(),
@@ -54,7 +52,11 @@ fn line_length_diagnostic(line: &StrippedLine, len: usize) -> Diagnostic {
     Diagnostic {
         severity: Severity::Warning,
         code: CODE_LINE_LENGTH,
-        message: bulleted(&format!("line is {len} chars long."), &bullets),
+        message: bulleted(
+            &format!("line is {len} chars long."),
+            "Long lines are harder to follow in narrow editors and side-by-side reviews.",
+            &bullets,
+        ),
         line: line.number,
         item_kind: "file".to_string(),
         item_name: None,
@@ -71,21 +73,27 @@ mod tests {
     // ── TEXT002: line length ──
 
     // Over-limit stripped line -> TEXT002 Warning with a measurement summary
-    // plus rationale and fix bullets. Indent and comment marker are not
+    // plus safe wrapping guidance. Indent and comment marker are not
     // measured.
     #[test]
-    fn text_checks_warn_on_long_stripped_line() {
-        let text = "x".repeat(81);
+    fn text_checks_should_preserve_structure_when_wrapping_long_line() {
+        let text = "x".repeat(LINE_LIMIT + 1);
         let source = format!("\t/// {text}\n");
+
         let diags = run_text_checks(&source, "rs");
+
         let found = codes(&diags, CODE_LINE_LENGTH);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].severity, Severity::Warning);
         assert_eq!(found[0].line, 1);
         let msg = &found[0].message;
-        assert!(msg.starts_with("line is 81 chars long."));
-        assert!(msg.contains("strain short attention spans"));
-        assert!(msg.contains("blank line"));
+        assert!(msg.starts_with(&format!("line is {} chars long.", LINE_LIMIT + 1)));
+        assert!(msg.contains("\nWhy: Long lines are harder to follow in narrow editors and side-by-side reviews.\nSuggestions:\n  - "));
+        assert!(msg.contains(&format!(
+            "Wrap prose at word boundaries to {LINE_LIMIT} chars or fewer per line."
+        )));
+        assert!(msg.contains("Preserve paragraph and list structure"));
+        assert!(msg.contains("do not split code identifiers, code spans, or URLs"));
         assert!(msg.contains("Code spans, URLs, and link targets count"));
         assert!(msg.contains("Code blocks, table rows, and link definitions are exempt"));
     }

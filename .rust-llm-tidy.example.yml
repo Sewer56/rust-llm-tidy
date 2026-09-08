@@ -62,13 +62,11 @@
 # extension selection; unsupported extensions remain exempt.
 
 # ── Method length (LEN001) ──
-# Rust fn bodies count the non-blank, non-comment-only lines between
-# the braces; the signature never counts. Every fn is measured, tests
-# included. Enable LEN001 or lints in the whitelist below to run this
-# check.
+# Suggest reviewing Rust function bodies over this code-line limit.
+# Enable LEN001 or lints in the whitelist below.
 
 # method_length:
-#   max_lines: 75   # warn above this budget; >= 1.
+#   max_lines: 100  # hint above this budget; >= 1.
 
 # ── Post-processing ──
 # External commands run on every processed file; the file path is appended

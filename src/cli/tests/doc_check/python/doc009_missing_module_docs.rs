@@ -11,17 +11,19 @@ fn doc009_should_explain_header_writing_when_module_docstring_is_missing() {
     let path = python_fixture_dir().join("doc009_missing_docstring.py");
     let expected = indoc::indoc! {"
         :1: error[DOC009]: module file is missing a module docstring.
-        Fix: add a module docstring as the first statement.
 
-        Help readers unfamiliar with the codebase understand the module's purpose
+        Why: A purpose-first header helps readers understand the module
         without reading its implementation.
+
+        Suggestions:
         - Read the module and relevant callers; document only supported facts.
         - Start with one concise sentence explaining what the module does and why.
           Do not just restate its name. A simple module needs no more.
-        - If more detail is useful, put it below the summary, separated by a blank
-          doc line. Outline major responsibilities, entry points, or non-obvious
-          constraints. Use bullets for multiple topics.
-        - Link to item docs instead of repeating their details. (file)"};
+        - If more detail is useful, put it below the summary, separated by a blank doc line.
+        - Use that detail to outline major responsibilities, entry points, or non-obvious constraints.
+        - Use bullets for multiple topics.
+        - Link to item docs instead of repeating their details.
+        - Add a module docstring as the first statement. (file)"};
 
     let output = run_command(&["--include", "DOC009"], &path);
 

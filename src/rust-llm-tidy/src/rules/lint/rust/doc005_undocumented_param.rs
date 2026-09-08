@@ -42,7 +42,11 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
         severity: Severity::Warning,
         code: CODE_UNDOCUMENTED_PARAM,
         message: format!(
-            "parameter(s) not documented in the `# Arguments` section: `{}`",
+            "parameter(s) not documented in the `# Arguments` section: `{}`.\n\n\
+             Why: Omitted parameters leave readers guessing how to supply those inputs.\n\n\
+             Suggestions:\n\
+             - Describe these existing parameters and their actual roles and constraints.\n\
+             - Do not add parameters or change behavior to satisfy this lint.",
             undocumented.join("`, `")
         ),
         line: item.start_line(),
@@ -60,14 +64,23 @@ mod tests {
 
     // One param (fmt) missing from # Arguments -> warning.
     #[test]
-    fn test_undocumented_param_missing() {
+    fn check_should_name_omitted_parameters_and_request_their_actual_contract() {
         let item = parse_one(
             "/// Builds.\n///\n/// # Arguments\n///\n/// `name` - the name.\npub fn build(name: &str, fmt: &str) {}",
         );
+
         let diags = check(&item);
+
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_UNDOCUMENTED_PARAM);
-        assert!(diags[0].message.contains("fmt"));
+        assert_eq!(
+            diags[0].message,
+            "parameter(s) not documented in the `# Arguments` section: `fmt`.\n\n\
+             Why: Omitted parameters leave readers guessing how to supply those inputs.\n\n\
+             Suggestions:\n\
+             - Describe these existing parameters and their actual roles and constraints.\n\
+             - Do not add parameters or change behavior to satisfy this lint."
+        );
     }
 
     // Param name that only appears as a substring (name in filename) -> warning.

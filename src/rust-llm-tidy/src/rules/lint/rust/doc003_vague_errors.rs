@@ -33,7 +33,14 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     vec![Diagnostic {
         severity: Severity::Warning,
         code: CODE_VAGUE_ERRORS,
-        message: "`# Errors` section does not name any concrete error variant".to_string(),
+        message: "`# Errors` section has no `::` path naming a concrete error variant.\n\n\
+                  Why: Concrete error names help readers connect failure conditions to handling code.\n\n\
+                  Suggestions:\n\
+                  - Document each error the implementation can return and its specific trigger.\n\
+                  - Use variant paths where they exist.\n\
+                  - If the error type has no variants or the function cannot fail, document that contract.\n\
+                  - Do not invent variants or change behavior to silence this warning."
+            .to_string(),
         line: item.start_line(),
         item_kind: item.kind().to_string(),
         item_name: item.name().map(str::to_string),
@@ -58,14 +65,26 @@ mod tests {
 
     // # Errors body names no concrete variant -> warning.
     #[test]
-    fn test_vague_errors_no_variants() {
+    fn check_should_request_actual_errors_when_section_has_no_variant_path() {
         let item = parse_one(
             "/// Loads.\n///\n/// # Errors\n///\n/// Returns an error if loading fails.\npub fn load() -> Result<(), String> { Ok(()) }",
         );
+
         let diags = check(&item);
+
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_VAGUE_ERRORS);
         assert_eq!(diags[0].severity, Severity::Warning);
+        assert_eq!(
+            diags[0].message,
+            "`# Errors` section has no `::` path naming a concrete error variant.\n\n\
+             Why: Concrete error names help readers connect failure conditions to handling code.\n\n\
+             Suggestions:\n\
+             - Document each error the implementation can return and its specific trigger.\n\
+             - Use variant paths where they exist.\n\
+             - If the error type has no variants or the function cannot fail, document that contract.\n\
+             - Do not invent variants or change behavior to silence this warning."
+        );
     }
 
     // # Errors section is empty (no body) -> still vague, warning.

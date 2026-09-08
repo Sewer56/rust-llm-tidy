@@ -1,6 +1,5 @@
 //! TEXT005: untagged fenced code block over the plaintext analysis.
 
-use super::bulleted;
 use crate::reporting::diagnostic::{Diagnostic, Severity};
 use crate::rules::registry::CODE_FENCE_TAG;
 use crate::text::measurement::{Document, Fence};
@@ -20,27 +19,35 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
 
 /// TEXT005 Warning for one untagged fence, reported at its opening line.
 fn fence_diagnostic(fence: &Fence) -> Diagnostic {
-    let (summary, bullets) = if fence.info.is_empty() {
+    let (summary, why, bullets) = if fence.info.is_empty() {
         (
-            "fenced code block has no language tag.".to_string(),
+            "fenced code block has no language tag.",
+            "Language tags give readers language cues and useful syntax highlighting.\n  - Tested examples help readers apply them correctly.",
             [
-                "Tag the fence with its language, like ```text.".to_string(),
-                "Untagged blocks get no syntax highlighting.".to_string(),
+                "Prefer compilable Rust examples tagged ```rust and tested with doctests.",
+                "Use ```rust,ignore only when a doctest genuinely cannot compile or run; explain why.",
+                "Tag other languages accurately, such as ```sh; reserve ```text for plain text.",
             ],
         )
     } else {
         (
-            "fenced code block uses bare `ignore`.".to_string(),
+            "fenced code block uses bare `ignore`.",
+            "Language tags give readers language cues and useful syntax highlighting.\n  - Tested examples help readers apply them correctly.\n  - Bare `ignore` skips Rust doctest compilation and execution.",
             [
-                "Name the language: ```rust,ignore hides but still tags.".to_string(),
-                "Bare `ignore` drops syntax highlighting and tooling.".to_string(),
+                "Prefer compilable Rust examples: replace `ignore` with `rust` and pass doctests.",
+                "Use ```rust,ignore only when a doctest genuinely cannot compile or run; explain why.",
+                "Tag other languages accurately, such as ```sh; reserve ```text for plain text.",
             ],
         )
     };
+
     Diagnostic {
         severity: Severity::Warning,
         code: CODE_FENCE_TAG,
-        message: bulleted(&summary, &bullets),
+        message: format!(
+            "{summary}\nWhy:\n  - {why}\nSuggestions:\n  - {}",
+            bullets.join("\n  - ")
+        ),
         line: fence.line,
         item_kind: "file".to_string(),
         item_name: None,
@@ -61,14 +68,16 @@ mod tests {
     // A bare opening fence warns at its line; trailing whitespace and a
     // longer marker run still leave the info string empty.
     #[test]
-    fn text_checks_warn_on_fence_without_a_language_tag() {
+    fn text_checks_should_request_actual_language_when_fence_is_untagged() {
         let source = concat!(
             "```\ncode\n```\n\n",
             "~~~\ncode\n~~~\n\n",
             "```\t\ncode\n```\n\n",
             "````\ncode\n````\n",
         );
+
         let diags = run_text_checks(source, "md");
+
         let found = codes(&diags, CODE_FENCE_TAG);
         assert_eq!(found.len(), 4);
         assert_eq!(found[0].line, 1);
@@ -76,29 +85,46 @@ mod tests {
         assert_eq!(found[2].line, 9);
         assert_eq!(found[3].line, 13);
         assert_eq!(found[0].severity, Severity::Warning);
-        assert!(
-            found[0]
-                .message
-                .starts_with("fenced code block has no language tag.")
+        assert_eq!(
+            found[0].message,
+            concat!(
+                "fenced code block has no language tag.\n",
+                "Why:\n",
+                "  - Language tags give readers language cues and useful syntax highlighting.\n",
+                "  - Tested examples help readers apply them correctly.\n",
+                "Suggestions:\n",
+                "  - Prefer compilable Rust examples tagged ```rust and tested with doctests.\n",
+                "  - Use ```rust,ignore only when a doctest genuinely cannot compile or run; explain why.\n",
+                "  - Tag other languages accurately, such as ```sh; reserve ```text for plain text."
+            )
         );
-        assert!(found[0].message.contains("```text"));
     }
 
     // An opening fence with info string exactly `ignore` warns at its
     // line with the bare-`ignore` summary.
     #[test]
-    fn text_checks_warn_on_fence_tagged_bare_ignore() {
+    fn text_checks_should_prefer_compilable_examples_when_fence_uses_bare_ignore() {
         let source = "```ignore\nlet x = 1;\n```\n";
+
         let diags = run_text_checks(source, "md");
+
         let found = codes(&diags, CODE_FENCE_TAG);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].line, 1);
-        assert!(
-            found[0]
-                .message
-                .starts_with("fenced code block uses bare `ignore`.")
+        assert_eq!(
+            found[0].message,
+            concat!(
+                "fenced code block uses bare `ignore`.\n",
+                "Why:\n",
+                "  - Language tags give readers language cues and useful syntax highlighting.\n",
+                "  - Tested examples help readers apply them correctly.\n",
+                "  - Bare `ignore` skips Rust doctest compilation and execution.\n",
+                "Suggestions:\n",
+                "  - Prefer compilable Rust examples: replace `ignore` with `rust` and pass doctests.\n",
+                "  - Use ```rust,ignore only when a doctest genuinely cannot compile or run; explain why.\n",
+                "  - Tag other languages accurately, such as ```sh; reserve ```text for plain text."
+            )
         );
-        assert!(found[0].message.contains("```rust,ignore"));
     }
 
     // A fence left open at end of input still warns at its opening line.
@@ -124,6 +150,10 @@ mod tests {
 
             ```ignore,foo
             a
+            ```
+
+            ```rust,ignore
+            requires_unavailable_dependency();
             ```
 
             ```ignore no_run

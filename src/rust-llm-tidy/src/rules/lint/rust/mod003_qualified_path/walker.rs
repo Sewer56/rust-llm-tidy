@@ -260,10 +260,12 @@ impl<'a> Walker<'a> {
                 code: CODE_QUALIFIED_PATH,
                 message: format!(
                     "path `{path}` includes the full namespace.\n\
-                     - Shorten with imports only if the meaning remains clear at the call site.\n\
+                     Why: full namespace prefixes give readers longer lines to scan before reaching the item name, making code harder to understand.\n\
+                     Suggestions:\n\
                      {advice}\n\
                      - Import a parent module if the bare name loses context: for example, import `std::process` and use `process::id()`, not `id()`.\n\
-                     - Keep the full path if shortening would reduce clarity or create a name conflict."
+                     - Keep the full path if shortening would reduce clarity or create a name conflict.\n\
+                     - Verify the shorter path resolves to the same item; this hint uses syntax, not compiler name resolution."
                 ),
                 line,
                 item_kind: kind.to_string(),

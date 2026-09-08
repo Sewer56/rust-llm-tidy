@@ -35,9 +35,12 @@ fn md_should_show_wording_hints_when_text006_is_enabled() {
     );
     for (line, before, after) in hints {
         let expected = format!(
-            ":{line}: hint[TEXT006]: consider simpler wording.\n  \
+            ":{line}: hint[TEXT006]: wording has a simpler alternative: `{before}`.\n\
+             Why: Unnecessary formal wording and framing can make the point harder to understand.\n\
+             Suggestions:\n  \
              - Before: `{before}`\n  - After: {after}\n  \
-             - Preserve meaning and adjust grammar to fit. (file)"
+             - Preserve meaning and adjust grammar to fit.\n  \
+             - Use the alternative only if it preserves technical meaning, uncertainty, and required wording. (file)"
         );
 
         assert!(

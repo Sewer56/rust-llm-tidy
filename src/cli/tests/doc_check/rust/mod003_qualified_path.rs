@@ -141,7 +141,7 @@ fn cli_should_render_first_occurrence_hint(
     assert!(stderr.contains("- If clear at the call site,"), "{stderr}");
     assert!(
         stderr
-            .contains("- Shorten with imports only if the meaning remains clear at the call site."),
+            .contains("Why: full namespace prefixes give readers longer lines to scan before reaching the item name, making code harder to understand."),
         "{stderr}"
     );
     assert!(

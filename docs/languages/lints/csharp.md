@@ -36,6 +36,11 @@ Measurement details for the text lints:
 - Lints measure `///` text-node inner text.
 - `<code>` and `<example>` subtrees are never measured.
 
+For Markdown README fences, see [TEXT005 guidance and examples]. TEXT005 does
+not apply to C# XML doc regions.
+
+[TEXT005 guidance and examples]: ../../text-lints.md#text005---fenced-code-block-without-a-language-tag
+
 ### DOC001 - missing documentation
 
 A non-private documentable member has no `///` comment.
@@ -67,7 +72,12 @@ public class Loader
 
 ```text
 $ rust-llm-tidy --no-config --include DOC001 Loader.cs
-Loader.cs:1: error[DOC001]: non-private item is missing a doc comment (class `Loader`)
+Loader.cs:1: error[DOC001]: non-private item is missing a doc comment.
+
+Why: Readers need its purpose and contract without tracing the implementation.
+
+Suggestions:
+- Add `/// <summary>` docs describing its purpose and supported contract. (class `Loader`)
 Error: found 1 error(s)
 ```
 
@@ -106,11 +116,18 @@ public class Loader
 
 ```text
 $ rust-llm-tidy --no-config --include DOC002 Loader.cs
-Loader.cs:3: error[DOC002]: member that throws is missing an `<exception>` doc tag (fn `Load`)
+Loader.cs:3: error[DOC002]: member that can throw is missing an `<exception>` doc tag.
+
+Why: Readers need to understand possible failures and when they occur.
+
+Suggestions:
+- Trace its throws and calls.
+- Document each exception that can escape with `<exception cref="Type">` and the specific condition that causes it.
+- Do not invent exceptions or change behavior to satisfy this lint. (fn `Load`)
 Error: found 1 error(s)
 ```
 
-#### Limitations
+#### Remarks
 
 Throw detection follows calls transitively within the nearest
 `.csproj` and its literal `ProjectReference` targets.
@@ -158,7 +175,15 @@ public class Loader
 
 ```text
 $ rust-llm-tidy --no-config --include DOC003 Loader.cs
-Loader.cs:3: warning[DOC003]: `<exception>` doc tags name no concrete exception type (`cref`) (fn `Load`)
+Loader.cs:3: warning[DOC003]: `<exception>` doc tags name no concrete exception type (`cref`).
+
+Why: Concrete exception types help readers connect failure conditions to handling code.
+
+Suggestions:
+- Verify the member and its calls.
+- Set each `cref` to the actual exception type that can escape.
+- Describe the specific condition that causes each exception.
+- Do not invent exceptions or change behavior to satisfy this lint. (fn `Load`)
 ```
 
 ### DOC004 - missing `<param>` tags
@@ -197,7 +222,12 @@ public class Loader
 
 ```text
 $ rust-llm-tidy --no-config --include DOC004 Loader.cs
-Loader.cs:3: warning[DOC004]: member with parameters is missing `<param>` doc tags (fn `Load`)
+Loader.cs:3: warning[DOC004]: member with parameters is missing `<param>` doc tags.
+
+Why: Readers need parameter roles and constraints to supply appropriate inputs.
+
+Suggestions:
+- Add a `<param name="...">` tag for each declared parameter, describing its role and any constraints supported by the existing contract. (fn `Load`)
 ```
 
 ### DOC005 - undocumented parameter
@@ -235,7 +265,12 @@ public class Loader
 
 ```text
 $ rust-llm-tidy --no-config --include DOC005 Loader.cs
-Loader.cs:3: warning[DOC005]: parameter(s) not documented in `<param>` tags: `width` (fn `Render`)
+Loader.cs:3: warning[DOC005]: parameter(s) not documented in `<param>` tags: `width`.
+
+Why: Omitted parameters leave readers guessing how to supply those inputs.
+
+Suggestions:
+- Add a `<param name="...">` tag for each listed parameter, describing its role and any constraints supported by the existing contract. (fn `Render`)
 ```
 
 ### DOC006 - placeholder text
@@ -270,7 +305,12 @@ public class Loader
 
 ```text
 $ rust-llm-tidy --no-config --include DOC006 Loader.cs
-Loader.cs:3: warning[DOC006]: doc comment contains placeholder text (TODO/FIXME/TBD) (fn `Load`)
+Loader.cs:3: warning[DOC006]: doc comment contains placeholder text (TODO/FIXME/TBD).
+
+Why: Placeholders leave readers without an explanation of current behavior.
+
+Suggestions:
+- Replace the placeholder with an accurate description of the existing contract. (fn `Load`)
 ```
 
 ### TEXT001 - oversized paragraph
@@ -320,11 +360,13 @@ public class Loader
 ```text
 $ rust-llm-tidy --no-config --include TEXT001 Loader.cs
 Loader.cs:4: error[TEXT001]: paragraph is 256 chars long.
-  - Paragraphs over 240 chars outlast a short attention span.
+Why: Dense paragraphs make it harder to find an idea and keep its context in mind.
+Suggestions:
   - Split it at the nearest idea change with a blank line.
+  - Keep each paragraph to 240 chars or fewer.
   - Convert list-like paragraphs into bullets.
-  - Keep each bullet to one checkable action of at most 160 chars.
-  - Move remarks into their own sections.
+  - Aim for one fact or checkable action per bullet, ideally at most 160 chars.
+  - Move supporting remarks into their own sections; preserve necessary information, contracts, and code identifiers.
   - The check skips code blocks, tables, headings, signature lines, and link definitions. (file)
 Error: found 1 error(s)
 ```
@@ -365,10 +407,13 @@ public class Loader
 ```text
 $ rust-llm-tidy --no-config --include TEXT002 Loader.cs
 Loader.cs:3: warning[TEXT002]: line is 119 chars long.
-  - Lines over 80 chars strain short attention spans and need wide monitors.
-  - Split it at the nearest idea change with a blank line.
+Why: Long lines are harder to follow in narrow editors and side-by-side reviews.
+Suggestions:
+  - Wrap prose at word boundaries to 80 chars or fewer per line.
+  - Preserve paragraph and list structure; do not split code identifiers, code spans, or URLs.
   - Code spans, URLs, and link targets count.
-  - Code blocks, table rows, and link definitions are exempt. (file)
+  - Code blocks, table rows, and link definitions are exempt.
+  - Borders are ignored. (file)
 ```
 
 ### TEXT003 - long sentence
@@ -419,11 +464,15 @@ public class Loader
 ```text
 $ rust-llm-tidy --no-config --include TEXT003 Loader.cs
 Loader.cs:4: warning[TEXT003]: sentence is 26 words long.
-  - Keep sentences to 25 words or fewer.
+Why:
   - Long sentences can be harder to understand.
-  - Readers understand over 90% of the text when sentences contain 14 words or fewer.
-  - At 43 words per sentence, comprehension drops below 10%.
-  - Split this sentence where the idea changes. (file)
+  - According to a study, readers understand about 90% at 14 words per sentence.
+  - It reports under 10% at 43 words.
+Suggestions:
+  - Split this sentence where the idea changes.
+  - Keep sentences to 25 words or fewer.
+  - Aim for 14 words when the meaning allows.
+  - Preserve meaning, conditions, and guarantees. (file)
 ```
 
 ### TEXT006 - verbose synonyms
@@ -463,10 +512,13 @@ public class Loader
 
 ```text
 $ cargo run -p rust-llm-tidy-cli -- --include TEXT006 Loader.cs
-Loader.cs:4: hint[TEXT006]: consider simpler wording.
+Loader.cs:3: hint[TEXT006]: wording has a simpler alternative: `utilize`.
+Why: Unnecessary formal wording and framing can make the point harder to understand.
+Suggestions:
   - Before: `utilize`
   - After: `use`
-  - Preserve meaning and adjust grammar to fit. (file)
+  - Preserve meaning and adjust grammar to fit.
+  - Use the alternative only if it preserves technical meaning, uncertainty, and required wording. (file)
 ```
 
 [TEXT006 rule]: ../../text-lints.md#text006---verbose-synonyms
@@ -507,7 +559,13 @@ public class LoaderTests
 
 ```text
 $ rust-llm-tidy --no-config --include TEST001 Loader.cs
-Loader.cs:3: warning[TEST001]: test method `test_load` should use a behavioral name (subject_should_expectation_when_condition), not a `test_*` or `case_*` prefix (fn `test_load`)
+Loader.cs:3: warning[TEST001]: test method `test_load` uses a discouraged naming pattern.
+
+Why: Behavioral names help readers understand a test's claim without opening its body.
+
+Suggestions:
+- Rename it to describe the subject and expected behavior, adding a condition only when it matters.
+- Use `subject_should_expectation[_when_condition]` in the project's casing style. (fn `test_load`)
 ```
 
 ### Multiple findings at once
@@ -528,13 +586,27 @@ public class Loader
 Findings:
 
 ```text
-Loader.cs:1: error[DOC001]: non-private item is missing a doc comment (class `Loader`)
-Loader.cs:3: error[DOC002]: member that throws is missing an `<exception>` doc tag (fn `Load`)
-Loader.cs:3: warning[DOC004]: member with parameters is missing `<param>` doc tags (fn `Load`)
-```
+Loader.cs:1: error[DOC001]: non-private item is missing a doc comment.
 
-The `Load` findings anchor at line 3, its `///` doc line. An item starts at
-its doc comment, so its start line is the doc run's first line.
+Why: Readers need its purpose and contract without tracing the implementation.
+
+Suggestions:
+- Add `/// <summary>` docs describing its purpose and supported contract. (class `Loader`)
+Loader.cs:3: error[DOC002]: member that can throw is missing an `<exception>` doc tag.
+
+Why: Readers need to understand possible failures and when they occur.
+
+Suggestions:
+- Trace its throws and calls.
+- Document each exception that can escape with `<exception cref="Type">` and the specific condition that causes it.
+- Do not invent exceptions or change behavior to satisfy this lint. (fn `Load`)
+Loader.cs:3: warning[DOC004]: member with parameters is missing `<param>` doc tags.
+
+Why: Readers need parameter roles and constraints to supply appropriate inputs.
+
+Suggestions:
+- Add a `<param name="...">` tag for each declared parameter, describing its role and any constraints supported by the existing contract. (fn `Load`)
+```
 
 After:
 
@@ -553,6 +625,11 @@ public class Loader
     }
 }
 ```
+
+#### Remarks
+
+The `Load` findings anchor at line 3, its `///` doc line. An item starts at
+its doc comment, so its start line is the doc run's first line.
 
 [text lints]: ../../text-lints.md
 
@@ -588,11 +665,15 @@ With a `config.yml` containing `{}`, the local CLI renders:
 ```text
 $ cargo run -p rust-llm-tidy-cli -- --config config.yml --include MOD003 example.cs
 example.cs:1: hint[MOD003]: path `System.Text.StringBuilder` includes the full namespace.
-- Shorten with imports or aliases only if the meaning remains clear at the use site.
+Why: full namespace prefixes give readers longer lines to scan before reaching the item name, making code harder to understand.
+Suggestions:
 - If `System.Text` is a namespace and the result is clear, add `using System.Text;` at namespace or file scope and use `StringBuilder`.
 - Retain namespace or type context when needed; use a type alias if the proposed import targets a containing type, not a namespace.
-- Keep the full path if shortening would reduce clarity or create a name conflict. (fn `Create`)
+- Keep the full path if shortening would reduce clarity or create a name conflict.
+- Verify the shorter path resolves to the same symbol; this hint uses syntax, not compiler name resolution. (fn `Create`)
 ```
+
+#### Remarks
 
 Import advice:
 
@@ -612,8 +693,6 @@ to retain possible type and property segments. For containing types, use a type
 alias or retain qualification instead.
 
 Absolute paths only reuse explicitly absolute imports to avoid relative targets.
-
-#### MOD003 exceptions
 
 MOD003 skips:
 

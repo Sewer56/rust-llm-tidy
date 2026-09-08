@@ -29,17 +29,21 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
 /// TEXT001 Warning for an over-limit bullet, with shortening guidance.
 fn bullet_diagnostic(para: &Paragraph) -> Diagnostic {
     let bullets = [
-        format!("Bullets over {PARAGRAPH_LIMIT} chars outlast a short attention span."),
+        "Split distinct facts or actions into separate bullets.".to_string(),
         format!(
-            "Shorten it to one checkable action of at most \
-             {BULLET_RECOMMENDED} chars."
+            "Aim for one fact or checkable action per bullet, ideally at most \
+             {BULLET_RECOMMENDED} chars; the limit is {PARAGRAPH_LIMIT}."
         ),
-        "Split it into separate bullets.".to_string(),
+        "Preserve necessary information, contracts, and code identifiers.".to_string(),
     ];
     Diagnostic {
         severity: Severity::Warning,
         code: CODE_PARAGRAPH_SIZE,
-        message: bulleted(&format!("bullet is {} chars long.", para.size), &bullets),
+        message: bulleted(
+            &format!("bullet is {} chars long.", para.size),
+            "Long bullets make individual facts and actions harder to scan.",
+            &bullets,
+        ),
         line: para.first_line,
         item_kind: "file".to_string(),
         item_name: None,
@@ -49,21 +53,26 @@ fn bullet_diagnostic(para: &Paragraph) -> Diagnostic {
 /// TEXT001 Error for an over-limit plain paragraph, reported at its first line.
 fn paragraph_diagnostic(para: &Paragraph) -> Diagnostic {
     let bullets = [
-        format!("Paragraphs over {PARAGRAPH_LIMIT} chars outlast a short attention span."),
         "Split it at the nearest idea change with a blank line.".to_string(),
+        format!("Keep each paragraph to {PARAGRAPH_LIMIT} chars or fewer."),
         "Convert list-like paragraphs into bullets.".to_string(),
         format!(
-            "Keep each bullet to one checkable action of at most \
+            "Aim for one fact or checkable action per bullet, ideally at most \
              {BULLET_RECOMMENDED} chars."
         ),
-        "Move remarks into their own sections.".to_string(),
+        "Move supporting remarks into their own sections; preserve necessary information, contracts, and code identifiers."
+            .to_string(),
         "The check skips code blocks, tables, headings, signature lines, and link definitions."
             .to_string(),
     ];
     Diagnostic {
         severity: Severity::Error,
         code: CODE_PARAGRAPH_SIZE,
-        message: bulleted(&format!("paragraph is {} chars long.", para.size), &bullets),
+        message: bulleted(
+            &format!("paragraph is {} chars long.", para.size),
+            "Dense paragraphs make it harder to find an idea and keep its context in mind.",
+            &bullets,
+        ),
         line: para.first_line,
         item_kind: "file".to_string(),
         item_name: None,
@@ -89,11 +98,13 @@ mod tests {
     // ── TEXT001: paragraph and bullet budgets ──
 
     // Over-limit plain paragraph -> TEXT001 Error at the first line, with a
-    // measurement summary plus rationale and fix bullets.
+    // measurement summary plus restructuring guidance.
     #[test]
-    fn text_checks_error_on_oversized_plain_paragraph() {
+    fn text_checks_should_preserve_information_when_shortening_plain_paragraph() {
         let source = paragraph_source(80);
+
         let diags = run_text_checks(&source, "rs");
+
         let found = codes(&diags, CODE_PARAGRAPH_SIZE);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].severity, Severity::Error);
@@ -104,10 +115,15 @@ mod tests {
             "message must open with the measurement"
         );
         assert!(msg.contains("chars long.\n"));
-        assert!(msg.contains("outlast a short attention span"));
+        assert!(msg.contains("\nWhy: Dense paragraphs make it harder to find an idea and keep its context in mind.\nSuggestions:\n  - "));
+        assert!(msg.contains(&format!(
+            "Keep each paragraph to {PARAGRAPH_LIMIT} chars or fewer."
+        )));
         assert!(msg.contains("blank line"));
         assert!(msg.contains("bullets"));
-        assert!(msg.contains("160"));
+        assert!(msg.contains(&format!("ideally at most {BULLET_RECOMMENDED} chars")));
+        assert!(msg.contains("one fact or checkable action"));
+        assert!(msg.contains("preserve necessary information, contracts, and code identifiers"));
         assert!(msg.contains(
             "The check skips code blocks, tables, headings, signature lines, and link definitions."
         ));
@@ -156,20 +172,23 @@ mod tests {
     // Over-limit bullet -> TEXT001 Warning only, with shortening guidance and
     // the 160-char recommendation.
     #[test]
-    fn text_checks_warn_on_oversized_bullet() {
+    fn text_checks_should_preserve_information_when_shortening_bullet() {
         let bullet = "- ".to_string() + &"word ".repeat(60);
         let source = format!("{bullet}\n");
+
         let diags = run_text_checks(&source, "md");
+
         let found = codes(&diags, CODE_PARAGRAPH_SIZE);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].severity, Severity::Warning);
         assert_eq!(found[0].line, 1);
         let msg = &found[0].message;
         assert!(msg.starts_with("bullet is "));
-        assert!(msg.contains("outlast a short attention span"));
-        assert!(msg.contains("Shorten"));
-        assert!(msg.contains("160"));
-        assert!(msg.contains("separate bullets"));
+        assert!(msg.contains("\nWhy: Long bullets make individual facts and actions harder to scan.\nSuggestions:\n  - "));
+        assert!(msg.contains("Split distinct facts or actions into separate bullets."));
+        assert!(msg.contains(&format!("ideally at most {BULLET_RECOMMENDED} chars")));
+        assert!(msg.contains(&format!("the limit is {PARAGRAPH_LIMIT}")));
+        assert!(msg.contains("Preserve necessary information, contracts, and code identifiers."));
     }
 
     // Bullet within the limit is silent.

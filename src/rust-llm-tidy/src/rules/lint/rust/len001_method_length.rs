@@ -35,7 +35,7 @@ struct FnBody<'a> {
     name: Option<&'a str>,
 }
 
-/// Warn when a function body exceeds its configured line budget.
+/// Emit a hint when a function body exceeds its configured line budget.
 ///
 /// Walks the retained tree once, gathering every function item and every
 /// comment span. Each body's measured lines are then counted in one
@@ -74,21 +74,28 @@ pub(crate) fn check(parsed: &ParseResult, max_lines: usize) -> Vec<Diagnostic> {
     diags
 }
 
-/// Build the warning stating the measured facts and the split advice.
+/// Build the hint stating the measured facts and the split advice.
 fn diagnostic(name: Option<&str>, measured: usize, max_lines: usize, line: usize) -> Diagnostic {
     let name = name.unwrap_or("<unnamed>");
     Diagnostic {
-        severity: Severity::Warning,
+        severity: Severity::Hint,
         code: CODE_LEN001,
         message: indoc::formatdoc! {"
             fn `{name}` has {measured} body lines (blank and comment-only lines excluded),
             over the {max_lines}-line budget (method_length.max_lines).
-            - Long functions are hard to follow: readers must hold the whole
-              control flow and every local in mind at once.
-            - Split the body into smaller sub-functions or inner functions, each
-              named for what it does.
-            - Keep the outer function short enough to read as an overview of
-              the flow."},
+            Why:
+            - Long functions can make readers track too much control flow and local state.
+            - Named, cohesive steps can help readers follow the flow without tracking every detail.
+            Suggestions:
+            - Consider extracting cohesive steps into functions named for what they do,
+              so the outer function reads as an overview of the flow.
+            - Keep closely related work together. Avoid new types, forwarding wrappers,
+              or a wider public API solely to shorten the body.
+            - Preserve behavior and performance. Avoid extra allocations, cloning, or
+              repeated work; measure performance-sensitive changes.
+            - Mark extracted functions as `#[inline]` if needed.
+            - Inner functions still count toward the enclosing body.
+            - Keep the body intact if splitting would make it harder to follow or slower."},
         line,
         item_kind: "fn".to_string(),
         item_name: Some(name.to_string()),
@@ -223,15 +230,15 @@ mod tests {
 
     // ── firing and the strict boundary ──
 
-    // Over the budget: one warning naming the fn, its measured count,
+    // Over the budget: one hint naming the fn, its measured count,
     // the budget, and the split advice.
     #[test]
-    fn fires_when_measured_lines_exceed_the_threshold() {
+    fn check_should_emit_a_hint_when_measured_lines_exceed_the_threshold() {
         let diags = checks(&sized_fn(3), 2);
 
         assert_eq!(diags.len(), 1, "3 measured lines > budget 2");
         assert_eq!(diags[0].code, CODE_LEN001);
-        assert_eq!(diags[0].severity, Severity::Warning);
+        assert_eq!(diags[0].severity, Severity::Hint);
         assert_eq!(diags[0].line, 1, "the fn item's own line");
         assert_eq!(diags[0].item_kind, "fn");
         assert_eq!(diags[0].item_name.as_deref(), Some("sized"));
@@ -240,13 +247,13 @@ mod tests {
                 "fn `sized` has 3 body lines (blank and comment-only lines excluded),\n\
                  over the 2-line budget (method_length.max_lines)."
             ),
-            "the warning must state the measured count and the budget: {}",
+            "the hint must state the measured count and the budget: {}",
             diags[0].message
         );
         assert!(
-            diags[0]
-                .message
-                .contains("Split the body into smaller sub-functions or inner functions"),
+            diags[0].message.contains(
+                "Consider extracting cohesive steps into functions named for what they do"
+            ),
             "the advice must be actionable: {}",
             diags[0].message
         );

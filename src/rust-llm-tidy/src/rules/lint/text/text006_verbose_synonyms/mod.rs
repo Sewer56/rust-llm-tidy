@@ -101,11 +101,16 @@ fn synonym_diagnostic(line: &StrippedLine, before: &str, after: &str) -> Diagnos
         format!("Before: `{before}`"),
         format!("After: {after}"),
         "Preserve meaning and adjust grammar to fit.".to_string(),
+        "Use the alternative only if it preserves technical meaning, uncertainty, and required wording.".to_string(),
     ];
     Diagnostic {
         severity: Severity::Hint,
         code: CODE_VERBOSE_SYNONYMS,
-        message: bulleted("consider simpler wording.", &bullets),
+        message: bulleted(
+            &format!("wording has a simpler alternative: `{before}`."),
+            "Unnecessary formal wording and framing can make the point harder to understand.",
+            &bullets,
+        ),
         line: line.number,
         item_kind: "file".to_string(),
         item_name: None,
@@ -166,9 +171,12 @@ mod tests {
             assert_eq!(
                 found[0].message,
                 format!(
-                    "consider simpler wording.\n  - Before: `{term}`\n  \
+                    "wording has a simpler alternative: `{term}`.\n\
+                     Why: Unnecessary formal wording and framing can make the point harder to understand.\n\
+                     Suggestions:\n  - Before: `{term}`\n  \
                      - After: {after}\n  \
-                     - Preserve meaning and adjust grammar to fit."
+                     - Preserve meaning and adjust grammar to fit.\n  \
+                     - Use the alternative only if it preserves technical meaning, uncertainty, and required wording."
                 ),
                 "term {term}"
             );

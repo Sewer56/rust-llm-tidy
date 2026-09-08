@@ -113,7 +113,7 @@ in-place and `--dry-run` runs.
     "line": 22,
     "severity": "error",
     "code": "DOC001",
-    "message": "non-private item is missing a doc comment",
+    "message": "non-private item is missing a doc comment.\n\nWhy: Readers need its purpose and contract without tracing the implementation.\n\nSuggestions:\n- Add `///` docs describing its purpose and actual contract, based on the implementation and relevant callers.",
     "item_kind": "fn",
     "item_name": "load",
     "title": "missing documentation"

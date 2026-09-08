@@ -34,8 +34,11 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
         severity: Severity::Warning,
         code: CODE_TEST_NAMING,
         message: format!(
-            "test function `{name}` should use a behavioral name \
-             (subject_should_expectation_when_condition), not a `test_*` or `case_*` prefix"
+            "test function `{name}` uses a discouraged test-name pattern.\n\n\
+             Why: Behavioral names help readers understand a test's claim without opening its body.\n\n\
+             Suggestions:\n\
+             - Rename it to describe the behavior asserted, using `subject_should_expectation`.\n\
+             - Add `_when_condition` only for conditional or edge behavior."
         ),
         line: item.start_line(),
         item_kind: item.kind().to_string(),
@@ -72,11 +75,21 @@ mod tests {
 
     // Name starts with test_ -> warning.
     #[test]
-    fn test_naming_test_prefix() {
+    fn check_should_request_asserted_behavior_when_test_name_has_a_redundant_prefix() {
         let item = parse_one("#[test]\nfn test_foo() {}");
+
         let diags = check(&item);
+
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_TEST_NAMING);
+        assert_eq!(
+            diags[0].message,
+            "test function `test_foo` uses a discouraged test-name pattern.\n\n\
+             Why: Behavioral names help readers understand a test's claim without opening its body.\n\n\
+             Suggestions:\n\
+             - Rename it to describe the behavior asserted, using `subject_should_expectation`.\n\
+             - Add `_when_condition` only for conditional or edge behavior."
+        );
     }
 
     // Name is test + digits (test1) -> warning.

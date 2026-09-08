@@ -83,8 +83,12 @@ fn check_use<'a>(node: tree_sitter::Node<'a>, source: &str, out: &mut Vec<Diagno
         code: CODE_MOD002,
         message: indoc::indoc! {"
             function-local `use` lacks its own `#[cfg]`.
-            - Hoist it to module scope so dependencies are easy to find.
-            - Keep it local only if it needs conditional compilation, with `#[cfg]` on the `use`."}
+            Why: readers can find module-scope imports without searching function bodies.
+            Suggestions:
+            - Move it to the containing module's imports, keeping visibility private.
+              Preserve its target and alias; check for name or trait-method conflicts.
+            - Preserve any enclosing compilation conditions when moving it.
+              Keep it local if needed, with the real `#[cfg]` condition on the `use`."}
         .to_string(),
         line: node.start_position().row + 1,
         item_kind: "use".to_string(),
@@ -157,9 +161,12 @@ mod tests {
         assert_eq!(
             diags[0].message,
             "function-local `use` lacks its own `#[cfg]`.\n\
-             - Hoist it to module scope so dependencies are easy to find.\n\
-             - Keep it local only if it needs conditional compilation, \
-             with `#[cfg]` on the `use`."
+             Why: readers can find module-scope imports without searching function bodies.\n\
+             Suggestions:\n\
+             - Move it to the containing module's imports, keeping visibility private.\n  \
+             Preserve its target and alias; check for name or trait-method conflicts.\n\
+             - Preserve any enclosing compilation conditions when moving it.\n  \
+             Keep it local if needed, with the real `#[cfg]` condition on the `use`."
         );
     }
 

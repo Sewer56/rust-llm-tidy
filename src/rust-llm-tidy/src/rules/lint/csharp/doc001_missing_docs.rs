@@ -14,9 +14,40 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
         return Vec::new();
     }
 
-    vec![decl.diagnostic(
-        Severity::Error,
-        CODE_MISSING_DOCS,
-        "non-private item is missing a doc comment".to_string(),
-    )]
+    vec![
+        decl.diagnostic(
+            Severity::Error,
+            CODE_MISSING_DOCS,
+            "non-private item is missing a doc comment.\n\n\
+         Why: Readers need its purpose and contract without tracing the implementation.\n\n\
+         Suggestions:\n\
+         - Add `/// <summary>` docs describing its purpose and supported contract."
+                .to_string(),
+        ),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::languages::csharp::parse::parse;
+
+    #[test]
+    fn diagnostic_should_request_purpose_and_supported_contract() {
+        let parsed = parse("public class Cache {}").unwrap();
+
+        let diagnostics = super::super::run(&parsed);
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == CODE_MISSING_DOCS)
+            .unwrap();
+
+        assert_eq!(
+            diagnostic.message,
+            "non-private item is missing a doc comment.\n\n\
+             Why: Readers need its purpose and contract without tracing the implementation.\n\n\
+             Suggestions:\n\
+             - Add `/// <summary>` docs describing its purpose and supported contract."
+        );
+    }
 }

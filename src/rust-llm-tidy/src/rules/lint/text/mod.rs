@@ -35,7 +35,10 @@ pub(crate) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     diags
 }
 
-/// A summary line plus one indented bullet per guidance sentence.
-fn bulleted(summary: &str, bullets: &[String]) -> String {
-    format!("{summary}\n  - {}", bullets.join("\n  - "))
+/// Format the finding, human-facing reason, and concrete rewrite suggestions.
+fn bulleted(summary: &str, why: &str, bullets: &[String]) -> String {
+    format!(
+        "{summary}\nWhy: {why}\nSuggestions:\n  - {}",
+        bullets.join("\n  - ")
+    )
 }

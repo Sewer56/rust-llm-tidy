@@ -66,8 +66,8 @@ safely produces no findings rather than guesses.
 
 A paragraph of doc text over 240 chars is an error.
 
-- A bullet over 240 chars warns instead and recommends one checkable action
-  of at most 160 chars.
+- A bullet over 240 chars warns instead and recommends one fact or checkable
+  action, ideally at most 160 chars.
 - Nested bullets are separate paragraphs.
 
 Code blocks, tables, headings, signature lines, and link definitions are
@@ -100,11 +100,13 @@ pub fn load() {}
 ```text
 $ rust-llm-tidy --no-config --include TEXT001 src/lib.rs
 src/lib.rs:1: error[TEXT001]: paragraph is 243 chars long.
-  - Paragraphs over 240 chars outlast a short attention span.
+Why: Dense paragraphs make it harder to find an idea and keep its context in mind.
+Suggestions:
   - Split it at the nearest idea change with a blank line.
+  - Keep each paragraph to 240 chars or fewer.
   - Convert list-like paragraphs into bullets.
-  - Keep each bullet to one checkable action of at most 160 chars.
-  - Move remarks into their own sections.
+  - Aim for one fact or checkable action per bullet, ideally at most 160 chars.
+  - Move supporting remarks into their own sections; preserve necessary information, contracts, and code identifiers.
   - The check skips code blocks, tables, headings, signature lines, and link definitions. (file)
 Error: found 1 error(s)
 ```
@@ -137,10 +139,13 @@ root, checking each level.
 ```text
 $ rust-llm-tidy --no-config --include TEXT002 README.md
 README.md:1: warning[TEXT002]: line is 104 chars long.
-  - Lines over 80 chars strain short attention spans and need wide monitors.
-  - Split it at the nearest idea change with a blank line.
+Why: Long lines are harder to follow in narrow editors and side-by-side reviews.
+Suggestions:
+  - Wrap prose at word boundaries to 80 chars or fewer per line.
+  - Preserve paragraph and list structure; do not split code identifiers, code spans, or URLs.
   - Code spans, URLs, and link targets count.
-  - Code blocks, table rows, and link definitions are exempt. (file)
+  - Code blocks, table rows, and link definitions are exempt.
+  - Borders are ignored. (file)
 ```
 
 `TEXT002` is warning-severity, so the run exits 0.
@@ -175,23 +180,29 @@ After:
 pub fn load() {}
 ```
 
-The split is naive: decimals like `3.5` or abbreviations like `e.g.`
-only shorten fragments, so misses are possible but fabricated reports
-are not.
-
 ### TEXT003 CLI output
 
 ```text
 $ rust-llm-tidy --no-config --include TEXT003 src/lib.rs
 src/lib.rs:1: warning[TEXT003]: sentence is 30 words long.
-  - Keep sentences to 25 words or fewer.
+Why:
   - Long sentences can be harder to understand.
-  - Readers understand over 90% of the text when sentences contain 14 words or fewer.
-  - At 43 words per sentence, comprehension drops below 10%.
-  - Split this sentence where the idea changes. (file)
+  - According to a study, readers understand about 90% at 14 words per sentence.
+  - It reports under 10% at 43 words.
+Suggestions:
+  - Split this sentence where the idea changes.
+  - Keep sentences to 25 words or fewer.
+  - Aim for 14 words when the meaning allows.
+  - Preserve meaning, conditions, and guarantees. (file)
 ```
 
 `TEXT003` is warning-severity, so the run exits 0.
+
+### Remarks
+
+The split is naive: decimals like `3.5` or abbreviations like `e.g.`
+only shorten fragments, so misses are possible but fabricated reports
+are not.
 
 ## TEXT004 - header opener shape
 
@@ -238,8 +249,9 @@ pub fn load() {}
 
 ```text
 $ rust-llm-tidy --no-config --include TEXT004 src/lib.rs
-src/lib.rs:1: warning[TEXT004]: opener paragraph is 161 chars long; maximum is 160.
-  - Keep the opener brief so readers can find the main point quickly.
+src/lib.rs:1: warning[TEXT004]: opener paragraph is 162 chars long; maximum is 160.
+Why: A long opener delays the main point and makes the section harder to scan.
+Suggestions:
   - Lead with the main point, ideally in one short sentence.
   - Keep a plain opener to 160 measured chars or fewer.
   - Move supporting details below the opener without losing necessary information.
@@ -255,8 +267,8 @@ A markdown code fence without a language identifier warns at its opening
 line.
 
 - Bare fences and bare `ignore` warn.
-- Closing fences, indented code blocks, and real tags (`ignore,foo`,
-  `Ignore`) never fire.
+- Closing fences, indented code blocks, and other info strings (including
+  `rust,ignore`, `ignore,foo`, and `Ignore`) never fire.
 
 Before:
 
@@ -273,11 +285,11 @@ cargo test
 After:
 
 ````md
-~~~text
+~~~sh
 cargo build
 ~~~
 
-~~~text,ignore
+~~~sh
 cargo test
 ~~~
 ````
@@ -287,14 +299,29 @@ cargo test
 ```text
 $ rust-llm-tidy --no-config --include TEXT005 README.md
 README.md:1: warning[TEXT005]: fenced code block has no language tag.
-  - Tag the fence with its language, like ```text.
-  - Untagged blocks get no syntax highlighting. (file)
+Why:
+  - Language tags give readers language cues and useful syntax highlighting.
+  - Tested examples help readers apply them correctly.
+Suggestions:
+  - Prefer compilable Rust examples tagged ```rust and tested with doctests.
+  - Use ```rust,ignore only when a doctest genuinely cannot compile or run; explain why.
+  - Tag other languages accurately, such as ```sh; reserve ```text for plain text. (file)
 README.md:5: warning[TEXT005]: fenced code block uses bare `ignore`.
-  - Name the language: ```rust,ignore hides but still tags.
-  - Bare `ignore` drops syntax highlighting and tooling. (file)
+Why:
+  - Language tags give readers language cues and useful syntax highlighting.
+  - Tested examples help readers apply them correctly.
+  - Bare `ignore` skips Rust doctest compilation and execution.
+Suggestions:
+  - Prefer compilable Rust examples: replace `ignore` with `rust` and pass doctests.
+  - Use ```rust,ignore only when a doctest genuinely cannot compile or run; explain why.
+  - Tag other languages accurately, such as ```sh; reserve ```text for plain text. (file)
 ```
 
 `TEXT005` is warning-severity, so the run exits 0.
+
+### Remarks
+
+TEXT005 checks fence tags, not whether examples compile or pass tests.
 
 ## TEXT006 - verbose synonyms
 
@@ -334,11 +361,14 @@ Matching rules:
 ### TEXT006 CLI output
 
 ```text
-$ cargo run -p rust-llm-tidy-cli -- --include TEXT006 src/lib.rs
-src/lib.rs:3: hint[TEXT006]: consider simpler wording.
+$ rust-llm-tidy --no-config --include TEXT006 README.md
+README.md:1: hint[TEXT006]: wording has a simpler alternative: `utilize`.
+Why: Unnecessary formal wording and framing can make the point harder to understand.
+Suggestions:
   - Before: `utilize`
   - After: `use`
-  - Preserve meaning and adjust grammar to fit. (file)
+  - Preserve meaning and adjust grammar to fit.
+  - Use the alternative only if it preserves technical meaning, uncertainty, and required wording. (file)
 ```
 
 `TEXT006` has hint severity, so its findings do not fail the run.
@@ -364,16 +394,9 @@ Say what the code does, directly:
 - Flags history wording such as `no longer`, `previously`, and `prior to
   this change`; allows temporal uses such as `before validation`.
 
-Interpretation and defaults:
-
-- This heuristic has no grammatical context: expect false positives and
-  treat every hint as a review suggestion, never a rewrite.
-- By default, allows past-behaviour wording in `CHANGELOG*` or `MIGRATION*`
-  basenames at any depth and files under a `releases` directory.
-  Matching is case-insensitive; passive voice still produces hints.
-
-Edge-case exceptions are listed in the rule's module documentation:
-[`text007_passive_narration/mod.rs`][module]
+By default, allows past-behaviour wording in `CHANGELOG*` or `MIGRATION*`
+basenames at any depth and files under a `releases` directory.
+Matching is case-insensitive; passive voice still produces hints.
 
 Before:
 
@@ -420,23 +443,30 @@ passive_narration:
 - `false`: report narration markers there, just as in ordinary files
 - Passive-voice checks and rule inclusion/exclusion: unchanged
 
-This setting has no CLI flag. File processing applies it; pathless text
-checks do not apply release-note suppression.
-
 ### TEXT007 CLI output
 
 ```text
 $ rust-llm-tidy --no-config --include TEXT007 src/lib.rs
 src/lib.rs:1: hint[TEXT007]: passive construction: `are returned`.
-  - Treat this as a heuristic suggestion; preserve valid state descriptions and runtime history.
-  - State only current behavior in active, present-tense language.
-  - Remove change history, old/new comparisons, and time labels such as `now` or `currently`.
-  - Delete implementation-history-only sentences; do not invent replacement behavior.
-  - Check the implementation before rewriting; preserve exact conditions, guarantees, and limitations.
+Why: Passive actions can obscure who does what. Readers usually need current behavior, not implementation history.
+Suggestions:
+  - Check the implementation before rewriting; this heuristic can flag valid state descriptions and runtime history.
+  - For passive actions, name the actor and action when known; do not invent an actor or change the meaning.
+  - For implementation history, state verified current behavior in present tense; remove old/new comparisons and redundant `now` or `currently` labels.
+  - Delete sentences only when they contain implementation history alone; do not invent replacement behavior.
+  - Preserve valid state descriptions, runtime history, exact conditions, guarantees, limitations, and code identifiers.
   - Keep implementation history out of comments and API docs, including internals, tests, and helpers. Use release or migration notes only for a genuine public-API compatibility concern. (file)
 ```
 
 `TEXT007` emits hints, grouped after warnings; hints alone exit 0.
+
+### Remarks
+
+This heuristic has no grammatical context: expect false positives and
+treat every hint as a review suggestion, never a rewrite.
+
+Edge-case exceptions are listed in the rule's module documentation:
+[`text007_passive_narration/mod.rs`][module]
 
 ## TEXT008 - dense bullet list
 
@@ -494,9 +524,11 @@ Give operators enough context to identify and resolve failures.
 ```text
 $ cargo run -p rust-llm-tidy-cli -- --include TEXT008 README.md
 README.md:1: warning[TEXT008]: bullet list spans more than 10 lines.
-  - Long bullet lists can be hard to scan, especially when items wrap across lines.
-  - Tighten each bullet to a single line.
-  - If the list needs more room, split the bullets into groups with subheadings or a table. (file)
+Why: Long bullet lists make related facts harder to locate, especially when items wrap across lines.
+Suggestions:
+  - Group related bullets under subheadings; use a table only for comparable fields.
+  - Shorten wording where possible; do not join wrapped lines just to meet the budget.
+  - Preserve necessary information, contracts, code identifiers, and list hierarchy. (file)
 ```
 
 `TEXT008` is warning-severity, so its findings do not fail the run.

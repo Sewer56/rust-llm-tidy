@@ -60,10 +60,11 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
 /// Report an over-budget list with shortening and grouping guidance.
 fn list_diagnostic(line: usize) -> Diagnostic {
     let bullets = [
-        "Long bullet lists can be hard to scan, especially when items wrap across lines."
+        "Group related bullets under subheadings; use a table only for comparable fields."
             .to_string(),
-        "Tighten each bullet to a single line.".to_string(),
-        "If the list needs more room, split the bullets into groups with subheadings or a table."
+        "Shorten wording where possible; do not join wrapped lines just to meet the budget."
+            .to_string(),
+        "Preserve necessary information, contracts, code identifiers, and list hierarchy."
             .to_string(),
     ];
 
@@ -72,6 +73,7 @@ fn list_diagnostic(line: usize) -> Diagnostic {
         code: CODE_TEXT008,
         message: bulleted(
             &format!("bullet list spans more than {LIST_LINE_LIMIT} lines."),
+            "Long bullet lists make related facts harder to locate, especially when items wrap across lines.",
             &bullets,
         ),
         line,
@@ -188,10 +190,12 @@ mod tests {
         assert_eq!(
             found[0].message,
             format!(
-                "bullet list spans more than {LIST_LINE_LIMIT} lines.\n  \
-                 - Long bullet lists can be hard to scan, especially when items wrap across lines.\n  \
-                 - Tighten each bullet to a single line.\n  \
-                 - If the list needs more room, split the bullets into groups with subheadings or a table."
+                "bullet list spans more than {LIST_LINE_LIMIT} lines.\n\
+                 Why: Long bullet lists make related facts harder to locate, especially when items wrap across lines.\n\
+                 Suggestions:\n  \
+                 - Group related bullets under subheadings; use a table only for comparable fields.\n  \
+                 - Shorten wording where possible; do not join wrapped lines just to meet the budget.\n  \
+                 - Preserve necessary information, contracts, code identifiers, and list hierarchy."
             )
         );
     }

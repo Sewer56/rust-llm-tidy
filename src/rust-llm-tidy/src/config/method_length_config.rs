@@ -4,19 +4,16 @@ use serde::Deserialize;
 
 /// Threshold applied when the `method_length` section or its `max_lines` key
 /// is absent.
-///
-/// 75 centers the 40-100 non-comment-line cluster of mainstream linter
-/// defaults and equals SonarQube S138, the only size-based rule among them.
-pub(crate) const DEFAULT_METHOD_LENGTH_MAX_LINES: usize = 75;
+pub(crate) const DEFAULT_METHOD_LENGTH_MAX_LINES: usize = 100;
 
 /// Cap measured body lines per function under the `method_length` key.
 ///
 /// The effective threshold is `max_lines`; an absent section or key keeps
-/// the default 75. `max_lines` must be `>= 1`.
+/// the default 100. `max_lines` must be `>= 1`.
 #[derive(Debug, Deserialize, Clone, Copy)]
 #[serde(deny_unknown_fields)] // Reject hallucinated `method_length` sub-keys at parse time.
 pub struct MethodLengthConfig {
-    /// Maximum counted body lines per function before LEN001 warns.
+    /// Maximum counted body lines per function before LEN001 emits a hint.
     ///
     /// Counted lines are the non-blank, non-comment-only lines strictly
     /// between the body braces; the signature line never counts.
@@ -40,21 +37,26 @@ fn default_method_length_max_lines() -> usize {
 
 #[cfg(test)]
 mod tests {
+    use super::{DEFAULT_METHOD_LENGTH_MAX_LINES, MethodLengthConfig};
     use crate::config::compiled::load::compile;
     use crate::config::load_and_compile;
+    use rstest::rstest;
 
-    /// Threshold resolution: an absent or empty `method_length` section
-    /// keeps the 75 default; an explicit `max_lines` wins.
+    /// The public default sets the 100-line budget.
     #[test]
-    fn method_length_max_lines_should_default_to_75_until_configured() {
-        let absent = compile("exclude_files: []\n", &[]);
-        assert_eq!(absent.method_length().max_lines, 75);
+    fn max_lines_should_default_to_100() {
+        assert_eq!(MethodLengthConfig::default().max_lines, 100);
+    }
 
-        let empty_section = compile("method_length: {}\n", &[]);
-        assert_eq!(empty_section.method_length().max_lines, 75);
+    /// Missing settings keep the default; an explicit budget wins.
+    #[rstest]
+    #[case::absent_section("exclude_files: []\n", DEFAULT_METHOD_LENGTH_MAX_LINES)]
+    #[case::empty_section("method_length: {}\n", DEFAULT_METHOD_LENGTH_MAX_LINES)]
+    #[case::configured("method_length:\n  max_lines: 40\n", 40)]
+    fn max_lines_should_resolve_the_configured_budget(#[case] yaml: &str, #[case] expected: usize) {
+        let compiled = compile(yaml, &[]);
 
-        let configured = compile("method_length:\n  max_lines: 40\n", &[]);
-        assert_eq!(configured.method_length().max_lines, 40);
+        assert_eq!(compiled.method_length().max_lines, expected);
     }
 
     /// A literal 0 reaches the compile-time validation and is rejected.

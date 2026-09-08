@@ -28,7 +28,13 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     vec![Diagnostic {
         severity: Severity::Error,
         code: CODE_MISSING_ERRORS,
-        message: "pub fn returning Result is missing a `# Errors` doc section".to_string(),
+        message: "pub fn returning Result is missing a `# Errors` doc section.\n\n\
+                  Why: Readers need to understand possible failures and when they occur.\n\n\
+                  Suggestions:\n\
+                  - Add a `# Errors` section describing each error the implementation can return and its specific trigger.\n\
+                  - If it cannot return an error, say so.\n\
+                  - Do not invent errors or change behavior to satisfy this lint."
+            .to_string(),
         line: item.start_line(),
         item_kind: item.kind().to_string(),
         item_name: item.name().map(str::to_string),
@@ -44,11 +50,22 @@ mod tests {
 
     // pub fn returns Result, no # Errors section -> error.
     #[test]
-    fn test_missing_errors_no_section() {
+    fn check_should_request_actual_error_contract_when_section_is_missing() {
         let item = parse_one("pub fn load() -> Result<(), String> { Ok(()) }");
+
         let diags = check(&item);
+
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_MISSING_ERRORS);
+        assert_eq!(
+            diags[0].message,
+            "pub fn returning Result is missing a `# Errors` doc section.\n\n\
+             Why: Readers need to understand possible failures and when they occur.\n\n\
+             Suggestions:\n\
+             - Add a `# Errors` section describing each error the implementation can return and its specific trigger.\n\
+             - If it cannot return an error, say so.\n\
+             - Do not invent errors or change behavior to satisfy this lint."
+        );
     }
 
     // Has an # Errors section -> no error.

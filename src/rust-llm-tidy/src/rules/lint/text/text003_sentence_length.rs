@@ -1,6 +1,5 @@
 //! TEXT003: sentence length limit over the plaintext analysis.
 
-use super::bulleted;
 use crate::reporting::diagnostic::{Diagnostic, Severity};
 use crate::rules::registry::CODE_SENTENCE_LENGTH;
 use crate::text::measurement::{Document, Paragraph};
@@ -96,22 +95,27 @@ fn finish_sentence(
 }
 
 /// TEXT003 Warning for one over-limit sentence, reported at its start
-/// line with the comprehension research distilled.
+/// line with sentence-splitting guidance.
 fn sentence_diagnostic(line: usize, words: usize) -> Diagnostic {
     let bullets = [
-        format!("Keep sentences to {SENTENCE_LIMIT} words or fewer."),
-        "Long sentences can be harder to understand.".to_string(),
-        format!(
-            "Readers understand over 90% of the text when sentences \
-             contain {SENTENCE_RECOMMENDED} words or fewer."
-        ),
-        "At 43 words per sentence, comprehension drops below 10%.".to_string(),
         "Split this sentence where the idea changes.".to_string(),
+        format!("Keep sentences to {SENTENCE_LIMIT} words or fewer."),
+        format!("Aim for {SENTENCE_RECOMMENDED} words when the meaning allows."),
+        "Preserve meaning, conditions, and guarantees.".to_string(),
     ];
+
     Diagnostic {
         severity: Severity::Warning,
         code: CODE_SENTENCE_LENGTH,
-        message: bulleted(&format!("sentence is {words} words long."), &bullets),
+        message: format!(
+            "sentence is {words} words long.\n\
+              Why:\n  - Long sentences can be harder to understand.\n  \
+              - According to a study, readers understand about 90% at \
+              {SENTENCE_RECOMMENDED} words per sentence.\n  \
+              - It reports under 10% at 43 words.\n\
+             Suggestions:\n  - {}",
+            bullets.join("\n  - ")
+        ),
         line,
         item_kind: "file".to_string(),
         item_name: None,
@@ -141,23 +145,38 @@ mod tests {
     // ── TEXT003: sentence length ──
 
     // Over-limit sentence -> TEXT003 Warning with a word-count summary
-    // plus the word-limit guidance and the comprehension research.
+    // plus attributed comprehension figures and meaning-preserving guidance.
     #[test]
-    fn text_checks_warn_on_sentence_over_word_limit() {
+    fn text_checks_should_preserve_meaning_when_splitting_long_sentence() {
         let source = format!("/// {}\n", sentence(SENTENCE_LIMIT + 1, '.'));
+
         let diags = run_text_checks(&source, "rs");
+
         let found = codes(&diags, CODE_SENTENCE_LENGTH);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].severity, Severity::Warning);
         assert_eq!(found[0].line, 1);
-        let msg = &found[0].message;
-        assert!(msg.starts_with(&format!("sentence is {} words long.", SENTENCE_LIMIT + 1)));
-        assert!(msg.contains(&format!("{SENTENCE_LIMIT} words or fewer")));
-        assert!(msg.contains("harder to understand"));
-        assert!(msg.contains("over 90%"));
-        assert!(msg.contains("14 words or fewer"));
-        assert!(msg.contains("drops below 10%"));
-        assert!(msg.contains("where the idea changes"));
+        assert_eq!(
+            found[0].message,
+            format!(
+                concat!(
+                    "sentence is {} words long.\n",
+                    "Why:\n",
+                    "  - Long sentences can be harder to understand.\n",
+                    "  - According to a study, readers understand about 90% at {} words per sentence.\n",
+                    "  - It reports under 10% at 43 words.\n",
+                    "Suggestions:\n",
+                    "  - Split this sentence where the idea changes.\n",
+                    "  - Keep sentences to {} words or fewer.\n",
+                    "  - Aim for {} words when the meaning allows.\n",
+                    "  - Preserve meaning, conditions, and guarantees."
+                ),
+                SENTENCE_LIMIT + 1,
+                SENTENCE_RECOMMENDED,
+                SENTENCE_LIMIT,
+                SENTENCE_RECOMMENDED
+            )
+        );
     }
 
     // A sentence of exactly `SENTENCE_LIMIT` words is at the limit, not

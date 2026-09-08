@@ -43,9 +43,9 @@ impl LanguageBackend for PythonBackend {
                 code: CODE_MISSING_MODULE_DOCS,
                 message: indoc::formatdoc! {"
                     module file is missing a module docstring.
-                    Fix: add a module docstring as the first statement.
 
-                    {HEADER_GUIDANCE}"},
+                    {HEADER_GUIDANCE}
+                    - Add a module docstring as the first statement."},
                 line: 1,
                 item_kind: "file".to_string(),
                 item_name: None,

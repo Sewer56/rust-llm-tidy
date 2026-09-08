@@ -30,7 +30,12 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     vec![Diagnostic {
         severity: Severity::Warning,
         code: CODE_MISSING_ARGUMENTS,
-        message: "pub fn with parameters is missing a `# Arguments` doc section".to_string(),
+        message: "pub fn with parameters is missing a `# Arguments` doc section.\n\n\
+                  Why: Readers need parameter roles and constraints to supply appropriate inputs.\n\n\
+                  Suggestions:\n\
+                  - Add a `# Arguments` section describing the existing parameters and their actual roles and constraints.\n\
+                  - Do not change the signature or behavior to satisfy this lint."
+            .to_string(),
         line: item.start_line(),
         item_kind: item.kind().to_string(),
         item_name: item.name().map(str::to_string),
@@ -46,12 +51,22 @@ mod tests {
 
     // pub fn with params, no # Arguments section -> warning.
     #[test]
-    fn test_missing_arguments_no_section() {
+    fn check_should_request_existing_parameter_contract_when_section_is_missing() {
         let item = parse_one("/// Greets.\npub fn greet(name: &str) {}");
+
         let diags = check(&item);
+
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_MISSING_ARGUMENTS);
         assert_eq!(diags[0].severity, Severity::Warning);
+        assert_eq!(
+            diags[0].message,
+            "pub fn with parameters is missing a `# Arguments` doc section.\n\n\
+             Why: Readers need parameter roles and constraints to supply appropriate inputs.\n\n\
+             Suggestions:\n\
+             - Add a `# Arguments` section describing the existing parameters and their actual roles and constraints.\n\
+             - Do not change the signature or behavior to satisfy this lint."
+        );
     }
 
     // Has an # Arguments section -> no warning.

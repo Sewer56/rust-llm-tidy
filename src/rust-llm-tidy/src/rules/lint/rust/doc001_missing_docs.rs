@@ -39,7 +39,12 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     vec![Diagnostic {
         severity: Severity::Error,
         code: CODE_MISSING_DOCS,
-        message: "non-private item is missing a doc comment".to_string(),
+        message: "non-private item is missing a doc comment.\n\n\
+                  Why: Readers need its purpose and contract without tracing the implementation.\n\n\
+                  Suggestions:\n\
+                  - Add `///` docs describing its \
+                  purpose and actual contract, based on the implementation and relevant callers."
+            .to_string(),
         line: item.start_line(),
         item_kind: item.kind().to_string(),
         item_name: item.name().map(str::to_string),
@@ -55,12 +60,22 @@ mod tests {
 
     // Public function with no doc comment -> reports an error.
     #[test]
-    fn test_missing_docs_pub_fn() {
+    fn check_should_explain_required_docs_when_public_item_is_undocumented() {
         let item = parse_one("pub fn do_thing() {}");
+
         let diags = check(&item);
+
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_MISSING_DOCS);
         assert_eq!(diags[0].severity, Severity::Error);
+        assert_eq!(
+            diags[0].message,
+            "non-private item is missing a doc comment.\n\n\
+             Why: Readers need its purpose and contract without tracing the implementation.\n\n\
+             Suggestions:\n\
+             - Add `///` docs describing its \
+             purpose and actual contract, based on the implementation and relevant callers."
+        );
     }
 
     // Has a doc comment -> no error.

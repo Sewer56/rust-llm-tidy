@@ -163,7 +163,7 @@ fn cli_should_render_first_occurrence_hint(
     assert!(stderr.contains("- If "), "{stderr}");
     assert!(
         stderr.contains(
-            "- Shorten with imports or aliases only if the meaning remains clear at the use site."
+            "Why: full namespace prefixes give readers longer lines to scan before reaching the item name, making code harder to understand."
         ),
         "{stderr}"
     );

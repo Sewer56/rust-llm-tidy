@@ -51,11 +51,15 @@ Text lints for other languages use these sources ([text lints]):
 | [`MOD001`]  | Warning  | A code file exceeds `module_size.max_lines` (default 500).                        |
 | [`MOD002`]  | Error    | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
 | [`MOD003`]  | Hint     | A path includes the full namespace.                                               |
-| [`LEN001`]  | Warning  | A Rust fn body exceeds `method_length.max_lines` (default 75).                    |
+| [`LEN001`]  | Hint     | A Rust fn body exceeds `method_length.max_lines` (default 100).                   |
 
 ## Examples
 
-Each example shows the smallest common fix for its lint.
+Examples show fixes without changing the intended behavior.
+
+DOC checks ask for verified contracts, not invented errors or parameters.
+Text fixes should preserve meaning, conditions, guarantees, and code
+identifiers.
 
 ### DOC001 - missing documentation
 
@@ -84,7 +88,12 @@ Running `lints` against the Before code:
 
 ```text
 $ rust-llm-tidy --no-config --include DOC001 src/lib.rs
-src/lib.rs:1: error[DOC001]: non-private item is missing a doc comment (fn `load`)
+src/lib.rs:1: error[DOC001]: non-private item is missing a doc comment.
+
+Why: Readers need its purpose and contract without tracing the implementation.
+
+Suggestions:
+- Add `///` docs describing its purpose and actual contract, based on the implementation and relevant callers. (fn `load`)
 Error: found 1 error(s)
 ```
 
@@ -110,7 +119,7 @@ After:
 ///
 /// # Errors
 ///
-/// Returns an I/O error when data cannot be loaded.
+/// This function cannot return an error.
 pub fn load() -> Result<(), std::io::Error> {
     Ok(())
 }
@@ -120,7 +129,14 @@ pub fn load() -> Result<(), std::io::Error> {
 
 ```text
 $ rust-llm-tidy --no-config --include DOC002 src/lib.rs
-src/lib.rs:3: error[DOC002]: pub fn returning Result is missing a `# Errors` doc section (fn `load`)
+src/lib.rs:1: error[DOC002]: pub fn returning Result is missing a `# Errors` doc section.
+
+Why: Readers need to understand possible failures and when they occur.
+
+Suggestions:
+- Add a `# Errors` section describing each error the implementation can return and its specific trigger.
+- If it cannot return an error, say so.
+- Do not invent errors or change behavior to satisfy this lint. (fn `load`)
 Error: found 1 error(s)
 ```
 
@@ -128,11 +144,8 @@ Error: found 1 error(s)
 
 ### DOC003 - vague `# Errors` section
 
-When non-empty, an `# Errors` section must contain text with `[` or `::`.
-
-- `[` or `::` is the heuristic used to recognize a concrete error variant.
-- Sections with an empty body slice are ignored.
-- Whitespace-only bodies still warn.
+For a public function returning `Result`, an existing `# Errors` section warns
+unless its body contains `::`. Empty and whitespace-only bodies also warn.
 
 Before:
 
@@ -141,9 +154,13 @@ Before:
 ///
 /// # Errors
 ///
-/// Returns an error if loading fails.
-pub fn load() -> Result<(), std::io::Error> {
-    Ok(())
+/// Returns an error.
+pub fn load() -> Result<(), Error> {
+    Err(Error::Unavailable)
+}
+
+enum Error {
+    Unavailable,
 }
 ```
 
@@ -154,9 +171,9 @@ After:
 ///
 /// # Errors
 ///
-/// Returns [`Error::Unavailable`] when data cannot be loaded.
+/// Returns [`Error::Unavailable`] on every call because loading is unavailable.
 pub fn load() -> Result<(), Error> {
-    Ok(())
+    Err(Error::Unavailable)
 }
 
 enum Error {
@@ -168,7 +185,15 @@ enum Error {
 
 ```text
 $ rust-llm-tidy --no-config --include DOC003 src/lib.rs
-src/lib.rs:7: warning[DOC003]: `# Errors` section does not name any concrete error variant (fn `load`)
+src/lib.rs:1: warning[DOC003]: `# Errors` section has no `::` path naming a concrete error variant.
+
+Why: Concrete error names help readers connect failure conditions to handling code.
+
+Suggestions:
+- Document each error the implementation can return and its specific trigger.
+- Use variant paths where they exist.
+- If the error type has no variants or the function cannot fail, document that contract.
+- Do not invent variants or change behavior to silence this warning. (fn `load`)
 ```
 
 `DOC003` is warning-severity, so the run exits 0.
@@ -211,7 +236,13 @@ pub fn greet(name: &str) -> String {
 
 ```text
 $ rust-llm-tidy --no-config --include DOC004 src/lib.rs
-src/lib.rs:1: warning[DOC004]: pub fn with parameters is missing a `# Arguments` doc section (fn `greet`)
+src/lib.rs:1: warning[DOC004]: pub fn with parameters is missing a `# Arguments` doc section.
+
+Why: Readers need parameter roles and constraints to supply appropriate inputs.
+
+Suggestions:
+- Add a `# Arguments` section describing the existing parameters and their actual roles and constraints.
+- Do not change the signature or behavior to satisfy this lint. (fn `greet`)
 ```
 
 `DOC004` is warning-severity, so the run exits 0.
@@ -261,7 +292,13 @@ pub fn format(text: &str, width: usize) -> String {
 
 ```text
 $ rust-llm-tidy --no-config --include DOC005 src/lib.rs
-src/lib.rs:1: warning[DOC005]: parameter(s) not documented in the `# Arguments` section: `width` (fn `format`)
+src/lib.rs:1: warning[DOC005]: parameter(s) not documented in the `# Arguments` section: `width`.
+
+Why: Omitted parameters leave readers guessing how to supply those inputs.
+
+Suggestions:
+- Describe these existing parameters and their actual roles and constraints.
+- Do not add parameters or change behavior to satisfy this lint. (fn `format`)
 ```
 
 `DOC005` is warning-severity, so the run exits 0.
@@ -289,7 +326,12 @@ pub fn load() {}
 
 ```text
 $ rust-llm-tidy --no-config --include DOC006 src/lib.rs
-src/lib.rs:1: warning[DOC006]: doc comment contains placeholder text (TODO/FIXME/TBD) (fn `load`)
+src/lib.rs:1: warning[DOC006]: doc comment contains placeholder text (TODO/FIXME/TBD).
+
+Why: Placeholders leave readers without an explanation of current behavior.
+
+Suggestions:
+- Replace it with documentation of the implemented behavior, not a promise of future behavior. (fn `load`)
 ```
 
 `DOC006` is warning-severity, so the run exits 0.
@@ -348,7 +390,13 @@ enum Error {
 
 ```text
 $ rust-llm-tidy --no-config --include DOC008 src/lib.rs
-src/lib.rs:1: error[DOC008]: `# Errors` lists variants of `Error` out of alphabetical order (fn `load`)
+src/lib.rs:1: error[DOC008]: `# Errors` lists variants of `Error` out of alphabetical order.
+
+Why: Alphabetical entries help readers locate a known error variant.
+
+Suggestions:
+- Reorder the documented entries by variant name, keeping each trigger with its variant.
+- Do not reorder the enum or change error behavior. (fn `load`)
 Error: found 1 error(s)
 ```
 
@@ -382,20 +430,22 @@ pub fn load() {}
 ```text
 $ rust-llm-tidy --no-config --include DOC009 src/lib.rs
 src/lib.rs:1: error[DOC009]: module file is missing `//!` module docs.
-Fix: add `//!` docs before the first top-level item.
 
-Help readers unfamiliar with the codebase understand the module's purpose
+Why: A purpose-first header helps readers understand the module
 without reading its implementation.
+
+Suggestions:
 - Read the module and relevant callers; document only supported facts.
 - Start with one concise sentence explaining what the module does and why.
   Do not just restate its name. A simple module needs no more.
-- If more detail is useful, put it below the summary, separated by a blank
-  doc line. Outline major responsibilities, entry points, or non-obvious
-  constraints. Use bullets for multiple topics.
+- If more detail is useful, put it below the summary, separated by a blank doc line.
+- Use that detail to outline major responsibilities, entry points, or non-obvious constraints.
+- Use bullets for multiple topics.
 - Link to item docs instead of repeating their details.
+- Add `//!` docs before the first top-level item.
 - For a module root (`mod.rs`, or `foo.rs` with child modules), identify
   main entry points and relevant child-module responsibilities.
-  This is header-writing guidance, not a request to move code. (file)
+- Keep this change to header writing; do not move code. (file)
 Error: found 1 error(s)
 ```
 
@@ -419,7 +469,7 @@ After:
 
 ```rust
 #[test]
-fn parse_returns_ok_for_valid_input() {
+fn parse_should_return_ok_when_input_is_valid() {
     assert_eq!(parse("ok"), Ok(()));
 }
 ```
@@ -428,7 +478,13 @@ fn parse_returns_ok_for_valid_input() {
 
 ```text
 $ rust-llm-tidy --no-config --include TEST001 src/lib.rs
-src/lib.rs:1: warning[TEST001]: test function `test_foo` should use a behavioral name (subject_should_expectation_when_condition), not a `test_*` or `case_*` prefix (fn `test_foo`)
+src/lib.rs:1: warning[TEST001]: test function `test_foo` uses a discouraged test-name pattern.
+
+Why: Behavioral names help readers understand a test's claim without opening its body.
+
+Suggestions:
+- Rename it to describe the behavior asserted, using `subject_should_expectation`.
+- Add `_when_condition` only for conditional or edge behavior. (fn `test_foo`)
 ```
 
 `TEST001` is warning-severity, so the run exits 0.
@@ -448,10 +504,6 @@ Exactly 500 lines passes with the default budget; line 501 triggers the warning.
 The warning points to the first counted line over budget. A final line counts
 with or without a newline; a trailing newline adds no extra line.
 
-Organize code into focused modules by responsibility, keeping related code
-together. Keep entry points thin and delegate to clearly named operations.
-Do not split mechanically just to meet the line budget.
-
 Tune the budget through the `module_size.max_lines` config key (default
 500).
 
@@ -467,9 +519,6 @@ module_size:
 # Other languages always count inline tests and test files.
 ```
 
-Discovery and exclusions are unchanged; unsupported extensions remain exempt.
-`ini`/`json` require explicit extension selection and gain only MOD001.
-
 #### MOD001 CLI output
 
 ```text
@@ -478,7 +527,9 @@ src/big.rs:501: warning[MOD001]: file has 612 lines outside `#[cfg(test)]` mod r
 over the 500-line budget (module_size.max_lines).
 Why:
 - Large files make readers search farther and keep more context in mind.
-- A split should make responsibilities easier to find, not just shorten files.
+- Focused modules help readers find responsibilities without scanning unrelated code.
+- Large files cost LLMs more input tokens when read in full and leave less
+  context for other relevant code.
 Suggestions:
 - Consider keeping entry points and orchestration near the top level, with
   implementation details in focused child modules.
@@ -490,6 +541,8 @@ Suggestions:
   type's state.
 - Keep closely related code together. A split need not add new types,
   forwarding wrappers, or a wider public API.
+- Preserve behavior and performance across the split. Avoid needless
+  allocations, clones, or repeated work just to cross module boundaries.
 - Update overview docs to explain responsibilities and point readers to the
   entry points. Keep useful documentation; a split should not remove it.
 - In Rust, the module root (`mod.rs` or `foo.rs`) is the usual home for
@@ -503,6 +556,10 @@ Counting:
 ```
 
 `MOD001` is warning-severity, so the run exits 0.
+
+#### Remarks
+
+`ini`/`json` require explicit extension selection and gain only MOD001.
 
 ### MOD002 - function-local `use` without `#[cfg]`
 
@@ -536,8 +593,12 @@ fn load() {}
 ```text
 $ rust-llm-tidy --no-config --include MOD002 src/lib.rs
 src/lib.rs:2: error[MOD002]: function-local `use` lacks its own `#[cfg]`.
-- Hoist it to module scope so dependencies are easy to find.
-- Keep it local only if it needs conditional compilation, with `#[cfg]` on the `use`. (use)
+Why: readers can find module-scope imports without searching function bodies.
+Suggestions:
+- Move it to the containing module's imports, keeping visibility private.
+  Preserve its target and alias; check for name or trait-method conflicts.
+- Preserve any enclosing compilation conditions when moving it.
+  Keep it local if needed, with the real `#[cfg]` condition on the `use`. (use)
 Error: found 1 error(s)
 ```
 
@@ -578,22 +639,32 @@ With a `config.yml` containing `{}`, the local CLI renders:
 ```text
 $ cargo run -p rust-llm-tidy-cli -- --config config.yml --include MOD003 example.rs
 example.rs:1: hint[MOD003]: path `std::sync::Arc::new` includes the full namespace.
-- Shorten with imports only if the meaning remains clear at the call site.
+Why: full namespace prefixes give readers longer lines to scan before reaching the item name, making code harder to understand.
+Suggestions:
 - If clear at the call site, add `use std::sync::Arc;` at module scope and use `Arc::new`.
 - Import a parent module if the bare name loses context: for example, import `std::process` and use `process::id()`, not `id()`.
-- Keep the full path if shortening would reduce clarity or create a name conflict. (fn `f`)
+- Keep the full path if shortening would reduce clarity or create a name conflict.
+- Verify the shorter path resolves to the same item; this hint uses syntax, not compiler name resolution. (fn `f`)
 ```
 
-If `use std::sync::Arc;` already exists, the second bullet is instead:
+If `use std::sync::Arc;` already exists on line 1 and the same function
+sits on line 3, the first bullet is instead:
 
 ```text
+$ cargo run -p rust-llm-tidy-cli -- --config config.yml --include MOD003 example.rs
+example.rs:3: hint[MOD003]: path `std::sync::Arc::new` includes the full namespace.
+Why: full namespace prefixes give readers longer lines to scan before reaching the item name, making code harder to understand.
+Suggestions:
 - If clear at the call site, use `Arc::new`; `Arc` is already imported.
+- Import a parent module if the bare name loses context: for example, import `std::process` and use `process::id()`, not `id()`.
+- Keep the full path if shortening would reduce clarity or create a name conflict.
+- Verify the shorter path resolves to the same item; this hint uses syntax, not compiler name resolution. (fn `f`)
 ```
+
+#### Remarks
 
 Hints use existing aliases, such as `Shared::new` for `Arc as Shared`.
 They never fail the run or rewrite source.
-
-#### MOD003 exceptions
 
 MOD003 skips:
 
@@ -608,83 +679,44 @@ See [C# MOD003] for C# import advice.
 
 ### LEN001 - oversized function or method
 
-Warn once per Rust function whose body exceeds its counted-line
-budget (default 75).
+Suggests reviewing Rust functions that exceed `method_length.max_lines`
+(default 100).
 
-- Rust only. Free functions, methods in `impl` blocks, test
-  functions, and inner functions are measured alike; nothing is
-  exempt.
-- A counted line is a physical line between the body braces that
-  holds code. Blank lines and comment-only lines never count, and
-  the signature never counts.
-- An inner function's lines count toward both the inner function
-  and its enclosing function.
+Counts body code lines only, excluding signatures, blank lines, and comment-only
+lines.
 
-Exactly 75 counted lines passes with the default budget; the 76th
-line triggers the warning.
-
-Split long bodies into smaller sub-functions or inner functions, each
-named for its step. The outer function then reads as an overview of
-the flow.
-
-Tune the budget through the `method_length.max_lines` config key
-(default 75).
+All functions are checked, including tests and inner functions. Inner-function
+lines also count toward the enclosing function.
 
 #### LEN001 threshold options
 
 ```yaml
 method_length:
-  max_lines: 75  # warn above this many counted body lines; >= 1.
+  max_lines: 100  # hint above this many counted body lines; >= 1.
 ```
-
-#### LEN001 research basis
-
-No peer-reviewed length breakpoint exists; the studies disagree.
-
-- [Chowdhury et al. 2022] tracked about 785K evolving Java methods:
-  fewer changes and faults under 24 lines.
-- [Basili & Perricone 1984] found fault density falling as routines
-  grew, later criticized as an artifact of the size denominator.
-- [Tempero et al. 2024] ran a controlled comprehension experiment;
-  decomposition's benefit was inconclusive.
-
-Style guidance is equally broad. Code Complete 2nd ed., section 7.4
-tolerates 100-200 lines from 1980s fault data. Clean Code ch. 3
-argues a function should hardly ever exceed 20 lines.
-
-Mainstream linter defaults:
-
-- ESLint `max-lines-per-function`: 50.
-- RuboCop `Metrics/MethodLength`: 10.
-- detekt `LongMethod`: 60.
-- SonarSource S138: 75 lines of code.
-- Clippy `too_many_lines`: 100.
-- SwiftLint `function_body_length`: 50 warning, 100 error.
-- Checkstyle `MethodLength`: 150 physical lines, comments counted.
-
-Clippy, SonarSource S138, and SwiftLint count code lines, like this
-rule. ESLint and Checkstyle count physical lines by default, and
-RuboCop skips comments.
-
-75 sits mid-way among the 50-100 code-line defaults and matches S138
-exactly. Tighten toward 24 through `method_length.max_lines` if
-noisier output is acceptable.
 
 #### LEN001 CLI output
 
 ```text
 $ rust-llm-tidy --no-config --include LEN001 src/merge.rs
-src/merge.rs:2: warning[LEN001]: fn `merge_all` has 76 body lines (blank and comment-only lines excluded),
-over the 75-line budget (method_length.max_lines).
-- Long functions are hard to follow: readers must hold the whole
-  control flow and every local in mind at once.
-- Split the body into smaller sub-functions or inner functions, each
-  named for what it does.
-- Keep the outer function short enough to read as an overview of
-  the flow. (fn `merge_all`)
+src/merge.rs:2: hint[LEN001]: fn `merge_all` has 101 body lines (blank and comment-only lines excluded),
+over the 100-line budget (method_length.max_lines).
+Why:
+- Long functions can make readers track too much control flow and local state.
+- Named, cohesive steps can help readers follow the flow without tracking every detail.
+Suggestions:
+- Consider extracting cohesive steps into functions named for what they do,
+  so the outer function reads as an overview of the flow.
+- Keep closely related work together. Avoid new types, forwarding wrappers,
+  or a wider public API solely to shorten the body.
+- Preserve behavior and performance. Avoid extra allocations, cloning, or
+  repeated work; measure performance-sensitive changes.
+- Mark extracted functions as `#[inline]` if needed.
+- Inner functions still count toward the enclosing body.
+- Keep the body intact if splitting would make it harder to follow or slower. (fn `merge_all`)
 ```
 
-`LEN001` is warning-severity, so the run exits 0.
+`LEN001` is hint-severity, so the run exits 0.
 
 ## Config
 
@@ -727,7 +759,7 @@ in both in-place and `--dry-run` runs.
     "line": 1,
     "severity": "error",
     "code": "DOC001",
-    "message": "non-private item is missing a doc comment",
+    "message": "non-private item is missing a doc comment.\n\nWhy: Readers need its purpose and contract without tracing the implementation.\n\nSuggestions:\n- Add `///` docs describing its purpose and actual contract, based on the implementation and relevant callers.",
     "item_kind": "fn",
     "item_name": "load",
     "title": "missing documentation"
@@ -823,9 +855,6 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`LEN001`]: #len001---oversized-function-or-method
 [lints for C#]: ./languages/lints/csharp.md
 [text lints]: ./text-lints.md
-[Chowdhury et al. 2022]: https://arxiv.org/abs/2205.01842
-[Basili & Perricone 1984]: https://doi.org/10.1145/69605.2085
-[Tempero et al. 2024]: https://doi.org/10.1145/3643916.3644432
 
 ## Library access
 

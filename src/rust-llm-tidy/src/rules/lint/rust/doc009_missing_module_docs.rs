@@ -52,12 +52,12 @@ pub(super) fn check(parsed: &ParseResult) -> Vec<Diagnostic> {
         code: CODE_MISSING_MODULE_DOCS,
         message: indoc::formatdoc! {"
             module file is missing `//!` module docs.
-            Fix: add `//!` docs before the first top-level item.
 
             {HEADER_GUIDANCE}
+            - Add `//!` docs before the first top-level item.
             - For a module root (`mod.rs`, or `foo.rs` with child modules), identify
               main entry points and relevant child-module responsibilities.
-              This is header-writing guidance, not a request to move code."},
+            - Keep this change to header writing; do not move code."},
         line: 1,
         item_kind: "file".to_string(),
         item_name: None,
@@ -77,7 +77,7 @@ mod tests {
     // ── DOC009: module file without top-level docs ──
 
     // Items with no module docs -> one error at the file's first line.
-    // Metadata is pinned here; the CLI test pins the full rendered guidance.
+    // Metadata and section structure are pinned here.
     #[test]
     fn fires_when_items_have_no_module_docs() {
         let diags = lint("pub fn load() {}\n");
@@ -88,6 +88,17 @@ mod tests {
         assert_eq!(diags[0].line, 1);
         assert_eq!(diags[0].item_kind, "file");
         assert_eq!(diags[0].item_name, None);
+        assert!(
+            diags[0]
+                .message
+                .starts_with("module file is missing `//!` module docs.\n\nWhy:")
+        );
+        assert!(diags[0].message.contains("\n\nSuggestions:\n"));
+        assert!(
+            diags[0]
+                .message
+                .contains("- Add `//!` docs before the first top-level item.")
+        );
     }
 
     // `///` outer docs attach to the first item, not the preamble.

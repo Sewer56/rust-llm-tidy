@@ -284,10 +284,12 @@ impl<'a> Walker<'a> {
                 code: CODE_QUALIFIED_PATH,
                 message: format!(
                     "path `{path}` includes the full namespace.\n\
-                     - Shorten with imports or aliases only if the meaning remains clear at the use site.\n\
+                     Why: full namespace prefixes give readers longer lines to scan before reaching the item name, making code harder to understand.\n\
+                     Suggestions:\n\
                      {advice}\n\
                      - Retain namespace or type context when needed; use a type alias if the proposed import targets a containing type, not a namespace.\n\
-                     - Keep the full path if shortening would reduce clarity or create a name conflict."
+                     - Keep the full path if shortening would reduce clarity or create a name conflict.\n\
+                     - Verify the shorter path resolves to the same symbol; this hint uses syntax, not compiler name resolution."
                 ),
                 line,
                 item_kind: kind.to_string(),

@@ -21,11 +21,17 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
         return Vec::new();
     }
 
-    vec![decl.diagnostic(
-        Severity::Warning,
-        CODE_DOC_PLACEHOLDER,
-        "doc comment contains placeholder text (TODO/FIXME/TBD)".to_string(),
-    )]
+    vec![
+        decl.diagnostic(
+            Severity::Warning,
+            CODE_DOC_PLACEHOLDER,
+            "doc comment contains placeholder text (TODO/FIXME/TBD).\n\n\
+         Why: Placeholders leave readers without an explanation of current behavior.\n\n\
+         Suggestions:\n\
+         - Replace the placeholder with an accurate description of the existing contract."
+                .to_string(),
+        ),
+    ]
 }
 
 /// Case-insensitive whole-word match for `needle` in `haystack`.
@@ -54,4 +60,29 @@ fn contains_word(haystack: &str, needle: &str) -> bool {
         start = abs + needle.len();
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::languages::csharp::parse::parse;
+
+    #[test]
+    fn diagnostic_should_request_accurate_contract_instead_of_placeholder() {
+        let parsed = parse("/// <summary>TODO</summary>\npublic class Cache {}").unwrap();
+
+        let diagnostics = super::super::run(&parsed);
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == CODE_DOC_PLACEHOLDER)
+            .unwrap();
+
+        assert_eq!(
+            diagnostic.message,
+            "doc comment contains placeholder text (TODO/FIXME/TBD).\n\n\
+             Why: Placeholders leave readers without an explanation of current behavior.\n\n\
+             Suggestions:\n\
+             - Replace the placeholder with an accurate description of the existing contract."
+        );
+    }
 }

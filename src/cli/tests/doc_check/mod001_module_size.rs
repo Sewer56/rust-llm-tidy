@@ -217,7 +217,9 @@ fn mod001_should_explain_focused_module_boundaries(
         over the 1-line budget (module_size.max_lines).
         Why:
         - Large files make readers search farther and keep more context in mind.
-        - A split should make responsibilities easier to find, not just shorten files.
+        - Focused modules help readers find responsibilities without scanning unrelated code.
+        - Large files cost LLMs more input tokens when read in full and leave less
+          context for other relevant code.
         Suggestions:
         - Consider keeping entry points and orchestration near the top level, with
           implementation details in focused child modules.
@@ -229,6 +231,8 @@ fn mod001_should_explain_focused_module_boundaries(
           type's state.
         - Keep closely related code together. A split need not add new types,
           forwarding wrappers, or a wider public API.
+        - Preserve behavior and performance across the split. Avoid needless
+          allocations, clones, or repeated work just to cross module boundaries.
         - Update overview docs to explain responsibilities and point readers to the
           entry points. Keep useful documentation; a split should not remove it."};
     if path.ends_with(".rs") {

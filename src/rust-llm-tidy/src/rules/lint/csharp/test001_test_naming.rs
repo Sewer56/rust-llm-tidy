@@ -19,8 +19,11 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
             Severity::Warning,
             CODE_TEST_NAMING,
             format!(
-                "test method `{name}` should use a behavioral name \
-                 (subject_should_expectation_when_condition), not a `test_*` or `case_*` prefix"
+                "test method `{name}` uses a discouraged naming pattern.\n\n\
+                 Why: Behavioral names help readers understand a test's claim without opening its body.\n\n\
+                 Suggestions:\n\
+                 - Rename it to describe the subject and expected behavior, adding a condition only when it matters.\n\
+                 - Use `subject_should_expectation[_when_condition]` in the project's casing style."
             ),
         )];
     }
@@ -40,4 +43,38 @@ fn is_bad_test_name(name: &str) -> bool {
     lower
         .strip_prefix("test")
         .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::languages::csharp::parse::parse;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::bare_test("Test")]
+    #[case::test_prefix("Test_load")]
+    #[case::case_prefix("Case_load")]
+    #[case::numbered_test("Test42")]
+    fn diagnostic_should_request_behavioral_name_in_project_casing(#[case] name: &str) {
+        let source = format!("class CacheTests {{ [Fact] public void {name}() {{}} }}");
+        let parsed = parse(&source).unwrap();
+
+        let diagnostics = super::super::run(&parsed);
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == CODE_TEST_NAMING)
+            .unwrap();
+
+        assert_eq!(
+            diagnostic.message,
+            format!(
+                "test method `{name}` uses a discouraged naming pattern.\n\n\
+                 Why: Behavioral names help readers understand a test's claim without opening its body.\n\n\
+                 Suggestions:\n\
+                 - Rename it to describe the subject and expected behavior, adding a condition only when it matters.\n\
+                 - Use `subject_should_expectation[_when_condition]` in the project's casing style."
+            )
+        );
+    }
 }

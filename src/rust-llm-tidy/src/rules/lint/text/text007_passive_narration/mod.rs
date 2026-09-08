@@ -136,14 +136,15 @@ pub(super) fn one_line(line: &str) -> Vec<crate::reporting::Diagnostic> {
 /// One TEXT007 Hint; `summary` names the finding class and trigger.
 fn diagnostic(line: &StrippedLine, summary: &str) -> Diagnostic {
     let bullets = [
-        "Treat this as a heuristic suggestion; preserve valid state descriptions and runtime history."
+        "Check the implementation before rewriting; this heuristic can flag valid state descriptions and runtime history."
             .to_string(),
-        "State only current behavior in active, present-tense language.".to_string(),
-        "Remove change history, old/new comparisons, and time labels such as `now` or `currently`."
-             .to_string(),
-        "Delete implementation-history-only sentences; do not invent replacement behavior."
+        "For passive actions, name the actor and action when known; do not invent an actor or change the meaning."
             .to_string(),
-        "Check the implementation before rewriting; preserve exact conditions, guarantees, and limitations."
+        "For implementation history, state verified current behavior in present tense; remove old/new comparisons and redundant `now` or `currently` labels."
+            .to_string(),
+        "Delete sentences only when they contain implementation history alone; do not invent replacement behavior."
+            .to_string(),
+        "Preserve valid state descriptions, runtime history, exact conditions, guarantees, limitations, and code identifiers."
             .to_string(),
         "Keep implementation history out of comments and API docs, including internals, tests, and helpers. \
          Use release or migration notes only for a genuine public-API compatibility concern."
@@ -153,7 +154,11 @@ fn diagnostic(line: &StrippedLine, summary: &str) -> Diagnostic {
     Diagnostic {
         severity: Severity::Hint,
         code: CODE_PASSIVE_NARRATION,
-        message: bulleted(summary, &bullets),
+        message: bulleted(
+            summary,
+            "Passive actions can obscure who does what. Readers usually need current behavior, not implementation history.",
+            &bullets,
+        ),
         line: line.number,
         item_kind: "file".to_string(),
         item_name: None,
@@ -186,6 +191,7 @@ mod tests {
     use crate::rules::lint::run_text_checks;
     use crate::rules::lint::tests::codes;
     use indoc::formatdoc;
+    use rstest::rstest;
 
     // ── TEXT007: one diagnostic per line and message shape ──
 
@@ -420,32 +426,34 @@ mod tests {
         );
     }
 
-    // Both finding classes guide the same current-behavior rewrite.
-    #[test]
-    fn text_checks_should_explain_current_behavior_rewrite_when_reporting() {
+    // Both finding classes require a meaning-preserving, verified rewrite.
+    #[rstest]
+    #[case::passive("Errors are returned by the scanner.")]
+    #[case::history("The scanner formerly accepted empty names.")]
+    fn text_checks_should_explain_current_behavior_rewrite_when_reporting(#[case] source: &str) {
         let expected = concat!(
-            "\n  - Treat this as a heuristic suggestion; preserve valid state descriptions and runtime history.",
-            "\n  - State only current behavior in active, present-tense language.",
-            "\n  - Remove change history, old/new comparisons, ",
-            "and time labels such as `now` or `currently`.",
-            "\n  - Delete implementation-history-only sentences; do not invent replacement behavior.",
+            "\nWhy: Passive actions can obscure who does what. ",
+            "Readers usually need current behavior, not implementation history.\nSuggestions:",
             "\n  - Check the implementation before rewriting; ",
-            "preserve exact conditions, guarantees, and limitations.",
+            "this heuristic can flag valid state descriptions and runtime history.",
+            "\n  - For passive actions, name the actor and action when known; ",
+            "do not invent an actor or change the meaning.",
+            "\n  - For implementation history, state verified current behavior in present tense; ",
+            "remove old/new comparisons and redundant `now` or `currently` labels.",
+            "\n  - Delete sentences only when they contain implementation history alone; ",
+            "do not invent replacement behavior.",
+            "\n  - Preserve valid state descriptions, runtime history, exact conditions, ",
+            "guarantees, limitations, and code identifiers.",
             "\n  - Keep implementation history out of comments and API docs, ",
             "including internals, tests, and helpers.",
             " Use release or migration notes only for a genuine ",
             "public-API compatibility concern.",
         );
 
-        for source in [
-            "Errors are returned by the scanner.",
-            "The scanner formerly accepted empty names.",
-        ] {
-            let found = one_line(source);
+        let found = one_line(source);
 
-            assert_eq!(found.len(), 1, "{source:?}");
-            assert!(found[0].message.ends_with(expected), "{}", found[0].message);
-        }
+        assert_eq!(found.len(), 1, "{source:?}");
+        assert!(found[0].message.ends_with(expected), "{}", found[0].message);
     }
 
     // Comment lines and multi-line docs warn per measured source line.

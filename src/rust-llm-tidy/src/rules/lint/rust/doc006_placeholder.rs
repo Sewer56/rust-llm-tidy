@@ -33,7 +33,12 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     vec![Diagnostic {
         severity: Severity::Warning,
         code: CODE_DOC_PLACEHOLDER,
-        message: "doc comment contains placeholder text (TODO/FIXME/TBD)".to_string(),
+        message: "doc comment contains placeholder text (TODO/FIXME/TBD).\n\n\
+                  Why: Placeholders leave readers without an explanation of current behavior.\n\n\
+                  Suggestions:\n\
+                  - Replace it with \
+                  documentation of the implemented behavior, not a promise of future behavior."
+            .to_string(),
         line: item.start_line(),
         item_kind: item.kind().to_string(),
         item_name: item.name().map(str::to_string),
@@ -53,11 +58,21 @@ mod tests {
 
     // TODO marker in doc -> warning.
     #[test]
-    fn test_doc_placeholder_todo() {
+    fn check_should_request_implemented_behavior_when_docs_contain_a_placeholder() {
         let item = parse_one("/// TODO: implement.\npub fn task() {}");
+
         let diags = check(&item);
+
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_DOC_PLACEHOLDER);
+        assert_eq!(
+            diags[0].message,
+            "doc comment contains placeholder text (TODO/FIXME/TBD).\n\n\
+             Why: Placeholders leave readers without an explanation of current behavior.\n\n\
+             Suggestions:\n\
+             - Replace it with \
+             documentation of the implemented behavior, not a promise of future behavior."
+        );
     }
 
     // FIXME marker in doc -> warning.
