@@ -91,6 +91,7 @@ pub(crate) fn check_file(
                 module_size.max_lines,
                 module_size.include_in_file_tests,
                 module_size.include_test_files,
+                module_size.exclude_module_headers,
             ));
         }
     }
@@ -101,7 +102,9 @@ pub(crate) fn check_file(
     {
         diagnostics.extend(check::mod001_module_size::check(
             &source,
+            ext,
             module_size.max_lines,
+            module_size.exclude_module_headers,
         ));
     }
 

@@ -436,7 +436,9 @@ src/lib.rs:1: warning[TEST001]: test function `test_foo` should use a behavioral
 
 Warn once when a code file exceeds the line budget (default 500).
 
-- Count every physical line, including blanks and comments.
+- Count every physical line: blanks, comments, tests. Recognized module
+  headers (leading file comments, `//!` docs, Python's module docstring)
+  stay out of the count by default; item docs and body comments count.
 - Rust excludes top-level `#[cfg(test)] mod` regions and `tests/` paths by
   default. Other test code counts.
 - Non-code files require the [opt-in below].
@@ -459,6 +461,7 @@ module_size:
   include_non_code: false       # include selected config, data, and prose files
   include_in_file_tests: false  # include Rust's #[cfg(test)] mod regions
   include_test_files: false     # include Rust files under tests/ directories
+  exclude_module_headers: true  # keep module headers out of the count
 # Other languages always count inline tests and test files.
 ```
 

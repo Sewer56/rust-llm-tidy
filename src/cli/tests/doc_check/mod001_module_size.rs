@@ -5,6 +5,24 @@ use rstest::rstest;
 use std::fs;
 use std::process::{Command, Output};
 
+/// Run an isolated file with explicit configuration and automatic fixture cleanup.
+pub(super) fn run(source: &str, relative_path: &str, config: &str, args: &[&str]) -> Output {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join(relative_path);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, source).unwrap();
+    let config_path = dir.path().join(".rust-llm-tidy.yml");
+    fs::write(&config_path, config).unwrap();
+
+    Command::new(binary())
+        .arg("--config")
+        .arg(config_path)
+        .args(args)
+        .arg(path)
+        .output()
+        .unwrap()
+}
+
 // Non-code and test opt-ins.
 
 /// Including test directories preserves the independent inline-test policy.
@@ -126,13 +144,19 @@ fn mod001_should_check_supported_non_code_when_enabled(
     assert_eq!(stderr.contains(":2: warning[MOD001]"), warns, "{stderr}");
 }
 
-/// Omitted inline-test configuration preserves Rust test-module exclusion.
+/// Item documentation and comments after code are not headers.
 #[rstest]
-#[case::source("source.rs")]
-#[case::integration_tests("tests/source.rs")]
-fn mod001_should_exclude_rust_test_modules_by_default(#[case] path: &str) {
+#[case::rust_item_docs("source.rs", "/// Item doc.\nfn value() {}\nfn other() {}\n", 2, 3)]
+#[case::rust_body_comment("source.rs", "fn value() {}\n// Body.\nfn other() {}\n", 2, 3)]
+#[case::python_nested_docstring("source.py", "def a():\n    \"\"\"Nested.\"\"\"\n", 2, 2)]
+fn mod001_should_count_item_docs_and_body_comments(
+    #[case] path: &str,
+    #[case] source: &str,
+    #[case] crossing: usize,
+    #[case] counted: usize,
+) {
     let output = run(
-        "fn value() {}\n#[cfg(test)]\nmod tests {\n    fn example() {}\n}\n",
+        source,
         path,
         "module_size:\n  max_lines: 1\n",
         &["--include", "MOD001"],
@@ -140,7 +164,37 @@ fn mod001_should_exclude_rust_test_modules_by_default(#[case] path: &str) {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{stderr}");
-    assert!(!stderr.contains("MOD001"), "{stderr}");
+    assert!(
+        stderr.contains(&format!(":{crossing}: warning[MOD001]")),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!("file has {counted} lines")),
+        "{stderr}"
+    );
+}
+
+/// Disabling the exclusion counts header lines again with the plain message.
+#[rstest]
+#[case::rust("source.rs", "//! Docs.\n")]
+#[case::python("source.py", "\"\"\"Doc.\"\"\"\n")]
+fn mod001_should_count_module_headers_when_exclusion_is_disabled(
+    #[case] path: &str,
+    #[case] header: &str,
+) {
+    let source = format!("{header}value = 1\n");
+
+    let output = run(
+        &source,
+        path,
+        "module_size:\n  max_lines: 1\n  exclude_module_headers: false\n",
+        &["--include", "MOD001"],
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    assert!(stderr.contains(":2: warning[MOD001]"), "{stderr}");
+    assert!(stderr.contains("file has 2 lines"), "{stderr}");
 }
 
 // Rendered guidance and rule selection.
@@ -442,22 +496,4 @@ fn pipeline_should_preserve_data_operations_when_non_code_is_enabled(#[case] ext
     assert!(stderr.contains("warning[MOD001]"), "{stderr}");
     assert!(!stderr.contains("TEXT"), "{stderr}");
     assert_eq!(fs::read_to_string(path).unwrap(), source);
-}
-
-/// Run an isolated file with explicit configuration and automatic fixture cleanup.
-fn run(source: &str, relative_path: &str, config: &str, args: &[&str]) -> Output {
-    let dir = tempfile::TempDir::new().unwrap();
-    let path = dir.path().join(relative_path);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, source).unwrap();
-    let config_path = dir.path().join(".rust-llm-tidy.yml");
-    fs::write(&config_path, config).unwrap();
-
-    Command::new(binary())
-        .arg("--config")
-        .arg(config_path)
-        .args(args)
-        .arg(path)
-        .output()
-        .unwrap()
 }

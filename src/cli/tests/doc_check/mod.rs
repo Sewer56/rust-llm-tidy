@@ -12,6 +12,7 @@
 //! - `comment_lexicons`: comment-family text budgets across languages
 //! - `csharp`: C# XML-doc lints over the `.cs` fixtures
 //! - `json_output`: `--output-mode json` record contracts
+//! - `mod001_module_headers`: MOD001 module-header exclusion acceptance
 //! - `mod001_module_size`: cross-language MOD001 acceptance
 //! - `python`: Python lints over the `.py` fixtures
 //! - `rust`: Rust lints over the `.rs` fixtures
@@ -39,6 +40,7 @@ mod command_behavior;
 mod comment_lexicons;
 mod csharp;
 mod json_output;
+mod mod001_module_headers;
 mod mod001_module_size;
 mod python;
 mod rust;
