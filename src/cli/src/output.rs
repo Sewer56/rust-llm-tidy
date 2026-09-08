@@ -190,14 +190,12 @@ fn write_text(output: &mut impl Write, report: &RunReport) -> std::io::Result<()
 #[cfg(test)]
 mod tests {
     use super::project_lint;
-    use rust_llm_tidy::reporting::{Diagnostic, Severity};
+    use rust_llm_tidy::reporting::{Diagnostic, FileReport, RunReport, Severity};
     use std::path::Path;
 
     /// Rendering groups hints last while error counts remain severity-specific.
     #[test]
     fn report_should_render_hints_last_and_count_only_errors() {
-        use rust_llm_tidy::reporting::{FileReport, RunReport};
-
         for (name, severity, errors) in [
             ("hint_only", Severity::Hint, 0),
             ("hint_and_warning", Severity::Warning, 0),

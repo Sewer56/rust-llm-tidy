@@ -161,6 +161,9 @@ mod tests {
     use crate::languages::{LanguageBackend, RustBackend};
     use crate::rules::transform::reorder::Permutation;
     use crate::rules::transform::reorder::graph::{ReferenceCollector, compute_order};
+    use PhaseStrategy::{
+        Dependency, FnsByVisibility, ImplsAfterTargetType, MacroDefinitions, Stable,
+    };
     use ahash::{AHashMap, AHashSet};
 
     // ── Policy: phases and strategies ─────────────────────────────────
@@ -253,10 +256,6 @@ mod tests {
     /// fall back to stable.
     #[test]
     fn strategies_follow_the_documented_order() {
-        use PhaseStrategy::{
-            Dependency, FnsByVisibility, ImplsAfterTargetType, MacroDefinitions, Stable,
-        };
-
         let cases = [
             (1u32, Stable),
             (2, Stable),

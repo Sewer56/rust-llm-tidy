@@ -128,3 +128,4 @@ include:
       # - TEXT008 # dense bullet list
       # - TEST001 # non-behavioral test name
       # - MOD001  # oversized code file
+      # - MOD002  # function-local `use` without `#[cfg]`

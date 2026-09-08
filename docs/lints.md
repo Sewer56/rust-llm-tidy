@@ -49,6 +49,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`TEXT008`] | Warning  | A bullet list exceeds 10 source lines.                                            |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
 | [`MOD001`]  | Warning  | A code file exceeds `module_size.max_lines` (default 500).                        |
+| [`MOD002`]  | Error    | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
 
 ## Examples
 
@@ -495,6 +496,45 @@ over the 500-line budget (module_size.max_lines).
 
 `MOD001` is warning-severity, so the run exits 0.
 
+### MOD002 - function-local `use` without `#[cfg]`
+
+Keep `use` declarations at module scope so dependencies are easy to find.
+
+Hoist unconditional imports. Keep an import function-local only if it
+needs conditional compilation, such as for platform-specific code.
+
+- The `use` itself must carry `#[cfg]` to be exempt.
+- An enclosing `#[cfg]` does not exempt the import.
+- `#[cfg_attr(...)]` does not count.
+
+Before:
+
+```rust
+fn load() {
+    use std::io::Read;
+}
+```
+
+After:
+
+```rust
+use std::io::Read;
+
+fn load() {}
+```
+
+#### MOD002 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include MOD002 src/lib.rs
+src/lib.rs:2: error[MOD002]: function-local `use` lacks its own `#[cfg]`.
+- Hoist it to module scope so dependencies are easy to find.
+- Keep it local only if it needs conditional compilation, with `#[cfg]` on the `use`. (use)
+Error: found 1 error(s)
+```
+
+`MOD002` is error-severity, so the run exits non-zero.
+
 ## Config
 
 ```yaml
@@ -626,6 +666,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`TEXT008`]: ./text-lints.md#text008---dense-bullet-list
 [`TEST001`]: #test001---non-behavioral-test-name
 [`MOD001`]: #mod001---oversized-module
+[`MOD002`]: #mod002---function-local-use-without-cfg
 [lints for C#]: ./languages/lints/csharp.md
 [text lints]: ./text-lints.md
 

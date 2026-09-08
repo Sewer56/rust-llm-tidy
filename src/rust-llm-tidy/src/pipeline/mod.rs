@@ -329,8 +329,9 @@ fn dedup_inputs(paths: Vec<PathBuf>) -> Vec<PathBuf> {
                 return false;
             }
             #[cfg(unix)]
+            use std::os::unix::fs::MetadataExt;
+            #[cfg(unix)]
             {
-                use std::os::unix::fs::MetadataExt;
                 match std::fs::metadata(p) {
                     Ok(m) => by_inode.insert((m.dev(), m.ino())),
                     Err(_) => true, // unstat-able; path key already accepted it
