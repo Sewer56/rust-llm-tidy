@@ -7,15 +7,54 @@
 //! # Layout
 //!
 //! - `heredoc` - pending-delimiter parsing for queued heredocs.
+//! - `steps` - the open-literal state steps of the `Scanner`.
 //!
 //! [`DocRegion`]: crate::rules::lint::DocRegion
 
 use super::lexicon::{Heredoc, Lexicon, Syntax, comment_starts_word, ident_byte, ident_start};
 use crate::rules::lint::{Dialect, DocRegion, RegionLine};
-use core::mem;
 use heredoc::{PendingHeredoc, heredoc_open};
 
 mod heredoc;
+mod steps;
+
+/// The scan's carried state: the lexicon plus everything one pass
+/// accumulates or opens across lines.
+struct Scanner<'a> {
+    /// The family's lexical table.
+    lex: &'a Lexicon,
+    /// Completed regions, in source order.
+    regions: Vec<DocRegion>,
+    /// The open standalone-comment run; every other region closes it
+    /// so regions stay in source order.
+    run: Option<DocRegion>,
+    /// The open block comment's content lines.
+    block_lines: Vec<RegionLine>,
+    /// Whether the open block's current line is its opener's.
+    block_opener: bool,
+    /// The lexical state at the next byte.
+    state: State,
+    /// Queued heredocs awaiting their terminator lines.
+    heredocs: Vec<PendingHeredoc>,
+    /// YAML flow nesting depth.
+    yaml_flow_depth: usize,
+    /// Where the open block's pending content segment starts; reset at
+    /// each line's start.
+    seg_start: usize,
+}
+
+/// One state step's outcome at a byte.
+///
+/// A Code-state check answers `Advanced(0)` when it does not apply, so
+/// the dispatch runs the next check; no step returns it to the byte
+/// loop.
+#[derive(Clone, Copy)]
+enum Step {
+    /// Consumed `width` bytes; the byte loop continues.
+    Advanced(usize),
+    /// The rest of the line is consumed; the end-of-line carry runs.
+    LineDone,
+}
 
 /// Lexical state carried across the lines of one scan.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -37,25 +76,12 @@ enum State {
     Hole { depth: u32 },
 }
 
-/// Scans `source` into doc regions for `lex`.
-///
-/// Returns `None` for ambiguous sources (module docs): callers emit no
-/// findings rather than guess.
-pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
-    let mut regions: Vec<DocRegion> = Vec::new();
-    // The open standalone-comment run; every other region closes it so
-    // regions stay in source order.
-    let mut run: Option<DocRegion> = None;
-    // The open block comment's content lines.
-    let mut block_lines: Vec<RegionLine> = Vec::new();
-    let mut block_opener = false;
-    let mut state = State::Code;
-    let mut heredocs: Vec<PendingHeredoc> = Vec::new();
-    let mut yaml_flow_depth = 0usize;
-
-    for (idx, raw) in source.lines().enumerate() {
-        let number = idx + 1;
-
+impl<'a> Scanner<'a> {
+    /// Scans one line: queued heredoc payload, the byte loop over the
+    /// state dispatch, and the end-of-line carry.
+    ///
+    /// Returns `None` to reject the scan.
+    fn scan_line(&mut self, number: usize, raw: &str) -> Option<()> {
         // Heredoc payload: string content until the closing
         // delimiter line. Strict heredocs take it exact.
         //
@@ -63,9 +89,9 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
         // family permits (`\t` shells, any whitespace Ruby).
         //
         // A missing terminator fails the scan at the end.
-        if let Some(pending) = heredocs.first() {
+        if let Some(pending) = self.heredocs.first() {
             let terminator = if pending.indented {
-                match lex.heredoc {
+                match self.lex.heredoc {
                     Heredoc::Shell => raw.trim_start_matches('\t'),
                     Heredoc::Ruby => raw.trim_start(),
                     Heredoc::None => raw,
@@ -74,310 +100,42 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
                 raw
             };
             if terminator == pending.word.as_str() {
-                heredocs.remove(0);
+                self.heredocs.remove(0);
             }
-            continue;
+            return Some(());
         }
 
         let bytes = raw.as_bytes();
         // Start of the pending block-comment content on this line.
-        let mut seg_start = 0;
+        self.seg_start = 0;
         let mut i = 0;
         'chars: while i < bytes.len() {
-            match state {
-                State::Code => {
-                    // PowerShell escapes apply before comment and quote openers.
-                    // Here-strings need their own terminators; reject rather than guess.
-                    if lex.syntax == Syntax::PowerShell {
-                        if bytes[i] == b'`' {
-                            i += 1 + usize::from(bytes.get(i + 1).is_some());
-                            continue 'chars;
-                        }
-                        if bytes[i] == b'@' && matches!(bytes.get(i + 1), Some(b'"' | b'\'')) {
-                            return None;
-                        }
-                    }
-
-                    // Literal forms the family does not model reject
-                    // the scan early.
-                    //
-                    // Rejection happens before any marker claims the
-                    // rest of the line. Rejected forms: SQL `$tag$`,
-                    // Haskell `[q|`, TeX `\verb`.
-                    if lex.rejects.iter().any(|reject| reject.opens(bytes, i)) {
-                        return None;
-                    }
-                    // TeX: an odd-length backslash run before the
-                    // marker escapes it, so the marker prints
-                    // literally.
-                    //
-                    // An even-length run is `\\` commands, so the
-                    // marker still comments.
-                    if lex.escaped_marker && bytes[i] == b'\\' {
-                        let mut run = 1;
-                        while bytes.get(i + run) == Some(&b'\\') {
-                            run += 1;
-                        }
-                        if bytes.get(i + run) == Some(&lex.line.as_bytes()[0]) {
-                            i += if run % 2 == 1 { run + 1 } else { run };
-                            continue 'chars;
-                        }
-                        // Mid-line and no marker: skip straight to
-                        // the run's last backslash.
-                        //
-                        // Only it can open a `\verb`-style reject.
-                        // Line-leading runs keep the byte-wise walk
-                        // so the `\\` line-string rule still sees
-                        // them.
-                        if run > 1 && !raw[..i].trim().is_empty() {
-                            i += run - 1;
-                            continue 'chars;
-                        }
-                    }
-                    // Block comment opener, ahead of the line marker:
-                    // `--[[` and `%{` extend their family's marker.
-                    //
-                    // Alone-marker families (MATLAB) open only when the
-                    // marker is the line's whole content; elsewhere the
-                    // line marker comments, as the language reads it.
-                    if let Some((open, _)) = lex.block
-                        && bytes[i..].starts_with(open.as_bytes())
-                        && (!lex.block_markers_alone
-                            || (raw[..i].trim().is_empty()
-                                && raw[i + open.len()..].trim().is_empty()))
-                    {
-                        state = State::Block;
-                        block_opener = true;
-                        seg_start = i + open.len();
-                        i = seg_start;
-                        continue 'chars;
-                    }
-                    // Line comment: consumes the rest of the line.
-                    //
-                    // Word-start families (POSIX `#` rules, Ruby
-                    // after a token) never open a comment mid-word,
-                    // so regex literals and words like `a#b` stay
-                    // code.
-                    if bytes[i..].starts_with(lex.line.as_bytes())
-                        && (if lex.syntax == Syntax::Yaml {
-                            super::yaml::comment_start(bytes, i)
-                        } else {
-                            !lex.word_start_comments || comment_starts_word(bytes, i)
-                        })
-                    {
-                        let text = &raw[i + lex.line.len()..];
-                        let text = text.trim_start_matches(lex.line.as_bytes()[0] as char);
-                        let text = text.strip_prefix(' ').unwrap_or(text);
-                        let line = RegionLine {
-                            number,
-                            text: text.to_string(),
-                            indented: text.starts_with('\t') || text.starts_with("    "),
-                        };
-                        if raw[..i].trim().is_empty() {
-                            // Standalone comment lines join one region per
-                            // contiguous run.
-                            let continues = run.as_ref().is_some_and(|region| {
-                                region
-                                    .lines
-                                    .last()
-                                    .is_some_and(|last| last.number + 1 == number)
-                            });
-                            if continues {
-                                run.as_mut().expect("open run").lines.push(line);
-                            } else {
-                                close_run(&mut run, &mut regions);
-                                run = Some(DocRegion {
-                                    dialect: Dialect::Markdown,
-                                    lines: vec![line],
-                                });
-                            }
-                        } else {
-                            // A trailing comment never joins a run: it is
-                            // its own region, so fragments on consecutive
-                            // lines cannot pool into one paragraph.
-                            close_run(&mut run, &mut regions);
-                            regions.push(DocRegion {
-                                dialect: Dialect::Markdown,
-                                lines: vec![line],
-                            });
-                        }
-                        break 'chars;
-                    }
-
-                    if lex.syntax == Syntax::Yaml {
-                        match bytes[i] {
-                            b'[' | b'{' => yaml_flow_depth += 1,
-                            b']' | b'}' => yaml_flow_depth = yaml_flow_depth.saturating_sub(1),
-                            _ => {}
-                        }
-                        if let Some(end) = super::yaml::plain_end(bytes, i, yaml_flow_depth > 0) {
-                            i = end;
-                            continue 'chars;
-                        }
-                    }
-
-                    // Multi-line triple-quoted strings before the
-                    // single-quote forms.
-                    if lex.triple {
-                        if bytes[i..].starts_with(b"\"\"\"") {
-                            state = State::Triple { single: false };
-                            i += 3;
-                            continue 'chars;
-                        }
-                        if bytes[i..].starts_with(b"'''") {
-                            state = State::Triple { single: true };
-                            i += 3;
-                            continue 'chars;
-                        }
-                    }
-                    match bytes[i] {
-                        b'"' => {
-                            state = State::Quote {
-                                double: true,
-                                carried: false,
-                            };
-                            i += 1;
-                        }
-                        b'\'' if lex.single_quotes => {
-                            state = State::Quote {
-                                double: false,
-                                carried: false,
-                            };
-                            i += 1;
-                        }
-                        b'`' if lex.backtick => {
-                            state = State::Backtick;
-                            i += 1;
-                        }
-                        // Zig multi-line strings: a line-leading `\\`
-                        // run makes the rest of the line string
-                        // content.
-                        //
-                        // Only a line lead qualifies, so a `\\`
-                        // mid-line in other families never hides a
-                        // trailing comment.
-                        b'\\' if bytes.get(i + 1) == Some(&b'\\') && raw[..i].trim().is_empty() => {
-                            break 'chars;
-                        }
-                        // `$#` and `${#x}` are parameter syntax in `#`
-                        // languages, not comment starts.
-                        b'$' => {
-                            i += match (bytes.get(i + 1), bytes.get(i + 2)) {
-                                (Some(&b'#'), _) => 2,
-                                (Some(&b'{'), Some(&b'#')) => 3,
-                                _ => 1,
-                            };
-                        }
-                        _ => i += code_step(bytes, i, lex, &mut heredocs)?,
-                    }
-                }
-                State::Block => {
-                    let (open, close) = lex.block.expect("block state implies a pair");
-                    // Alone-marker families close only on a lone closer
-                    // line (MATLAB); a mid-line `%}` is block content.
-                    if bytes[i..].starts_with(close.as_bytes())
-                        && (!lex.block_markers_alone
-                            || (raw[..i].trim().is_empty()
-                                && raw[i + close.len()..].trim().is_empty()))
-                    {
-                        push_block_line(&raw[seg_start..i], block_opener, number, &mut block_lines);
-                        block_opener = false;
-                        close_run(&mut run, &mut regions);
-                        regions.push(DocRegion {
-                            dialect: Dialect::BlockDoc,
-                            lines: mem::take(&mut block_lines),
-                        });
-                        state = State::Code;
-                        seg_start = i + close.len();
-                        i = seg_start;
-                    } else if bytes[i..].starts_with(open.as_bytes()) {
-                        // A nested opener is ambiguous (Swift, Haskell,
-                        // Elm, and Scheme nest; C, Lua, SQL, and MATLAB
-                        // do not): fail closed.
-                        return None;
-                    } else {
-                        i += 1;
-                    }
-                }
-                State::Quote { double, .. } => {
-                    let quote = if double { b'"' } else { b'\'' };
-                    let escape = match lex.syntax {
-                        Syntax::PowerShell => double.then_some(b'`'),
-                        Syntax::Yaml => double.then_some(b'\\'),
-                        Syntax::Common => Some(b'\\'),
-                    };
-
-                    // Interpolated expressions may contain nested quotes.
-                    if lex.syntax == Syntax::PowerShell && double && bytes[i..].starts_with(b"$(") {
-                        return None;
-                    }
-
-                    if (Some(bytes[i]) == escape && bytes.get(i + 1).is_some())
-                        || (lex.syntax != Syntax::Common
-                            && !double
-                            && bytes[i..].starts_with(b"''"))
-                    {
-                        i += 2;
-                    } else {
-                        if bytes[i] == quote {
-                            state = State::Code;
-                        }
-                        i += 1;
-                    }
-                }
-                State::Backtick => {
-                    if bytes[i] == b'\\' && bytes.get(i + 1).is_some() {
-                        i += 2;
-                    } else if bytes[i] == b'`' {
-                        state = State::Code;
-                        i += 1;
-                    } else if lex.template_holes
-                        && bytes[i] == b'$'
-                        && bytes.get(i + 1) == Some(&b'{')
-                    {
-                        state = State::Hole { depth: 1 };
-                        i += 2;
-                    } else {
-                        i += 1;
-                    }
-                }
-                State::Triple { single } => {
-                    let fence: &[u8] = if single { b"'''" } else { b"\"\"\"" };
-                    if bytes[i] == b'\\' && bytes.get(i + 1).is_some() {
-                        i += 2;
-                    } else if bytes[i..].starts_with(fence) {
-                        state = State::Code;
-                        i += 3;
-                    } else {
-                        i += 1;
-                    }
-                }
-                State::Hole { depth } => match bytes[i] {
-                    // Nested literals inside a hole are outside the
-                    // modeled lexicon: fail closed.
-                    b'"' | b'\'' | b'`' => return None,
-                    b'{' => {
-                        state = State::Hole { depth: depth + 1 };
-                        i += 1;
-                    }
-                    b'}' => {
-                        state = if depth == 1 {
-                            State::Backtick
-                        } else {
-                            State::Hole { depth: depth - 1 }
-                        };
-                        i += 1;
-                    }
-                    _ => i += 1,
-                },
+            let state = self.state;
+            let step = match state {
+                State::Code => self.code_checks(raw, i, number)?,
+                State::Block => self.block_step(raw, i, number)?,
+                State::Quote { double, .. } => self.quote_step(bytes, i, double)?,
+                State::Backtick => self.backtick_step(bytes, i)?,
+                State::Triple { single } => self.triple_step(raw, i, single)?,
+                State::Hole { depth } => self.hole_step(bytes, i, depth)?,
+            };
+            match step {
+                Step::Advanced(width) => i += width,
+                Step::LineDone => break 'chars,
             }
         }
 
         // End of line: close line-local states, carry multi-line ones.
+        let state = self.state;
         match state {
             State::Block => {
-                push_block_line(&raw[seg_start..], block_opener, number, &mut block_lines);
-                block_opener = false;
+                push_block_line(
+                    &raw[self.seg_start..],
+                    self.block_opener,
+                    number,
+                    &mut self.block_lines,
+                );
+                self.block_opener = false;
             }
             State::Quote { double, carried } => {
                 // A quote continues onto the next line when the family's
@@ -386,7 +144,7 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
                 // anything else closes here (invalid source; the desync
                 // stays line-local).
                 if !carried {
-                    state = if lex.multiline_quotes || raw.ends_with('\\') {
+                    self.state = if self.lex.multiline_quotes || raw.ends_with('\\') {
                         State::Quote {
                             double,
                             carried: true,
@@ -401,13 +159,265 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
             State::Hole { .. } => return None,
             _ => {}
         }
+        Some(())
     }
 
-    if state != State::Code || !heredocs.is_empty() {
+    /// One Code-state byte: the ordered family checks, then the
+    /// single-byte fallback.
+    ///
+    /// A check answers `Advanced(0)` when it does not apply here; the
+    /// next check then runs.
+    fn code_checks(&mut self, raw: &str, i: usize, number: usize) -> Option<Step> {
+        let bytes = raw.as_bytes();
+        let mut step = self.powershell_step(bytes, i)?;
+        if let Step::Advanced(0) = step {
+            step = self.reject_step(bytes, raw, i)?;
+        }
+        if let Step::Advanced(0) = step {
+            step = self.block_open_step(bytes, raw, i)?;
+        }
+        if let Step::Advanced(0) = step {
+            step = self.line_comment_step(raw, i, number)?;
+        }
+        if let Step::Advanced(0) = step {
+            step = self.yaml_step(bytes, i)?;
+        }
+        if let Step::Advanced(0) = step {
+            step = self.literal_open_step(bytes, raw, i)?;
+        }
+        if let Step::Advanced(0) = step {
+            return code_step(bytes, i, self.lex, &mut self.heredocs).map(Step::Advanced);
+        }
+        Some(step)
+    }
+
+    /// The PowerShell preamble: escapes and here-string rejects, ahead
+    /// of every marker check.
+    fn powershell_step(&self, bytes: &[u8], i: usize) -> Option<Step> {
+        if self.lex.syntax != Syntax::PowerShell {
+            return Some(Step::Advanced(0));
+        }
+        // PowerShell escapes apply before comment and quote openers.
+        if bytes[i] == b'`' {
+            return Some(Step::Advanced(1 + usize::from(bytes.get(i + 1).is_some())));
+        }
+        // Here-strings need their own terminators; reject rather than guess.
+        if bytes[i] == b'@' && matches!(bytes.get(i + 1), Some(b'"' | b'\'')) {
+            return None;
+        }
+        Some(Step::Advanced(0))
+    }
+
+    /// The fail-closed literal rejects, then the escaped-marker
+    /// backslash-run logic.
+    fn reject_step(&self, bytes: &[u8], raw: &str, i: usize) -> Option<Step> {
+        // Literal forms the family does not model reject
+        // the scan early.
+        //
+        // Rejection happens before any marker claims the
+        // rest of the line. Rejected forms: SQL `$tag$`,
+        // Haskell `[q|`, TeX `\verb`.
+        if self.lex.rejects.iter().any(|reject| reject.opens(bytes, i)) {
+            return None;
+        }
+        // TeX: an odd-length backslash run before the
+        // marker escapes it, so the marker prints
+        // literally.
+        //
+        // An even-length run is `\\` commands, so the
+        // marker still comments.
+        if self.lex.escaped_marker && bytes[i] == b'\\' {
+            let mut run = 1;
+            while bytes.get(i + run) == Some(&b'\\') {
+                run += 1;
+            }
+            if bytes.get(i + run) == Some(&self.lex.line.as_bytes()[0]) {
+                return Some(Step::Advanced(if run % 2 == 1 { run + 1 } else { run }));
+            }
+            // Mid-line and no marker: skip straight to
+            // the run's last backslash.
+            //
+            // Only it can open a `\verb`-style reject.
+            // Line-leading runs keep the byte-wise walk
+            // so the `\\` line-string rule still sees
+            // them.
+            if run > 1 && !raw[..i].trim().is_empty() {
+                return Some(Step::Advanced(run - 1));
+            }
+        }
+        Some(Step::Advanced(0))
+    }
+
+    /// The block-comment opener, ahead of the line marker: `--[[` and
+    /// `%{` extend their family's marker.
+    fn block_open_step(&mut self, bytes: &[u8], raw: &str, i: usize) -> Option<Step> {
+        let lex = self.lex;
+        if let Some((open, _)) = lex.block
+            && bytes[i..].starts_with(open.as_bytes())
+            && (!lex.block_markers_alone
+                || (raw[..i].trim().is_empty() && raw[i + open.len()..].trim().is_empty()))
+        {
+            self.state = State::Block;
+            self.block_opener = true;
+            self.seg_start = i + open.len();
+            return Some(Step::Advanced(open.len()));
+        }
+        Some(Step::Advanced(0))
+    }
+
+    /// The line-comment handler: a standalone line joins or opens the
+    /// run, a trailing comment stands as its own region.
+    fn line_comment_step(&mut self, raw: &str, i: usize, number: usize) -> Option<Step> {
+        let bytes = raw.as_bytes();
+        // Line comment: consumes the rest of the line.
+        //
+        // Word-start families (POSIX `#` rules, Ruby after a token)
+        // never open a comment mid-word, so regex literals and words
+        // like `a#b` stay code.
+        if bytes[i..].starts_with(self.lex.line.as_bytes())
+            && (if self.lex.syntax == Syntax::Yaml {
+                super::yaml::comment_start(bytes, i)
+            } else {
+                !self.lex.word_start_comments || comment_starts_word(bytes, i)
+            })
+        {
+            let text = &raw[i + self.lex.line.len()..];
+            let text = text.trim_start_matches(self.lex.line.as_bytes()[0] as char);
+            let text = text.strip_prefix(' ').unwrap_or(text);
+            let line = RegionLine {
+                number,
+                text: text.to_string(),
+                indented: text.starts_with('\t') || text.starts_with("    "),
+            };
+            if raw[..i].trim().is_empty() {
+                // Standalone comment lines join one region per
+                // contiguous run.
+                let continues = self.run.as_ref().is_some_and(|region| {
+                    region
+                        .lines
+                        .last()
+                        .is_some_and(|last| last.number + 1 == number)
+                });
+                if continues {
+                    self.run.as_mut().expect("open run").lines.push(line);
+                } else {
+                    close_run(&mut self.run, &mut self.regions);
+                    self.run = Some(DocRegion {
+                        dialect: Dialect::Markdown,
+                        lines: vec![line],
+                    });
+                }
+            } else {
+                // A trailing comment never joins a run: it is its own
+                // region, so fragments on consecutive lines cannot
+                // pool into one paragraph.
+                close_run(&mut self.run, &mut self.regions);
+                self.regions.push(DocRegion {
+                    dialect: Dialect::Markdown,
+                    lines: vec![line],
+                });
+            }
+            return Some(Step::LineDone);
+        }
+        Some(Step::Advanced(0))
+    }
+
+    /// The YAML step: flow-depth tracking, then the plain-scalar skip.
+    fn yaml_step(&mut self, bytes: &[u8], i: usize) -> Option<Step> {
+        if self.lex.syntax != Syntax::Yaml {
+            return Some(Step::Advanced(0));
+        }
+        match bytes[i] {
+            b'[' | b'{' => self.yaml_flow_depth += 1,
+            b']' | b'}' => self.yaml_flow_depth = self.yaml_flow_depth.saturating_sub(1),
+            _ => {}
+        }
+        match super::yaml::plain_end(bytes, i, self.yaml_flow_depth > 0) {
+            Some(end) => Some(Step::Advanced(end - i)),
+            None => Some(Step::Advanced(0)),
+        }
+    }
+
+    /// The multi-line literal openers: triple quotes, the quote and
+    /// backtick forms, Zig line strings, and `$#` parameter syntax.
+    fn literal_open_step(&mut self, bytes: &[u8], raw: &str, i: usize) -> Option<Step> {
+        // Multi-line triple-quoted strings before the
+        // single-quote forms.
+        if self.lex.triple {
+            if bytes[i..].starts_with(b"\"\"\"") {
+                self.state = State::Triple { single: false };
+                return Some(Step::Advanced(3));
+            }
+            if bytes[i..].starts_with(b"'''") {
+                self.state = State::Triple { single: true };
+                return Some(Step::Advanced(3));
+            }
+        }
+        Some(match bytes[i] {
+            b'"' => {
+                self.state = State::Quote {
+                    double: true,
+                    carried: false,
+                };
+                Step::Advanced(1)
+            }
+            b'\'' if self.lex.single_quotes => {
+                self.state = State::Quote {
+                    double: false,
+                    carried: false,
+                };
+                Step::Advanced(1)
+            }
+            b'`' if self.lex.backtick => {
+                self.state = State::Backtick;
+                Step::Advanced(1)
+            }
+            // Zig multi-line strings: a line-leading `\\`
+            // run makes the rest of the line string
+            // content.
+            //
+            // Only a line lead qualifies, so a `\\`
+            // mid-line in other families never hides a
+            // trailing comment.
+            b'\\' if bytes.get(i + 1) == Some(&b'\\') && raw[..i].trim().is_empty() => {
+                Step::LineDone
+            }
+            // `$#` and `${#x}` are parameter syntax in `#`
+            // languages, not comment starts.
+            b'$' => Step::Advanced(match (bytes.get(i + 1), bytes.get(i + 2)) {
+                (Some(&b'#'), _) => 2,
+                (Some(&b'{'), Some(&b'#')) => 3,
+                _ => 1,
+            }),
+            _ => Step::Advanced(0),
+        })
+    }
+}
+
+/// Scans `source` into doc regions for `lex`.
+///
+/// Returns `None` for ambiguous sources (module docs): callers emit no
+/// findings rather than guess.
+pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
+    let mut scanner = Scanner {
+        lex,
+        regions: Vec::new(),
+        run: None,
+        block_lines: Vec::new(),
+        block_opener: false,
+        state: State::Code,
+        heredocs: Vec::new(),
+        yaml_flow_depth: 0,
+        seg_start: 0,
+    };
+    for (idx, raw) in source.lines().enumerate() {
+        scanner.scan_line(idx + 1, raw)?;
+    }
+    if scanner.state != State::Code || !scanner.heredocs.is_empty() {
         return None;
     }
-    close_run(&mut run, &mut regions);
-    Some(regions)
+    close_run(&mut scanner.run, &mut scanner.regions);
+    Some(scanner.regions)
 }
 
 /// Flushes the open standalone-comment run into `regions`, if any.

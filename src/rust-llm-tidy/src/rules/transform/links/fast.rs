@@ -18,6 +18,15 @@ use std::borrow::Cow;
 
 const NO_BLOCK: usize = usize::MAX;
 
+/// What [`rewrite_doc`] will write: which labels to hoist, the per-block
+/// definition ranges, and the exact size of the rewritten document.
+struct DocPlan {
+    rewrite_count: usize,
+    hoisted: SmallVec<[usize; 16]>,
+    definitions: SmallVec<[usize; 24]>,
+    capacity: usize,
+}
+
 struct Scan<'a> {
     candidates: Candidates<'a>,
     occurrences: Occurrences,
@@ -79,121 +88,14 @@ pub(super) fn fix_links_one<'a>(
 /// Rewrite only comment-block occurrences and insert definitions at each using
 /// block's end. Saved block and occurrence indices make this a linear merge.
 fn rewrite_doc<'a>(input: &'a str, mut scan: Scan<'a>) -> (Cow<'a, str>, Vec<(String, String)>) {
-    let mut rewrite_count = 0usize;
-    let mut hoisted: SmallVec<[usize; 16]> = SmallVec::new();
-    let mut definitions: SmallVec<[usize; 24]> = SmallVec::new();
-    let mut capacity = input.len();
-
-    // Plan per-block definitions and output size.
-    for occurrence in &scan.occurrences {
-        if occurrence.block == NO_BLOCK {
-            continue;
-        }
-        let candidate = &mut scan.candidates[occurrence.candidate];
-        let Some(url) = candidate.url else {
-            continue;
-        };
-        rewrite_count += 1;
-        capacity -= url.len() + 2;
-
-        if candidate.last_block == NO_BLOCK {
-            // Report each label once.
-            hoisted.push(occurrence.candidate);
-        }
-        if candidate.last_block != occurrence.block {
-            // Add one definition per label per block.
-            candidate.last_block = occurrence.block;
-            let block = &mut scan.blocks[occurrence.block];
-            if block.definition_start == block.definition_end {
-                block.definition_start = definitions.len();
-            }
-            definitions.push(occurrence.candidate);
-            block.definition_end = definitions.len();
-            capacity += scan.blocks[occurrence.block].prefix.len()
-                + candidate.text.len()
-                + url.len()
-                + 4
-                + scan.line_ending.len();
-        }
-    }
-
-    if rewrite_count == 0 {
+    let plan = plan_doc(input, &mut scan);
+    if plan.rewrite_count == 0 {
         return (Cow::Borrowed(input), Vec::new());
     }
-    for block in &mut scan.blocks {
-        if block.definition_start != block.definition_end {
-            if !input[..block.end].ends_with('\n') {
-                capacity += scan.line_ending.len();
-            }
-            block.needs_blank = needs_blank_before_defs(&input[..block.end], block.prefix);
-            if block.needs_blank {
-                capacity += blank_line_prefix(block.prefix).len() + scan.line_ending.len();
-            }
-        }
-    }
-
-    let mut output = String::with_capacity(capacity);
-    let mut last = 0usize;
-    let mut occurrence_index = 0usize;
-    // Merge ordered occurrences and blocks in one pass.
-    for (block_index, block) in scan.blocks.iter().enumerate() {
-        while occurrence_index < scan.occurrences.len() {
-            let occurrence = &scan.occurrences[occurrence_index];
-            if occurrence.block == NO_BLOCK || occurrence.block < block_index {
-                occurrence_index += 1;
-                continue;
-            }
-            if occurrence.block != block_index {
-                break;
-            }
-            if is_eligible(&scan, occurrence) {
-                output.push_str(&input[last..occurrence.start]);
-                output.push('[');
-                output.push_str(scan.candidates[occurrence.candidate].text);
-                output.push(']');
-                let candidate = &scan.candidates[occurrence.candidate];
-                last = occurrence.start
-                    + candidate.text.len()
-                    + candidate
-                        .url
-                        .expect("eligible candidate has an inline URL")
-                        .len()
-                    + 4;
-            }
-            occurrence_index += 1;
-        }
-
-        if block.definition_start == block.definition_end {
-            continue;
-        }
-        output.push_str(&input[last..block.end]);
-        last = block.end;
-        if !output.ends_with('\n') {
-            output.push_str(scan.line_ending);
-        }
-        if block.needs_blank {
-            output.push_str(blank_line_prefix(block.prefix));
-            output.push_str(scan.line_ending);
-        }
-        for &candidate_index in &definitions[block.definition_start..block.definition_end] {
-            let candidate = &scan.candidates[candidate_index];
-            append_definition(
-                &mut output,
-                block.prefix,
-                candidate.text,
-                candidate
-                    .url
-                    .expect("rewritten candidate has an inline URL"),
-                scan.line_ending,
-            );
-        }
-    }
-    output.push_str(&input[last..]);
-
-    debug_assert_eq!(output.len(), capacity);
+    let output = write_doc(input, &scan, &plan);
     let pairs = build_pairs(
-        hoisted.iter().map(|&index| &scan.candidates[index]),
-        hoisted.len(),
+        plan.hoisted.iter().map(|&index| &scan.candidates[index]),
+        plan.hoisted.len(),
     );
     (Cow::Owned(output), pairs)
 }
@@ -279,6 +181,132 @@ fn build_pairs<'a>(
         pairs.push(replacement_pair(candidate.text, url));
     }
     pairs
+}
+
+/// Decide what to rewrite and how large the output will be. Records each
+/// block's definition range and blank-line decision in `scan` so writing stays
+/// a pure merge.
+fn plan_doc(input: &str, scan: &mut Scan<'_>) -> DocPlan {
+    let mut plan = DocPlan {
+        rewrite_count: 0,
+        hoisted: SmallVec::new(),
+        definitions: SmallVec::new(),
+        capacity: input.len(),
+    };
+
+    // Plan per-block definitions and output size.
+    for occurrence in &scan.occurrences {
+        if occurrence.block == NO_BLOCK {
+            continue;
+        }
+        let candidate = &mut scan.candidates[occurrence.candidate];
+        let Some(url) = candidate.url else {
+            continue;
+        };
+        plan.rewrite_count += 1;
+        plan.capacity -= url.len() + 2;
+
+        if candidate.last_block == NO_BLOCK {
+            // Report each label once.
+            plan.hoisted.push(occurrence.candidate);
+        }
+        if candidate.last_block != occurrence.block {
+            // Add one definition per label per block.
+            candidate.last_block = occurrence.block;
+            let block = &mut scan.blocks[occurrence.block];
+            if block.definition_start == block.definition_end {
+                block.definition_start = plan.definitions.len();
+            }
+            plan.definitions.push(occurrence.candidate);
+            block.definition_end = plan.definitions.len();
+            plan.capacity += scan.blocks[occurrence.block].prefix.len()
+                + candidate.text.len()
+                + url.len()
+                + 4
+                + scan.line_ending.len();
+        }
+    }
+
+    // Safe ahead of the zero-rewrite return: with no rewrites, every
+    // definition range is empty and the body below never fires.
+    for block in &mut scan.blocks {
+        if block.definition_start != block.definition_end {
+            if !input[..block.end].ends_with('\n') {
+                plan.capacity += scan.line_ending.len();
+            }
+            block.needs_blank = needs_blank_before_defs(&input[..block.end], block.prefix);
+            if block.needs_blank {
+                plan.capacity += blank_line_prefix(block.prefix).len() + scan.line_ending.len();
+            }
+        }
+    }
+
+    plan
+}
+
+/// Write the planned rewrite by merging ordered occurrences and blocks in one
+/// pass. The output holds exactly `plan.capacity` bytes.
+fn write_doc(input: &str, scan: &Scan<'_>, plan: &DocPlan) -> String {
+    let mut output = String::with_capacity(plan.capacity);
+    let mut last = 0usize;
+    let mut occurrence_index = 0usize;
+    // Merge ordered occurrences and blocks in one pass.
+    for (block_index, block) in scan.blocks.iter().enumerate() {
+        while occurrence_index < scan.occurrences.len() {
+            let occurrence = &scan.occurrences[occurrence_index];
+            if occurrence.block == NO_BLOCK || occurrence.block < block_index {
+                occurrence_index += 1;
+                continue;
+            }
+            if occurrence.block != block_index {
+                break;
+            }
+            if is_eligible(scan, occurrence) {
+                output.push_str(&input[last..occurrence.start]);
+                output.push('[');
+                output.push_str(scan.candidates[occurrence.candidate].text);
+                output.push(']');
+                let candidate = &scan.candidates[occurrence.candidate];
+                last = occurrence.start
+                    + candidate.text.len()
+                    + candidate
+                        .url
+                        .expect("eligible candidate has an inline URL")
+                        .len()
+                    + 4;
+            }
+            occurrence_index += 1;
+        }
+
+        if block.definition_start == block.definition_end {
+            continue;
+        }
+        output.push_str(&input[last..block.end]);
+        last = block.end;
+        if !output.ends_with('\n') {
+            output.push_str(scan.line_ending);
+        }
+        if block.needs_blank {
+            output.push_str(blank_line_prefix(block.prefix));
+            output.push_str(scan.line_ending);
+        }
+        for &candidate_index in &plan.definitions[block.definition_start..block.definition_end] {
+            let candidate = &scan.candidates[candidate_index];
+            append_definition(
+                &mut output,
+                block.prefix,
+                candidate.text,
+                candidate
+                    .url
+                    .expect("rewritten candidate has an inline URL"),
+                scan.line_ending,
+            );
+        }
+    }
+    output.push_str(&input[last..]);
+
+    debug_assert_eq!(output.len(), plan.capacity);
+    output
 }
 
 #[inline]

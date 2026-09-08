@@ -10,6 +10,17 @@ use crate::rules::registry as check;
 use std::collections::HashSet;
 use std::path::Path;
 
+/// One file's resolved lint gate: its MOD001/LEN001 thresholds plus whether
+/// the lint phase dispatches.
+struct LintGate {
+    /// Resolved MOD001 eligibility and counting options.
+    module_size: ModuleSizeConfig,
+    /// Resolved LEN001 `max_lines` threshold.
+    method_length: MethodLengthConfig,
+    /// Whether linting runs for the file under the active selection.
+    lints_on: bool,
+}
+
 /// Process one mutation or lint phase, retaining changes and findings.
 ///
 /// - `dry_run`: preview without writing source
@@ -106,6 +117,73 @@ pub(super) fn process_one(
             }
         }
     }
+    let gate = lint_gate(config, profile, enabled, disabled);
+    if lint_phase && gate.lints_on {
+        let lint_disabled = lint_disabled_set(enabled, disabled, config);
+        match files::check_file(
+            path,
+            &lint_disabled,
+            config.is_none_or(CompiledConfig::suppress_in_release_notes),
+            gate.module_size,
+            gate.method_length,
+            index,
+        ) {
+            Ok(found) => out
+                .diagnostics
+                .extend(found.into_iter().map(|(_, diagnostic)| diagnostic)),
+            Err(e) => {
+                out.fail(&e);
+                return out;
+            }
+        }
+    }
+
+    if should_post_process {
+        out.processed = true;
+    }
+    out
+}
+
+/// Resolve the disabled lint codes for the lint phase under the active
+/// selection.
+fn lint_disabled_set(
+    enabled: &Option<HashSet<String>>,
+    disabled: &HashSet<String>,
+    config: Option<&CompiledConfig>,
+) -> HashSet<String> {
+    match enabled {
+        // In whitelist mode without `lints` in the set, only whitelisted
+        // lint codes should run; disable the rest.
+        Some(set) if !set.contains("lints") => check::LINT_CODES
+            .iter()
+            .filter(|c| !set.contains(**c))
+            .map(|c| c.to_string())
+            .chain(disabled.iter().cloned())
+            .collect(),
+        // TEXT007 is opt-in: it runs only when the config enables it or
+        // the selection names the code; `lints` alone does not.
+        _ => {
+            let opted_in = config.is_some_and(CompiledConfig::passive_narration)
+                || enabled
+                    .as_ref()
+                    .is_some_and(|set| set.contains(check::CODE_PASSIVE_NARRATION));
+            let mut codes = disabled.clone();
+            if !opted_in {
+                codes.insert(check::CODE_PASSIVE_NARRATION.to_string());
+            }
+            codes
+        }
+    }
+}
+
+/// Resolve the lint gate for one file: config-or-default thresholds and the
+/// selection/profile conditions deciding whether `lints` runs.
+fn lint_gate(
+    config: Option<&CompiledConfig>,
+    profile: &langs::Profile,
+    enabled: &Option<HashSet<String>>,
+    disabled: &HashSet<String>,
+) -> LintGate {
     // The non-code size opt-in admits supported data formats to MOD001 only.
     let module_size = config.map_or_else(ModuleSizeConfig::default, CompiledConfig::module_size);
     let method_length =
@@ -125,52 +203,9 @@ pub(super) fn process_one(
                 }
                 None => profile.op_enabled("lints", enabled, disabled),
             });
-    if lint_phase && lints_on {
-        // In whitelist mode without `lints` in the set, only whitelisted
-        // lint codes should run; disable the rest.
-        let lint_disabled: HashSet<String> = match enabled {
-            Some(set) if !set.contains("lints") => check::LINT_CODES
-                .iter()
-                .filter(|c| !set.contains(**c))
-                .map(|c| c.to_string())
-                .chain(disabled.iter().cloned())
-                .collect(),
-            // TEXT007 is opt-in: it runs only when the config enables it or
-            // the selection names the code; `lints` alone does not.
-            _ => {
-                let opted_in = config.is_some_and(CompiledConfig::passive_narration)
-                    || enabled
-                        .as_ref()
-                        .is_some_and(|set| set.contains(check::CODE_PASSIVE_NARRATION));
-                let mut codes = disabled.clone();
-                if !opted_in {
-                    codes.insert(check::CODE_PASSIVE_NARRATION.to_string());
-                }
-                codes
-            }
-        };
-        let suppress_in_release_notes =
-            config.is_none_or(CompiledConfig::suppress_in_release_notes);
-        match files::check_file(
-            path,
-            &lint_disabled,
-            suppress_in_release_notes,
-            module_size,
-            method_length,
-            index,
-        ) {
-            Ok(found) => out
-                .diagnostics
-                .extend(found.into_iter().map(|(_, diagnostic)| diagnostic)),
-            Err(e) => {
-                out.fail(&e);
-                return out;
-            }
-        }
+    LintGate {
+        module_size,
+        method_length,
+        lints_on,
     }
-
-    if should_post_process {
-        out.processed = true;
-    }
-    out
 }

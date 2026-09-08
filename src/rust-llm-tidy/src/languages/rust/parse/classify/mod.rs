@@ -69,177 +69,75 @@ pub(super) fn classify_item<'a>(
     let attrs = collect_attributes(&pending.nodes);
     match body.kind() {
         "function_item" => Classification {
-            kind: ItemKind::Fn,
             name: field_ident_text(body, "name", source),
-            impl_target: None,
-            is_test_module: false,
-            is_inline: false,
-            is_trait_impl: false,
             visibility: classify_visibility(body),
-            doc_comments,
             returns_result: returns_result(body, source),
             params: extract_param_names(body, source),
             is_test_fn: is_test_fn(&attrs, source),
+            ..base(ItemKind::Fn, doc_comments)
         },
         "struct_item" => Classification {
-            kind: ItemKind::Struct,
             name: field_ident_text(body, "name", source),
-            impl_target: None,
-            is_test_module: false,
-            is_inline: false,
-            is_trait_impl: false,
             visibility: classify_visibility(body),
-            doc_comments,
-            returns_result: false,
-            params: Vec::new(),
-            is_test_fn: false,
+            ..base(ItemKind::Struct, doc_comments)
         },
         "enum_item" => Classification {
-            kind: ItemKind::Enum,
             name: field_ident_text(body, "name", source),
-            impl_target: None,
-            is_test_module: false,
-            is_inline: false,
-            is_trait_impl: false,
             visibility: classify_visibility(body),
-            doc_comments,
-            returns_result: false,
-            params: Vec::new(),
-            is_test_fn: false,
+            ..base(ItemKind::Enum, doc_comments)
         },
         "union_item" => Classification {
-            kind: ItemKind::Union,
             name: field_ident_text(body, "name", source),
-            impl_target: None,
-            is_test_module: false,
-            is_inline: false,
-            is_trait_impl: false,
             visibility: classify_visibility(body),
-            doc_comments,
-            returns_result: false,
-            params: Vec::new(),
-            is_test_fn: false,
+            ..base(ItemKind::Union, doc_comments)
         },
         "type_item" => Classification {
-            kind: ItemKind::Type,
             name: field_ident_text(body, "name", source),
-            impl_target: None,
-            is_test_module: false,
-            is_inline: false,
-            is_trait_impl: false,
             visibility: classify_visibility(body),
-            doc_comments,
-            returns_result: false,
-            params: Vec::new(),
-            is_test_fn: false,
+            ..base(ItemKind::Type, doc_comments)
         },
         "impl_item" => Classification {
-            kind: ItemKind::Impl,
-            name: None,
             impl_target: body
                 .child_by_field_name("type")
                 .and_then(|t| first_ident_of_type(t, source)),
-            is_test_module: false,
-            is_inline: false,
             is_trait_impl: body.child_by_field_name("trait").is_some(),
-            visibility: None,
-            doc_comments,
-            returns_result: false,
-            params: Vec::new(),
-            is_test_fn: false,
+            ..base(ItemKind::Impl, doc_comments)
         },
         "use_declaration" => Classification {
-            kind: ItemKind::Use,
-            name: None,
-            impl_target: None,
-            is_test_module: false,
-            is_inline: false,
-            is_trait_impl: false,
             visibility: classify_visibility(body),
-            doc_comments,
-            returns_result: false,
-            params: Vec::new(),
-            is_test_fn: false,
+            ..base(ItemKind::Use, doc_comments)
         },
         "const_item" => Classification {
-            kind: ItemKind::Const,
             name: field_ident_text(body, "name", source),
-            impl_target: None,
-            is_test_module: false,
-            is_inline: false,
-            is_trait_impl: false,
             visibility: classify_visibility(body),
-            doc_comments,
-            returns_result: false,
-            params: Vec::new(),
-            is_test_fn: false,
+            ..base(ItemKind::Const, doc_comments)
         },
         "static_item" => Classification {
-            kind: ItemKind::Static,
             name: field_ident_text(body, "name", source),
-            impl_target: None,
-            is_test_module: false,
-            is_inline: false,
-            is_trait_impl: false,
             visibility: classify_visibility(body),
-            doc_comments,
-            returns_result: false,
-            params: Vec::new(),
-            is_test_fn: false,
+            ..base(ItemKind::Static, doc_comments)
         },
         "mod_item" => Classification {
-            kind: ItemKind::Mod,
             name: field_ident_text(body, "name", source),
-            impl_target: None,
             is_test_module: is_test_module(&attrs, source),
             // True only when the mod has an inline `{ ... }` body (a
             // `declaration_list` `body` child); file-based `mod x;` has no body.
             is_inline: body.child_by_field_name("body").is_some(),
-            is_trait_impl: false,
             visibility: classify_visibility(body),
-            doc_comments,
-            returns_result: false,
-            params: Vec::new(),
-            is_test_fn: false,
+            ..base(ItemKind::Mod, doc_comments)
         },
         "extern_crate_declaration" => Classification {
-            kind: ItemKind::Extern,
-            name: None,
-            impl_target: None,
-            is_test_module: false,
-            is_inline: false,
-            is_trait_impl: false,
             visibility: classify_visibility(body),
-            doc_comments,
-            returns_result: false,
-            params: Vec::new(),
-            is_test_fn: false,
+            ..base(ItemKind::Extern, doc_comments)
         },
         "trait_item" => Classification {
-            kind: ItemKind::Trait,
             name: field_ident_text(body, "name", source),
-            impl_target: None,
-            is_test_module: false,
-            is_inline: false,
-            is_trait_impl: false,
             visibility: classify_visibility(body),
-            doc_comments,
-            returns_result: false,
-            params: Vec::new(),
-            is_test_fn: false,
+            ..base(ItemKind::Trait, doc_comments)
         },
         "macro_definition" => Classification {
-            kind: ItemKind::Macro,
             name: field_ident_text(body, "name", source),
-            impl_target: None,
-            is_test_module: false,
-            is_inline: false,
-            is_trait_impl: false,
-            visibility: None,
-            doc_comments,
-            returns_result: false,
-            params: Vec::new(),
-            is_test_fn: false,
+            ..base(ItemKind::Macro, doc_comments)
         },
         // A top-level macro invocation may appear as a bare `macro_invocation`
         // node or wrapped in an `expression_statement` (`foo!();`).
@@ -249,35 +147,32 @@ pub(super) fn classify_item<'a>(
         "macro_invocation" | "expression_statement" => {
             let mac = find_macro_invocation(body);
             Classification {
-                kind: ItemKind::MacroInvocation,
                 name: mac.and_then(|m| {
                     m.child_by_field_name("macro")
                         .and_then(|p| last_path_segment(p, source))
                 }),
-                impl_target: None,
-                is_test_module: false,
-                is_inline: false,
-                is_trait_impl: false,
-                visibility: None,
-                doc_comments,
-                returns_result: false,
-                params: Vec::new(),
-                is_test_fn: false,
+                ..base(ItemKind::MacroInvocation, doc_comments)
             }
         }
-        _ => Classification {
-            kind: ItemKind::Other,
-            name: None,
-            impl_target: None,
-            is_test_module: false,
-            is_inline: false,
-            is_trait_impl: false,
-            visibility: None,
-            doc_comments,
-            returns_result: false,
-            params: Vec::new(),
-            is_test_fn: false,
-        },
+        _ => base(ItemKind::Other, doc_comments),
+    }
+}
+
+/// Classification carrying only `kind` and `doc_comments`, with every other
+/// field at the value most item kinds use; classify arms override the rest.
+fn base(kind: ItemKind, doc_comments: Vec<String>) -> Classification {
+    Classification {
+        kind,
+        doc_comments,
+        name: None,
+        impl_target: None,
+        is_test_module: false,
+        is_inline: false,
+        is_trait_impl: false,
+        visibility: None,
+        returns_result: false,
+        params: Vec::new(),
+        is_test_fn: false,
     }
 }
 

@@ -34,38 +34,26 @@ pub(super) fn local_bindings<'a>(bytes: &'a [u8], node: Node) -> Vec<(&'a str, u
     let mut names: Vec<(&'a str, usize)> = Vec::new();
     match node.kind() {
         "parameter" | "catch_declaration" | "type_parameter" => {
-            names.extend(
-                node.child_by_field_name("name")
-                    .and_then(|n| leaf_text(n, bytes))
-                    .map(|name| (name, node.start_byte())),
-            );
+            names.extend(field_name_at(bytes, node, node.start_byte()));
         }
         // An out-argument (`out var t`) or a positional pattern's
         // sub-designation (`Pair(int a, int t)`).
         "declaration_expression" | "from_clause" => {
             names.extend(field_name_binding(bytes, node));
         }
-        // A query's `into` continuation names its range variable:
-        // the identifier sits between clauses without its own node.
-        "query_expression" => {
-            for i in 0..node.named_child_count() as u32 {
-                if let Some(child) = node.named_child(i)
-                    && child.kind() == "identifier"
-                    && let Some(name) = leaf_text(child, bytes)
-                {
-                    names.push((name, child.start_byte()));
-                }
-            }
+        // Identifier children bind as names: a query's `into`
+        // continuation, a `join ... into t` continuation, and a
+        // parenthesized designation (`var (a, t)`).
+        //
+        // The `into` identifier sits between clauses without its
+        // own node; nested designations recurse by the walk.
+        "query_expression" | "join_into_clause" | "parenthesized_variable_designation" => {
+            names.extend(identifier_children(bytes, node));
         }
         // `let t = ...` carries its name as the leading identifier
         // child, ahead of the value expression.
         "let_clause" => {
-            if let Some(child) = node.named_child(0)
-                && child.kind() == "identifier"
-                && let Some(name) = leaf_text(child, bytes)
-            {
-                names.push((name, child.start_byte()));
-            }
+            names.extend(identifier_children(bytes, node).first().copied());
         }
         // A `join t in ys` clause's range variable is the first
         // identifier after the clause's optional type; later
@@ -87,37 +75,8 @@ pub(super) fn local_bindings<'a>(bytes: &'a [u8], node: Node) -> Vec<(&'a str, u
                 break;
             }
         }
-        // A `join ... into t` continuation names its range
-        // variable.
-        "join_into_clause" => {
-            for i in 0..node.named_child_count() as u32 {
-                if let Some(child) = node.named_child(i)
-                    && child.kind() == "identifier"
-                    && let Some(name) = leaf_text(child, bytes)
-                {
-                    names.push((name, child.start_byte()));
-                }
-            }
-        }
-        // A parenthesized designation (`var (a, t)`) binds each
-        // identifier it lists; nested designations recurse by the
-        // walk.
-        "parenthesized_variable_designation" => {
-            for i in 0..node.named_child_count() as u32 {
-                if let Some(child) = node.named_child(i)
-                    && child.kind() == "identifier"
-                    && let Some(name) = leaf_text(child, bytes)
-                {
-                    names.push((name, child.start_byte()));
-                }
-            }
-        }
         "variable_declarator" => {
-            names.extend(
-                node.child_by_field_name("name")
-                    .and_then(|n| leaf_text(n, bytes))
-                    .map(|name| (name, node.start_byte())),
-            );
+            names.extend(field_name_at(bytes, node, node.start_byte()));
             // A deconstruction declaration (`var (a, b) = ...`)
             // binds its pattern names instead of a declarator name.
             for i in 0..node.named_child_count() as u32 {
@@ -135,11 +94,7 @@ pub(super) fn local_bindings<'a>(bytes: &'a [u8], node: Node) -> Vec<(&'a str, u
         // An `is` or `case` pattern designation (`o is int t`)
         // binds its name from the pattern onward.
         "declaration_pattern" => {
-            names.extend(
-                node.child_by_field_name("name")
-                    .and_then(|n| leaf_text(n, bytes))
-                    .map(|name| (name, node.start_byte())),
-            );
+            names.extend(field_name_at(bytes, node, node.start_byte()));
         }
         // A simple lambda's parameter is its own aliased identifier
         // node, so the text is the name.
@@ -236,10 +191,33 @@ fn designation_names<'a>(bytes: &'a [u8], node: Node) -> Vec<&'a str> {
 }
 
 /// The name `node` binds through its `name` field, positioned at
+/// `offset`.
+fn field_name_at<'a>(bytes: &'a [u8], node: Node, offset: usize) -> Option<(&'a str, usize)> {
+    node.child_by_field_name("name")
+        .and_then(|n| leaf_text(n, bytes))
+        .map(|name| (name, offset))
+}
+
+/// The name `node` binds through its `name` field, positioned at
 /// the name itself.
 fn field_name_binding<'a>(bytes: &'a [u8], node: Node) -> Option<(&'a str, usize)> {
     let name = node.child_by_field_name("name")?;
     leaf_text(name, bytes).map(|text| (text, name.start_byte()))
+}
+
+/// The direct identifier children of `node`, each bound at the
+/// identifier itself.
+fn identifier_children<'a>(bytes: &'a [u8], node: Node) -> Vec<(&'a str, usize)> {
+    let mut names = Vec::new();
+    for i in 0..node.named_child_count() as u32 {
+        if let Some(child) = node.named_child(i)
+            && child.kind() == "identifier"
+            && let Some(name) = leaf_text(child, bytes)
+        {
+            names.push((name, child.start_byte()));
+        }
+    }
+    names
 }
 
 /// The names a destructuring pattern binds, including nested

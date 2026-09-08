@@ -1,7 +1,7 @@
 //! Read, parse, validate, and compile a config file into a `CompiledConfig`.
 
 use super::{CompiledConfig, CompiledRuleGroup};
-use crate::config::{Config, known_rules};
+use crate::config::{Config, RuleGroup, known_rules};
 use crate::languages::registry;
 use anyhow::{Context, anyhow, bail};
 use glob::glob as fs_glob;
@@ -9,7 +9,7 @@ use globset::{GlobBuilder, GlobSet};
 use std::fs;
 #[cfg(test)]
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Shared unit-test counter backing [`compile`]'s unique temp dirs.
 #[cfg(test)]
@@ -51,21 +51,7 @@ static COMPILE_COUNTER: core::sync::atomic::AtomicU64 = core::sync::atomic::Atom
 ///
 /// On success, returns a [`CompiledConfig`] ready for `policy_for`.
 pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
-    let raw = fs::read_to_string(path)
-        .with_context(|| format!("failed to read config {}", path.display()))?;
-    let config: Config = serde_yml::from_str(&raw)
-        .with_context(|| format!("failed to parse YAML config {}", path.display()))?;
-
-    let config_parent = path
-        .parent()
-        .with_context(|| format!("config path {} has no parent", path.display()))?;
-    let config_dir = if config_parent.as_os_str().is_empty() {
-        Path::new(".")
-    } else {
-        config_parent
-    }
-    .canonicalize()
-    .with_context(|| format!("failed to canonicalize config dir {}", path.display()))?;
+    let (config, config_dir) = read_config_and_canonical_dir(path)?;
 
     // XOR: include + exclude both present -> error.
     if !config.include.is_empty() && !config.exclude.is_empty() {
@@ -78,97 +64,14 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         registry::validate_extension(ext)?;
     }
 
-    // Link thresholds: every value must be >= 1.
-    //
-    // A missing `min_occurrences` already defaults to 1; a non-integer value
-    // fails YAML deserialization above, so only a literal 0 reaches this check.
-    if let Some(links) = &config.links {
-        if links.min_occurrences < 1 {
-            bail!(
-                "links.min_occurrences must be >= 1, got {}",
-                links.min_occurrences
-            );
-        }
-        for (ext, &count) in &links.by_extension {
-            if count < 1 {
-                bail!("links.by_extension.{ext} must be >= 1, got {count}");
-            }
-        }
-    }
-
-    // Module-size threshold: the value must be >= 1.
-    //
-    // A missing `max_lines` already defaults to 500; a non-integer value
-    // fails YAML deserialization above, so only a literal 0 reaches this check.
-    if let Some(module_size) = &config.module_size
-        && module_size.max_lines < 1
-    {
-        bail!(
-            "module_size.max_lines must be >= 1, got {}",
-            module_size.max_lines
-        );
-    }
-
-    // Method-length threshold: the value must be >= 1.
-    //
-    // A missing `max_lines` already defaults to 100; a non-integer value
-    // fails YAML deserialization above, so only a literal 0 reaches this check.
-    if let Some(method_length) = &config.method_length
-        && method_length.max_lines < 1
-    {
-        bail!(
-            "method_length.max_lines must be >= 1, got {}",
-            method_length.max_lines
-        );
-    }
+    validate_thresholds(&config)?;
 
     let valid = known_rules();
 
-    // Validate rule names + compile include groups.
-    let mut include_groups: Vec<CompiledRuleGroup> = Vec::with_capacity(config.include.len());
-    for rule in &config.include {
-        for r in &rule.rules {
-            if !valid.contains(&r.as_str()) {
-                bail!(
-                    "unknown rule `{r}` in include.rules; valid rules: {}",
-                    valid.join(", ")
-                );
-            }
-        }
-        let paths = if rule.paths.is_empty() {
-            vec!["**".to_string()]
-        } else {
-            rule.paths.clone()
-        };
-        let set = compile_glob_set(&paths, &config_dir)?;
-        include_groups.push(CompiledRuleGroup {
-            set,
-            rules: rule.rules.clone(),
-        });
-    }
-
-    // Validate rule names + compile exclude groups.
-    let mut exclude_groups: Vec<CompiledRuleGroup> = Vec::with_capacity(config.exclude.len());
-    for rule in &config.exclude {
-        for r in &rule.rules {
-            if !valid.contains(&r.as_str()) {
-                bail!(
-                    "unknown rule `{r}` in exclude.rules; valid rules: {}",
-                    valid.join(", ")
-                );
-            }
-        }
-        let paths = if rule.paths.is_empty() {
-            vec!["**".to_string()]
-        } else {
-            rule.paths.clone()
-        };
-        let set = compile_glob_set(&paths, &config_dir)?;
-        exclude_groups.push(CompiledRuleGroup {
-            set,
-            rules: rule.rules.clone(),
-        });
-    }
+    let include_groups =
+        compile_rule_groups(&config.include, &valid, &config_dir, "include.rules")?;
+    let exclude_groups =
+        compile_rule_groups(&config.exclude, &valid, &config_dir, "exclude.rules")?;
 
     let exclude_files_set = compile_glob_set(&config.exclude_files, &config_dir)?;
 
@@ -244,6 +147,118 @@ fn check_pattern_matches(config_dir: &Path, pattern: &str) -> anyhow::Result<()>
         bail!(
             "config pattern `{pattern}` matched no files under {}",
             config_dir.display()
+        );
+    }
+    Ok(())
+}
+
+/// Validate each group's rule names against `valid` and compile its path
+/// patterns into one `CompiledRuleGroup`.
+///
+/// `section` names the config key the groups came from (`include.rules` or
+/// `exclude.rules`) in the unknown-rule error. An empty/missing `paths` in a
+/// group is treated as `["**"]`.
+fn compile_rule_groups(
+    groups: &[RuleGroup],
+    valid: &[&'static str],
+    config_dir: &Path,
+    section: &str,
+) -> anyhow::Result<Vec<CompiledRuleGroup>> {
+    let mut compiled: Vec<CompiledRuleGroup> = Vec::with_capacity(groups.len());
+    for rule in groups {
+        for r in &rule.rules {
+            if !valid.contains(&r.as_str()) {
+                bail!(
+                    "unknown rule `{r}` in {section}; valid rules: {}",
+                    valid.join(", ")
+                );
+            }
+        }
+        let paths = if rule.paths.is_empty() {
+            vec!["**".to_string()]
+        } else {
+            rule.paths.clone()
+        };
+        let set = compile_glob_set(&paths, config_dir)?;
+        compiled.push(CompiledRuleGroup {
+            set,
+            rules: rule.rules.clone(),
+        });
+    }
+    Ok(compiled)
+}
+
+/// Read and parse the YAML config at `path`, returning it with the
+/// canonicalized config directory its patterns resolve against.
+///
+/// A config path with an empty parent component (`rust-llm-tidy.yml` in the
+/// working directory) resolves that directory to `.` before canonicalizing.
+fn read_config_and_canonical_dir(path: &Path) -> anyhow::Result<(Config, PathBuf)> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("failed to read config {}", path.display()))?;
+    let config: Config = serde_yml::from_str(&raw)
+        .with_context(|| format!("failed to parse YAML config {}", path.display()))?;
+
+    let config_parent = path
+        .parent()
+        .with_context(|| format!("config path {} has no parent", path.display()))?;
+    let config_dir = if config_parent.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        config_parent
+    }
+    .canonicalize()
+    .with_context(|| format!("failed to canonicalize config dir {}", path.display()))?;
+    Ok((config, config_dir))
+}
+
+/// Reject `links`, `module_size`, and `method_length` threshold values
+/// below 1.
+fn validate_thresholds(config: &Config) -> anyhow::Result<()> {
+    // Link thresholds: every value must be >= 1.
+    //
+    // A missing `min_occurrences` already defaults to 1; a non-integer value
+    // fails YAML deserialization during config parsing, so only a literal 0
+    // reaches this check.
+    if let Some(links) = &config.links {
+        if links.min_occurrences < 1 {
+            bail!(
+                "links.min_occurrences must be >= 1, got {}",
+                links.min_occurrences
+            );
+        }
+        for (ext, &count) in &links.by_extension {
+            if count < 1 {
+                bail!("links.by_extension.{ext} must be >= 1, got {count}");
+            }
+        }
+    }
+
+    // Module-size threshold: the value must be >= 1.
+    //
+    // A missing `max_lines` already defaults to 500; a non-integer value
+    // fails YAML deserialization during config parsing, so only a literal 0
+    // reaches this check.
+    if let Some(module_size) = &config.module_size
+        && module_size.max_lines < 1
+    {
+        bail!(
+            "module_size.max_lines must be >= 1, got {}",
+            module_size.max_lines
+        );
+    }
+
+    // Method-length threshold: the value must be >= 1.
+    //
+    // A missing `max_lines` already defaults to 100; a non-integer value
+    // fails YAML deserialization during config parsing, so only a literal 0
+    // reaches this check.
+    if let Some(method_length) = &config.method_length
+        && method_length.max_lines < 1
+    {
+        bail!(
+            "method_length.max_lines must be >= 1, got {}",
+            method_length.max_lines
         );
     }
     Ok(())

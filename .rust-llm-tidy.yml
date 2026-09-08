@@ -133,6 +133,10 @@ exclude:
   # Tests reference placeholder markers and keep module/case lists together.
   - paths: ["src/cli/tests/doc_check/**/*"]
     rules: [DOC006, TEXT008]
+  # The MOD001 acceptance matrix is intentionally one file; it sits a few
+  # lines over the 500-line budget and no split improves it.
+  - paths: ["src/cli/tests/doc_check/mod001_module_size.rs"]
+    rules: [MOD001]
 
 # Commented examples (uncomment and tailor paths to enable):
 #

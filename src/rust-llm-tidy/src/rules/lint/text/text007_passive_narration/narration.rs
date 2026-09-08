@@ -152,9 +152,61 @@ struct NarrationMarker {
 
 /// The first narration marker in the line, if any.
 ///
-/// Phrase markers take precedence over single words. Context checks skip
-/// common runtime descriptions; clause-initial `before,` still names history.
+/// Four ordered passes run, first match wins: phrase markers, change
+/// nouns, single words, then clause-initial `before,`. Context checks
+/// skip common runtime descriptions; clause-initial `before,` still
+/// names history.
 pub(super) fn find_narration_marker(line: &str, words: &[prose::Word<'_>]) -> Option<&'static str> {
+    phrase_marker(line, words)
+        .or_else(|| change_noun_marker(line, words))
+        .or_else(|| single_word_marker(line, words))
+        .or_else(|| before_comma_marker(line, words))
+}
+
+/// The clause-initial `before,` marker in the line, if any; temporal
+/// `before` never matches.
+fn before_comma_marker(line: &str, words: &[prose::Word<'_>]) -> Option<&'static str> {
+    words
+        .iter()
+        .any(|word| {
+            word.text.eq_ignore_ascii_case("before")
+                && line[word.offset + word.text.len()..].starts_with(',')
+                && is_clause_start(&line[..word.offset])
+        })
+        .then_some("before,")
+}
+
+/// The first `this <noun> <verb>` change marker in the line, if any.
+fn change_noun_marker(line: &str, words: &[prose::Word<'_>]) -> Option<&'static str> {
+    // Change nouns also name runtime data; require an implementation-change verb.
+    for phrase in words.windows(3) {
+        if phrase[0].text.eq_ignore_ascii_case("this")
+            && prose::contiguous(line, phrase)
+            && matches_any(
+                phrase[2].text,
+                &["adds", "fixes", "removes", "introduces", "rejects"],
+            )
+        {
+            for (noun, marker) in [
+                ("change", "this change"),
+                ("patch", "this patch"),
+                ("commit", "this commit"),
+                ("update", "this update"),
+                ("fix", "this fix"),
+            ] {
+                if phrase[1].text.eq_ignore_ascii_case(noun) {
+                    return Some(marker);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// The first `NARRATION_MARKERS` phrase in the line, if any; `no longer
+/// than` comparisons and non-clause-initial `in the past` stay silent.
+fn phrase_marker(line: &str, words: &[prose::Word<'_>]) -> Option<&'static str> {
     for marker in NARRATION_MARKERS {
         if words
             .windows(marker.tokens.len())
@@ -182,29 +234,12 @@ pub(super) fn find_narration_marker(line: &str, words: &[prose::Word<'_>]) -> Op
         }
     }
 
-    // Change nouns also name runtime data; require an implementation-change verb.
-    for phrase in words.windows(3) {
-        if phrase[0].text.eq_ignore_ascii_case("this")
-            && prose::contiguous(line, phrase)
-            && matches_any(
-                phrase[2].text,
-                &["adds", "fixes", "removes", "introduces", "rejects"],
-            )
-        {
-            for (noun, marker) in [
-                ("change", "this change"),
-                ("patch", "this patch"),
-                ("commit", "this commit"),
-                ("update", "this update"),
-                ("fix", "this fix"),
-            ] {
-                if phrase[1].text.eq_ignore_ascii_case(noun) {
-                    return Some(marker);
-                }
-            }
-        }
-    }
+    None
+}
 
+/// The first `SINGLE_WORD_NARRATION_MARKERS` word in the line, if any;
+/// runtime-context exceptions stay silent.
+fn single_word_marker(line: &str, words: &[prose::Word<'_>]) -> Option<&'static str> {
     for marker in SINGLE_WORD_NARRATION_MARKERS {
         for (index, word) in words.iter().enumerate() {
             if !word.text.eq_ignore_ascii_case(marker) {
@@ -303,14 +338,7 @@ pub(super) fn find_narration_marker(line: &str, words: &[prose::Word<'_>]) -> Op
         }
     }
 
-    words
-        .iter()
-        .any(|word| {
-            word.text.eq_ignore_ascii_case("before")
-                && line[word.offset + word.text.len()..].starts_with(',')
-                && is_clause_start(&line[..word.offset])
-        })
-        .then_some("before,")
+    None
 }
 
 /// Whether the text before one `before,` occurrence ends a clause, so
@@ -332,137 +360,99 @@ mod tests {
     use super::super::is_narration_marker;
     use super::super::one_line;
     use crate::reporting::diagnostic::Severity;
+    use rstest::rstest;
 
     // ── TEXT007: narration markers ──
 
     // Each single-word and phrase marker produces one hint naming the marker.
-    #[test]
-    fn text_checks_should_name_marker_when_prose_narrates_behavior() {
-        for (source, marker) in [
-            ("This no longer panics.", "no longer"),
-            ("The old path previously ran here.", "previously"),
-            ("The cache is now bounded.", "now"),
-            (
-                "Prior to this change, input could panic.",
-                "prior to this change",
-            ),
-            ("Before this change, the cache grew.", "before this change"),
-            (
-                "After this change, names must be nonempty.",
-                "after this change",
-            ),
-            (
-                "With this change, callers receive an error.",
-                "with this change",
-            ),
-            ("This change adds validation.", "this change"),
-            ("This patch fixes error handling.", "this patch"),
-            ("This commit removes the fallback.", "this commit"),
-            ("This update introduces validation.", "this update"),
-            (
-                "The previous implementation copied input.",
-                "previous implementation",
-            ),
-            (
-                "Unlike the old implementation, this borrows input.",
-                "old implementation",
-            ),
-            ("Earlier versions accepted empty names.", "earlier versions"),
-            ("Previous versions ignored errors.", "previous versions"),
-            ("THIS PATCH fixes error handling.", "this patch"),
-            (
-                "In earlier releases, empty input could panic.",
-                "in earlier releases",
-            ),
-            (
-                "In previous releases, empty input could panic.",
-                "in previous releases",
-            ),
-            (
-                "In prior releases, empty input could panic.",
-                "in prior releases",
-            ),
-            (
-                "The earlier implementation copied input.",
-                "earlier implementation",
-            ),
-            (
-                "The prior implementation copied input.",
-                "prior implementation",
-            ),
-            (
-                "The original implementation copied input.",
-                "original implementation",
-            ),
-            ("This preserves the earlier behavior.", "earlier behavior"),
-            ("This preserves the previous behavior.", "previous behavior"),
-            ("This preserves the prior behavior.", "prior behavior"),
-            ("This preserves the old behavior.", "old behavior"),
-            ("This preserves the earlier behaviour.", "earlier behaviour"),
-            (
-                "This preserves the previous behaviour.",
-                "previous behaviour",
-            ),
-            ("This preserves the prior behaviour.", "prior behaviour"),
-            ("This preserves the old behaviour.", "old behaviour"),
-            (
-                "Before this fix, empty input could panic.",
-                "before this fix",
-            ),
-            (
-                "After this fix, empty input returns an error.",
-                "after this fix",
-            ),
-            (
-                "With this fix, empty input returns an error.",
-                "with this fix",
-            ),
-            ("This fix rejects empty input.", "this fix"),
-            (
-                "As of this release, names must be nonempty.",
-                "as of this release",
-            ),
-            (
-                "As of this version, names must be nonempty.",
-                "as of this version",
-            ),
-            (
-                "BEFORE THIS FIX, empty input could panic.",
-                "before this fix",
-            ),
-            (
-                "In the past, the cache grew without a bound.",
-                "in the past",
-            ),
-            ("The parser formerly accepted empty names.", "formerly"),
-            (
-                "Historically, the parser accepted empty names.",
-                "historically",
-            ),
-            ("The parser originally accepted empty names.", "originally"),
-            ("The parser recently gained a size limit.", "recently"),
-            ("Lately, the parser rejects empty names.", "lately"),
-            ("The parser currently rejects empty names.", "currently"),
-            ("The parser does not accept empty names anymore.", "anymore"),
-            ("FORMERLY, the cache grew without a bound.", "formerly"),
-            (
-                "IN THE PAST, the cache grew without a bound.",
-                "in the past",
-            ),
-        ] {
-            let found = one_line(source);
+    #[rstest]
+    #[case::no_longer("This no longer panics.", "no longer")]
+    #[case::previously("The old path previously ran here.", "previously")]
+    #[case::now("The cache is now bounded.", "now")]
+    #[case::prior_to_this_change(
+        "Prior to this change, input could panic.",
+        "prior to this change"
+    )]
+    #[case::before_this_change("Before this change, the cache grew.", "before this change")]
+    #[case::after_this_change("After this change, names must be nonempty.", "after this change")]
+    #[case::with_this_change("With this change, callers receive an error.", "with this change")]
+    #[case::this_change("This change adds validation.", "this change")]
+    #[case::this_patch("This patch fixes error handling.", "this patch")]
+    #[case::this_commit("This commit removes the fallback.", "this commit")]
+    #[case::this_update("This update introduces validation.", "this update")]
+    #[case::previous_implementation(
+        "The previous implementation copied input.",
+        "previous implementation"
+    )]
+    #[case::old_implementation(
+        "Unlike the old implementation, this borrows input.",
+        "old implementation"
+    )]
+    #[case::earlier_versions("Earlier versions accepted empty names.", "earlier versions")]
+    #[case::previous_versions("Previous versions ignored errors.", "previous versions")]
+    #[case::this_patch_uppercase("THIS PATCH fixes error handling.", "this patch")]
+    #[case::in_earlier_releases(
+        "In earlier releases, empty input could panic.",
+        "in earlier releases"
+    )]
+    #[case::in_previous_releases(
+        "In previous releases, empty input could panic.",
+        "in previous releases"
+    )]
+    #[case::in_prior_releases("In prior releases, empty input could panic.", "in prior releases")]
+    #[case::earlier_implementation(
+        "The earlier implementation copied input.",
+        "earlier implementation"
+    )]
+    #[case::prior_implementation("The prior implementation copied input.", "prior implementation")]
+    #[case::original_implementation(
+        "The original implementation copied input.",
+        "original implementation"
+    )]
+    #[case::earlier_behavior("This preserves the earlier behavior.", "earlier behavior")]
+    #[case::previous_behavior("This preserves the previous behavior.", "previous behavior")]
+    #[case::prior_behavior("This preserves the prior behavior.", "prior behavior")]
+    #[case::old_behavior("This preserves the old behavior.", "old behavior")]
+    #[case::earlier_behaviour("This preserves the earlier behaviour.", "earlier behaviour")]
+    #[case::previous_behaviour("This preserves the previous behaviour.", "previous behaviour")]
+    #[case::prior_behaviour("This preserves the prior behaviour.", "prior behaviour")]
+    #[case::old_behaviour("This preserves the old behaviour.", "old behaviour")]
+    #[case::before_this_fix("Before this fix, empty input could panic.", "before this fix")]
+    #[case::after_this_fix("After this fix, empty input returns an error.", "after this fix")]
+    #[case::with_this_fix("With this fix, empty input returns an error.", "with this fix")]
+    #[case::this_fix("This fix rejects empty input.", "this fix")]
+    #[case::as_of_this_release("As of this release, names must be nonempty.", "as of this release")]
+    #[case::as_of_this_version("As of this version, names must be nonempty.", "as of this version")]
+    #[case::before_this_fix_uppercase(
+        "BEFORE THIS FIX, empty input could panic.",
+        "before this fix"
+    )]
+    #[case::in_the_past("In the past, the cache grew without a bound.", "in the past")]
+    #[case::formerly("The parser formerly accepted empty names.", "formerly")]
+    #[case::historically("Historically, the parser accepted empty names.", "historically")]
+    #[case::originally("The parser originally accepted empty names.", "originally")]
+    #[case::recently("The parser recently gained a size limit.", "recently")]
+    #[case::lately("Lately, the parser rejects empty names.", "lately")]
+    #[case::currently("The parser currently rejects empty names.", "currently")]
+    #[case::anymore("The parser does not accept empty names anymore.", "anymore")]
+    #[case::formerly_uppercase("FORMERLY, the cache grew without a bound.", "formerly")]
+    #[case::in_the_past_uppercase("IN THE PAST, the cache grew without a bound.", "in the past")]
+    fn text_checks_should_name_marker_when_prose_narrates_behavior(
+        #[case] source: &str,
+        #[case] marker: &str,
+    ) {
+        let found = one_line(source);
 
-            assert_eq!(found.len(), 1, "{source:?}");
-            assert_eq!(found[0].severity, Severity::Hint);
-            assert!(is_narration_marker(&found[0]), "{source:?}");
-            assert!(
-                found[0]
-                    .message
-                    .starts_with(&format!("past-behavior narration marker: `{marker}`.")),
-                "{}",
-                found[0].message
-            );
-        }
+        assert_eq!(found.len(), 1, "{source:?}");
+        assert_eq!(found[0].severity, Severity::Hint);
+        assert!(is_narration_marker(&found[0]), "{source:?}");
+        assert!(
+            found[0]
+                .message
+                .starts_with(&format!("past-behavior narration marker: `{marker}`.")),
+            "{}",
+            found[0].message
+        );
     }
 
     // Clause-initial `Before,` fires; temporal `before` never does.
