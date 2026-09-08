@@ -215,18 +215,22 @@ fn mod001_should_explain_focused_module_boundaries(
     let mut expected = indoc::formatdoc! {"
         warning[MOD001]: file has 2 lines{exclusions},
         over the 1-line budget (module_size.max_lines).
+        Why:
         - Large files make readers search farther and keep more context in mind.
-        - Split distinct responsibilities into focused, domain-named modules.
-          Keep closely related code together.
-        - Keep a clear starting point for callers and readers. Consider keeping
-          main entry points and high-level orchestration together, with
-          implementation details in focused modules or types.
-        - Preserve the intended interface without widening visibility or
-          adding forwarding wrappers just to centralize entry points.
-        - Update module or type overview docs, where supported, to explain
-          responsibilities and direct readers to relevant entry points.
-        - Do not split mechanically or remove useful documentation to meet
-          the line budget."};
+        - A split should make responsibilities easier to find, not just shorten files.
+        Suggestions:
+        - Consider keeping entry points and orchestration near the top level, with
+          implementation details in focused child modules.
+        - Group code by responsibility, such as parsing or validation. Domain names
+          usually explain more than catch-all names like `utils`.
+        - Let orchestration read as calls to clear operations, such as `parse_imports`
+          or `validate_config`.
+        - Free functions suit stateless work. Methods suit behavior that manages a
+          type's state.
+        - Keep closely related code together. A split need not add new types,
+          forwarding wrappers, or a wider public API.
+        - Update overview docs to explain responsibilities and point readers to the
+          entry points. Keep useful documentation; a split should not remove it."};
     if path.ends_with(".rs") {
         let regions = if include_in_file_tests {
             "counted"
@@ -236,13 +240,11 @@ fn mod001_should_explain_focused_module_boundaries(
 
         expected.push_str(&indoc::formatdoc! {"
 
-            - When splitting a Rust module, consider keeping main entry points and
-              high-level orchestration in the module root (`mod.rs` or `foo.rs`).
-              Put implementation details in child modules.
-            - If entry points belong in child modules, consider selective re-exports
-              through the root without widening visibility.
-            - Update root docs to explain the module's purpose and direct readers
-              to main entry points and relevant child modules.
+            - In Rust, the module root (`mod.rs` or `foo.rs`) is the usual home for
+              those entry points.
+            - Selective re-exports can expose child-module entry points without a
+              forwarding wrapper.
+            Counting:
             - Top-level `#[cfg(test)]` test modules are {regions}.
               Other lines count, including comments and blank lines.
             - Rust files in `tests/` directories are skipped."});

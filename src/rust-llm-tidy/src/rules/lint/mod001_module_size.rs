@@ -5,8 +5,10 @@
 //! is enabled ([`crate::text::comments::header_lines`]).
 //!
 //! The Rust rule supplies its test-aware count to [`diagnostic`].
+//!
 //! Diagnostics encourage cohesive splits rather than mechanical line
-//! reduction.
+//! reduction. [`diagnostic`] states why size matters, then suggests split
+//! patterns; the Rust rule appends its own advice and counting notes.
 
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::CODE_MODULE_SIZE;
@@ -65,18 +67,22 @@ pub(super) fn diagnostic(
         message: indoc::formatdoc! {"
             file has {lines} lines{exclusions},
             over the {max_lines}-line budget (module_size.max_lines).
+            Why:
             - Large files make readers search farther and keep more context in mind.
-            - Split distinct responsibilities into focused, domain-named modules.
-              Keep closely related code together.
-            - Keep a clear starting point for callers and readers. Consider keeping
-              main entry points and high-level orchestration together, with
-              implementation details in focused modules or types.
-            - Preserve the intended interface without widening visibility or
-              adding forwarding wrappers just to centralize entry points.
-            - Update module or type overview docs, where supported, to explain
-              responsibilities and direct readers to relevant entry points.
-            - Do not split mechanically or remove useful documentation to meet
-              the line budget."},
+            - A split should make responsibilities easier to find, not just shorten files.
+            Suggestions:
+            - Consider keeping entry points and orchestration near the top level, with
+              implementation details in focused child modules.
+            - Group code by responsibility, such as parsing or validation. Domain names
+              usually explain more than catch-all names like `utils`.
+            - Let orchestration read as calls to clear operations, such as `parse_imports`
+              or `validate_config`.
+            - Free functions suit stateless work. Methods suit behavior that manages a
+              type's state.
+            - Keep closely related code together. A split need not add new types,
+              forwarding wrappers, or a wider public API.
+            - Update overview docs to explain responsibilities and point readers to the
+              entry points. Keep useful documentation; a split should not remove it."},
         line: crossing_line,
         item_kind: "file".to_string(),
         item_name: None,
