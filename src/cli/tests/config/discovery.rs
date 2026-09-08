@@ -57,6 +57,7 @@ fn cli_should_accept_module_size_when_threshold_is_valid_or_absent(#[case] yaml:
     let output = Command::new(binary())
         .arg("--config")
         .arg(&cfg)
+        .args(["--exclude", "DOC009"])
         .arg(&tmp)
         .output()
         .expect("failed to spawn rust-llm-tidy");

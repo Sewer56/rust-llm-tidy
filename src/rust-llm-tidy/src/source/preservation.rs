@@ -1,7 +1,7 @@
-// Partially vendored from rust-reorder (MIT).
-// Modified based on https://github.com/umwelt-ai/rust-reorder.
-//
-// Line-multiset safety verification.
+//! Line-multiset safety verification.
+//!
+//! Partially vendored from rust-reorder (MIT); modified based on
+//! <https://github.com/umwelt-ai/rust-reorder>.
 
 use crate::source::line_count::count_lines;
 use crate::source::line_endings::dominant_line_ending;

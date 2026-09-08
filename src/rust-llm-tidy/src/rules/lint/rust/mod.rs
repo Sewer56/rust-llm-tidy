@@ -1,9 +1,9 @@
 //! The Rust item lint rules: DOC*, TEST001, and the file-level MOD001.
 //!
 //! One module per rule, named by lint code: [`doc001_missing_docs`]
-//! through [`test001_test_naming`]. Each rule is a pure function over a
+//! through [`test001_test_naming`]. Most rules are pure functions over a
 //! [`SourceItem`] returning [`Vec<Diagnostic>`]; [`run_all`] runs every
-//! rule over every item in code order.
+//! rule in code order.
 //!
 //! [`mod001_module_size`] is file-level instead: the pipeline runs it
 //! from `check_file`, outside [`run_all`].
@@ -24,6 +24,7 @@ mod doc004_missing_arguments;
 mod doc005_undocumented_param;
 mod doc006_placeholder;
 mod doc008_error_variant_order;
+mod doc009_missing_module_docs;
 pub(crate) mod mod001_module_size;
 mod test001_test_naming;
 
@@ -145,19 +146,22 @@ fn is_pub_result_fn(item: &SourceItem) -> bool {
     item.is_fn() && item.visibility() == Some(VisibilityTier::Pub) && item.returns_result()
 }
 
-/// Run every Rust item rule over `parsed` and return all diagnostics.
+/// Run every Rust rule over `parsed` and return all diagnostics.
 ///
-/// Diagnostics are returned in source order (by item, then by rule in
-/// code order: DOC*, then TEST001). The returned `Vec` is empty
-/// when every item passes every rule.
+/// File-level diagnostics precede item diagnostics, which follow source
+/// order and then rule code order: DOC*, then TEST001. The returned
+/// `Vec` is empty when the file and every item pass every rule.
 ///
 /// # Arguments
 ///
-/// - `parsed` - the parsed source result whose items are checked.
+/// - `parsed` - the parsed source result whose items and file preamble
+///   are checked.
 fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
     // Each item produces at most a handful of diagnostics; preallocating to the
     // item count can reduce regrowth on the common dirty-file path.
     let mut diags = Vec::with_capacity(parsed.items.len());
+    diags.extend(doc009_missing_module_docs::check(parsed));
+
     // DOC008 resolves the returned enum against same-file top-level enum
     // declarations, so it needs the sibling enums, not just the item under
     // check.

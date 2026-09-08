@@ -13,6 +13,7 @@
 //! - `csharp`: C# XML-doc lints over the `.cs` fixtures
 //! - `json_output`: `--output-mode json` record contracts
 //! - `mod001_module_size`: cross-language MOD001 acceptance
+//! - `python`: Python lints over the `.py` fixtures
 //! - `rust`: Rust lints over the `.rs` fixtures
 //! - `text001_paragraph_size`: TEXT001 paragraph budgets (markdown, Python)
 //! - `text002_line_length`: TEXT002 over-long markdown lines
@@ -34,6 +35,7 @@ mod comment_lexicons;
 mod csharp;
 mod json_output;
 mod mod001_module_size;
+mod python;
 mod rust;
 mod text001_paragraph_size;
 mod text002_line_length;

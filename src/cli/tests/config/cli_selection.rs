@@ -29,6 +29,7 @@ fn all_excludes_reorder_rule() {
 
     let output = Command::new(binary())
         .args(["--config", cfg.to_str().unwrap()])
+        .args(["--exclude", "DOC009"])
         .arg(&tmp)
         .output()
         .expect("failed to spawn rust-llm-tidy");
@@ -356,6 +357,7 @@ fn include_lints_exclude_lint_code() {
     fs::write(&tmp, "pub fn undocumented() {}\n").unwrap();
     let output = Command::new(binary())
         .args(["--no-config", "--include", "lints", "--exclude", "DOC001"])
+        .args(["--exclude", "DOC009"])
         .arg(&tmp)
         .output()
         .expect("failed to spawn");

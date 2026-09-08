@@ -93,8 +93,8 @@ mod tests {
         assert_eq!(tree.root_node().kind(), "source_file");
     }
 
-    /// The lint composition emits every item rule in code order per
-    /// item, then the text tier.
+    /// The lint composition emits file-level findings first, then every
+    /// item rule in code order per item, then the text tier.
     ///
     /// The sequence is not line-sorted.
     /// In source, `bare`'s DOC001 at line 6 follows the over-budget
@@ -122,13 +122,14 @@ mod tests {
         assert_eq!(
             order,
             [
+                (1, "DOC009"),
                 (1, "DOC001"),
                 (1, "DOC002"),
                 (1, "DOC004"),
                 (6, "DOC001"),
                 (3, "TEXT002"),
             ],
-            "item rules in code order per item, then the text tier"
+            "file-level DOC009, then item rules in code order per item, then the text tier"
         );
     }
 }

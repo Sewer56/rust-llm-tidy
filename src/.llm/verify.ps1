@@ -58,11 +58,11 @@ function Invoke-LoggedCommand {
 }
 
 try {
-    Write-Host "Building..."
-    Invoke-LoggedCommand "cargo" @("build", "--workspace", "--all-features", "--all-targets", "--quiet")
+    Write-Host "Formatting..."
+    Invoke-LoggedCommand "cargo" @("fmt", "--all", "--quiet")
 
-    Write-Host "Testing..."
-    Invoke-LoggedCommand "cargo" @("test", "--workspace", "--all-features", "--quiet")
+    Write-Host "Tidy..."
+    Invoke-LoggedCommand "cargo" @("run", "--quiet", "-p", "rust-llm-tidy-cli")
 
     Write-Host "Clippy..."
     Invoke-LoggedCommand "cargo" @("clippy", "--workspace", "--all-features", "--quiet", "--", "-D", "warnings")
@@ -75,11 +75,11 @@ try {
         $env:RUSTDOCFLAGS = $originalRustdocFlags
     }
 
-    Write-Host "Formatting..."
-    Invoke-LoggedCommand "cargo" @("fmt", "--all", "--quiet")
+    Write-Host "Building..."
+    Invoke-LoggedCommand "cargo" @("build", "--workspace", "--all-features", "--all-targets", "--quiet")
 
-    Write-Host "Tidy..."
-    Invoke-LoggedCommand "cargo" @("run", "--quiet", "-p", "rust-llm-tidy-cli")
+    Write-Host "Testing..."
+    Invoke-LoggedCommand "cargo" @("test", "--workspace", "--all-features", "--quiet")
 } finally {
     $env:RUSTDOCFLAGS = $originalRustdocFlags
     Set-Location $originalDir

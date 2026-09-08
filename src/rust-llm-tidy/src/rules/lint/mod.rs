@@ -6,6 +6,7 @@ pub use crate::text::measurement::{Dialect, DocRegion, RegionLine, line_marker_r
 pub(crate) use text::is_narration_marker;
 
 pub(crate) mod csharp;
+pub(crate) mod doc009_missing_module_docs;
 pub(crate) mod mod001_module_size;
 pub(crate) mod rust;
 pub(crate) mod text;

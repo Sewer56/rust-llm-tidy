@@ -18,6 +18,7 @@ Which codes run depends on the language:
 
 - Rust: every code, read from a tree-sitter parse.
 - C#: checks XML documentation and test names ([lints for C#]).
+- Python: checks module docstrings ([`DOC009`]).
 
 Text lints for other languages use these sources ([text lints]):
 
@@ -37,6 +38,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`DOC005`]  | Warning  | A `# Arguments` section does not mention every parameter name.                    |
 | [`DOC006`]  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).                   |
 | [`DOC008`]  | Error    | An `# Errors` section lists enum variants out of alphabetical order.              |
+| [`DOC009`]  | Error    | A module file has no top-level module docs (`//!` in Rust, docstring in Python).  |
 | [`TEXT001`] | Error    | A doc paragraph over 240 chars of full text (bullets warn).                       |
 | [`TEXT002`] | Warning  | A doc line over 80 chars of full text (code blocks, tables, link defs exempt).    |
 | [`TEXT003`] | Warning  | A doc sentence over 25 words (words join across wrapped lines).                   |
@@ -348,6 +350,53 @@ Error: found 1 error(s)
 
 `DOC008` is error-severity, so the run exits non-zero.
 
+### DOC009 - module file without top-level docs
+
+A module file with top-level content needs module docs, reported once at
+line 1.
+
+- Rust: a `//!` line before the first top-level item; `///` on the
+  first item does not count.
+- Python: a module docstring as the first statement.
+- Empty modules never fire; there is no module purpose to document.
+
+Before:
+
+```rust
+pub fn load() {}
+```
+
+After:
+
+```rust
+//! Loads the configured data.
+pub fn load() {}
+```
+
+#### DOC009 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include DOC009 src/lib.rs
+src/lib.rs:1: error[DOC009]: module file is missing `//!` module docs.
+Fix: add `//!` docs before the first top-level item.
+
+Help readers unfamiliar with the codebase understand the module's purpose
+without reading its implementation.
+- Read the module and relevant callers; document only supported facts.
+- Start with one concise sentence explaining what the module does and why.
+  Do not just restate its name. A simple module needs no more.
+- If more detail is useful, put it below the summary, separated by a blank
+  doc line. Outline major responsibilities, entry points, or non-obvious
+  constraints. Use bullets for multiple topics.
+- Link to item docs instead of repeating their details.
+- For a module root (`mod.rs`, or `foo.rs` with child modules), identify
+  main entry points and relevant child-module responsibilities.
+  This is header-writing guidance, not a request to move code. (file)
+Error: found 1 error(s)
+```
+
+`DOC009` is error-severity, so the run exits non-zero.
+
 ### TEST001 - non-behavioral test name
 
 Test-attributed functions should describe behavior, not use `test`, `test_*`,
@@ -417,12 +466,30 @@ Discovery and exclusions are unchanged; unsupported extensions remain exempt.
 
 ```text
 $ rust-llm-tidy --no-config --include MOD001 src/big.rs
-src/big.rs:501: warning[MOD001]: file has 612 lines outside `#[cfg(test)]` mod regions, over the 500-line budget (module_size.max_lines).
-  - Large files make readers search farther and keep more context in mind.
-  - Put new, distinct responsibilities in focused modules instead of growing this file.
-  - Plan new code around clear module boundaries from the start.
-  - Keep closely related code together; name modules for the responsibility they own.
-  - Do not split mechanically or remove useful comments just to meet the line budget. (file)
+src/big.rs:501: warning[MOD001]: file has 612 lines outside `#[cfg(test)]` mod regions,
+over the 500-line budget (module_size.max_lines).
+- Large files make readers search farther and keep more context in mind.
+- Split distinct responsibilities into focused, domain-named modules.
+  Keep closely related code together.
+- Keep a clear starting point for callers and readers. Consider keeping
+  main entry points and high-level orchestration together, with
+  implementation details in focused modules or types.
+- Preserve the intended interface without widening visibility or
+  adding forwarding wrappers just to centralize entry points.
+- Update module or type overview docs, where supported, to explain
+  responsibilities and direct readers to relevant entry points.
+- Do not split mechanically or remove useful documentation to meet
+  the line budget.
+- When splitting a Rust module, consider keeping main entry points and
+  high-level orchestration in the module root (`mod.rs` or `foo.rs`).
+  Put implementation details in child modules.
+- If entry points belong in child modules, consider selective re-exports
+  through the root without widening visibility.
+- Update root docs to explain the module's purpose and direct readers
+  to main entry points and relevant child modules.
+- Top-level `#[cfg(test)]` test modules are excluded.
+  Other lines count, including comments and blank lines.
+- Rust files in `tests/` directories are skipped. (file)
 ```
 
 `MOD001` is warning-severity, so the run exits 0.
@@ -547,6 +614,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`DOC005`]: #doc005---undocumented-parameter
 [`DOC006`]: #doc006---placeholder-text
 [`DOC008`]: #doc008---error-variants-out-of-alphabetical-order
+[`DOC009`]: #doc009---module-file-without-top-level-docs
 [`TEXT001`]: ./text-lints.md#text001---oversized-paragraph
 [`TEXT002`]: ./text-lints.md#text002---long-line
 [`TEXT003`]: ./text-lints.md#text003---long-sentence

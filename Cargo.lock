@@ -848,6 +848,7 @@ version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
+ "indoc",
  "rstest",
  "rust-llm-tidy",
  "serde",

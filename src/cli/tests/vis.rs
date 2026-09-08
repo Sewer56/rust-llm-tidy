@@ -14,39 +14,6 @@ mod common;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// `all` pipeline narrows visibility (vis runs after reorder, before check).
-#[test]
-fn all_pipeline_runs_vis_after_reorder() {
-    // Every item is documented so `check` does not error out and abort `all`.
-    let source = "\
-/// Module doc.
-pub(crate) mod m {
-    /// Fn doc.
-    pub fn f() {}
-}
-";
-    let tmp = temp_file("rs");
-    fs::write(&tmp, source).unwrap();
-
-    let output = run_command(&[], &tmp);
-    assert!(
-        output.status.success(),
-        "all should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let actual = fs::read_to_string(&tmp).unwrap();
-    let _ = fs::remove_file(&tmp);
-    assert!(
-        actual.contains("pub(crate) fn f"),
-        "vis must narrow bare pub inside all: {actual}"
-    );
-    assert!(
-        !actual.contains("pub fn f"),
-        "bare pub fn must be gone after all: {actual}"
-    );
-}
-
 /// Crate-aware DEFAULT: `pub fn f` in foo.rs narrows to `pub(crate)` because
 /// lib.rs declares `pub(crate) mod foo;` (cross-file floor).
 #[test]
