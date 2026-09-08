@@ -51,6 +51,9 @@ use std::collections::HashSet;
 /// - Malformed extension: `ext` is empty or contains dots, separators, or
 ///   whitespace
 /// - Invalid link threshold: `links_min_occurrences` is zero
+///
+/// Processing failures:
+///
 /// - Parse failure: an enabled parser cannot construct a syntax tree
 /// - Reorder failure: graph construction, permutation validation, or emission
 ///   fails

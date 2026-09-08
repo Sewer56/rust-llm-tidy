@@ -25,6 +25,9 @@
 //! - Python (`py`, `pyi`): `tables`, `fences`, and `lints` by default,
 //!   with `#` prefixes. Its text checks use the backend's docstring and
 //!   comment regions.
+//!
+//! Other profiles:
+//!
 //! - Backendless code languages: comment and size `lints`
 //! - Configuration and document sources: comment `lints`; size is opt-in
 //! - Unmapped extensions: no ops, even when explicitly selected
@@ -48,6 +51,9 @@
 //!   lint composition emits the text checks (`rs` from line-comment
 //!   regions, `cs` from XML doc regions, `py`/`pyi` from docstring and
 //!   `#`-comment regions).
+//!
+//! Comment-only and unmeasured sources:
+//!
 //! - [`TextLints::Lexicon`]: the language module's fail-closed comment
 //!   lexicon scans the raw source. Line and block comments measure,
 //!   string content and code lines never do, and ambiguous sources

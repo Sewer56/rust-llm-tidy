@@ -28,12 +28,18 @@
 //!   the line's end;
 //! - a nested block opener inside an open block comment (Swift,
 //!   Haskell, Elm, and Scheme nest; C, Lua, SQL, and MATLAB do not);
+//!
+//! Unsupported literal forms:
+//!
 //! - a bare Ruby `<<word` heredoc opener (ambiguous with `arr << item`),
 //!   a Ruby percent literal, a PHP `<<<` heredoc, a C++ `R"` raw string,
 //!   or a Swift `#"""` raw text block;
 //! - a PostgreSQL dollar-quoted string (`$$`, `$tag$`), a Lua long
 //!   bracket (`[[`, `[=[`), a Haskell quasiquote (`[name|`, `[|`), or
 //!   an Erlang `$%`/`$\%` character literal;
+//!
+//! Unsupported comment, scalar, and interpolation forms:
+//!
 //! - a Lisp datum comment (`#;`) or semicolon character literal
 //!   (`#\;`, `?;`, `?\;`, `\;`), or TeX verbatim material (`\verb`,
 //!   verbatim-like environments);
@@ -41,6 +47,9 @@
 //!   value position, including anchors and tags);
 //! - a CMake bracket argument or bracket comment;
 //! - a PowerShell here-string or interpolated subexpression;
+//!
+//! Unfinished regions:
+//!
 //! - a file ending inside an open block comment, backtick literal,
 //!   triple-quoted string, carried quote, or heredoc.
 //!

@@ -20,12 +20,18 @@
 //! - [`line_markers`] - the legacy producer: line-comment markers keyed by
 //!   file extension, one region per contiguous comment run. The Rust AST
 //!   producer reuses its `rs` regions through [`line_marker_regions`].
+//!
+//! Dialect adapters:
+//!
 //! - [`xml_doc`] - the XML doc dialect: text-node measurement over
 //!   tag-carrying doc lines.
 //! - [`block_doc`] - the block doc dialect: `*`-continuation stripping and
 //!   `@tag` exemption over `/** */`-style doc lines.
 //! - [`docstring`] - the docstring dialect: markdown prose over Python
 //!   docstring lines with `>>>` doctest examples exempt.
+//!
+//! Measurement and output:
+//!
 //! - [`analyze`] - producer plus measuring core over one file.
 //! - [`measure`] - the measuring core over explicit region lists.
 //! - [`Paragraph`] - a measured paragraph: plain text or a bullet with its

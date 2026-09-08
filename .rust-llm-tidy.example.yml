@@ -116,6 +116,8 @@ include:
       # - DOC004  # missing `# Arguments` section
       # - DOC005  # undocumented parameter
       # - DOC006  # placeholder text
+      #
+      # Text checks:
       # - TEXT001 # oversized paragraph
       # - TEXT002 # long line
       # - TEXT003 # long sentence
