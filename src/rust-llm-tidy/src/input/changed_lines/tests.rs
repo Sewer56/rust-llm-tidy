@@ -12,6 +12,13 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+// Windows forbids control characters in filenames; a space still exercises
+// unusual names through rename parsing there.
+#[cfg(unix)]
+const RENAMED_INPUT: &str = "新\nname.rs";
+#[cfg(not(unix))]
+const RENAMED_INPUT: &str = "新 name.rs";
+
 #[rstest]
 #[case::empty("", vec![])]
 #[case::unterminated("one", vec![1..=1])]
@@ -89,8 +96,8 @@ fn collect_should_follow_staged_renames(
     #[case] expected: Vec<RangeInclusive<usize>>,
 ) {
     let repo = repository(Some(("old.rs", "one\ntwo\nthree\nfour\n")));
-    git(repo.path(), &["mv", "old.rs", "新\nname.rs"]);
-    let path = repo.path().join("新\nname.rs");
+    git(repo.path(), &["mv", "old.rs", RENAMED_INPUT]);
+    let path = repo.path().join(RENAMED_INPUT);
     std::fs::write(&path, current).unwrap();
 
     let snapshot = snapshot(&path, None);
@@ -130,19 +137,18 @@ fn collect_should_ignore_external_diff_and_text_conversion() {
 #[case::untracked("new.rs", false)]
 #[case::staged("new.rs", true)]
 #[case::unicode("新しい файл.rs", false)]
+fn collect_should_include_all_lines_of_new_files(#[case] name: &str, #[case] staged: bool) {
+    assert_new_file_fully_covered(name, staged);
+}
+
+// Windows filenames cannot contain control characters or `:` and `*`, so the
+// newline and pathspec-shaped fixtures are unrepresentable there.
+#[cfg(unix)]
+#[rstest]
 #[case::newline("line\nbreak.rs", true)]
 #[case::literal_pathspec(":(glob)*.rs", true)]
-fn collect_should_include_all_lines_of_new_files(#[case] name: &str, #[case] staged: bool) {
-    let repo = repository(Some(("initial.rs", "initial\n")));
-    let path = repo.path().join(name);
-    std::fs::write(&path, "new\nlines\n").unwrap();
-    if staged {
-        git(repo.path(), &["--literal-pathspecs", "add", "--", name]);
-    }
-
-    let snapshot = snapshot(&path, None);
-
-    assert_eq!(snapshot.changed, ChangedLines::all("new\nlines\n"));
+fn collect_should_include_exotic_names_of_new_files(#[case] name: &str, #[case] staged: bool) {
+    assert_new_file_fully_covered(name, staged);
 }
 
 #[test]
@@ -404,6 +410,20 @@ fn snapshots_should_remain_stable_after_file_mutation() {
 
     assert_eq!(&*snapshot.source, "new\n");
     assert!(snapshot.remap("tool\n").is_empty());
+}
+
+/// Check that one new working-tree input counts every current line as changed.
+fn assert_new_file_fully_covered(name: &str, staged: bool) {
+    let repo = repository(Some(("initial.rs", "initial\n")));
+    let path = repo.path().join(name);
+    std::fs::write(&path, "new\nlines\n").unwrap();
+    if staged {
+        git(repo.path(), &["--literal-pathspecs", "add", "--", name]);
+    }
+
+    let snapshot = snapshot(&path, None);
+
+    assert_eq!(snapshot.changed, ChangedLines::all("new\nlines\n"));
 }
 
 /// Build a private repository with an optional initial tracked input.
