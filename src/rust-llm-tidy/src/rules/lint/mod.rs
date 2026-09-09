@@ -1,4 +1,4 @@
-//! Run documentation and file-size checks over language facts and source text.
+//! Run documentation, size, and duplication checks over facts and source text.
 
 use crate::reporting::Diagnostic;
 pub use crate::rules::registry::*;
@@ -8,6 +8,7 @@ pub(crate) use text::is_narration_marker;
 
 pub(crate) mod csharp;
 pub(crate) mod doc009_missing_module_docs;
+pub(crate) mod dup001_duplication;
 pub(crate) mod mod001_module_size;
 pub(crate) mod rust;
 pub(crate) mod symbols;

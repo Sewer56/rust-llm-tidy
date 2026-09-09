@@ -7,8 +7,8 @@
 // `load` is `pub(super)` so sibling `config` unit tests can reuse its
 // `compile` fixture helper; `compiled` itself stays private.
 use super::{
-    FilePolicy, LinkConfig, MethodLengthConfig, ModuleSizeConfig, PassiveNarrationConfig, PerfCode,
-    PostProcessStep, ReportingScope,
+    DuplicationConfig, FilePolicy, LinkConfig, MethodLengthConfig, ModuleSizeConfig,
+    PassiveNarrationConfig, PerfCode, PostProcessStep, ReportingScope,
 };
 use globset::GlobSet;
 pub use load::load_and_compile;
@@ -41,6 +41,8 @@ pub struct CompiledConfig {
     module_size: Option<ModuleSizeConfig>,
     /// Method-length threshold settings (`None` = default threshold 100).
     method_length: Option<MethodLengthConfig>,
+    /// Validated run-wide DUP001 settings.
+    duplication: DuplicationConfig,
     /// Replacement list from the `extensions:` key; empty = keep the defaults.
     extensions: Vec<String>,
     /// Additions from the `extra_extensions:` key, allowed on top of the
@@ -65,6 +67,11 @@ struct CompiledRuleGroup {
 }
 
 impl CompiledConfig {
+    /// Resolved textual-duplication settings, independent of file selection.
+    pub(crate) fn duplication(&self) -> DuplicationConfig {
+        self.duplication
+    }
+
     /// Configured reporting override; absent leaves the severity default intact.
     pub(crate) fn scope_for(&self, code: &str) -> Option<ReportingScope> {
         self.lint_scopes.get(code).copied()

@@ -40,6 +40,8 @@ pub(crate) struct VisContext {
 /// registered backend; text lints source TEXT* per tier. MOD001 counts whole
 /// eligible non-Rust files without requiring a parser.
 ///
+/// DUP001 reads raw source with complete remapped queries before scope filtering.
+///
 /// - `path`: source file to check
 /// - `disabled`: diagnostic codes to suppress
 /// - `suppress_in_release_notes`: the resolved
@@ -70,6 +72,9 @@ pub(crate) fn check_file(
     let mut diagnostics = Vec::new();
     let mut warnings = Vec::new();
     let mut observations = check::symbols::SymbolObservations::default();
+    if !disabled.contains(check::CODE_DUPLICATION) && lint_context.duplication_source(ext) {
+        diagnostics.extend(lint_context.duplication(path, &source));
+    }
     if profile.backend
         && let Some(backend) = backend_for(ext)
     {
@@ -82,10 +87,10 @@ pub(crate) fn check_file(
                 .with_context(|| format!("failed to parse {}", path.display()))?;
             &owned
         };
-        diagnostics = match index {
+        diagnostics.extend(match index {
             Some(index) => backend.lint_indexed(parsed, &index.index),
             None => backend.lint(parsed),
-        };
+        });
         observations = lint_context.observe(parsed, ext, disabled)?;
         if !disabled.contains(check::CODE_SYM) {
             let text =

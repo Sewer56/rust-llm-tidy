@@ -35,6 +35,7 @@ use std::path::Path;
 ///
 /// Reminders have no eligible diff lines here. Set
 /// [`SourceOptions::all_lines`] to `true` to audit all severities on all lines.
+/// Enabled DUP001 skips analysis with a warning without that whole-buffer scope.
 ///
 /// # Arguments
 ///
@@ -146,37 +147,15 @@ pub fn tidy_source<'a>(
 
     let mut warnings = Vec::new();
     let diagnostics = if lints_enabled(profile, &enabled, &disabled) {
-        let context = super::lint_context::LintContext::new(None, options.all_lines);
-        let hints_enabled = !disabled.contains(lint::CODE_SYM)
-            && enabled
-                .as_ref()
-                .is_none_or(|set| set.contains("lints") || set.contains(lint::CODE_SYM));
-        let (mut diagnostics, mut observations) =
-            lint_source(&output, ext, &rules, &context, hints_enabled)?;
-        diagnostics.retain(|diagnostic| {
-            !disabled.contains(diagnostic.code)
-                && enabled
-                    .as_ref()
-                    .is_none_or(|set| set.contains("lints") || set.contains(diagnostic.code))
-        });
-        if hints_enabled {
-            let text = lint::symbols::text_regex::check(&output, ext, None, &rules);
-            warnings.extend(text.warnings);
-            observations.hints.extend(text.hints);
-        }
-        observations.hints.retain(|hint| {
-            enabled
-                .as_ref()
-                .is_none_or(|set| set.contains("lints") || set.contains(hint.diagnostic.code))
-        });
-        context.filter(
-            Path::new("buffer"),
+        lint_buffer(
             &output,
-            observations,
-            &mut diagnostics,
+            ext,
+            &rules,
+            &enabled,
             &disabled,
-        );
-        diagnostics
+            options.all_lines,
+            &mut warnings,
+        )?
     } else {
         Vec::new()
     };
@@ -357,6 +336,84 @@ fn fix_text<'a>(
     (output, changes)
 }
 
+/// Lint the transformed buffer, appending run warnings to `warnings`.
+///
+/// Call only when lint ops are enabled for the profile.
+fn lint_buffer(
+    source: &str,
+    ext: &str,
+    rules: &[CompiledSymbolRule],
+    enabled: &Option<HashSet<String>>,
+    disabled: &HashSet<String>,
+    all_lines: bool,
+    warnings: &mut Vec<String>,
+) -> anyhow::Result<Vec<Diagnostic>> {
+    let context = super::lint_context::LintContext::new(None, all_lines);
+    let hints_enabled = !disabled.contains(lint::CODE_SYM)
+        && enabled
+            .as_ref()
+            .is_none_or(|set| set.contains("lints") || set.contains(lint::CODE_SYM));
+
+    // Parser- and text-driven checks; DUP001 is separate because it needs the
+    // whole buffer rather than the syntax tree.
+    let (mut diagnostics, mut observations) =
+        lint_source(source, ext, rules, &context, hints_enabled)?;
+    if context.duplication_enabled(ext, enabled, disabled) {
+        diagnostics.extend(context.duplication(Path::new("buffer"), source));
+        if !all_lines {
+            warnings.push("DUP001 analysis skipped: a standalone buffer has no input diff; set all_lines to audit it".into());
+        }
+    }
+
+    // Drop findings the selection disabled after collection.
+    diagnostics.retain(|diagnostic| {
+        !disabled.contains(diagnostic.code)
+            && enabled
+                .as_ref()
+                .is_none_or(|set| set.contains("lints") || set.contains(diagnostic.code))
+    });
+
+    // Usage-regex hints, then the same selection filter for hints.
+    if hints_enabled {
+        let text = lint::symbols::text_regex::check(source, ext, None, rules);
+        warnings.extend(text.warnings);
+        observations.hints.extend(text.hints);
+    }
+    observations.hints.retain(|hint| {
+        enabled
+            .as_ref()
+            .is_none_or(|set| set.contains("lints") || set.contains(hint.diagnostic.code))
+    });
+
+    // Apply diff-scope filtering from the (bufferless) context.
+    context.filter(
+        Path::new("buffer"),
+        source,
+        observations,
+        &mut diagnostics,
+        disabled,
+    );
+    Ok(diagnostics)
+}
+
+/// Resolve the lint group and individual-code selections against language
+/// capabilities.
+fn lints_enabled(
+    profile: &registry::Profile,
+    enabled: &Option<HashSet<String>>,
+    disabled: &HashSet<String>,
+) -> bool {
+    !disabled.contains("lints")
+        && match enabled {
+            Some(set) => {
+                profile.allows("lints")
+                    && (set.contains("lints")
+                        || lint::LINT_CODES.iter().any(|code| set.contains(*code)))
+            }
+            None => profile.op_enabled("lints", enabled, disabled),
+        }
+}
+
 /// Run standalone checks using the registered AST or text extraction mechanism.
 fn lint_source(
     source: &str,
@@ -389,24 +446,6 @@ fn lint_source(
         registry::TextLints::Ast | registry::TextLints::None => {}
     }
     Ok((diagnostics, observations))
-}
-
-/// Resolve the lint group and individual-code selections against language
-/// capabilities.
-fn lints_enabled(
-    profile: &registry::Profile,
-    enabled: &Option<HashSet<String>>,
-    disabled: &HashSet<String>,
-) -> bool {
-    !disabled.contains("lints")
-        && match enabled {
-            Some(set) => {
-                profile.allows("lints")
-                    && (set.contains("lints")
-                        || lint::LINT_CODES.iter().any(|code| set.contains(*code)))
-            }
-            None => profile.op_enabled("lints", enabled, disabled),
-        }
 }
 
 #[cfg(test)]

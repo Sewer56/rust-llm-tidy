@@ -78,7 +78,10 @@ rust-llm-tidy --output-mode json src/main.rs
 You can also set the baseline via `RUST_LLM_TIDY_DIFF_BASE`; `--diff-base`
 takes precedence.
 
-See [reporting scope] for scope precedence and baseline comparison.
+See [reporting scope] for baseline comparison and [same-file duplication]
+for DUP001 settings.
+
+[same-file duplication]: ../../docs/lints.md#dup001---same-file-textual-duplication
 
 ### Exit status
 

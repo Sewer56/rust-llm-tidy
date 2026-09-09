@@ -47,6 +47,8 @@ static COMPILE_COUNTER: core::sync::atomic::AtomicU64 = core::sync::atomic::Atom
 ///   a path separator, or whitespace.
 /// - A link occurrence threshold, `module_size.max_lines`, or
 ///   `method_length.max_lines` is below 1.
+/// - `duplication.min_meaningful_lines` is below 1 or
+///   `duplication.min_occurrences` is below 2.
 /// - `perf_hints` contains anything other than `PERF001` or `PERF002` codes.
 ///
 /// Symbol policy errors:
@@ -132,6 +134,7 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         links: config.links,
         module_size: config.module_size,
         method_length: config.method_length,
+        duplication: config.duplication,
         extensions: config.extensions,
         extra_extensions: config.extra_extensions,
         passive_narration: config.passive_narration.unwrap_or_default(),
@@ -246,9 +249,10 @@ fn read_config_and_canonical_dir(path: &Path) -> anyhow::Result<(Config, PathBuf
     Ok((config, config_dir))
 }
 
-/// Reject `links`, `module_size`, and `method_length` threshold values
-/// below 1.
+/// Reject thresholds below the minimum meaningful count for each rule.
 fn validate_thresholds(config: &Config) -> anyhow::Result<()> {
+    config.duplication.validate()?;
+
     // Link thresholds: every value must be >= 1.
     //
     // A missing `min_occurrences` already defaults to 1; a non-integer value

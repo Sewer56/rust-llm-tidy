@@ -2,7 +2,8 @@
 
 use super::{RunOptions, effective_policy, file_execution};
 use crate::config::{
-    CompiledConfig, CompiledSymbolRule, PerfCode, ReportingScope, SymbolAction, SymbolLanguage,
+    CompiledConfig, CompiledSymbolRule, DuplicationConfig, PerfCode, ReportingScope, SymbolAction,
+    SymbolLanguage,
 };
 use crate::input::changed_lines::{self, ChangedLineCollection, ChangedLines};
 use crate::languages::{backend_for, registry as langs};
@@ -22,6 +23,8 @@ pub(super) struct LintContext<'a> {
     pub(super) snapshots: ChangedLineCollection,
     rust_hints: Vec<CompiledSymbolRule>,
     csharp_hints: Vec<CompiledSymbolRule>,
+    /// Explicit CLI source extensions; configuration additions remain borrowed.
+    extra_source_extensions: Vec<String>,
 }
 
 impl<'a> LintContext<'a> {
@@ -36,11 +39,14 @@ impl<'a> LintContext<'a> {
         included: Option<&HashSet<String>>,
         disabled: &HashSet<String>,
     ) -> anyhow::Result<Vec<String>> {
+        // CLI extension declarations for `duplication_source`; the filter below
+        // reads them, so seed before it.
+        self.extra_source_extensions.clone_from(&options.extensions);
         let scoped: Vec<_> = paths
             .iter()
             .filter(|path| {
                 let policy = effective_policy(path, self.config, included, disabled);
-                if !file_execution::lints_enabled(path, self.config, &policy) {
+                if !file_execution::lints_enabled(path, self, &policy) {
                     return false;
                 }
 
@@ -98,7 +104,64 @@ impl<'a> LintContext<'a> {
             snapshots: ChangedLineCollection::default(),
             rust_hints: compile(SymbolLanguage::Rust),
             csharp_hints: compile(SymbolLanguage::Csharp),
+            extra_source_extensions: Vec::new(),
         }
+    }
+
+    /// Admit code profiles or explicitly declared unmapped source extensions only.
+    /// Extension selection never reclassifies existing non-code profiles.
+    pub(super) fn duplication_source(&self, ext: &str) -> bool {
+        match langs::profile_for(ext).module_size {
+            langs::ModuleSize::WholeFile | langs::ModuleSize::RustNonTest => true,
+            langs::ModuleSize::NonCode => false,
+            langs::ModuleSize::None => self
+                .extra_source_extensions
+                .iter()
+                .chain(self.config.into_iter().flat_map(|config| {
+                    config
+                        .extension_override()
+                        .iter()
+                        .chain(config.extra_extensions())
+                }))
+                .any(|configured| configured.eq_ignore_ascii_case(ext)),
+        }
+    }
+
+    /// Determine DUP001 participation without changing any transformation profile.
+    pub(super) fn duplication_enabled(
+        &self,
+        ext: &str,
+        enabled: &Option<HashSet<String>>,
+        disabled: &HashSet<String>,
+    ) -> bool {
+        !disabled.contains("lints")
+            && !disabled.contains(lint::CODE_DUPLICATION)
+            && enabled
+                .as_ref()
+                .is_none_or(|set| set.contains("lints") || set.contains(lint::CODE_DUPLICATION))
+            && self.duplication_source(ext)
+    }
+
+    /// Match only final-source runs admitted by the effective DUP001 scope.
+    /// Missing snapshots have already produced a capture warning and never widen scope.
+    pub(super) fn duplication(&self, path: &Path, source: &str) -> Vec<Diagnostic> {
+        let eligible = if self.scope_for(lint::CODE_DUPLICATION, Severity::Reminder, None)
+            == ReportingScope::All
+        {
+            ChangedLines::all(source)
+        } else {
+            let Some(snapshot) = self.snapshots.snapshots.get(path).and_then(Option::as_ref) else {
+                return Vec::new();
+            };
+            snapshot.remap(source)
+        };
+
+        lint::dup001_duplication::check(
+            source,
+            &eligible,
+            self.config
+                .map_or_else(DuplicationConfig::default, CompiledConfig::duplication),
+        )
     }
 
     /// Override all severities, then resolve per-rule, per-code, and severity scopes.
@@ -138,6 +201,7 @@ impl<'a> LintContext<'a> {
         lint::LINT_CODES.iter().any(|code| {
             let supported = match *code {
                 lint::CODE_SYM => false,
+                lint::CODE_DUPLICATION => self.duplication_source(ext),
                 lint::CODE_MODULE_SIZE => {
                     matches!(
                         profile.module_size,
@@ -152,7 +216,8 @@ impl<'a> LintContext<'a> {
                 code if code.starts_with("TEXT") => profile.text_lints != langs::TextLints::None,
                 _ => language.is_some(),
             };
-            let severity = if *code == lint::CODE_PASSIVE_NARRATION {
+            let severity = if matches!(*code, lint::CODE_PASSIVE_NARRATION | lint::CODE_DUPLICATION)
+            {
                 Severity::Reminder
             } else {
                 Severity::Error

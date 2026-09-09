@@ -30,7 +30,8 @@
 //!
 //! - Backendless code languages: comment and size `lints`
 //! - Configuration and document sources: comment `lints`; size is opt-in
-//! - Unmapped extensions: no ops, even when explicitly selected
+//! - Unmapped extensions: no profile ops. Explicit extension declarations can
+//!   enable raw-source DUP001 in the pipeline, never transformations.
 //! - Data formats (`ini`, `json`): only MOD001 with `include_non_code`; never in
 //!   [`DEFAULT_EXTENSIONS`]
 //!
@@ -121,7 +122,8 @@ pub(crate) const DEFAULT_EXTENSIONS: &[&str] = &{
     }
     out
 };
-/// Extensions outside the language tables: no ops, even when selected.
+/// Extensions outside the language tables: no profile ops.
+/// The pipeline separately admits declared source extensions to DUP001 only.
 const UNMAPPED: Profile = Profile {
     ops: &[],
     prefixes: &[],
@@ -294,6 +296,9 @@ pub(crate) struct Profile {
     /// How the TEXT* text checks are sourced for this profile.
     pub text_lints: TextLints,
     /// File-size counting policy, independent of text-lint or parser support.
+    ///
+    /// Also gates DUP001 source admission: WholeFile/RustNonTest participate,
+    /// NonCode does not, None requires explicit declaration.
     pub module_size: ModuleSize,
 }
 
