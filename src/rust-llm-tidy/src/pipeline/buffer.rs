@@ -62,13 +62,11 @@ use std::path::Path;
 /// Failures use [`anyhow::Error`] with the failing operation's context.
 ///
 /// - Unknown selection: an included or excluded rule name is not registered
-/// - Malformed extension: `ext` is empty or contains dots, separators, or
-///   whitespace
+/// - Malformed extension: `ext` is empty or has dots, separators, or whitespace
 /// - Invalid link threshold: `links_min_occurrences` is zero
-/// - Invalid text policy: a `text_rules` entry fails symbol-rule validation or
-///   is not a usage regex hint
-/// - Invalid symbol matcher: a `symbol_rules` entry has missing or conflicting
-///   matchers, a malformed literal, or a regex rejected by dependency-default limits
+/// - Invalid text policy: `text_rules` entries must be valid usage regex hints
+/// - Invalid symbol matcher: missing or conflicting matchers, a malformed literal,
+///   or a regex rejected by dependency-default limits
 /// - Invalid symbol hint: a title or message is blank or missing
 /// - Conflicting symbol fields: selectors or constraints conflict with the target
 ///   or action, or exclusion controls appear on a hint

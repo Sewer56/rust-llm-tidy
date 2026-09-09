@@ -85,8 +85,7 @@ impl CompiledSymbolRule {
 /// - Literal components are malformed, or regex syntax or dependency-default
 ///   compilation limits reject a pattern.
 /// - Both matchers are present, or neither is present.
-/// - Hint titles or messages are missing, or fields conflict with the action
-///   or target.
+/// - Hint titles or messages are missing, or fields conflict with action or target.
 /// - Language or extension selectors are empty, malformed, or unsupported.
 /// - Text regexes have languages or usage constraints.
 /// - Other matchers have comments.
@@ -114,6 +113,99 @@ fn compile_rule(rule: &SymbolRule) -> anyhow::Result<CompiledSymbolRule> {
         bail!("comments is only allowed on usage regexes; remove it");
     }
 
+    let extensions = resolve_extensions(rule, text_regex)?;
+
+    let usage_constraints =
+        rule.zero_arguments.is_some() || rule.no_initializer.is_some() || rule.array_kind.is_some();
+    if text_regex && usage_constraints {
+        bail!(
+            "text regexes cannot have zero_arguments, no_initializer, or array_kind; remove them"
+        );
+    }
+    if rule.target == SymbolTarget::Declaration && usage_constraints {
+        bail!(
+            "declaration rules cannot have zero_arguments, no_initializer, or array_kind; remove them"
+        );
+    }
+    validate_action_fields(rule, usage_constraints)?;
+    let exclude_lints = exclude_lints_mask(rule)?;
+    let matcher = compile_matcher(rule, text_regex)?;
+
+    Ok(CompiledSymbolRule {
+        extensions,
+        text_extensions: text_regex.then(|| rule.extensions.clone()).flatten(),
+        comments: rule.comments.unwrap_or_default(),
+        array_kind: rule.array_kind,
+        target: rule.target,
+        matcher,
+        action: rule.action,
+        exclude_lints,
+        exclude_edits: rule.exclude_edits.unwrap_or(true),
+        exclude_post_process: rule.exclude_post_process.unwrap_or(false),
+        title: rule.title.clone(),
+        message: rule.message.clone(),
+        scope: rule.scope,
+        severity: rule.severity.unwrap_or(Severity::Reminder),
+        zero_arguments: rule.zero_arguments,
+        no_initializer: rule.no_initializer,
+        capacity_reminder: false,
+        code: CODE_SYM,
+    })
+}
+
+/// Compile the one present matcher, anchoring symbol regexes to the full name.
+fn compile_matcher(rule: &SymbolRule, text_regex: bool) -> anyhow::Result<SymbolMatcher> {
+    match (&rule.symbol, &rule.regex) {
+        (Some(symbol), None) => {
+            validate_text(symbol, "symbol")?;
+            if !valid_literal(symbol) {
+                bail!(
+                    "symbol must contain nonempty literal components separated by ::; use regex for patterns"
+                );
+            }
+            Ok(SymbolMatcher::Literal(symbol.clone()))
+        }
+        (None, Some(pattern)) => {
+            validate_text(pattern, "regex")?;
+            let anchored;
+            let pattern = if text_regex {
+                pattern.as_ref()
+            } else {
+                anchored = format!(r"\A(?:{pattern})\z");
+                &anchored
+            };
+            let regex = Regex::new(pattern)
+                .context("regex compilation failed; correct its syntax or simplify the pattern")?;
+            Ok(SymbolMatcher::Regex(regex))
+        }
+        _ => bail!("set exactly one of symbol and regex"),
+    }
+}
+
+/// Compile `exclude_lints` into suppression bits in registry lint-code order.
+fn exclude_lints_mask(rule: &SymbolRule) -> anyhow::Result<u32> {
+    let mask = match &rule.exclude_lints {
+        None | Some(DeclarationLintExclusion::All(true)) => (1 << LINT_CODES.len()) - 1,
+        Some(DeclarationLintExclusion::All(false)) => 0,
+        Some(DeclarationLintExclusion::Codes(codes)) => {
+            let mut mask = 0;
+            for code in codes {
+                let Some(index) = LINT_CODES.iter().position(|known| *known == code.as_ref())
+                else {
+                    bail!(
+                        "exclude_lints contains unknown lint code {code:?}; use registered lint codes only"
+                    )
+                };
+                mask |= 1 << index;
+            }
+            mask
+        }
+    };
+    Ok(mask)
+}
+
+/// Resolve the extension and language selectors into enabled-language bits.
+fn resolve_extensions(rule: &SymbolRule, text_regex: bool) -> anyhow::Result<[bool; 2]> {
     let mut extensions = [true; 2];
     if let Some(values) = &rule.extensions {
         if values.is_empty() {
@@ -144,19 +236,11 @@ fn compile_rule(rule: &SymbolRule) -> anyhow::Result<CompiledSymbolRule> {
         extensions[0] &= languages.contains(&SymbolLanguage::Rust);
         extensions[1] &= languages.contains(&SymbolLanguage::Csharp);
     }
+    Ok(extensions)
+}
 
-    let usage_constraints =
-        rule.zero_arguments.is_some() || rule.no_initializer.is_some() || rule.array_kind.is_some();
-    if text_regex && usage_constraints {
-        bail!(
-            "text regexes cannot have zero_arguments, no_initializer, or array_kind; remove them"
-        );
-    }
-    if rule.target == SymbolTarget::Declaration && usage_constraints {
-        bail!(
-            "declaration rules cannot have zero_arguments, no_initializer, or array_kind; remove them"
-        );
-    }
+/// Reject hint and exclude fields that conflict with the rule's action.
+fn validate_action_fields(rule: &SymbolRule, usage_constraints: bool) -> anyhow::Result<()> {
     match rule.action {
         SymbolAction::Hint => {
             if rule.exclude_lints.is_some()
@@ -184,71 +268,7 @@ fn compile_rule(rule: &SymbolRule) -> anyhow::Result<CompiledSymbolRule> {
             }
         }
     }
-
-    let exclude_lints = match &rule.exclude_lints {
-        None | Some(DeclarationLintExclusion::All(true)) => (1 << LINT_CODES.len()) - 1,
-        Some(DeclarationLintExclusion::All(false)) => 0,
-        Some(DeclarationLintExclusion::Codes(codes)) => {
-            let mut mask = 0;
-            for code in codes {
-                let Some(index) = LINT_CODES.iter().position(|known| *known == code.as_ref())
-                else {
-                    bail!(
-                        "exclude_lints contains unknown lint code {code:?}; use registered lint codes only"
-                    );
-                };
-                mask |= 1 << index;
-            }
-            mask
-        }
-    };
-
-    let matcher = match (&rule.symbol, &rule.regex) {
-        (Some(symbol), None) => {
-            validate_text(symbol, "symbol")?;
-            if !valid_literal(symbol) {
-                bail!(
-                    "symbol must contain nonempty literal components separated by ::; use regex for patterns"
-                );
-            }
-            SymbolMatcher::Literal(symbol.clone())
-        }
-        (None, Some(pattern)) => {
-            validate_text(pattern, "regex")?;
-            let anchored;
-            let pattern = if text_regex {
-                pattern.as_ref()
-            } else {
-                anchored = format!(r"\A(?:{pattern})\z");
-                &anchored
-            };
-            let regex = Regex::new(pattern)
-                .context("regex compilation failed; correct its syntax or simplify the pattern")?;
-            SymbolMatcher::Regex(regex)
-        }
-        _ => bail!("set exactly one of symbol and regex"),
-    };
-
-    Ok(CompiledSymbolRule {
-        extensions,
-        text_extensions: text_regex.then(|| rule.extensions.clone()).flatten(),
-        comments: rule.comments.unwrap_or_default(),
-        array_kind: rule.array_kind,
-        target: rule.target,
-        matcher,
-        action: rule.action,
-        exclude_lints,
-        exclude_edits: rule.exclude_edits.unwrap_or(true),
-        exclude_post_process: rule.exclude_post_process.unwrap_or(false),
-        title: rule.title.clone(),
-        message: rule.message.clone(),
-        scope: rule.scope,
-        severity: rule.severity.unwrap_or(Severity::Reminder),
-        zero_arguments: rule.zero_arguments,
-        no_initializer: rule.no_initializer,
-        capacity_reminder: false,
-        code: CODE_SYM,
-    })
+    Ok(())
 }
 
 /// Check literal component shape without interpreting wildcard punctuation.

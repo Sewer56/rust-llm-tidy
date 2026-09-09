@@ -1,7 +1,7 @@
 //! Text matching, exact source coordinates, and comment-boundary acceptance tests.
 
 use super::text_regex::check;
-use crate::config::{SymbolRule, compile_symbol_rules};
+use crate::config::{CompiledSymbolRule, SymbolRule, compile_symbol_rules};
 use rstest::rstest;
 
 #[rstest]
@@ -133,7 +133,7 @@ fn hints_should_warn_and_skip_only_comment_sensitive_rules(
 }
 
 /// Compile one hint through the same validator as configuration loading.
-fn rules(fields: &str) -> Vec<crate::config::CompiledSymbolRule> {
+fn rules(fields: &str) -> Vec<CompiledSymbolRule> {
     let rule: SymbolRule =
         serde_yml::from_str(&format!("title: Review\nmessage: first\n{fields}")).unwrap();
     compile_symbol_rules(&[rule]).unwrap()

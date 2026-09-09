@@ -133,25 +133,14 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
     if paths.is_empty() {
         return Ok(report);
     }
-    let visibility_inputs: Vec<_> = if options.cargo_discovery {
-        paths
-            .iter()
-            .filter(|path| {
-                let policy = effective_policy(path, config, included.as_ref(), &disabled);
-                !policy.skip
-                    && paths::ext_in(path.extension().and_then(|ext| ext.to_str()), &["rs"])
-                    && langs::profile_for("rs").op_enabled("vis", &policy.enabled, &policy.disabled)
-            })
-            .cloned()
-            .collect()
-    } else {
-        Vec::new()
-    };
-    let context = if !visibility_inputs.is_empty() {
-        files::resolve_vis_context(&visibility_inputs, &mut report.warnings)
-    } else {
-        None
-    };
+    let context = resolve_visibility(
+        &paths,
+        options,
+        config,
+        included.as_ref(),
+        &disabled,
+        &mut report.warnings,
+    );
 
     let parallel = should_parallelize(&paths);
     let lints_may_run = !disabled.contains("lints")
@@ -362,29 +351,36 @@ fn dedup_inputs(paths: Vec<PathBuf>) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Resolve configuration and explicit selections before discovery or execution.
-fn effective_policy(
-    path: &Path,
+/// Resolve the crate-aware visibility context from the eligible Rust inputs.
+///
+/// Returns `None` when cargo discovery is off or no input selects `vis`, so
+/// processing falls back to standalone narrowing facts.
+fn resolve_visibility(
+    paths: &[PathBuf],
+    options: &RunOptions,
     config: Option<&CompiledConfig>,
     included: Option<&HashSet<String>>,
     disabled: &HashSet<String>,
-) -> FilePolicy {
-    let mut policy = config
-        .map(|config| config.policy_for(path))
-        .unwrap_or_default();
-    if policy.skip {
-        return policy;
+    warnings: &mut Vec<String>,
+) -> Option<files::VisContext> {
+    if !options.cargo_discovery {
+        return None;
     }
-
-    if let Some(included) = included {
-        policy.enabled = Some(included.clone());
-        policy.disabled.clear();
+    let inputs: Vec<_> = paths
+        .iter()
+        .filter(|path| {
+            let policy = effective_policy(path, config, included, disabled);
+            !policy.skip
+                && paths::ext_in(path.extension().and_then(|ext| ext.to_str()), &["rs"])
+                && langs::profile_for("rs").op_enabled("vis", &policy.enabled, &policy.disabled)
+        })
+        .cloned()
+        .collect();
+    if inputs.is_empty() {
+        None
+    } else {
+        files::resolve_vis_context(&inputs, warnings)
     }
-    policy.disabled.extend(disabled.iter().cloned());
-    if let Some(enabled) = &mut policy.enabled {
-        enabled.retain(|rule| !disabled.contains(rule));
-    }
-    policy
 }
 
 /// Execute configured commands only for eligible files, without invoking a
@@ -421,6 +417,31 @@ fn run_post_process(steps: &[PostProcessStep], files: &[PathBuf]) -> Vec<PostPro
         }
     }
     failures
+}
+
+/// Resolve configuration and explicit selections before discovery or execution.
+fn effective_policy(
+    path: &Path,
+    config: Option<&CompiledConfig>,
+    included: Option<&HashSet<String>>,
+    disabled: &HashSet<String>,
+) -> FilePolicy {
+    let mut policy = config
+        .map(|config| config.policy_for(path))
+        .unwrap_or_default();
+    if policy.skip {
+        return policy;
+    }
+
+    if let Some(included) = included {
+        policy.enabled = Some(included.clone());
+        policy.disabled.clear();
+    }
+    policy.disabled.extend(disabled.iter().cloned());
+    if let Some(enabled) = &mut policy.enabled {
+        enabled.retain(|rule| !disabled.contains(rule));
+    }
+    policy
 }
 
 #[cfg(test)]
