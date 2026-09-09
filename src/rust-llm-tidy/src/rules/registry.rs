@@ -30,9 +30,12 @@ pub const LINT_CODES: &[&str] = &[
     CODE_QUALIFIED_PATH,
     CODE_LEN001,
     CODE_SYM,
+    CODE_DUPLICATION,
 ];
 /// Rule code for placeholder text in doc comments.
 pub const CODE_DOC_PLACEHOLDER: &str = "DOC006";
+/// Rule code for same-file textual duplication reminders.
+pub const CODE_DUPLICATION: &str = "DUP001";
 /// Rule code for `# Errors` bullets listing enum variants out of
 /// alphabetical order.
 pub const CODE_ERROR_VARIANT_ORDER: &str = "DOC008";
@@ -86,12 +89,7 @@ mod tests {
     fn lint_codes_should_list_all_registered_codes() {
         // `LINT_CODES` is the source of truth for CLI rule validation. It must
         // enumerate every code produced by the backends and the text rules.
-        assert_eq!(
-            LINT_CODES.len(),
-            22,
-            "LINT_CODES must list exactly twenty-two codes: {LINT_CODES:?}"
-        );
-        for code in [
+        let expected = [
             CODE_MISSING_DOCS,
             CODE_MISSING_MODULE_DOCS,
             CODE_MISSING_ERRORS,
@@ -114,8 +112,9 @@ mod tests {
             CODE_QUALIFIED_PATH,
             CODE_LEN001,
             CODE_SYM,
-        ] {
-            assert!(LINT_CODES.contains(&code), "LINT_CODES is missing {code}");
-        }
+            CODE_DUPLICATION,
+        ];
+
+        assert_eq!(LINT_CODES, expected);
     }
 }

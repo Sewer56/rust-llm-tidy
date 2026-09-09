@@ -21,8 +21,18 @@
 #   - rs
 #   - md
 # extra_extensions:
-#   - rst
 #   - vim
+# Unmapped extensions explicitly declare source for DUP001 only. They do not
+# enable transformations. Known prose/config/data profiles stay excluded.
+
+# ── Same-file duplication (DUP001) ──
+# Enabled by default; complete changed runs query the whole current file.
+# No cross-file matches or automatic extraction. Repeated runs can repeat findings.
+
+# duplication:
+#   min_meaningful_lines: 5  # lines containing a Unicode letter or number; >= 1.
+#   min_occurrences: 3      # distinct non-overlapping sites including query; >= 2.
+#   exact_whitespace: false # true also preserves line edges and line endings.
 
 # ── Passive narration (TEXT007) ──
 # Enabled by default as a reminder on changed lines.
@@ -68,6 +78,7 @@
 # lint_scopes:
 #   SYM: all
 #   DOC001: changed_lines
+#   DUP001: all # whole-file queries, even without Git
 
 # ── Symbol policies (SYM) ──
 # Add text/symbol hints or exclude declarations from lints and edits.
@@ -154,7 +165,7 @@ include:
       # - vis
 
       # Level 3: documentation, test-name, and file-size checks.
-      # `lints` enables the DOC*, TEXT*, TEST*, MOD*, and LEN* codes together.
+      # `lints` enables all registered lint families together.
       # Uncomment to enable the complete lint pass.
       # - lints
 
@@ -182,3 +193,4 @@ include:
       # - LEN001  # oversized Rust function or method
       # Built-in performance families are selected with perf_hints above.
       # - SYM     # configured text and symbol hints
+      # - DUP001  # same-file textual duplication reminders

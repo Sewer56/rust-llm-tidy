@@ -5,12 +5,42 @@ use crate::config::{CompiledConfig, ReportingScope, load_and_compile};
 use crate::input::changed_lines::{ChangedLineSnapshot, ChangedLines};
 use crate::languages::backend_for;
 use crate::reporting::{Diagnostic, Severity};
+use crate::rules::lint::LINT_CODES;
 use crate::rules::lint::symbols::SymbolObservations;
 use core::iter::once;
 use rstest::rstest;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+
+#[rstest]
+#[case::moved(
+    "prefix();\na();\nb();\nc();\nd();\ne();\na();\nb();\nc();\nd();\ne();\na();\nb();\nc();\nd();\ne();\n",
+    2
+)]
+#[case::increased_copies(
+    "a();\nb();\nc();\nd();\ne();\na();\nb();\nc();\nd();\ne();\na();\nb();\nc();\nd();\ne();\na();\nb();\nc();\nd();\ne();\n",
+    0
+)]
+fn duplication_should_use_remapped_authority_without_admitting_new_copies(
+    #[case] transformed: &str,
+    #[case] anchor: usize,
+) {
+    let source = "a();\nb();\nc();\nd();\ne();\n".repeat(3);
+    let path = Path::new("input.js");
+    let mut context = LintContext::new(None, false);
+    context.snapshots.snapshots.insert(
+        path.into(),
+        Some(ChangedLineSnapshot {
+            changed: ChangedLines::all(&source),
+            source: source.into(),
+        }),
+    );
+
+    let findings = context.duplication(path, transformed);
+
+    assert_eq!(findings.first().map_or(0, |finding| finding.line), anchor);
+}
 
 #[rstest]
 #[case::qualifier(2, false)]
@@ -108,6 +138,33 @@ fn scope_should_prioritize_run_then_entry_then_code_then_severity(
 }
 
 #[rstest]
+#[case::backendless("js", "{}", false, true)]
+#[case::rust("rs", "{}", false, true)]
+#[case::extra("custom", "extra_extensions: [custom]", false, true)]
+#[case::all_scope("js", "lint_scopes: {DUP001: all}", false, false)]
+#[case::run_all("js", "{}", true, false)]
+#[case::prose("md", "{}", false, false)]
+#[case::unknown("custom", "{}", false, false)]
+fn snapshots_should_capture_duplication_only_for_changed_source_queries(
+    #[case] ext: &str,
+    #[case] yaml: &str,
+    #[case] all_lines: bool,
+    #[case] expected: bool,
+) {
+    let config = compile(yaml, &[]);
+    let context = LintContext::new(Some(&config), all_lines);
+    let disabled = LINT_CODES
+        .iter()
+        .filter(|&&code| code != "DUP001")
+        .map(|code| (*code).to_owned())
+        .collect();
+
+    let actual = context.needs_snapshot(ext, &disabled);
+
+    assert_eq!(actual, expected);
+}
+
+#[rstest]
 #[case::rust("rs", "{}", &["TEXT007"], true)]
 #[case::csharp("cs", "{}", &["TEXT007"], true)]
 #[case::text("md", "{}", &["TEXT007"], false)]
@@ -131,7 +188,13 @@ fn snapshots_should_require_an_enabled_supported_scoped_lint(
 ) {
     let config = compile(yaml, &[]);
     let context = LintContext::new(Some(&config), false);
-    let disabled = disabled.iter().map(|code| (*code).to_owned()).collect();
+    // Isolate the existing Reminder families; DUP001 has separate cases.
+    let disabled = disabled
+        .iter()
+        .copied()
+        .chain(["DUP001"])
+        .map(str::to_owned)
+        .collect();
     let disabled = super::file_execution::lint_disabled_set(&None, &disabled, Some(&config));
 
     let actual = context.needs_snapshot(ext, &disabled);

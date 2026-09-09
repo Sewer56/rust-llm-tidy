@@ -1,8 +1,8 @@
 //! Deserialized `.rust-llm-tidy.yml` model (`Config`) and its rule groups.
 
 use super::{
-    LinkConfig, MethodLengthConfig, ModuleSizeConfig, PassiveNarrationConfig, PerfCode,
-    PostProcessStep, ReportingScope, SymbolRule,
+    DuplicationConfig, LinkConfig, MethodLengthConfig, ModuleSizeConfig, PassiveNarrationConfig,
+    PerfCode, PostProcessStep, ReportingScope, SymbolRule,
 };
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -42,6 +42,9 @@ pub struct Config {
     /// Method-length threshold settings. Absent = the default threshold 100.
     #[serde(default)]
     pub method_length: Option<MethodLengthConfig>,
+    /// Run-wide DUP001 thresholds and whitespace mode; absent keeps defaults.
+    #[serde(default)]
+    pub duplication: DuplicationConfig,
     /// Full allowed-extension list, replacing the defaults when non-empty
     /// (empty keeps the defaults). No leading dot; case-insensitive.
     #[serde(default)]
@@ -90,6 +93,7 @@ impl Default for Config {
             links: None,
             module_size: None,
             method_length: None,
+            duplication: DuplicationConfig::default(),
             extensions: Vec::new(),
             extra_extensions: Vec::new(),
             passive_narration: None,

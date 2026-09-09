@@ -1,4 +1,4 @@
-# `lints` - documentation, text, test-naming, and file-size checks
+# `lints` - read-only source and documentation checks
 
 ## What it does
 
@@ -53,6 +53,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`MOD003`]  | Hint     | A path includes the full namespace.                                               |
 | [`LEN001`]  | Hint     | A Rust fn body exceeds `method_length.max_lines` (default 100).                   |
 | [`SYM`]     | Reminder | A configured text or symbol hint matches; severity is configurable.               |
+| [`DUP001`]  | Reminder | Five meaningful lines repeat at three same-file sites, including a changed copy.  |
 
 ## Reporting scope
 
@@ -746,6 +747,71 @@ built-in symbol hints for Rust and C#.
 See [symbol rules] for matching, configuration, declaration exclusions,
 and built-in symbols.
 
+### DUP001 - same-file textual duplication
+
+Reminds when five meaningful lines repeat at three non-overlapping sites.
+
+Before: adding `metrics` repeats five fields, despite the different hosts.
+
+```rust
+let primary = ConnectionOptions {
+    host: "primary.internal",
+    port: 443,
+    tls: true,
+    timeout_secs: 30,
+    retries: 3,
+    keep_alive: true,
+};
+let backup = ConnectionOptions {
+    host: "backup.internal",
+    port: 443,
+    tls: true,
+    timeout_secs: 30,
+    retries: 3,
+    keep_alive: true,
+};
+let metrics = ConnectionOptions {
+    host: "metrics.internal",
+    port: 443,
+    tls: true,
+    timeout_secs: 30,
+    retries: 3,
+    keep_alive: true,
+};
+```
+
+After: put those shared defaults in `ConnectionOptions::new(host)`.
+
+```rust
+let primary = ConnectionOptions::new("primary.internal");
+let backup = ConnectionOptions::new("backup.internal");
+let metrics = ConnectionOptions::new("metrics.internal");
+```
+
+#### DUP001 CLI output
+
+```text
+input.rs:19: reminder[DUP001]: 5 meaningful lines repeat at 3 non-overlapping sites in this file. Locations: 3-7, 11-15, 19-23.
+
+Why:
+- Less repeated code is easier to audit and keep consistent.
+
+Suggestions:
+- Consider a constructor or helper if it preserves behavior, contracts, and performance.
+- A useful refactor may not clear this reminder. That is OK; do not force further changes just to silence it. (source sequence)
+```
+
+#### Remarks
+
+Matches contiguous text within one changed run, not symbols.
+
+Default matching ignores edge whitespace. See the [example config] for
+thresholds and exact mode.
+
+No automatic fix.
+
+[example config]: ../.rust-llm-tidy.example.yml
+
 ## Config
 
 ```yaml
@@ -884,6 +950,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [C# MOD003]: languages/lints/csharp.md#mod003---full-namespace-qualification-in-code
 [`LEN001`]: #len001---oversized-function-or-method
 [`SYM`]: #sym---configured-symbol-policies
+[`DUP001`]: #dup001---same-file-textual-duplication
 [lints for C#]: ./languages/lints/csharp.md
 [text lints]: ./text-lints.md
 

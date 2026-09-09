@@ -20,6 +20,8 @@
 //! include a malformed `extensions`/`extra_extensions` entry or a pattern
 //! matching zero files.
 //!
+//! Duplication thresholds require at least one meaningful line and two sites.
+//!
 //! Symbol rules validate their shape and bounded regex
 //! compilation, not whether any source symbol currently matches them.
 //!
@@ -38,6 +40,7 @@
 //! Rule settings:
 //!
 //! - `link_config`: `links` hoist-threshold settings
+//! - `duplication_config`: run-wide textual-duplication settings
 //! - `method_length_config`: `method_length` threshold settings
 //! - `module_size_config`: `module_size` threshold settings
 //! - `passive_narration_config`: TEXT007 enablement and suppression settings
@@ -52,6 +55,7 @@ pub use compiled::CompiledConfig;
 pub use compiled::load_and_compile;
 pub(crate) use compiled::symbol_rules::compile_symbol_rules;
 pub(crate) use compiled::symbol_rules::{CompiledSymbolRule, SymbolMatcher};
+pub use duplication_config::DuplicationConfig;
 pub use file_policy::FilePolicy;
 pub use link_config::LinkConfig;
 pub use lint_scope::ReportingScope;
@@ -69,6 +73,7 @@ pub use symbol_rule::{
 };
 
 mod compiled;
+mod duplication_config;
 mod file_policy;
 mod link_config;
 mod lint_scope;

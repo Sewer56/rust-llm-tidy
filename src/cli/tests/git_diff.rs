@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::process::{self, Command, Output};
 
 mod common;
+mod duplication;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 

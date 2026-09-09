@@ -45,6 +45,10 @@ harness = false
 name = "links"
 harness = false
 
+[[bench]]
+name = "duplication"
+harness = false
+
 [dependencies]
 ahash = "0.8"
 anyhow = "1"

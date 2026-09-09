@@ -35,6 +35,7 @@ use std::path::Path;
 ///
 /// Reminders have no eligible diff lines here. Set
 /// [`SourceOptions::all_lines`] to `true` to audit all severities on all lines.
+/// Enabled DUP001 skips analysis with a warning without that whole-buffer scope.
 ///
 /// # Arguments
 ///
@@ -153,6 +154,12 @@ pub fn tidy_source<'a>(
                 .is_none_or(|set| set.contains("lints") || set.contains(lint::CODE_SYM));
         let (mut diagnostics, mut observations) =
             lint_source(&output, ext, &rules, &context, hints_enabled)?;
+        if context.duplication_enabled(ext, &enabled, &disabled) {
+            diagnostics.extend(context.duplication(Path::new("buffer"), &output));
+            if !options.all_lines {
+                warnings.push("DUP001 analysis skipped: a standalone buffer has no input diff; set all_lines to audit it".into());
+            }
+        }
         diagnostics.retain(|diagnostic| {
             !disabled.contains(diagnostic.code)
                 && enabled

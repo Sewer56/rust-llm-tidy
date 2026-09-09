@@ -100,8 +100,8 @@ Every allowed op is on by default; `--include`/`--exclude` and the config
 narrow them. The `md` family is `.md`, `.markdown`, `.txt`, `.text`,
 `.mdx`.
 
-`lints` splits by language: `rs` and `cs` run every code; every other
-allowed language runs the text lints only.
+`lints` selects checks by language. Source files also support same-file
+duplication checks without requiring an AST backend; see [docs/lints.md].
 
 #### Text transformation safety
 
@@ -199,7 +199,8 @@ Also:
   (default empty = all). File path appended as last arg.
   - Skipped under `--dry-run` and for excluded files.
 
-More keys and options (`links`, `passive_narration`): see the annotated
+More keys and options (`duplication`, `links`, `passive_narration`): see the
+annotated
 [example config][`.rust-llm-tidy.example.yml`] and [docs/text-lints.md].
 
 Globs are relative to the config file's directory and use `literal_separator`

@@ -24,18 +24,19 @@ struct LintGate {
 /// Whether the resolved file policy permits a lint phase at all.
 pub(super) fn lints_enabled(
     path: &Path,
-    config: Option<&CompiledConfig>,
+    context: &super::lint_context::LintContext<'_>,
     policy: &FilePolicy,
 ) -> bool {
     let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
     !policy.skip
-        && lint_gate(
-            config,
+        && (lint_gate(
+            context.config,
             langs::profile_for(ext),
             &policy.enabled,
             &policy.disabled,
         )
         .lints_on
+            || context.duplication_enabled(ext, &policy.enabled, &policy.disabled))
 }
 
 /// Process one mutation or lint phase, retaining changes and findings.
@@ -144,7 +145,7 @@ pub(super) fn process_one(
         }
     }
     let gate = lint_gate(config, profile, enabled, disabled);
-    if lint_phase && gate.lints_on {
+    if lint_phase && (gate.lints_on || lint_context.duplication_enabled(ext, enabled, disabled)) {
         let lint_disabled = lint_disabled_set(enabled, disabled, config);
         match files::check_file(
             path,

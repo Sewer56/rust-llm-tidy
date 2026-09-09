@@ -50,6 +50,8 @@ every severity.
 
 Hints, warnings, and errors still cover the whole buffer.
 
+Enabled DUP001 warns and skips buffer analysis unless `all_lines` is true.
+
 ### File processing
 
 Pass files or directories in `RunOptions::paths` and optional configuration from
