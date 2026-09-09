@@ -7,6 +7,8 @@
 use super::*;
 use core::ops::RangeInclusive;
 use rstest::rstest;
+#[cfg(all(unix, not(target_os = "macos")))]
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -174,12 +176,11 @@ fn collect_should_preserve_duplicate_path_spellings() {
     );
 }
 
-#[cfg(unix)]
+// macOS filesystems reject names that are not valid UTF-8, so the non-UTF-8
+// fixture below cannot be created there.
+#[cfg(all(unix, not(target_os = "macos")))]
 #[test]
 fn collect_should_preserve_non_utf8_git_paths() {
-    #[cfg(unix)]
-    use std::os::unix::ffi::OsStrExt;
-
     let repo = repository(Some(("initial.rs", "initial\n")));
     let path = repo
         .path()
