@@ -542,6 +542,53 @@ Suggestions:
 
 [`lints`]: ./lints.md
 
+## TEXT009 - forbidden characters
+
+Reject selected characters in documentation prose with custom rewrite guidance.
+
+Em dashes (`U+2014`) are forbidden by default. Findings are errors and never
+rewrite text. Each entry owns its diagnostic title and message.
+
+```yaml
+forbidden_characters:
+  - characters: ["\u2014"]
+    title: Use natural phrasing without em dashes
+    message: |
+      Write like a person talking to another person, not an AI composing a response.
+      Avoid em dashes. Use direct sentences and a natural, conversational rhythm.
+      Rewrite rather than swapping punctuation mechanically. Preserve meaning
+      and technical precision.
+```
+
+A configured list replaces the default; `[]` disables matches. Each entry
+requires a nonempty list of single Unicode scalar values and nonblank `title`
+and `message`. Duplicate characters are rejected, including within an entry.
+
+Select `TEXT009` with the normal lint controls. Findings include the offending
+character, its Unicode code point, and its line number. Custom messages
+are preserved without appended generic advice.
+
+### TEXT009 CLI output
+
+With the default policy and a file containing `Read—this`:
+
+```text
+$ cargo run -p rust-llm-tidy-cli -- --checks-only --include TEXT009 example.md
+example.md:1: error[TEXT009]: Use natural phrasing without em dashes: forbidden character '—' (U+2014).
+Why: Direct sentences and a conversational rhythm make writing easier to follow.
+Suggestions:
+- Write like a person talking to another person, not an AI composing a response.
+- Avoid em dashes. Use direct sentences and a natural, conversational rhythm.
+- Rewrite the sentence, using a comma, colon, parentheses, or full stop where it fits the meaning.
+- Do not mechanically replace every dash with the same punctuation. Preserve the meaning and technical precision. (file)
+Error: found 1 error(s)
+```
+
+### Remarks
+
+Headings and table prose are checked; code blocks, inline code, and link
+destinations are skipped.
+
 ## Library access
 
 Use `rust_llm_tidy::rules::lint::{run_text_checks, run_region_checks}`.

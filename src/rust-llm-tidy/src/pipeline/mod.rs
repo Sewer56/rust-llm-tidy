@@ -228,7 +228,7 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
 ///   ~2-3ms per-file parse cost; the weight folds both in.
 /// - `.md`: 1_000 - the `fix_*` ops are ~0.007 ms/KB scans.
 /// - anything cheaper than markdown: pick a weight below 1_000 (e.g. plain
-///   text ~100) — it still lands in the one formula.
+///   text ~100). It still lands in the one formula.
 ///
 /// Scores sum; past 600K markdown-equivalent bytes with more than one input
 /// -> parallelize.

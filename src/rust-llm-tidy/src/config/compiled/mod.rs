@@ -22,6 +22,8 @@ pub(crate) mod symbol_rules;
 /// A loaded and validated config, ready to answer `policy_for` queries.
 #[derive(Debug)]
 pub struct CompiledConfig {
+    /// Custom TEXT009 entries; absent uses the built-in style policy.
+    forbidden_characters: Option<Vec<super::ForbiddenCharacterRule>>,
     /// Canonicalized directory of the config file. Patterns are resolved
     /// relative to this.
     config_dir: PathBuf,
@@ -67,6 +69,11 @@ struct CompiledRuleGroup {
 }
 
 impl CompiledConfig {
+    /// Explicit TEXT009 policy, including an empty replacement list.
+    pub(crate) fn forbidden_characters(&self) -> Option<&[super::ForbiddenCharacterRule]> {
+        self.forbidden_characters.as_deref()
+    }
+
     /// Resolved textual-duplication settings, independent of file selection.
     pub(crate) fn duplication(&self) -> DuplicationConfig {
         self.duplication

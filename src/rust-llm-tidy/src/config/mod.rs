@@ -57,6 +57,7 @@ pub(crate) use compiled::symbol_rules::compile_symbol_rules;
 pub(crate) use compiled::symbol_rules::{CompiledSymbolRule, SymbolMatcher};
 pub use duplication_config::DuplicationConfig;
 pub use file_policy::FilePolicy;
+pub use forbidden_character_rule::ForbiddenCharacterRule;
 pub use link_config::LinkConfig;
 pub use lint_scope::ReportingScope;
 pub use method_length_config::MethodLengthConfig;
@@ -75,6 +76,7 @@ pub use symbol_rule::{
 mod compiled;
 mod duplication_config;
 mod file_policy;
+pub(crate) mod forbidden_character_rule;
 mod link_config;
 mod lint_scope;
 mod method_length_config;

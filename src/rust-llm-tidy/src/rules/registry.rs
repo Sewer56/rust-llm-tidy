@@ -24,6 +24,7 @@ pub const LINT_CODES: &[&str] = &[
     CODE_VERBOSE_SYNONYMS,
     CODE_PASSIVE_NARRATION,
     CODE_TEXT008,
+    CODE_FORBIDDEN_CHARACTERS,
     CODE_TEST_NAMING,
     CODE_MODULE_SIZE,
     CODE_MOD002,
@@ -41,6 +42,8 @@ pub const CODE_DUPLICATION: &str = "DUP001";
 pub const CODE_ERROR_VARIANT_ORDER: &str = "DOC008";
 /// Rule code for an untagged fenced code block.
 pub const CODE_FENCE_TAG: &str = "TEXT005";
+/// Rule code for configured forbidden characters in prose.
+pub const CODE_FORBIDDEN_CHARACTERS: &str = "TEXT009";
 /// Rule code for a misshapen header opener paragraph.
 pub const CODE_HEADER_OPENER: &str = "TEXT004";
 /// Rule code for a function or method body over its line budget.
@@ -106,6 +109,7 @@ mod tests {
             CODE_VERBOSE_SYNONYMS,
             CODE_PASSIVE_NARRATION,
             CODE_TEXT008,
+            CODE_FORBIDDEN_CHARACTERS,
             CODE_TEST_NAMING,
             CODE_MODULE_SIZE,
             CODE_MOD002,

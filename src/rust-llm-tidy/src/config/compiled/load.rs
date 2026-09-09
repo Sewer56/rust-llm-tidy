@@ -2,6 +2,7 @@
 
 use super::symbol_rules::compile_symbol_rules;
 use super::{CompiledConfig, CompiledRuleGroup};
+use crate::config::forbidden_character_rule::validate;
 use crate::config::{Config, RuleGroup, known_rules};
 use crate::languages::registry;
 use crate::rules::registry::LINT_CODES;
@@ -43,13 +44,13 @@ static COMPILE_COUNTER: core::sync::atomic::AtomicU64 = core::sync::atomic::Atom
 /// - The file cannot be read or parsed as YAML.
 /// - The config path has no parent directory or cannot be canonicalized.
 /// - `include` and `exclude` are both non-empty.
-/// - Any `extensions` or `extra_extensions` entry is empty or contains a dot,
-///   a path separator, or whitespace.
-/// - A link occurrence threshold, `module_size.max_lines`, or
-///   `method_length.max_lines` is below 1.
-/// - `duplication.min_meaningful_lines` is below 1 or
+/// - An extension entry is empty or contains a dot, path separator, or whitespace.
+/// - `module_size.max_lines`, `method_length.max_lines`, a link occurrence
+///   threshold, or `duplication.min_meaningful_lines` is below 1, or
 ///   `duplication.min_occurrences` is below 2.
 /// - `perf_hints` contains anything other than `PERF001` or `PERF002` codes.
+/// - A forbidden-character entry has no characters, a blank title or message,
+///   or a character appears more than once across the entries.
 ///
 /// Symbol policy errors:
 ///
@@ -91,6 +92,9 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
     }
 
     validate_thresholds(&config)?;
+    if let Some(rules) = &config.forbidden_characters {
+        validate(rules)?;
+    }
 
     for code in config.lint_scopes.keys() {
         if !LINT_CODES.contains(&code.as_str()) {
@@ -125,6 +129,7 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
     }
 
     Ok(CompiledConfig {
+        forbidden_characters: config.forbidden_characters,
         config_dir,
         exclude_files_set,
         exclude_license_documents: config.exclude_license_documents,

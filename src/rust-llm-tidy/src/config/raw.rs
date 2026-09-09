@@ -12,6 +12,9 @@ use std::collections::HashMap;
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)] // Reject hallucinated config keys at parse time.
 pub struct Config {
+    /// TEXT009 entries; absent bans em dashes, while an empty list bans nothing.
+    #[serde(default)]
+    pub forbidden_characters: Option<Vec<super::ForbiddenCharacterRule>>,
     /// Whitelist: for matched paths, run ONLY these rules.
     ///
     /// - Mutually exclusive with `exclude` (both present -> config-load error).
@@ -85,6 +88,7 @@ pub struct RuleGroup {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            forbidden_characters: None,
             include: Vec::new(),
             exclude: Vec::new(),
             exclude_files: Vec::new(),

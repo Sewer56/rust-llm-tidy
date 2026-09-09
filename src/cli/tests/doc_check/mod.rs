@@ -39,6 +39,7 @@ use std::process::{self, Command, Output};
 mod command_behavior;
 mod comment_lexicons;
 mod csharp;
+mod forbidden_characters;
 mod json_output;
 mod mod001_module_headers;
 mod mod001_module_size;
