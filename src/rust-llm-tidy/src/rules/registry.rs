@@ -1,42 +1,5 @@
-//! Stable lint codes and diagnostic titles shared by all languages.
+//! Stable lint codes and selectable operations shared by all languages.
 
-/// Friendly title per lint code, paired `(code, title)` in [`LINT_CODES`]
-/// order.
-///
-/// Titles are the short human-readable names output consumers render next
-/// to the code; they are static so a lookup allocates nothing.
-pub(crate) const CODE_TITLES: &[(&str, &str)] = &[
-    (CODE_MISSING_DOCS, "missing documentation"),
-    (
-        CODE_MISSING_MODULE_DOCS,
-        "module file without top-level docs",
-    ),
-    (CODE_MISSING_ERRORS, "missing `# Errors` section"),
-    (CODE_VAGUE_ERRORS, "vague `# Errors` section"),
-    (
-        CODE_ERROR_VARIANT_ORDER,
-        "error variants out of alphabetical order",
-    ),
-    (CODE_MISSING_ARGUMENTS, "missing `# Arguments` section"),
-    (CODE_UNDOCUMENTED_PARAM, "undocumented parameter"),
-    (CODE_DOC_PLACEHOLDER, "placeholder text"),
-    (CODE_PARAGRAPH_SIZE, "oversized paragraph"),
-    (CODE_LINE_LENGTH, "long line"),
-    (CODE_SENTENCE_LENGTH, "long sentence"),
-    (CODE_HEADER_OPENER, "header opener shape"),
-    (CODE_FENCE_TAG, "untagged fenced code block"),
-    (CODE_VERBOSE_SYNONYMS, "verbose synonym"),
-    (CODE_PASSIVE_NARRATION, "passive construction"),
-    (CODE_TEXT008, "dense bullet list"),
-    (CODE_TEST_NAMING, "non-behavioral test name"),
-    (CODE_MODULE_SIZE, "oversized module"),
-    (CODE_MOD002, "fn-local `use` without `#[cfg]`"),
-    (CODE_QUALIFIED_PATH, "full namespace qualification in code"),
-    (CODE_LEN001, "oversized function or method"),
-    (CODE_PERF001, "API performance reminder"),
-    (CODE_PERF002, "array initialization reminder"),
-    (CODE_SYM001, "configured symbol hint"),
-];
 /// Selectable transformations and the lint group, in pipeline order.
 pub const KNOWN_FIX_OPS: &[&str] = &["tables", "fences", "links", "reorder", "vis", "lints"];
 /// All lint codes accepted through `include.rules`, `exclude.rules`,
@@ -66,9 +29,7 @@ pub const LINT_CODES: &[&str] = &[
     CODE_MOD002,
     CODE_QUALIFIED_PATH,
     CODE_LEN001,
-    CODE_PERF001,
-    CODE_PERF002,
-    CODE_SYM001,
+    CODE_SYM,
 ];
 /// Rule code for placeholder text in doc comments.
 pub const CODE_DOC_PLACEHOLDER: &str = "DOC006";
@@ -100,16 +61,12 @@ pub const CODE_MODULE_SIZE: &str = "MOD001";
 pub const CODE_PARAGRAPH_SIZE: &str = "TEXT001";
 /// Rule code for passive constructions and past-behavior narration.
 pub const CODE_PASSIVE_NARRATION: &str = "TEXT007";
-/// Rule code for a configurable API usage reminder.
-pub const CODE_PERF001: &str = "PERF001";
-/// Rule code for explicit sized C# array initialization reminders.
-pub const CODE_PERF002: &str = "PERF002";
 /// Rule code for full namespace qualification in code.
 pub const CODE_QUALIFIED_PATH: &str = "MOD003";
 /// Rule code for an over-limit sentence of measured prose.
 pub const CODE_SENTENCE_LENGTH: &str = "TEXT003";
 /// Rule code for a configured usage or declaration hint.
-pub const CODE_SYM001: &str = "SYM001";
+pub const CODE_SYM: &str = "SYM";
 /// Rule code for a discouraged test-function name.
 pub const CODE_TEST_NAMING: &str = "TEST001";
 /// Rule code for a bullet list exceeding its source-line budget.
@@ -121,14 +78,6 @@ pub const CODE_VAGUE_ERRORS: &str = "DOC003";
 /// Rule code for a discouraged verbose synonym in measured text.
 pub const CODE_VERBOSE_SYNONYMS: &str = "TEXT006";
 
-/// Friendly title for `code`, or `None` when `code` is not a lint code.
-pub(crate) fn title_for_code(code: &str) -> Option<&'static str> {
-    CODE_TITLES
-        .iter()
-        .find(|(known, _)| *known == code)
-        .map(|(_, title)| *title)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,8 +88,8 @@ mod tests {
         // enumerate every code produced by the backends and the text rules.
         assert_eq!(
             LINT_CODES.len(),
-            24,
-            "LINT_CODES must list exactly twenty-four codes: {LINT_CODES:?}"
+            22,
+            "LINT_CODES must list exactly twenty-two codes: {LINT_CODES:?}"
         );
         for code in [
             CODE_MISSING_DOCS,
@@ -164,27 +113,9 @@ mod tests {
             CODE_MOD002,
             CODE_QUALIFIED_PATH,
             CODE_LEN001,
-            CODE_PERF001,
-            CODE_PERF002,
-            CODE_SYM001,
+            CODE_SYM,
         ] {
             assert!(LINT_CODES.contains(&code), "LINT_CODES is missing {code}");
-        }
-    }
-
-    /// The title table pairs every lint code with a non-empty title and
-    /// holds no extra codes.
-    #[test]
-    fn code_titles_cover_exactly_the_lint_codes() {
-        assert_eq!(
-            CODE_TITLES.len(),
-            LINT_CODES.len(),
-            "CODE_TITLES must pair exactly the lint codes"
-        );
-        for code in LINT_CODES {
-            let title =
-                title_for_code(code).unwrap_or_else(|| panic!("no title defined for {code}"));
-            assert!(!title.is_empty(), "title for {code} must not be empty");
         }
     }
 }

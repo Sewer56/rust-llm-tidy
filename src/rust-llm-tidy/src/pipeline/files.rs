@@ -34,8 +34,7 @@ pub(crate) struct VisContext {
 
 /// Check a single source file and return its lint diagnostics.
 ///
-/// Returns `(path, diagnostics)` pairs so the caller can either print the
-/// plaintext lines to stderr (default output) or project them to JSON.
+/// Returns diagnostics and skipped-check warnings for the file report.
 ///
 /// The profile decides which passes run: parser-driven checks need a
 /// registered backend; text lints source TEXT* per tier. MOD001 counts whole
@@ -62,13 +61,14 @@ pub(crate) fn check_file(
     method_length: MethodLengthConfig,
     lint_context: &super::lint_context::LintContext<'_>,
     index: Option<&csharp_index::CSharpIndex>,
-) -> anyhow::Result<Vec<(PathBuf, Diagnostic)>> {
+) -> anyhow::Result<(Vec<Diagnostic>, Vec<String>)> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let profile = langs::profile_for(ext);
 
     let mut diagnostics = Vec::new();
+    let mut warnings = Vec::new();
     let mut observations = check::symbols::SymbolObservations::default();
     if profile.backend
         && let Some(backend) = backend_for(ext)
@@ -87,6 +87,12 @@ pub(crate) fn check_file(
             None => backend.lint(parsed),
         };
         observations = lint_context.observe(parsed, ext, disabled)?;
+        if !disabled.contains(check::CODE_SYM) {
+            let text =
+                check::symbols::text_regex::check(&source, ext, Some(parsed), lint_context.rules());
+            observations.hints.extend(text.hints);
+            warnings.extend(text.warnings);
+        }
         // MOD001 is file-level: it needs the path and the threshold, which
         // never reach `LanguageBackend::lint`, so it runs at this seam.
         if profile.module_size == langs::ModuleSize::RustNonTest
@@ -109,6 +115,12 @@ pub(crate) fn check_file(
                 method_length.max_lines,
             ));
         }
+    }
+
+    if !profile.backend && !disabled.contains(check::CODE_SYM) {
+        let text = check::symbols::text_regex::check(&source, ext, None, lint_context.rules());
+        observations.hints.extend(text.hints);
+        warnings.extend(text.warnings);
     }
 
     if (profile.module_size == langs::ModuleSize::WholeFile
@@ -138,10 +150,7 @@ pub(crate) fn check_file(
 
     lint_context.filter(path, &source, observations, &mut diagnostics, disabled);
 
-    Ok(diagnostics
-        .into_iter()
-        .map(|d| (path.to_path_buf(), d))
-        .collect())
+    Ok((diagnostics, warnings))
 }
 
 /// Fix table alignment, nested fence delimiters, and repeated inline links in a
@@ -198,7 +207,8 @@ pub(crate) fn fix_file(
     Ok(change_records)
 }
 
-/// Withhold protected files from arbitrary configured post-process commands.
+/// Withhold files with matching post-processing opt-outs; fail closed on reads
+/// or declaration parsing required by applicable opt-outs.
 pub(super) fn post_process_inputs(
     report: &mut RunReport,
     rules: &[CompiledSymbolRule],
@@ -213,14 +223,27 @@ pub(super) fn post_process_inputs(
             .extension()
             .and_then(|ext| ext.to_str())
             .unwrap_or("");
+        let exclusions: Vec<_> = rules
+            .iter()
+            .filter(|rule| rule.exclude_post_process && rule.applies_to_extension(ext))
+            .collect();
+        if exclusions.is_empty() {
+            processed.push(file.path.clone());
+            continue;
+        }
+
         let protection = fs::read_to_string(&file.path)
             .map_err(anyhow::Error::from)
-            .and_then(|source| super::lint_context::protected_ranges(&source, ext, rules));
+            .and_then(|source| {
+                let backend =
+                    backend_for(ext).context("post-processing exclusion needs a parser")?;
+                check::symbols::excludes_post_process(&backend.parse(&source)?, ext, &exclusions)
+            });
 
         match protection {
-            Ok(ranges) if ranges.is_empty() => processed.push(file.path.clone()),
-            Ok(_) => report.warnings.push(format!(
-                "post-processing skipped for {}: declaration exclusion protects source bytes",
+            Ok(false) => processed.push(file.path.clone()),
+            Ok(true) => report.warnings.push(format!(
+                "post-processing skipped for {}: matching declaration sets exclude_post_process",
                 file.path.display()
             )),
             Err(error) => file.fail(&error),

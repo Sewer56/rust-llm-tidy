@@ -37,6 +37,7 @@ fn bullet_diagnostic(para: &Paragraph) -> Diagnostic {
         "Preserve necessary information, contracts, and code identifiers.".to_string(),
     ];
     Diagnostic {
+        title: Some("oversized paragraph".into()),
         severity: Severity::Warning,
         code: CODE_PARAGRAPH_SIZE,
         message: bulleted(
@@ -66,6 +67,7 @@ fn paragraph_diagnostic(para: &Paragraph) -> Diagnostic {
             .to_string(),
     ];
     Diagnostic {
+        title: Some("oversized paragraph".into()),
         severity: Severity::Error,
         code: CODE_PARAGRAPH_SIZE,
         message: bulleted(

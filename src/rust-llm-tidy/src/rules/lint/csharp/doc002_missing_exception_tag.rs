@@ -23,6 +23,7 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
         decl.diagnostic(
             Severity::Error,
             CODE_MISSING_ERRORS,
+            "missing `# Errors` section",
             "member that can throw is missing an `<exception>` doc tag.\n\n\
          Why: Readers need to understand possible failures and when they occur.\n\n\
          Suggestions:\n\

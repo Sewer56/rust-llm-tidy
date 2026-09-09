@@ -31,6 +31,7 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     }
 
     vec![Diagnostic {
+        title: Some("vague `# Errors` section".into()),
         severity: Severity::Warning,
         code: CODE_VAGUE_ERRORS,
         message: "`# Errors` section has no `::` path naming a concrete error variant.\n\n\

@@ -7,7 +7,7 @@
 //! - Look for a be-verb (`is`, `are`, `was`) followed by a likely past
 //!   participle (`returned`, `parsed`, `written`), such as `are returned`.
 //! - Otherwise, look for history wording, such as `before this change`.
-//! - Emit at most one hint per line; passive voice takes priority over history.
+//! - Emit at most one reminder per line; passive voice takes priority over history.
 //!
 //! # Exceptions
 //!
@@ -41,14 +41,15 @@
 //! # Remarks
 //!
 //! - This heuristic has no grammatical context: it is prone to false
-//!   positives, its hints need human judgment, and it never rewrites source.
+//!   positives, its reminders need human judgment, and it never rewrites source.
 //! - Punctuation interrupts phrases; matches are case-insensitive, and
 //!   digits and underscores extend a word.
 //! - Inline code, link targets, reference labels, autolinks, and HTTP URLs
 //!   stay opaque; backtick code spans carry across consecutive prose lines.
-//! - File processing runs this rule only when opted in: the config's
-//!   `passive_narration.enable` setting or an explicit `TEXT007` inclusion.
-//!   Narration markers stay suppressed in release notes by default.
+//! - File processing enables this rule by default, reporting changed lines.
+//!   `passive_narration.enable: false` opts out; explicit inclusion overrides it.
+//! - `--all-lines` overrides reporting scope, not rule selection.
+//! - Narration markers stay suppressed in release notes by default.
 //!
 //! # Layout
 //!
@@ -76,7 +77,7 @@ mod prose;
 /// passive class opens with `passive construction:` instead.
 const NARRATION_MARKER_SUMMARY: &str = "past-behavior narration marker: ";
 
-/// TEXT007 diagnostics for `doc`: at most one Hint per measured line,
+/// TEXT007 diagnostics for `doc`: at most one Reminder per measured line,
 /// in source order.
 ///
 /// Finding classes share the code:
@@ -133,7 +134,7 @@ pub(super) fn one_line(line: &str) -> Vec<crate::reporting::Diagnostic> {
         .collect()
 }
 
-/// One TEXT007 Hint; `summary` names the finding class and trigger.
+/// One TEXT007 Reminder; `summary` names the finding class and trigger.
 fn diagnostic(line: &StrippedLine, summary: &str) -> Diagnostic {
     let bullets = [
         "Check the implementation before rewriting; this heuristic can flag valid state descriptions and runtime history."
@@ -152,7 +153,8 @@ fn diagnostic(line: &StrippedLine, summary: &str) -> Diagnostic {
     ];
 
     Diagnostic {
-        severity: Severity::Hint,
+        title: Some("passive construction".into()),
+        severity: Severity::Reminder,
         code: CODE_PASSIVE_NARRATION,
         message: bulleted(
             summary,
@@ -390,7 +392,7 @@ mod tests {
                 let found = codes(&diags, CODE_PASSIVE_NARRATION);
 
                 assert_eq!(found.len(), usize::from(expected), "{ext}: {source:?}");
-                assert!(found.iter().all(|diag| diag.severity == Severity::Hint));
+                assert!(found.iter().all(|diag| diag.severity == Severity::Reminder));
             }
         }
     }

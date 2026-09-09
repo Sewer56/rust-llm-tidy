@@ -21,13 +21,10 @@ jobs:
           # apply-mode commits on top of HEAD and pushes back to this branch,
           # which would be a non-fast-forward from the merge commit.
           ref: ${{ github.head_ref }}
-          fetch-depth: 0
           submodules: recursive
 
       - name: Run rust-llm-tidy
         uses: ./submodules/action
-        env:
-          RUST_LLM_TIDY_DIFF_BASE: ${{ github.event.pull_request.base.sha }}
         with:
           # Build the binary from this repo's own source checkout.
           binary-source: git

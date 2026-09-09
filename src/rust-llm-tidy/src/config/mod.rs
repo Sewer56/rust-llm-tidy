@@ -40,8 +40,8 @@
 //! - `link_config`: `links` hoist-threshold settings
 //! - `method_length_config`: `method_length` threshold settings
 //! - `module_size_config`: `module_size` threshold settings
-//! - `passive_narration_config`: TEXT007 opt-in and suppression settings
-//! - `perf_hint`: PERF001 API-reminder entries
+//! - `passive_narration_config`: TEXT007 enablement and suppression settings
+//! - `perf_code`: built-in symbol-family selection
 //! - `symbol_rule`: syntax-only symbol hints and declaration exclusions
 //! - `lint_scope`: shared reporting boundaries
 //! - `post_process_step`: one external post-processing command
@@ -50,7 +50,6 @@ use crate::rules::lint::LINT_CODES;
 pub use crate::rules::registry::KNOWN_FIX_OPS;
 pub use compiled::CompiledConfig;
 pub use compiled::load_and_compile;
-#[cfg(test)]
 pub(crate) use compiled::symbol_rules::compile_symbol_rules;
 pub(crate) use compiled::symbol_rules::{CompiledSymbolRule, SymbolMatcher};
 pub use file_policy::FilePolicy;
@@ -59,12 +58,15 @@ pub use lint_scope::ReportingScope;
 pub use method_length_config::MethodLengthConfig;
 pub use module_size_config::ModuleSizeConfig;
 pub use passive_narration_config::PassiveNarrationConfig;
-pub use perf_hint::PerfHint;
+pub use perf_code::PerfCode;
 pub use post_process_step::PostProcessStep;
 pub use raw::{Config, RuleGroup};
 use std::env;
 use std::path::{Path, PathBuf};
-pub use symbol_rule::{ArrayKind, SymbolAction, SymbolLanguage, SymbolRule, SymbolTarget};
+pub use symbol_rule::{
+    ArrayKind, DeclarationLintExclusion, RegexComments, SymbolAction, SymbolLanguage, SymbolRule,
+    SymbolTarget,
+};
 
 mod compiled;
 mod file_policy;
@@ -73,7 +75,7 @@ mod lint_scope;
 mod method_length_config;
 mod module_size_config;
 mod passive_narration_config;
-mod perf_hint;
+mod perf_code;
 mod post_process_step;
 mod raw;
 mod symbol_rule;
@@ -139,7 +141,7 @@ mod tests {
         // MOD), plus the six fix/operation names (including lints).
         for code in [
             "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "DOC008", "DOC009",
-            "TEXT001", "TEXT002", "TEXT003", "TEXT004", "TEST001", "MOD002", "MOD003", "PERF001",
+            "TEXT001", "TEXT002", "TEXT003", "TEXT004", "TEST001", "MOD002", "MOD003", "SYM",
         ] {
             assert!(rules.contains(&code), "missing lint code {code}");
         }

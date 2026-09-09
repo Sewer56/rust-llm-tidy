@@ -1,4 +1,8 @@
-//! Sorted, merged, inclusive source-line ranges.
+//! Represent eligible source lines as sorted inclusive ranges.
+//!
+//! Normalize 1-based spans by discarding invalid ranges and merging overlaps
+//! and adjacency. Use binary partitioning for overlap checks, with constructors
+//! for empty eligibility or every line of a source buffer.
 
 use core::{iter::once, ops::RangeInclusive};
 

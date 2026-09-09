@@ -16,27 +16,48 @@ mod common;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+#[test]
+fn all_lines_should_not_discover_unchanged_or_untracked_files() {
+    let repo = init_repo().expect("Git is required for discovery acceptance");
+    fs::write(repo.join(".rust-llm-tidy.yml"), "{}").unwrap();
+    fs::write(repo.join("input.rs"), "fn f() { Vec::new(); }").unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "--quiet", "-m", "baseline"]);
+    fs::write(repo.join("untracked.rs"), "fn f() { Vec::new(); }").unwrap();
+
+    let output = run(&repo, &["--all-lines", "--include", "SYM", "--json"]);
+    let records: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert!(output.status.success(), "{output:?}");
+    assert!(records.is_empty(), "{records:?}");
+    cleanup(&repo);
+}
+
 #[rstest]
-#[case::new_token("long", "3", "PERF002", None, 1)]
-#[case::size_only("int", "4", "PERF002", None, 0)]
-#[case::all_override("int", "4", "PERF002", Some("all"), 1)]
-#[case::independent_perf001("long", "3", "PERF001", Some("all"), 1)]
-#[case::both_codes("long", "3", "PERF001,PERF002", Some("all"), 2)]
-#[case::custom_array("long", "3", "SYM001", Some("all"), 1)]
+#[case::new_token("long", "3", "PERF002", false, 2)]
+#[case::size_only("int", "4", "PERF002", false, 0)]
+#[case::all_override("int", "4", "PERF002", true, 2)]
+#[case::independent_perf001("long", "3", "PERF001", true, 2)]
+#[case::both_codes("long", "3", "PERF001,PERF002", true, 3)]
+#[case::custom_array("long", "3", "", true, 1)]
 fn array_reminders_should_respect_code_selection_and_changed_anchor(
     #[case] element: &str,
     #[case] size: &str,
     #[case] codes: &str,
-    #[case] scope: Option<&str>,
+    #[case] all_lines: bool,
     #[case] count: usize,
 ) {
     let repo = init_repo().expect("Git is required for array reminder acceptance");
     fs::write(
         repo.join(".rust-llm-tidy.yml"),
-        concat!(
-            "symbol_rules:\n",
-            "  - symbol: new[]\n    extensions: [cS]\n    array_kind: any\n",
-            "    message: custom array reminder\n"
+        format!(
+            concat!(
+                "perf_hints: [{}]\n",
+                "symbol_rules:\n",
+                "  - symbol: new[]\n    extensions: [cS]\n    array_kind: any\n",
+                "    title: Custom array\n    message: custom array reminder\n"
+            ),
+            codes
         ),
     )
     .unwrap();
@@ -49,12 +70,9 @@ fn array_reminders_should_respect_code_selection_and_changed_anchor(
     git(&repo, &["add", "."]);
     git(&repo, &["commit", "--quiet", "-m", "baseline"]);
     fs::write(repo.join("input.CS"), source(element, size)).unwrap();
-    let mut args = vec!["--json", "--diff-base", "HEAD"];
-    for code in codes.split(',') {
-        args.extend(["--include", code]);
-    }
-    if let Some(scope) = scope {
-        args.extend(["--lint-scope", scope]);
+    let mut args = vec!["--json", "--diff-base", "HEAD", "--include", "SYM"];
+    if all_lines {
+        args.push("--all-lines");
     }
 
     let output = run(&repo, &args);
@@ -332,7 +350,7 @@ fn no_paths_should_report_committed_reminders_against_explicit_baseline(
     let mut command = Command::new(binary());
     command
         .current_dir(&repo)
-        .args(["--include", "PERF001", "--json"])
+        .args(["--include", "SYM", "--json"])
         .env_remove("RUST_LLM_TIDY_DIFF_BASE");
     if let Some(flag) = flag {
         command.args(["--diff-base", flag]);
@@ -350,7 +368,8 @@ fn no_paths_should_report_committed_reminders_against_explicit_baseline(
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(records.len(), 1);
-    assert_eq!(records[0]["code"], "PERF001");
+    assert_eq!(records[0]["code"], "SYM");
+    assert_eq!(records[0]["title"], "PERF001: API performance reminder");
     assert_eq!(records[0]["severity"], "reminder");
     cleanup(&repo);
 }

@@ -50,9 +50,9 @@ impl FileReport {
 /// Inspect [`RunReport::ensure_success`] after consuming the report.
 /// Configuration discovery is explicit through [`crate::config`].
 ///
-/// The opt-in TEXT007 lint runs only when the config's
-/// `passive_narration.enable` setting is on or the selection names the
-/// code explicitly.
+/// TEXT007 defaults to Reminder severity and changed-line reporting.
+/// `passive_narration.enable: false` disables it unless explicitly included.
+/// Changed-line reporting requires Git permission in [`RunOptions`].
 ///
 /// File previews leave each pass reading the original disk source; see
 /// [`tidy_source`] for final-buffer linting.
@@ -128,7 +128,7 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
     let included: Option<HashSet<String>> =
         (!options.include.is_empty()).then(|| options.include.iter().cloned().collect());
     let disabled: HashSet<String> = options.exclude.iter().cloned().collect();
-    let mut lint_context = lint_context::LintContext::new(config, options.lint_scope);
+    let mut lint_context = lint_context::LintContext::new(config, options.all_lines);
     report.warnings = lint_context.capture(&paths, options, included.as_ref(), &disabled)?;
     if paths.is_empty() {
         return Ok(report);
@@ -206,6 +206,14 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
     } else {
         paths.iter().zip(results).map(lint).collect()
     };
+
+    for file in &report.files {
+        report.warnings.extend(
+            file.warnings
+                .iter()
+                .map(|warning| format!("{}: {warning}", file.path.display())),
+        );
+    }
 
     if options.apply
         && options.post_process
@@ -455,7 +463,7 @@ mod tests {
                 None,
                 false,
                 (None, None),
-                &super::lint_context::LintContext::new(None, None),
+                &super::lint_context::LintContext::new(None, false),
             );
             assert!(mutated.processed, "{label}");
             if remove {
@@ -469,7 +477,7 @@ mod tests {
                 None,
                 false,
                 (Some(mutated), None),
-                &super::lint_context::LintContext::new(None, None),
+                &super::lint_context::LintContext::new(None, false),
             );
 
             assert_eq!(linted.failure.is_some(), remove, "{label}");

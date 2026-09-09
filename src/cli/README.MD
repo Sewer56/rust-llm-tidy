@@ -57,29 +57,23 @@ rust-llm-tidy --output-mode json src/main.rs
 
 ### Flags
 
-| Flag                              | Effect                                                          |
-| --------------------------------- | --------------------------------------------------------------- |
-| `--dry-run`                       | Print the changes that would be made instead of modifying files |
-| `--config <PATH>`                 | Explicit config path (overrides auto-discovery)                 |
-| `--no-config`                     | Disable config discovery and loading                            |
-| `--validate`                      | Validate config and exit (no files processed)                   |
-| `--include <OP>`                  | Run only these ops/lint-codes (repeatable)                      |
-| `--exclude <OP>`                  | Skip these ops/lint-codes (repeatable)                          |
-| `--output-mode <MODE>`            | Lint output format: `text` (default) or `json`                  |
-| `--json`                          | Alias for `--output-mode json`                                  |
-| `--lint-scope all\|changed-lines` | Override all lint reporting scopes                              |
-| `--diff-base <REF>`               | Compare against the merge-base of local REF and HEAD            |
+| Flag                   | Effect                                                           |
+| ---------------------- | ---------------------------------------------------------------- |
+| `--dry-run`            | Print the changes that would be made instead of modifying files  |
+| `--config <PATH>`      | Explicit config path (overrides auto-discovery)                  |
+| `--no-config`          | Disable config discovery and loading                             |
+| `--validate`           | Validate config and exit (no files processed)                    |
+| `--include <OP>`       | Run only these ops/lint-codes (repeatable)                       |
+| `--exclude <OP>`       | Skip these ops/lint-codes (repeatable)                           |
+| `--output-mode <MODE>` | Lint output format: `text` (default) or `json`                   |
+| `--json`               | Alias for `--output-mode json`                                   |
+| `--all-lines`          | Report every severity on all lines, overriding configured scopes |
+| `--diff-base <REF>`    | Compare against the merge-base of local REF and HEAD             |
 
-Reminders default to changed lines; hints, warnings, and errors default to
-all lines. Use `--lint-scope all` to audit existing code.
+You can also set the baseline via `RUST_LLM_TIDY_DIFF_BASE`; `--diff-base`
+takes precedence.
 
-`RUST_LLM_TIDY_DIFF_BASE` supplies the baseline unless `--diff-base` is set.
-Without paths, an explicit baseline selects allowed files recursively from
-the current directory instead of the tracked-change fallback.
-
-Missing Git context skips changed-line findings with a warning. Invalid
-explicit baselines fail; neither case silently widens reporting.
-See [reporting scope] for scope precedence and remapping limitations.
+See [reporting scope] for scope precedence and baseline comparison.
 
 ### JSON output
 
@@ -111,8 +105,8 @@ Fields:
 - `line` - 1-based reported line, `null` when no specific line
   (link/table fixes)
 - `item_name` - item name, `null` when unnamed
-- `title` - friendly per-code title for lint findings, `null` for change
-  records
+- `title` - friendly title for lint findings,
+  `null` for change records
 - `path`, `code`, `message`, `item_kind` - as in plaintext
 
 In JSON mode the plaintext per-line diagnostics are not printed to stderr.
@@ -174,6 +168,6 @@ Licensed under Apache 2.0
 [ci-badge]: https://github.com/Sewer56/rust-llm-tidy/actions/workflows/rust.yml/badge.svg
 [rust-llm-tidy library]: ../rust-llm-tidy/README.MD
 [dry-run change reporting]: ../../docs/lints.md#change-reporting
-[hints]: ../../docs/lints.md#hints
+[hints]: ../../docs/lints.md#hints-and-reminders
 [reporting scope]: ../../docs/lints.md#reporting-scope
 [docs/reorder.md]: ../../docs/reorder.md

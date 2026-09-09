@@ -14,7 +14,7 @@
 //! - `doc006_placeholder`: DOC006 doc-comment placeholder markers
 //! - `doc009_missing_module_docs`: module-header rule silence
 //! - `mod003_qualified_path`: MOD003 fully-qualified path hints
-//! - `perf001_allocation_hints`: PERF001 API reminders
+//! - `perf001_allocation_hints`: built-in PERF001 capacity reminders via SYM
 //! - `test001_test_naming`: TEST001 discouraged test-method names
 
 use crate::{manifest_dir, run_command};

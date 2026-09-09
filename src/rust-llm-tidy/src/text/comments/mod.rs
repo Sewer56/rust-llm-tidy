@@ -90,6 +90,7 @@
 use crate::reporting::Diagnostic;
 use crate::rules::lint::run_region_checks;
 use core::cmp::Ordering;
+use core::ops::Range;
 use families::LEXED_EXTENSIONS;
 pub use header::header_lines;
 use lexicon::Lexicon;
@@ -140,6 +141,12 @@ pub fn text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
         Some(regions) => run_region_checks(regions),
         None => Vec::new(),
     }
+}
+
+/// Exact lexical comment spans including delimiters, or `None` when recognition
+/// is unavailable or uncertain. Strict scans also reject unmodeled slash literals.
+pub(crate) fn comment_spans(source: &str, ext: &str) -> Option<Vec<Range<usize>>> {
+    scan::comment_spans(source, lexicon_for(ext)?)
 }
 
 /// The lexicon for `ext`, ASCII case-insensitively (`.JS` resolves like

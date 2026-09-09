@@ -25,11 +25,10 @@
 #   - vim
 
 # ── Passive narration (TEXT007) ──
-# TEXT007 is heuristic and prone to false positives.
-# `lints` alone keeps it off; enable it here or in the whitelist below.
+# Enabled by default as a reminder on changed lines.
 
 # passive_narration:
-#   enable: true                    # run the lint; default false.
+#   enable: false                   # disable passive-narration reminders.
 #   suppress_in_release_notes: true # keep narration markers out of
 #                                   # CHANGELOG*/MIGRATION*/releases/**
 #                                   # notes; passive voice still reports.
@@ -47,19 +46,13 @@
 # Code files count all physical lines: blanks, comments, tests. Recognized
 # module headers (leading file comments, `//!` docs, Python's module
 # docstring) stay out of the count by default.
-# Rust excludes top-level #[cfg(test)] mod regions by default.
-
-# Enable MOD001 or lints in the whitelist below to run this check.
 
 # module_size:
 #   max_lines: 500                # warning above this budget; >= 1.
 #   include_non_code: false       # also check selected config/data/prose files.
-#   include_in_file_tests: false  # include Rust's in-file test modules.
+#   include_in_file_tests: false  # include Rust's in-file test modules. #[cfg(test)]
 #   include_test_files: false     # include Rust files under tests/ directories.
 #   exclude_module_headers: true  # keep module headers out of the count.
-# Other languages always count inline tests and test files.
-# Non-code opt-in preserves discovery and exclusions. INI/JSON still need
-# extension selection; unsupported extensions remain exempt.
 
 # ── Method length (LEN001) ──
 # Suggest reviewing Rust function bodies over this code-line limit.
@@ -68,39 +61,30 @@
 # method_length:
 #   max_lines: 100  # hint above this budget; >= 1.
 
-# ── API reminders (PERF001) ──
-# PERF001 emits configurable reminder-severity findings on invoked APIs
-# (Rust and C#), such as `Vec::new` -> `Vec::with_capacity`.
-# `perf_hints` replaces the built-ins; `extra_perf_hints` appends.
+# ── Reporting scope ──
+# Reminders default to changed lines; other severities default to all.
+# Override per lint below, or use --all-lines for all reporting scopes.
 
-# perf_hints: []              # Extras only, or no hints.
-# extra_perf_hints:
-#   - pattern: to_string
+# lint_scopes:
+#   SYM: all
+#   DOC001: changed_lines
+
+# ── Symbol policies (SYM) ──
+# Add text/symbol hints or exclude declarations from lints and edits.
+# Full reference:
+# https://github.com/Sewer56/rust-llm-tidy/blob/main/docs/symbol-rules.md
+
+# symbol_rules:
+#   - symbol: to_string
+#     title: Review conversion
+#     languages: [rust]
 #     message: |
 #       Review this conversion.
 #       Why: Ownership may be unnecessary.
 #       Suggestions:
 #       - Borrow when the caller does not need owned text.
-
-# ── Reporting scope ──
-# Reminders default to changed lines; other severities default to all.
-# Precedence: --lint-scope > symbol entry scope > lint_scopes > severity.
-# CLI scopes use changed-lines; YAML uses changed_lines.
-# --diff-base REF (or RUST_LLM_TIDY_DIFF_BASE) uses a local merge-base.
-
-# lint_scopes:
-#   PERF001: all
-#   DOC001: changed_lines
-
-# ── Symbol policies (SYM001) ──
-# Case-sensitive literal component suffixes or whole-name regexes.
-# Extensions are case-insensitive rs/cs without dots. Omit for both;
-# empty lists and unsupported extensions fail validation.
-# Hints require messages; use Why: and Suggestions: as below.
-# See docs/lints.md for constraints, arrays, and exclusion boundaries.
-
-# symbol_rules:
 #   - symbol: new[]
+#     title: Array initialization
 #     extensions: [CS]
 #     array_kind: explicit_sized_vector
 #     no_initializer: true
@@ -113,8 +97,16 @@
 #     extensions: [rs]
 #     target: declaration
 #     action: exclude
-# Exclusions stay active with SYM001 disabled. External post-processing
-# skips protected files. PERF001, PERF002, and SYM001 toggle independently.
+#     exclude_lints: [DOC001] # true: all; false or []: none. Default true.
+#     exclude_edits: false    # keep edits enabled. Default true.
+#     exclude_post_process: false # true skips external tools for the file. Default false.
+
+# Built-in SYM reminders (both enabled by default):
+# - PERF001: container capacity
+# - PERF002: C# array initialization
+# [] disables built-ins, not custom symbol_rules.
+
+# perf_hints: [PERF001, PERF002]
 
 # ── Post-processing ──
 # External commands run on every processed file; the file path is appended
@@ -162,8 +154,7 @@ include:
       # - vis
 
       # Level 3: documentation, test-name, and file-size checks.
-      # `lints` enables the DOC*, TEXT*, TEST*, MOD*, and LEN* codes
-      # together; the opt-in TEXT007 stays off (see above).
+      # `lints` enables the DOC*, TEXT*, TEST*, MOD*, and LEN* codes together.
       # Uncomment to enable the complete lint pass.
       # - lints
 
@@ -183,12 +174,11 @@ include:
       # - TEXT004 # header opener shape
       # - TEXT005 # untagged fenced code block
       # - TEXT006 # verbose synonym
-      # - TEXT007 # passive narration; opt-in
+      # - TEXT007 # passive narration reminders
       # - TEXT008 # dense bullet list
       # - TEST001 # non-behavioral test name
       # - MOD001  # oversized code file
       # - MOD002  # function-local `use` without `#[cfg]`
       # - LEN001  # oversized Rust function or method
-      # - PERF001 # API performance reminder
-      # - PERF002 # C# array allocation reminder
-      # - SYM001  # configured symbol hints
+      # Built-in performance families are selected with perf_hints above.
+      # - SYM     # configured text and symbol hints

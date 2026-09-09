@@ -69,6 +69,7 @@ fn list_diagnostic(line: usize) -> Diagnostic {
     ];
 
     Diagnostic {
+        title: Some("dense bullet list".into()),
         severity: Severity::Warning,
         code: CODE_TEXT008,
         message: bulleted(

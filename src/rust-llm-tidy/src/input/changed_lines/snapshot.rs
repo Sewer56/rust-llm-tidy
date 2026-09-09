@@ -1,4 +1,8 @@
-//! Pre-transform source and conservative text-based eligibility remapping.
+//! Preserve input eligibility while remapping lines after transformations.
+//!
+//! Match exact line text, including endings, and count duplicates on both sides.
+//! Admit only text whose input copies were all eligible and whose output count
+//! has not increased; oversized output has no eligible lines.
 
 use super::{ChangedLines, MAX_SOURCE_BYTES, MAX_SOURCE_LINES};
 use std::collections::HashMap;

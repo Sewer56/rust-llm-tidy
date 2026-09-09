@@ -1,4 +1,8 @@
-//! Batched baseline lookup and bounded per-file snapshot diffs.
+//! Resolve local baselines and compare immutable source snapshots.
+//!
+//! Batch tree, rename, and blob lookups per repository, then use bounded
+//! temporary-file Git diffs to extract added-side line ranges. Explicit
+//! references resolve through their merge-base with HEAD.
 
 use super::git_command::{checked, command, output, path};
 use super::{ChangedLines, MAX_COLLECTION_BYTES, MAX_SOURCE_BYTES};

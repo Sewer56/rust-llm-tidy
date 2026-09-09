@@ -280,6 +280,7 @@ impl<'a> Walker<'a> {
 
         if let Some(advice) = advice {
             self.diagnostics.push(Diagnostic {
+                title: Some("full namespace qualification in code".into()),
                 severity: Severity::Hint,
                 code: CODE_QUALIFIED_PATH,
                 message: format!(

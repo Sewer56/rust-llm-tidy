@@ -13,6 +13,7 @@
 
 use super::lexicon::{Heredoc, Lexicon, Syntax, comment_starts_word, ident_byte, ident_start};
 use crate::rules::lint::{Dialect, DocRegion, RegionLine};
+use core::ops::Range;
 use heredoc::{PendingHeredoc, heredoc_open};
 
 mod heredoc;
@@ -21,6 +22,11 @@ mod steps;
 /// The scan's carried state: the lexicon plus everything one pass
 /// accumulates or opens across lines.
 struct Scanner<'a> {
+    /// Exact comment bytes are collected only for strict text-regex scans.
+    comment_spans: Option<Vec<Range<usize>>>,
+    /// Current line's absolute byte offset and the open block's start.
+    line_offset: usize,
+    block_start: usize,
     /// The family's lexical table.
     lex: &'a Lexicon,
     /// Completed regions, in source order.
@@ -144,6 +150,12 @@ impl<'a> Scanner<'a> {
                 // anything else closes here (invalid source; the desync
                 // stays line-local).
                 if !carried {
+                    if self.comment_spans.is_some()
+                        && !self.lex.multiline_quotes
+                        && !raw.ends_with('\\')
+                    {
+                        return None;
+                    }
                     self.state = if self.lex.multiline_quotes || raw.ends_with('\\') {
                         State::Quote {
                             double,
@@ -186,6 +198,11 @@ impl<'a> Scanner<'a> {
             step = self.literal_open_step(bytes, raw, i)?;
         }
         if let Step::Advanced(0) = step {
+            // Slash literals are not modeled. Strict span consumers must not
+            // mistake their contents for comments, even at the cost of skips.
+            if self.comment_spans.is_some() && bytes[i] == b'/' {
+                return None;
+            }
             return code_step(bytes, i, self.lex, &mut self.heredocs).map(Step::Advanced);
         }
         Some(step)
@@ -258,6 +275,7 @@ impl<'a> Scanner<'a> {
                 || (raw[..i].trim().is_empty() && raw[i + open.len()..].trim().is_empty()))
         {
             self.state = State::Block;
+            self.block_start = self.line_offset + i;
             self.block_opener = true;
             self.seg_start = i + open.len();
             return Some(Step::Advanced(open.len()));
@@ -281,6 +299,9 @@ impl<'a> Scanner<'a> {
                 !self.lex.word_start_comments || comment_starts_word(bytes, i)
             })
         {
+            if let Some(spans) = &mut self.comment_spans {
+                spans.push(self.line_offset + i..self.line_offset + raw.len());
+            }
             let text = &raw[i + self.lex.line.len()..];
             let text = text.trim_start_matches(self.lex.line.as_bytes()[0] as char);
             let text = text.strip_prefix(' ').unwrap_or(text);
@@ -394,37 +415,17 @@ impl<'a> Scanner<'a> {
     }
 }
 
+/// Return exact comment spans, rejecting unsupported or unfinished literals.
+pub(super) fn comment_spans(source: &str, lex: &Lexicon) -> Option<Vec<Range<usize>>> {
+    scan_source(source, lex, true)?.comment_spans
+}
+
 /// Scans `source` into doc regions for `lex`.
 ///
 /// Returns `None` for ambiguous sources (module docs): callers emit no
 /// findings rather than guess.
 pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
-    let mut scanner = Scanner {
-        lex,
-        regions: Vec::new(),
-        run: None,
-        block_lines: Vec::new(),
-        block_opener: false,
-        state: State::Code,
-        heredocs: Vec::new(),
-        yaml_flow_depth: 0,
-        seg_start: 0,
-    };
-    for (idx, raw) in source.lines().enumerate() {
-        scanner.scan_line(idx + 1, raw)?;
-    }
-    if scanner.state != State::Code || !scanner.heredocs.is_empty() {
-        return None;
-    }
-    close_run(&mut scanner.run, &mut scanner.regions);
-    Some(scanner.regions)
-}
-
-/// Flushes the open standalone-comment run into `regions`, if any.
-fn close_run(run: &mut Option<DocRegion>, regions: &mut Vec<DocRegion>) {
-    if let Some(region) = run.take() {
-        regions.push(region);
-    }
+    scan_source(source, lex, false).map(|scanner| scanner.regions)
 }
 
 /// One code-state step at `bytes[i]`: heredoc openers, the fail-closed
@@ -490,4 +491,40 @@ fn push_block_line(seg: &str, opener: bool, number: usize, lines: &mut Vec<Regio
         // The dialect derives indented examples after `*`-stripping.
         indented: false,
     });
+}
+
+/// Share lexical decisions between prose measurement and byte-span consumers.
+fn scan_source<'a>(source: &str, lex: &'a Lexicon, strict: bool) -> Option<Scanner<'a>> {
+    let mut scanner = Scanner {
+        comment_spans: strict.then(Vec::new),
+        line_offset: 0,
+        block_start: 0,
+        lex,
+        regions: Vec::new(),
+        run: None,
+        block_lines: Vec::new(),
+        block_opener: false,
+        state: State::Code,
+        heredocs: Vec::new(),
+        yaml_flow_depth: 0,
+        seg_start: 0,
+    };
+    for (idx, line) in source.split_inclusive('\n').enumerate() {
+        let raw = line.strip_suffix('\n').unwrap_or(line);
+        let raw = raw.strip_suffix('\r').unwrap_or(raw);
+        scanner.scan_line(idx + 1, raw)?;
+        scanner.line_offset += line.len();
+    }
+    if scanner.state != State::Code || !scanner.heredocs.is_empty() {
+        return None;
+    }
+    close_run(&mut scanner.run, &mut scanner.regions);
+    Some(scanner)
+}
+
+/// Flushes the open standalone-comment run into `regions`, if any.
+fn close_run(run: &mut Option<DocRegion>, regions: &mut Vec<DocRegion>) {
+    if let Some(region) = run.take() {
+        regions.push(region);
+    }
 }

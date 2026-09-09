@@ -1,4 +1,8 @@
-//! Read-only Git execution with capped stdout and no lazy object fetches.
+//! Run local Git reads with bounded output and explicit repository selection.
+//!
+//! Clear ambient repository overrides, disable lazy fetches and prompts, and
+//! cap captured stdout. Kill and reap children on read failures; preserve raw
+//! Git path bytes on Unix instead of using lossy decoding.
 
 use super::MAX_COLLECTION_BYTES;
 use anyhow::{Context, Result, bail};

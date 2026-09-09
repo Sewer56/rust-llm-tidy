@@ -7,7 +7,7 @@
 // `load` is `pub(super)` so sibling `config` unit tests can reuse its
 // `compile` fixture helper; `compiled` itself stays private.
 use super::{
-    FilePolicy, LinkConfig, MethodLengthConfig, ModuleSizeConfig, PassiveNarrationConfig, PerfHint,
+    FilePolicy, LinkConfig, MethodLengthConfig, ModuleSizeConfig, PassiveNarrationConfig, PerfCode,
     PostProcessStep, ReportingScope,
 };
 use globset::GlobSet;
@@ -49,12 +49,8 @@ pub struct CompiledConfig {
     /// Resolved `passive_narration` settings (section defaults when the
     /// top-level key is absent).
     passive_narration: PassiveNarrationConfig,
-    /// The configured PERF001 replacement list, or `None` when the key
-    /// was absent (each language then applies its own built-ins).
-    configured_perf_hints: Option<Vec<PerfHint>>,
-    /// Extra PERF001 reminders from `extra_perf_hints`, applied
-    /// after the replacement list or each language's built-ins.
-    extra_perf_hints: Vec<PerfHint>,
+    /// Selected built-in families; absent enables every built-in family.
+    configured_perf_hints: Option<Vec<PerfCode>>,
     /// Validated overrides, separate from lint enablement.
     lint_scopes: HashMap<String, ReportingScope>,
     /// Symbol patterns compiled once when the configuration is loaded.
@@ -89,22 +85,16 @@ impl CompiledConfig {
         self.passive_narration.suppress_in_release_notes
     }
 
-    /// Whether to run the opt-in `passive_narration.enable` lint.
+    /// Whether `passive_narration.enable` permits TEXT007 by default.
     pub(crate) fn passive_narration(&self) -> bool {
         self.passive_narration.enable
     }
 
-    /// The configured PERF001 replacement list; `None` when the
-    /// `perf_hints` key is absent, so each language applies its own
-    /// built-ins.
-    pub(crate) fn configured_perf_hints(&self) -> Option<&[PerfHint]> {
-        self.configured_perf_hints.as_deref()
-    }
-
-    /// The extra PERF001 reminders from `extra_perf_hints`, applied
-    /// after the replacement list or each language's built-ins.
-    pub(crate) fn extra_perf_hints(&self) -> &[PerfHint] {
-        &self.extra_perf_hints
+    /// Resolve omitted selection to all built-in families.
+    pub(crate) fn perf_hints(&self) -> &[PerfCode] {
+        self.configured_perf_hints
+            .as_deref()
+            .unwrap_or(PerfCode::ALL)
     }
 
     /// Borrow the post-processing steps so the pipeline can run them after the

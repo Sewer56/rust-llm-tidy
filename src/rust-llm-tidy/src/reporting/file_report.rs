@@ -6,6 +6,8 @@ use std::path::PathBuf;
 /// Findings, edits and processing failure for one file.
 #[derive(Debug, Default)]
 pub struct FileReport {
+    /// Skipped checks whose required source boundaries could not be identified.
+    pub warnings: Vec<String>,
     /// Input spelling retained after alias deduplication.
     pub path: PathBuf,
     /// Changes in operation order, including previews.

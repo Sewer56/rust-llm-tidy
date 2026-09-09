@@ -31,6 +31,7 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     }
 
     vec![Diagnostic {
+        title: Some("non-behavioral test name".into()),
         severity: Severity::Warning,
         code: CODE_TEST_NAMING,
         message: format!(

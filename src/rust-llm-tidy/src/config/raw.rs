@@ -1,7 +1,7 @@
 //! Deserialized `.rust-llm-tidy.yml` model (`Config`) and its rule groups.
 
 use super::{
-    LinkConfig, MethodLengthConfig, ModuleSizeConfig, PassiveNarrationConfig, PerfHint,
+    LinkConfig, MethodLengthConfig, ModuleSizeConfig, PassiveNarrationConfig, PerfCode,
     PostProcessStep, ReportingScope, SymbolRule,
 };
 use serde::Deserialize;
@@ -54,14 +54,10 @@ pub struct Config {
     /// the section defaults (see [`PassiveNarrationConfig`]).
     #[serde(default)]
     pub passive_narration: Option<PassiveNarrationConfig>,
-    /// PERF001 API reminders; absent keeps each language's built-ins. A
-    /// present (even empty) list replaces them.
+    /// Built-in families (`PERF001`, `PERF002`); absent enables both,
+    /// and an empty list disables both. Custom symbol rules are independent.
     #[serde(default)]
-    pub perf_hints: Option<Vec<PerfHint>>,
-    /// Extra PERF001 reminders, appended after the replacement
-    /// list or the built-ins.
-    #[serde(default)]
-    pub extra_perf_hints: Vec<PerfHint>,
+    pub perf_hints: Option<Vec<PerfCode>>,
     /// Per-lint reporting boundaries. Keys must be registered lint codes.
     #[serde(default)]
     pub lint_scopes: HashMap<String, ReportingScope>,
@@ -98,7 +94,6 @@ impl Default for Config {
             extra_extensions: Vec::new(),
             passive_narration: None,
             perf_hints: None,
-            extra_perf_hints: Vec::new(),
             lint_scopes: HashMap::new(),
             symbol_rules: Vec::new(),
         }

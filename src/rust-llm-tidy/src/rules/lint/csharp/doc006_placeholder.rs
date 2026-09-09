@@ -25,6 +25,7 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
         decl.diagnostic(
             Severity::Warning,
             CODE_DOC_PLACEHOLDER,
+            "placeholder text",
             "doc comment contains placeholder text (TODO/FIXME/TBD).\n\n\
          Why: Placeholders leave readers without an explanation of current behavior.\n\n\
          Suggestions:\n\

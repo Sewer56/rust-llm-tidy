@@ -2,7 +2,6 @@
 
 use crate::output;
 use clap::Parser;
-use rust_llm_tidy::config::ReportingScope;
 use std::path::PathBuf;
 
 /// Command-line arguments for `rust-llm-tidy`, parsed via `clap`.
@@ -29,9 +28,10 @@ pub(crate) struct Cli {
     /// Without paths, discover eligible files recursively from the current directory.
     #[arg(long, value_name = "REF")]
     pub(crate) diff_base: Option<String>,
-    /// Override reporting scopes for all lints.
-    #[arg(long, value_parser = parse_lint_scope, value_name = "all|changed-lines")]
-    pub(crate) lint_scope: Option<ReportingScope>,
+    /// Report all lines for every severity, overriding entry and config scopes.
+    /// Omitted respects configured defaults; does not enable lints or change discovery.
+    #[arg(long)]
+    pub(crate) all_lines: bool,
     /// Validate the config and exit; do not process files.
     #[arg(long)]
     pub(crate) validate: bool,
@@ -62,13 +62,4 @@ pub(crate) struct Cli {
     /// Alias for `--output-mode json`.
     #[arg(long, conflicts_with = "output_mode")]
     pub(crate) json: bool,
-}
-
-/// Parse the CLI spelling without changing configuration's snake-case spelling.
-fn parse_lint_scope(value: &str) -> Result<ReportingScope, String> {
-    match value {
-        "all" => Ok(ReportingScope::All),
-        "changed-lines" => Ok(ReportingScope::ChangedLines),
-        _ => Err("expected all or changed-lines".into()),
-    }
 }

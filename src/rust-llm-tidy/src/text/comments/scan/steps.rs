@@ -21,6 +21,9 @@ impl<'a> Scanner<'a> {
             && (!self.lex.block_markers_alone
                 || (raw[..i].trim().is_empty() && raw[i + close.len()..].trim().is_empty()))
         {
+            if let Some(spans) = &mut self.comment_spans {
+                spans.push(self.block_start..self.line_offset + i + close.len());
+            }
             push_block_line(
                 &raw[self.seg_start..i],
                 self.block_opener,

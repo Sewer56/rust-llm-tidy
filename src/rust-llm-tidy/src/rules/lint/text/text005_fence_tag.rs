@@ -42,6 +42,7 @@ fn fence_diagnostic(fence: &Fence) -> Diagnostic {
     };
 
     Diagnostic {
+        title: Some("untagged fenced code block".into()),
         severity: Severity::Warning,
         code: CODE_FENCE_TAG,
         message: format!(

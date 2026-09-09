@@ -79,6 +79,7 @@ fn check_use<'a>(node: tree_sitter::Node<'a>, source: &str, out: &mut Vec<Diagno
     }
 
     out.push(Diagnostic {
+        title: Some("fn-local `use` without `#[cfg]`".into()),
         severity: Severity::Error,
         code: CODE_MOD002,
         message: indoc::indoc! {"

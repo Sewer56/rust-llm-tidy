@@ -5,14 +5,12 @@ use crate::config::{SymbolRule, compile_symbol_rules};
 use crate::languages::backend_for;
 use rstest::rstest;
 
-#[rstest]
-#[case::literal("symbol: new[]")]
-#[case::regex("regex: 'new\\[\\]'")]
-fn array_hints_should_anchor_to_new_and_preserve_nested_calls(#[case] matcher: &str) {
+#[test]
+fn array_hints_should_anchor_to_new_and_preserve_nested_calls() {
     let source = "class C { void M() { var a = new\n int[Size()]; } }";
     let parsed = backend_for("cs").unwrap().parse(source).unwrap();
-    let yaml = format!("- {matcher}\n  message: array\n- symbol: Size\n  message: callback");
-    let rules: Vec<SymbolRule> = serde_yml::from_str(&yaml).unwrap();
+    let yaml = "- symbol: new[]\n  title: Array\n  message: array\n- symbol: Size\n  title: Callback\n  message: callback";
+    let rules: Vec<SymbolRule> = serde_yml::from_str(yaml).unwrap();
 
     let result = check(&parsed, "cs", &compile_symbol_rules(&rules).unwrap()).unwrap();
 
@@ -48,7 +46,7 @@ fn array_hints_should_apply_custom_shape_and_usage_constraints(
     let source = format!("class C {{ void M() {{ var a = {expression}; }} }}");
     let parsed = backend_for("cs").unwrap().parse(&source).unwrap();
     let yaml = format!(
-        "- symbol: new[]\n  message: custom\n  array_kind: {kind}\n  \
+        "- symbol: new[]\n  title: Array\n  message: custom\n  array_kind: {kind}\n  \
          no_initializer: {no_initializer}\n  zero_arguments: {zero_arguments}"
     );
     let rules: Vec<SymbolRule> = serde_yml::from_str(&yaml).unwrap();
@@ -82,7 +80,7 @@ fn array_hints_should_select_supported_shapes(
     let source = format!("class C {{ void M() {{ var a = {expression}; }} }}");
     let parsed = backend_for("cs").unwrap().parse(&source).unwrap();
     let rules: Vec<SymbolRule> = serde_yml::from_str(
-        "- symbol: new[]\n  array_kind: any\n  extensions: [cS]\n  message: custom",
+        "- symbol: new[]\n  title: Array\n  array_kind: any\n  extensions: [cS]\n  message: custom",
     )
     .unwrap();
     let rules = compile_symbol_rules(&rules).unwrap();
@@ -99,7 +97,9 @@ fn array_hints_should_select_supported_shapes(
 #[case::rust_disabled("fn f() {}", "rs", "extensions: [CS]", 0)]
 #[case::csharp_enabled("class C {}", "Cs", "extensions: [cS]", 1)]
 #[case::both("class C {}", "cs", "extensions: [rs, cs]", 1)]
-#[case::intersection("class C {}", "cs", "extensions: [cs]\n  language: rust", 0)]
+#[case::intersection("class C {}", "cs", "extensions: [cs]\n  languages: [rust]", 0)]
+#[case::both_languages("class C {}", "cs", "languages: [rust, csharp]", 1)]
+#[case::omitted("fn f() {}", "rs", "", 1)]
 fn rules_should_intersect_extensions_for_hints_and_exclusions(
     #[case] source: &str,
     #[case] ext: &str,
@@ -107,7 +107,7 @@ fn rules_should_intersect_extensions_for_hints_and_exclusions(
     #[case] count: usize,
 ) {
     let yaml = format!(
-        "- regex: '.*'\n  target: declaration\n  message: hi\n  {selection}\n\
+        "- regex: '.*'\n  target: declaration\n  title: Declaration\n  message: hi\n  {selection}\n\
          - regex: '.*'\n  target: declaration\n  action: exclude\n  {selection}"
     );
     let rules: Vec<SymbolRule> = serde_yml::from_str(&yaml).unwrap();

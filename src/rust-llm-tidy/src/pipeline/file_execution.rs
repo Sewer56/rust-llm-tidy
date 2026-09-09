@@ -155,9 +155,10 @@ pub(super) fn process_one(
             lint_context,
             index,
         ) {
-            Ok(found) => out
-                .diagnostics
-                .extend(found.into_iter().map(|(_, diagnostic)| diagnostic)),
+            Ok((found, warnings)) => {
+                out.diagnostics.extend(found);
+                out.warnings.extend(warnings);
+            }
             Err(e) => {
                 out.fail(&e);
                 return out;
@@ -187,15 +188,15 @@ pub(super) fn lint_disabled_set(
             .map(|c| c.to_string())
             .chain(disabled.iter().cloned())
             .collect(),
-        // TEXT007 is opt-in: it runs only when the config enables it or
-        // the selection names the code; `lints` alone does not.
+        // Explicit code inclusion overrides the TEXT007 config opt-out;
+        // selecting the whole group respects it.
         _ => {
-            let opted_in = config.is_some_and(CompiledConfig::passive_narration)
+            let narration_enabled = config.is_none_or(CompiledConfig::passive_narration)
                 || enabled
                     .as_ref()
                     .is_some_and(|set| set.contains(check::CODE_PASSIVE_NARRATION));
             let mut codes = disabled.clone();
-            if !opted_in {
+            if !narration_enabled {
                 codes.insert(check::CODE_PASSIVE_NARRATION.to_string());
             }
             codes

@@ -24,7 +24,7 @@
 //! - `text003_sentence_length`: TEXT003 long Python docstring sentences
 //! - `text004_header_opener`: TEXT004 three-sentence markdown openers
 //! - `text006_verbose_synonyms`: TEXT006 wording hints in markdown
-//! - `text007_passive_narration`: TEXT007 narration and passive-voice hints
+//! - `text007_passive_narration`: TEXT007 narration and passive-voice reminders
 //! - `text008_list_density`: TEXT008 list budgets and CLI rule selection
 //!
 //! The shared setup (diagnostic assertion, runners, and fixture/temp
@@ -262,7 +262,7 @@ fn python_fixture_dir() -> PathBuf {
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
 fn run_command(args: &[&str], path: &Path) -> Output {
     let mut cmd = Command::new(binary());
-    cmd.args(["--no-config", "--lint-scope", "all"])
+    cmd.args(["--no-config", "--all-lines"])
         .args(args)
         .arg(path);
     cmd.output()

@@ -1,6 +1,5 @@
 //! Explicit permissions and rule selection for file processing.
 
-use crate::config::ReportingScope;
 use std::path::PathBuf;
 
 /// Select files and processing behavior without enabling side effects by default.
@@ -17,12 +16,18 @@ pub struct RunOptions {
     /// Local Git baseline reference; also grants Git reads on explicit paths.
     /// With no paths, discover eligible files under the current directory.
     pub diff_base: Option<String>,
-    /// Override every lint's reporting scope, including symbol-rule scopes.
-    pub lint_scope: Option<ReportingScope>,
+    /// Report all lines for every severity, overriding entry and lint-code scopes.
+    ///
+    /// False respects entry, config, and severity defaults. Does not enable lints,
+    /// change file discovery, or grant subprocess permissions.
+    pub all_lines: bool,
     /// Permit Cargo subprocesses for Rust project discovery.
     /// Without permission, visibility uses only standalone file facts.
     pub cargo_discovery: bool,
     /// Permit configured subprocesses after processing; ignored during preview.
+    ///
+    /// Matching declaration rules with `exclude_post_process: true` skip the file.
+    /// Edit exclusion alone does not constrain external tools.
     pub post_process: bool,
     /// Rule or operation whitelist overriding configuration when nonempty.
     pub include: Vec<String>,

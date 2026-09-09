@@ -1,11 +1,10 @@
-//! Test written names, independent exclusions, and legacy output.
+//! Test written names and independent exclusions through configured policies.
 
 use super::*;
-use crate::config::PerfHint;
 use crate::config::{SymbolRule, compile_symbol_rules};
 use crate::languages::{csharp, rust};
 use crate::reporting::Severity;
-use crate::rules::lint::{CODE_PERF001, CODE_SYM001, csharp as csharp_rules, rust as rust_rules};
+use crate::rules::lint::CODE_SYM;
 use rstest::rstest;
 
 #[rstest]
@@ -29,6 +28,22 @@ fn declaration_hints_should_match_qualified_paths(
         result.hints[0].diagnostic.item_name.as_deref(),
         Some(symbol)
     );
+}
+
+#[rstest]
+#[case::whole_name("internal::run", 1)]
+#[case::substring("run", 0)]
+#[case::prefix("internal::.*", 2)]
+fn declaration_regex_should_match_only_whole_parsed_names(
+    #[case] pattern: &str,
+    #[case] count: usize,
+) {
+    let source = "mod internal { fn run() {} fn other() {} }";
+    let yaml = format!("- regex: '{pattern}'\n  target: declaration\n  message: reminder");
+
+    let result = observe(source, "rs", &yaml);
+
+    assert_eq!(result.hints.len(), count);
 }
 
 #[rstest]
@@ -167,7 +182,7 @@ fn hints_should_keep_first_match_and_its_scope() {
 
     assert_eq!(result.hints.len(), 1);
     let hint = &result.hints[0];
-    assert_eq!(hint.diagnostic.code, CODE_SYM001);
+    assert_eq!(hint.diagnostic.code, CODE_SYM);
     assert_eq!(hint.diagnostic.severity, Severity::Reminder);
     assert_eq!(hint.diagnostic.message, "first");
     assert_eq!(hint.scope, Some(ReportingScope::All));
@@ -176,14 +191,6 @@ fn hints_should_keep_first_match_and_its_scope() {
 #[rstest]
 #[case::rust_suffix("fn f() { std::vec::Vec::<u8>::new(); }", "rs", "symbol: Vec::new", 1)]
 #[case::rust_component_boundary("fn f() { OtherVec::new(); }", "rs", "symbol: Vec::new", 0)]
-#[case::regex_whole_name("fn f() { std::vec::Vec::<u8>::new(); }", "rs", "regex: 'Vec::new'", 0)]
-#[case::regex_explicit_prefix(
-    "fn f() { std::vec::Vec::<u8>::new(); }",
-    "rs",
-    "regex: '.*::Vec::new'",
-    1
-)]
-#[case::regex_alternation("fn f() { OtherVec::new(); }", "rs", "regex: 'Vec::new|Other'", 0)]
 #[case::rust_method("fn f() { value.to_string(); }", "rs", "symbol: to_string", 1)]
 #[case::rust_generic_method("fn f() { value.collect::<Vec<u8>>(); }", "rs", "symbol: collect", 1)]
 #[case::rust_macro("fn f() { std::format!(\"x\"); }", "rs", "symbol: format!", 1)]
@@ -254,87 +261,17 @@ fn hints_should_respect_language_selection(
     #[case] language: &str,
     #[case] count: usize,
 ) {
-    let yaml = format!("- symbol: run\n  message: reminder\n  language: {language}");
+    let yaml = format!("- symbol: run\n  message: reminder\n  languages: [{language}]");
 
     let result = observe(source, ext, &yaml);
 
     assert_eq!(result.hints.len(), count);
 }
 
-#[rstest]
-#[case::base_first(false, "base")]
-#[case::empty_base(true, "extra")]
-fn legacy_adapter_should_preserve_base_before_extra_order(
-    #[case] empty_base: bool,
-    #[case] expected: &str,
-) {
-    let parsed = rust::parse::parse_source("fn f() { run(); }").unwrap();
-    let base = [PerfHint {
-        pattern: "run".into(),
-        message: "base".into(),
-    }];
-    let extra = [PerfHint {
-        pattern: "run".into(),
-        message: "extra".into(),
-    }];
-    let base = if empty_base { &[][..] } else { &base[..] };
-    let rules = legacy::compile_legacy_hints(SymbolLanguage::Rust, base, &extra);
-
-    let mut old = rust_rules::perf001_allocation_hints::check(&parsed, base, &extra);
-    old[0].severity = Severity::Reminder;
-    let new = check(&parsed, "rs", &rules).unwrap();
-
-    assert_eq!(new.hints.len(), 1);
-    assert_eq!(new.hints[0].diagnostic.message, expected);
-    assert_eq!(new.hints[0].diagnostic.to_string(), old[0].to_string());
-}
-
-#[rstest]
-#[case::rust(
-    "fn f() { std::vec::Vec::<u8>::new(); Vec::new(1); value.to_string(); format!(\"x\"); }",
-    "rs"
-)]
-#[case::csharp(
-    "class C { void F() { new System.Collections.Generic.List<int>(); new List<int>(8); new List<int> { 1 }; value.ToString(); } }",
-    "cs"
-)]
-fn legacy_adapter_should_preserve_rendered_findings(#[case] source: &str, #[case] ext: &str) {
-    let (parsed, hints, mut old) = if ext == "rs" {
-        let parsed = rust::parse::parse_source(source).unwrap();
-        let hints = rust_rules::perf001_allocation_hints::default_hints();
-        let old = rust_rules::perf001_allocation_hints::check(&parsed, hints, &[]);
-        (parsed, hints, old)
-    } else {
-        let parsed = csharp::parse::parse(source).unwrap();
-        let hints = csharp_rules::perf001_allocation_hints::default_hints();
-        let old = csharp_rules::perf001_allocation_hints::check(&parsed, hints, &[]);
-        (parsed, hints, old)
-    };
-    let rules =
-        legacy::compile_legacy_hints(SymbolLanguage::for_extension(ext).unwrap(), hints, &[]);
-    for diagnostic in &mut old {
-        diagnostic.severity = Severity::Reminder;
-    }
-
-    let result = check(&parsed, ext, &rules).unwrap();
-    let new: Vec<_> = result
-        .hints
-        .into_iter()
-        .map(|hint| hint.diagnostic)
-        .collect();
-
-    assert!(!old.is_empty());
-    assert_eq!(new, old);
-    assert_eq!(
-        new.iter().map(ToString::to_string).collect::<Vec<_>>(),
-        old.iter().map(ToString::to_string).collect::<Vec<_>>()
-    );
-    assert!(new.iter().all(|diagnostic| diagnostic.code == CODE_PERF001));
-}
-
 /// Parse a hermetic source fixture and apply YAML policies through the engine.
 fn observe(source: &str, ext: &str, yaml: &str) -> SymbolObservations {
-    let rules: Vec<SymbolRule> = serde_yml::from_str(yaml).unwrap();
+    let yaml = yaml.replace("  message:", "  title: Review API\n  message:");
+    let rules: Vec<SymbolRule> = serde_yml::from_str(&yaml).unwrap();
     let rules = compile_symbol_rules(&rules).unwrap();
     let parsed = match ext {
         "rs" => rust::parse::parse_source(source).unwrap(),

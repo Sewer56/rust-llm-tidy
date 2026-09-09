@@ -104,6 +104,7 @@ fn synonym_diagnostic(line: &StrippedLine, before: &str, after: &str) -> Diagnos
         "Use the alternative only if it preserves technical meaning, uncertainty, and required wording.".to_string(),
     ];
     Diagnostic {
+        title: Some("verbose synonym".into()),
         severity: Severity::Hint,
         code: CODE_VERBOSE_SYNONYMS,
         message: bulleted(

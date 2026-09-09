@@ -4,7 +4,7 @@
 //! human-readable message, and a location. The location is a 1-based line
 //! number plus the item kind and name that produced the finding.
 
-use crate::rules::registry::title_for_code;
+use crate::rules::registry::CODE_SYM;
 use core::fmt;
 use serde::Deserialize;
 
@@ -15,6 +15,11 @@ pub struct Diagnostic {
     pub severity: Severity,
     /// Stable rule code, e.g. `"DOC001"`.
     pub code: &'static str,
+    /// Producer-owned title; absent falls back to `code` in [`Self::title`].
+    ///
+    /// Plaintext prefixes only `SYM` messages with this title; other
+    /// diagnostics already carry a complete finding summary in `message`.
+    pub title: Option<Box<str>>,
     /// Human-readable description of the problem.
     pub message: String,
     /// 1-based line number where the item starts.
@@ -53,12 +58,9 @@ pub enum Severity {
 }
 
 impl Diagnostic {
-    /// Friendly title for this finding's rule code, e.g.
-    /// `"missing documentation"` for `DOC001`.
-    ///
-    /// Falls back to the raw code when the code has no title.
-    pub fn title(&self) -> &'static str {
-        title_for_code(self.code).unwrap_or(self.code)
+    /// Producer-owned title, or the raw code when no title was supplied.
+    pub fn title(&self) -> &str {
+        self.title.as_deref().unwrap_or(self.code)
     }
 }
 
@@ -70,10 +72,14 @@ impl fmt::Display for Diagnostic {
             Severity::Hint => "hint",
             Severity::Reminder => "reminder",
         };
+        let title = self.title.as_deref().filter(|_| self.code == CODE_SYM);
+        let separator = if title.is_some() { ": " } else { "" };
+        let title = title.unwrap_or_default();
+
         match &self.item_name {
             Some(name) => write!(
                 f,
-                "{line}: {sev}[{code}]: {msg} ({kind} `{name}`)",
+                "{line}: {sev}[{code}]: {title}{separator}{msg} ({kind} `{name}`)",
                 line = self.line,
                 sev = sev,
                 code = self.code,
@@ -83,7 +89,7 @@ impl fmt::Display for Diagnostic {
             ),
             None => write!(
                 f,
-                "{line}: {sev}[{code}]: {msg} ({kind})",
+                "{line}: {sev}[{code}]: {title}{separator}{msg} ({kind})",
                 line = self.line,
                 sev = sev,
                 code = self.code,
@@ -102,6 +108,7 @@ mod tests {
     /// Minimal finding carrying `code`; only `title()` reads the fields.
     fn diagnostic(code: &'static str) -> Diagnostic {
         Diagnostic {
+            title: None,
             severity: Severity::Warning,
             code,
             message: String::new(),
@@ -111,19 +118,19 @@ mod tests {
         }
     }
 
-    /// A known code resolves to its friendly title.
-    #[test]
-    fn title_returns_the_friendly_title_for_a_known_code() {
-        assert_eq!(
-            diagnostic(CODE_MISSING_DOCS).title(),
-            "missing documentation"
-        );
+    #[rstest::rstest]
+    #[case::known(CODE_MISSING_DOCS)]
+    #[case::unknown("DOC999")]
+    fn title_should_return_raw_code_when_untitled(#[case] code: &'static str) {
+        assert_eq!(diagnostic(code).title(), code);
     }
 
-    /// A code with no title entry resolves to the raw code.
     #[test]
-    fn title_falls_back_to_the_raw_code_when_untitled() {
-        assert_eq!(diagnostic("DOC999").title(), "DOC999");
+    fn title_should_return_producer_title() {
+        let mut finding = diagnostic(CODE_MISSING_DOCS);
+        finding.title = Some("producer title".into());
+
+        assert_eq!(finding.title(), "producer title");
     }
 
     /// A hint-severity finding renders with the `hint` severity token in
@@ -131,6 +138,7 @@ mod tests {
     #[test]
     fn display_renders_hint_severity() {
         let finding = Diagnostic {
+            title: None,
             severity: Severity::Hint,
             code: "DOC999",
             message: "consider pre-allocating the buffer".to_string(),

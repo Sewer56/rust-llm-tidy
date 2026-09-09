@@ -8,13 +8,11 @@
 //! Every message follows the shared diagnostic shape: finding, `Why:`,
 //! `Suggestions:`.
 
-use crate::config::PerfHint;
-use std::borrow::Cow;
+use crate::config::{CompiledSymbolRule, SymbolLanguage};
 
-/// Built-in C# reminders; a present `perf_hints` config replaces this
-/// list.
-pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
-    reminder(
+/// Constructor names and guidance, in first-match order.
+const REMINDERS: &[(&str, &str)] = &[
+    (
         "List::new",
         concat!(
             "`new List<T>()` starts with zero capacity.\n\n",
@@ -24,7 +22,7 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
             "- Keep the parameterless constructor when the final size is unknown; a wrong guess wastes memory."
         ),
     ),
-    reminder(
+    (
         "Dictionary::new",
         concat!(
             "`new Dictionary<K, V>()` starts with zero capacity.\n\n",
@@ -34,7 +32,7 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
             "- Keep the parameterless constructor when the final size is unknown; a wrong guess wastes memory."
         ),
     ),
-    reminder(
+    (
         "HashSet::new",
         concat!(
             "`new HashSet<T>()` starts with zero capacity.\n\n",
@@ -44,7 +42,7 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
             "- Keep the parameterless constructor when the final size is unknown; a wrong guess wastes memory."
         ),
     ),
-    reminder(
+    (
         "Queue::new",
         concat!(
             "`new Queue<T>()` starts without a chosen capacity.\n\n",
@@ -54,7 +52,7 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
             "- Keep the parameterless constructor when the final size is unknown; a wrong guess wastes memory."
         ),
     ),
-    reminder(
+    (
         "Stack::new",
         concat!(
             "`new Stack<T>()` starts without a chosen capacity.\n\n",
@@ -64,7 +62,7 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
             "- Keep the parameterless constructor when the final size is unknown; a wrong guess wastes memory."
         ),
     ),
-    reminder(
+    (
         "PriorityQueue::new",
         concat!(
             "`new PriorityQueue<TElement, TPriority>()` starts with zero capacity.\n\n",
@@ -74,7 +72,7 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
             "- Keep the parameterless constructor when the final size is unknown; a wrong guess wastes memory."
         ),
     ),
-    reminder(
+    (
         "SortedList::new",
         concat!(
             "`new SortedList<K, V>()` starts with zero capacity.\n\n",
@@ -84,7 +82,7 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
             "- Keep the parameterless constructor when the final size is unknown; a wrong guess wastes memory."
         ),
     ),
-    reminder(
+    (
         "ArrayList::new",
         concat!(
             "`new ArrayList()` starts with zero capacity.\n\n",
@@ -94,7 +92,7 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
             "- Keep the parameterless constructor when the final size is unknown; a wrong guess wastes memory."
         ),
     ),
-    reminder(
+    (
         "Hashtable::new",
         concat!(
             "`new Hashtable()` starts with zero capacity.\n\n",
@@ -104,7 +102,7 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
             "- Keep the parameterless constructor when the final size is unknown; a wrong guess wastes memory."
         ),
     ),
-    reminder(
+    (
         "StringBuilder::new",
         concat!(
             "`new StringBuilder()` starts without a chosen capacity.\n\n",
@@ -116,10 +114,10 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
     ),
 ];
 
-/// One reminder entry with borrowed strings.
-const fn reminder(pattern: &'static str, message: &'static str) -> PerfHint {
-    PerfHint {
-        pattern: Cow::Borrowed(pattern),
-        message: Cow::Borrowed(message),
-    }
+/// Built-in C# reminders enabled by the PERF001 family.
+pub(super) fn reminders() -> Vec<CompiledSymbolRule> {
+    REMINDERS
+        .iter()
+        .map(|(symbol, message)| super::capacity_reminder(SymbolLanguage::Csharp, symbol, message))
+        .collect()
 }

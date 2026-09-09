@@ -6,6 +6,7 @@ use crate::input::changed_lines::{ChangedLineSnapshot, ChangedLines};
 use crate::languages::backend_for;
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::symbols::SymbolObservations;
+use core::iter::once;
 use rstest::rstest;
 use std::collections::HashSet;
 use std::fs;
@@ -22,19 +23,19 @@ fn filter_should_admit_only_the_reported_api_line(
     let source = "fn f() {\n    Vec\n        ::new(\n        );\n}\n";
     let path = Path::new("input.rs");
     let config = compile(
-        "symbol_rules: [{symbol: 'Vec::new', message: reminder}]",
+        "perf_hints: []\nsymbol_rules: [{symbol: 'Vec::new', title: Capacity, message: reminder}]",
         &[],
     );
-    let mut context = LintContext::new(Some(&config), None);
+    let mut context = LintContext::new(Some(&config), false);
     context.snapshots.snapshots.insert(
         path.into(),
         Some(ChangedLineSnapshot {
             source: source.into(),
-            changed: ChangedLines::new([changed_line..=changed_line]),
+            changed: ChangedLines::new(once(changed_line..=changed_line)),
         }),
     );
     let parsed = backend_for("rs").unwrap().parse(source).unwrap();
-    let disabled = HashSet::from(["PERF001".to_string()]);
+    let disabled = HashSet::new();
     let observations = context.observe(&parsed, "rs", &disabled).unwrap();
     let mut diagnostics = Vec::new();
 
@@ -55,8 +56,9 @@ fn filter_should_apply_severity_defaults_without_a_snapshot(
     #[case] severity: Severity,
     #[case] reported: bool,
 ) {
-    let context = LintContext::new(None, None);
+    let context = LintContext::new(None, false);
     let mut diagnostics = vec![Diagnostic {
+        title: None,
         severity,
         code: "DOC001",
         message: "finding".into(),
@@ -77,44 +79,50 @@ fn filter_should_apply_severity_defaults_without_a_snapshot(
 }
 
 #[rstest]
-#[case::severity_default("{}", None, None, ReportingScope::ChangedLines)]
-#[case::code_override("lint_scopes: {SYM001: all}", None, None, ReportingScope::All)]
+#[case::severity_default("{}", false, None, ReportingScope::ChangedLines)]
+#[case::code_override("lint_scopes: {SYM: all}", false, None, ReportingScope::All)]
 #[case::entry_override(
-    "lint_scopes: {SYM001: all}",
-    None,
+    "lint_scopes: {SYM: all}",
+    false,
     Some(ReportingScope::ChangedLines),
     ReportingScope::ChangedLines
 )]
 #[case::run_override(
-    "lint_scopes: {SYM001: changed_lines}",
-    Some(ReportingScope::All),
+    "lint_scopes: {SYM: changed_lines}",
+    true,
     Some(ReportingScope::ChangedLines),
     ReportingScope::All
 )]
 fn scope_should_prioritize_run_then_entry_then_code_then_severity(
     #[case] yaml: &str,
-    #[case] run: Option<ReportingScope>,
+    #[case] all_lines: bool,
     #[case] entry: Option<ReportingScope>,
     #[case] expected: ReportingScope,
 ) {
     let config = compile(yaml, &[]);
-    let context = LintContext::new(Some(&config), run);
+    let context = LintContext::new(Some(&config), all_lines);
 
-    let scope = context.scope_for("SYM001", Severity::Reminder, entry);
+    let scope = context.scope_for("SYM", Severity::Reminder, entry);
 
     assert_eq!(scope, expected);
 }
 
 #[rstest]
-#[case::rust("rs", "{}", &[], true)]
-#[case::csharp("cs", "{}", &[], true)]
-#[case::text("md", "{}", &[], false)]
-#[case::python("py", "{}", &[], false)]
-#[case::disabled("rs", "{}", &["PERF001"], false)]
-#[case::empty_lists("rs", "perf_hints: []", &[], false)]
-#[case::other_language("rs", "perf_hints: []\nsymbol_rules: [{language: csharp, symbol: Run, message: reminder}]", &[], false)]
-#[case::warning_symbol("rs", "perf_hints: []\nsymbol_rules: [{symbol: run, message: warning, severity: warning}]", &[], false)]
-#[case::text_override("md", "lint_scopes: {TEXT001: changed_lines}", &[], true)]
+#[case::rust("rs", "{}", &["TEXT007"], true)]
+#[case::csharp("cs", "{}", &["TEXT007"], true)]
+#[case::text("md", "{}", &["TEXT007"], false)]
+#[case::python("py", "{}", &["TEXT007"], false)]
+#[case::disabled("rs", "{}", &["SYM", "TEXT007"], false)]
+#[case::empty_lists("rs", "perf_hints: []", &["TEXT007"], false)]
+#[case::other_language("rs", "perf_hints: []\nsymbol_rules: [{languages: [csharp], symbol: Run, title: API, message: reminder}]", &["TEXT007"], false)]
+#[case::warning_symbol("rs", "perf_hints: []\nsymbol_rules: [{symbol: run, title: API, message: warning, severity: warning}]", &["TEXT007"], false)]
+#[case::text_override("md", "lint_scopes: {TEXT001: changed_lines}", &["TEXT007"], true)]
+#[case::narration_markdown("md", "{}", &[], true)]
+#[case::narration_python("py", "{}", &[], true)]
+#[case::narration_rust("rs", "{}", &["SYM"], true)]
+#[case::narration_config_disabled("md", "passive_narration: {enable: false}", &[], false)]
+#[case::narration_all_lines("md", "lint_scopes: {TEXT007: all}", &[], false)]
+#[case::narration_unsupported("unknown", "{}", &[], false)]
 fn snapshots_should_require_an_enabled_supported_scoped_lint(
     #[case] ext: &str,
     #[case] yaml: &str,
@@ -122,8 +130,9 @@ fn snapshots_should_require_an_enabled_supported_scoped_lint(
     #[case] needed: bool,
 ) {
     let config = compile(yaml, &[]);
-    let context = LintContext::new(Some(&config), None);
+    let context = LintContext::new(Some(&config), false);
     let disabled = disabled.iter().map(|code| (*code).to_owned()).collect();
+    let disabled = super::file_execution::lint_disabled_set(&None, &disabled, Some(&config));
 
     let actual = context.needs_snapshot(ext, &disabled);
 

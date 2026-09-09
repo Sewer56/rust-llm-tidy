@@ -50,6 +50,7 @@ fn line_length_diagnostic(line: &StrippedLine, len: usize) -> Diagnostic {
         "Borders are ignored.".to_string(),
     ];
     Diagnostic {
+        title: Some("long line".into()),
         severity: Severity::Warning,
         code: CODE_LINE_LENGTH,
         message: bulleted(

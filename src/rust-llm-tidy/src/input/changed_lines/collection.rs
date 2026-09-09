@@ -1,4 +1,8 @@
-//! Explicit input-file snapshot collection grouped by repository.
+//! Capture source and changed-line eligibility for explicit input files.
+//!
+//! Cache repository discovery by directory and batch baseline reads by
+//! repository. Enforce path, byte, and line limits before retaining snapshots;
+//! preserve caller paths and warn when implicit baselines are unavailable.
 
 use super::git_command::{command, output, path};
 use super::{

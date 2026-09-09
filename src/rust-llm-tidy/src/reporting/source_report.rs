@@ -6,6 +6,8 @@ use std::borrow::Cow;
 /// Standalone processing output, borrowing the original source when unchanged.
 #[derive(Debug)]
 pub struct SourceReport<'a> {
+    /// Skipped checks whose required source boundaries could not be identified.
+    pub warnings: Vec<String>,
     /// Final source after enabled transformations.
     pub source: Cow<'a, str>,
     /// Changes in transformation order; line anchors refer to each pass's input.

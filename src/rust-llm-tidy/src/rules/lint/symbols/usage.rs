@@ -4,7 +4,7 @@ use crate::config::{ArrayKind, SymbolLanguage};
 use core::ops::RangeInclusive;
 use tree_sitter::Node;
 
-/// One invocation's normalized name and legacy diagnostic spelling.
+/// One invocation's normalized name, written spelling, and argument syntax.
 pub(super) struct Usage<'a> {
     pub(super) path: String,
     pub(super) array_kind: Option<ArrayKind>,
@@ -12,8 +12,8 @@ pub(super) struct Usage<'a> {
     pub(super) zero_arguments: bool,
     pub(super) no_initializer: bool,
     pub(super) kind: &'static str,
-    pub(super) legacy_name: &'a str,
-    pub(super) legacy_zero_arguments: bool,
+    pub(super) written_name: &'a str,
+    pub(super) empty_argument_list: bool,
 }
 
 /// Recognize one invocation; unrelated syntax produces no occurrence.
@@ -55,7 +55,7 @@ pub(super) fn extract<'a>(
         path.push_str("::new");
     }
 
-    let legacy_name = legacy_name(node, name, source, language, kind);
+    let written_name = written_name(node, name, source, language, kind);
     let zero_arguments = node.child_by_field_name("arguments").is_some_and(|args| {
         let mut cursor = args.walk();
         !args
@@ -69,13 +69,10 @@ pub(super) fn extract<'a>(
         zero_arguments,
         no_initializer: node.child_by_field_name("initializer").is_none(),
         kind,
-        legacy_name,
-        legacy_zero_arguments: if kind == "macro" {
-            true
-        } else {
-            node.child_by_field_name("arguments")
-                .is_some_and(|args| args.named_child_count() == 0)
-        },
+        written_name,
+        empty_argument_list: node
+            .child_by_field_name("arguments")
+            .is_some_and(|args| args.named_child_count() == 0),
     })
 }
 
@@ -117,13 +114,13 @@ fn array_creation(node: Node<'_>) -> Usage<'static> {
         zero_arguments: true,
         no_initializer,
         kind: "array creation",
-        legacy_name: "new[]",
-        legacy_zero_arguments: true,
+        written_name: "new[]",
+        empty_argument_list: true,
     }
 }
 
-/// Retain the old PERF001 spelling even where SYM001 normalizes generics.
-fn legacy_name<'a>(
+/// Preserve PERF001's written callee or unqualified created type in diagnostics.
+fn written_name<'a>(
     node: Node<'_>,
     name: Node<'_>,
     source: &'a str,

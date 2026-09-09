@@ -3,10 +3,6 @@
 //!
 //! One module per rule, named by lint code.
 //!
-//! [`perf001_allocation_hints`] is file-level instead: it needs the
-//! configured hint list, which never reaches this walk, so the pipeline
-//! runs it from `check_file`.
-//!
 //! [`run`] walks the compilation unit and every declaration list in
 //! document order, collecting one [`Declaration`] fact set per
 //! declaration.
@@ -69,7 +65,6 @@ mod doc004_missing_param_tags;
 mod doc005_undocumented_param;
 mod doc006_placeholder;
 mod mod003_qualified_path;
-pub(crate) mod perf001_allocation_hints;
 mod test001_test_naming;
 
 /// Kinds whose non-private declarations need doc comments.
@@ -91,8 +86,15 @@ const DOCUMENTABLE: &[ItemKind] = &[
 impl Declaration<'_> {
     /// One diagnostic stamped with this declaration's line, kind, and
     /// name.
-    fn diagnostic(&self, severity: Severity, code: &'static str, message: String) -> Diagnostic {
+    fn diagnostic(
+        &self,
+        severity: Severity,
+        code: &'static str,
+        title: &str,
+        message: String,
+    ) -> Diagnostic {
         Diagnostic {
+            title: Some(title.into()),
             severity,
             code,
             message,

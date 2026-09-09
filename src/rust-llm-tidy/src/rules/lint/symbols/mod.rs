@@ -1,7 +1,8 @@
 //! Match syntax-only symbol policies and return hints separately from exclusions.
 //!
 //! Literal names match trailing `::` components; regexes match whole written
-//! paths. Rust methods expose their method name, not the receiver's type.
+//! declaration paths. Usage regexes search original text in selected comment
+//! regions. Rust methods expose their method name, not the receiver's type.
 //!
 //! C# invocation receivers retain written qualification where it is a name.
 //! Imports, aliases, overloads, inferred types, and macro expansions are not
@@ -19,16 +20,22 @@ use usage::Usage;
 #[cfg(test)]
 mod array_tests;
 pub(crate) mod builtins;
-pub(crate) mod legacy;
 #[cfg(test)]
 mod tests;
+pub(crate) mod text_regex;
+#[cfg(test)]
+mod text_regex_tests;
 mod usage;
 
-/// Independent outputs: callers apply exclusions even when SYM001 is disabled.
+/// Independent outputs: callers apply exclusions even when SYM is disabled.
 #[derive(Debug, Default)]
 pub(crate) struct SymbolObservations {
+    pub(crate) warnings: Vec<String>,
     pub(crate) hints: Vec<HintObservation>,
+    /// Edit protection, independent of lint suppression.
     pub(crate) excluded_ranges: Vec<Range<usize>>,
+    /// Declaration byte ranges paired with registry-ordered lint-code masks.
+    pub(crate) lint_exclusions: Vec<(Range<usize>, u32)>,
 }
 
 /// One hint and its reporting boundary, without changing `Diagnostic`.
@@ -55,13 +62,81 @@ pub(crate) fn check(
     ext: &str,
     rules: &[CompiledSymbolRule],
 ) -> anyhow::Result<SymbolObservations> {
+    check_enabled(parsed, ext, rules, true)
+}
+
+/// Extract only edit-excluded declarations, without scanning invocation usages.
+///
+/// # Errors
+/// Returns an error when applicable exclusions encounter a syntax-error tree.
+pub(crate) fn excluded_ranges(
+    parsed: &ParseResult,
+    ext: &str,
+    rules: &[CompiledSymbolRule],
+) -> anyhow::Result<Vec<Range<usize>>> {
+    let Some(language) = SymbolLanguage::for_extension(ext) else {
+        return Ok(Vec::new());
+    };
+    let exclusions: Vec<_> = rules
+        .iter()
+        .filter(|rule| {
+            rule.action == SymbolAction::Exclude && rule.exclude_edits && rule.applies_to(language)
+        })
+        .collect();
+    if exclusions.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    Ok(declarations(parsed, ext)?
+        .into_iter()
+        .filter(|declaration| {
+            exclusions
+                .iter()
+                .any(|rule| matches_name(&rule.matcher, &declaration.path))
+        })
+        .map(|declaration| declaration.bytes)
+        .collect())
+}
+
+/// Check file-wide post-processing opt-outs without applying edit exclusions.
+///
+/// The caller supplies only opt-outs applicable to this file's language.
+///
+/// # Errors
+/// Returns an error when applicable opt-outs encounter syntax errors or missing
+/// tokens, even if no complete declaration matches.
+pub(crate) fn excludes_post_process(
+    parsed: &ParseResult,
+    ext: &str,
+    rules: &[&CompiledSymbolRule],
+) -> anyhow::Result<bool> {
+    Ok(declarations(parsed, ext)?.iter().any(|declaration| {
+        rules
+            .iter()
+            .any(|rule| matches_name(&rule.matcher, &declaration.path))
+    }))
+}
+
+/// Observe exclusions without scanning hints when SYM is disabled.
+///
+/// # Errors
+/// Returns an error when applicable declaration policies encounter syntax errors
+/// or missing tokens.
+pub(crate) fn check_enabled(
+    parsed: &ParseResult,
+    ext: &str,
+    rules: &[CompiledSymbolRule],
+    hints_enabled: bool,
+) -> anyhow::Result<SymbolObservations> {
     let mut result = SymbolObservations::default();
     let Some(language) = SymbolLanguage::for_extension(ext) else {
         return Ok(result);
     };
     let applicable: Vec<_> = rules
         .iter()
-        .filter(|rule| rule.applies_to(language))
+        .filter(|rule| {
+            rule.applies_to(language) && (hints_enabled || rule.action == SymbolAction::Exclude)
+        })
         .collect();
     if applicable.is_empty() {
         return Ok(result);
@@ -78,7 +153,18 @@ pub(crate) fn check(
                         && matches_name(&rule.matcher, &declaration.path)
                 })
             };
-            if matching().any(|rule| rule.action == SymbolAction::Exclude) {
+            let mut lint_mask = 0;
+            let mut exclude_edits = false;
+            for rule in matching().filter(|rule| rule.action == SymbolAction::Exclude) {
+                lint_mask |= rule.exclude_lints;
+                exclude_edits |= rule.exclude_edits;
+            }
+            if lint_mask != 0 {
+                result
+                    .lint_exclusions
+                    .push((declaration.bytes.clone(), lint_mask));
+            }
+            if exclude_edits {
                 result.excluded_ranges.push(declaration.bytes);
             }
             if let Some(rule) = matching().find(|rule| rule.action == SymbolAction::Hint) {
@@ -105,8 +191,8 @@ pub(crate) fn check(
                     .find(|rule| matches_usage(rule, &usage, language))
             {
                 let mut hint = observation(rule, &usage.path, usage.kind, usage.name_lines.clone());
-                if matches!(rule.matcher, SymbolMatcher::Legacy { .. }) {
-                    hint.diagnostic.item_name = Some(usage.legacy_name.to_owned());
+                if rule.capacity_reminder {
+                    hint.diagnostic.item_name = Some(usage.written_name.to_owned());
                 }
                 result.hints.push(hint);
             }
@@ -124,45 +210,8 @@ pub(crate) fn check(
     Ok(result)
 }
 
-/// Extract only declaration exclusions, without scanning invocation usages.
-///
-/// # Errors
-/// Returns an error when applicable exclusions encounter a syntax-error tree.
-pub(crate) fn excluded_ranges(
-    parsed: &ParseResult,
-    ext: &str,
-    rules: &[CompiledSymbolRule],
-) -> anyhow::Result<Vec<Range<usize>>> {
-    let Some(language) = SymbolLanguage::for_extension(ext) else {
-        return Ok(Vec::new());
-    };
-    let exclusions: Vec<_> = rules
-        .iter()
-        .filter(|rule| rule.action == SymbolAction::Exclude && rule.applies_to(language))
-        .collect();
-    if exclusions.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    Ok(declarations(parsed, ext)?
-        .into_iter()
-        .filter(|declaration| {
-            exclusions
-                .iter()
-                .any(|rule| matches_name(&rule.matcher, &declaration.path))
-        })
-        .map(|declaration| declaration.bytes)
-        .collect())
-}
-
 /// Apply explicit invocation constraints before comparing names.
 fn matches_usage(rule: &CompiledSymbolRule, usage: &Usage<'_>, language: SymbolLanguage) -> bool {
-    let zero_arguments = if matches!(rule.matcher, SymbolMatcher::Legacy { .. }) {
-        usage.legacy_zero_arguments
-    } else {
-        usage.zero_arguments
-    };
-
     if rule.target != SymbolTarget::Usage
         || rule.action != SymbolAction::Hint
         || rule.array_kind.is_some_and(|kind| match kind {
@@ -171,7 +220,7 @@ fn matches_usage(rule: &CompiledSymbolRule, usage: &Usage<'_>, language: SymbolL
         })
         || rule
             .zero_arguments
-            .is_some_and(|value| value != zero_arguments)
+            .is_some_and(|value| value != usage.zero_arguments)
         || rule
             .no_initializer
             .is_some_and(|value| value != usage.no_initializer)
@@ -179,13 +228,19 @@ fn matches_usage(rule: &CompiledSymbolRule, usage: &Usage<'_>, language: SymbolL
         return false;
     }
 
-    match &rule.matcher {
-        SymbolMatcher::Legacy {
-            pattern,
-            components,
-        } => legacy::matches(pattern, components, usage, language),
-        matcher => matches_name(matcher, &usage.path),
+    // PERF001 requires an empty argument list. Even comments make it nonempty.
+    if rule.capacity_reminder
+        && (!usage.empty_argument_list
+            || usage.kind
+                != match language {
+                    SymbolLanguage::Rust => "call",
+                    SymbolLanguage::Csharp => "creation",
+                })
+    {
+        return false;
     }
+
+    matches_name(&rule.matcher, &usage.path)
 }
 
 /// Render the selected message while preserving its per-rule scope override.
@@ -197,6 +252,7 @@ fn observation(
 ) -> HintObservation {
     HintObservation {
         diagnostic: Diagnostic {
+            title: rule.title.clone(),
             severity: rule.severity,
             code: rule.code,
             message: rule.message.as_deref().unwrap_or_default().to_owned(),
@@ -218,6 +274,5 @@ fn matches_name(matcher: &SymbolMatcher, name: &str) -> bool {
                     .is_some_and(|prefix| prefix.ends_with("::"))
         }
         SymbolMatcher::Regex(regex) => regex.is_match(name),
-        SymbolMatcher::Legacy { .. } => false,
     }
 }

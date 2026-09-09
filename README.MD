@@ -60,8 +60,8 @@ rust-llm-tidy --validate
 # Emit the lint findings as a single JSON array on stdout
 rust-llm-tidy --output-mode json src/main.rs
 
-# Audit reminders on existing code, not only changed lines
-rust-llm-tidy --include lints --lint-scope all src
+# Report every severity on all lines, overriding configured scopes
+rust-llm-tidy --include lints --all-lines src
 
 # Report scoped findings against the merge-base with a local branch
 rust-llm-tidy --include lints --diff-base main src
@@ -72,11 +72,11 @@ execution. Selection flags `--include <OP>`, `--exclude <OP>`, and
 `--extension <EXT>` are repeatable.
 
 Reporting flags: `--output-mode text|json` (`--json` for short),
-`--lint-scope all|changed-lines`, and `--diff-base <REF>`.
+`--all-lines`, and `--diff-base <REF>`.
 
 Reminders default to changed lines; hints, warnings, and errors default to
 all lines. `RUST_LLM_TIDY_DIFF_BASE` supplies a baseline when `--diff-base`
-is absent. See [reporting scope] for selection, precedence, and limitations.
+is absent. See [reporting scope] for baseline comparison and scope precedence.
 
 #### Operations
 
@@ -141,8 +141,8 @@ Fields:
 - `line` - 1-based reported line; `null` when the record has no specific
   line (e.g. link/table fixes)
 - `item_name` - item name, `null` when unnamed
-- `title` - friendly per-code title for lint findings, `null` for change
-  records
+- `title` - producer-owned title (raw code when absent) for lint findings,
+  `null` for change records
 - `path`, `code`, `message`, `item_kind` - as in plaintext
 
 In JSON mode the per-line plaintext diagnostics are not printed to stderr.
@@ -153,15 +153,16 @@ See [change reporting] for the shared record format.
 
 #### Feature documentation
 
-| Feature              | Page                 |
-| -------------------- | -------------------- |
-| Reorder              | [docs/reorder.md]    |
-| Visibility narrowing | [docs/vis.md]        |
-| Table alignment      | [docs/tables.md]     |
-| Fence delimiters     | [docs/fences.md]     |
-| Link hoisting        | [docs/links.md]      |
-| Lints                | [docs/lints.md]      |
-| Text lints           | [docs/text-lints.md] |
+| Feature              | Page                   |
+| -------------------- | ---------------------- |
+| Reorder              | [docs/reorder.md]      |
+| Visibility narrowing | [docs/vis.md]          |
+| Table alignment      | [docs/tables.md]       |
+| Fence delimiters     | [docs/fences.md]       |
+| Link hoisting        | [docs/links.md]        |
+| Lints                | [docs/lints.md]        |
+| Text lints           | [docs/text-lints.md]   |
+| Symbol rules         | [docs/symbol-rules.md] |
 
 ### Configuration
 
@@ -310,6 +311,7 @@ Licensed under [Apache 2.0].
 [docs/links.md]: ./docs/links.md
 [docs/lints.md]: ./docs/lints.md
 [docs/text-lints.md]: ./docs/text-lints.md
+[docs/symbol-rules.md]: ./docs/symbol-rules.md
 [`.rust-llm-tidy.example.yml`]: ./.rust-llm-tidy.example.yml
 
 [rust-llm-tidy]: ./src/rust-llm-tidy/README.MD

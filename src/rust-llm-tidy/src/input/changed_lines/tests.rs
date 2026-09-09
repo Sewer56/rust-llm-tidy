@@ -1,4 +1,8 @@
-//! Observable range, remapping, and local Git fixture behavior.
+//! Check Git snapshot collection and conservative line remapping.
+//!
+//! Use private repositories with fixed Git identity, clock, and configuration
+//! to exercise net changes, baselines, renames, and collection limits. Compare
+//! exact eligible ranges after moves, edits, and duplicate-line changes.
 
 use super::*;
 use core::ops::RangeInclusive;

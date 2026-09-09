@@ -13,7 +13,7 @@
 //! - `discovery`: config auto-discovery and pattern anchoring.
 //! - `extensions`: `extensions:`/`extra_extensions:` selection keys.
 //! - `file_exclusions`: license-document file exclusion.
-//! - `passive_narration`: TEXT007 opt-in switch.
+//! - `passive_narration`: TEXT007 enablement and reporting scope.
 //! - `post_process`: `post_process:` gating and exit propagation.
 //! - `validation`: `--validate` acceptance and failure modes.
 

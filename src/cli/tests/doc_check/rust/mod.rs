@@ -20,7 +20,7 @@
 //! - `mod001_module_size`: MOD001 rust-specific counting and selection
 //! - `mod003_qualified_path`: MOD003 fully-qualified path hints
 //! - `len001_method_length`: LEN001 end-to-end acceptance and selection
-//! - `perf001_allocation_hints`: PERF001 API reminders
+//! - `perf001_allocation_hints`: built-in PERF001 capacity reminders via SYM
 //! - `test001_test_naming`: TEST001 discouraged test-function names
 //! - `text001_paragraph_size`: TEXT001 over-budget doc paragraphs
 //! - `text002_line_length`: TEXT002 over-long doc lines
@@ -69,9 +69,8 @@ fn clean_file_no_diagnostics() {
 /// The rs text checks cover line comments plus `/** */` and
 /// `#[doc = "..."]` docs.
 ///
-/// rs dispatch adds nothing and drops nothing. TEXT007 is included
-/// explicitly because the backend composition runs it while the default
-/// `lints` selection keeps the opt-in code off.
+/// rs dispatch adds nothing and drops nothing. All-line reporting includes
+/// TEXT007 reminders, matching the unfiltered backend composition.
 #[test]
 fn rs_diagnostics_match_direct_check_composition() {
     for name in [

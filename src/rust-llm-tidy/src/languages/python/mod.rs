@@ -39,6 +39,7 @@ impl LanguageBackend for PythonBackend {
         let mut diagnostics = Vec::new();
         if text_regions::module_doc_missing(parsed) {
             diagnostics.push(Diagnostic {
+                title: Some("module file without top-level docs".into()),
                 severity: Severity::Error,
                 code: CODE_MISSING_MODULE_DOCS,
                 message: indoc::formatdoc! {"

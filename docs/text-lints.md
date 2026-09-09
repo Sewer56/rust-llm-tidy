@@ -388,7 +388,7 @@ Say what the code does, directly:
 
 ### Detection details
 
-- Checks each line; reports at most one hint, preferring passive voice.
+- Checks each line; reports at most one reminder, preferring passive voice.
 - Flags be-verbs followed by past participles, but allows state descriptions
   such as `is required` and `is deprecated`.
 - Flags history wording such as `no longer`, `previously`, and `prior to
@@ -396,7 +396,7 @@ Say what the code does, directly:
 
 By default, allows past-behaviour wording in `CHANGELOG*` or `MIGRATION*`
 basenames at any depth and files under a `releases` directory.
-Matching is case-insensitive; passive voice still produces hints.
+Matching is case-insensitive; passive voice still produces reminders.
 
 Before:
 
@@ -412,21 +412,28 @@ After:
 pub fn scan() {}
 ```
 
-### Opt-in
+### Enablement and reporting scope
 
-TEXT007 is heuristic and prone to false positives, so file processing keeps
-it off unless a config opts in:
+TEXT007 runs by default at Reminder severity on changed lines.
+
+Use `--all-lines` to audit unchanged lines too, or `lint_scopes: {TEXT007: all}`
+to configure that scope. Disable it with:
 
 ```yaml
 passive_narration:
-  enable: true
+  enable: false
 ```
 
-- `enable` omitted or `false`: TEXT007 does not run
-- `enable: true`: report TEXT007 hints
-- `--include TEXT007` runs it regardless; the `lints` group alone keeps
-  it off
-- Pathless library text checks are unaffected and always include it
+- `enable` omitted or `true`: enable TEXT007
+- `enable: false`: disable TEXT007
+- Explicit `TEXT007` inclusion overrides this opt-out, but not exclusions
+- The `lints` group respects the opt-out; inclusion does not override scope
+- Low-level library text checks return unfiltered reminders
+- `tidy_source` has no diff: set `SourceOptions::all_lines` to report reminders
+
+File library calls require `RunOptions::git_changed` or `diff_base` for
+changed-line reporting. Without an available baseline, reminders stay hidden;
+`--all-lines` overrides scope without enabling disabled rules.
 
 ### Release-note suppression
 
@@ -446,8 +453,8 @@ passive_narration:
 ### TEXT007 CLI output
 
 ```text
-$ rust-llm-tidy --no-config --include TEXT007 src/lib.rs
-src/lib.rs:1: hint[TEXT007]: passive construction: `are returned`.
+$ cargo run -p rust-llm-tidy-cli -- --include TEXT007 --all-lines src/lib.rs
+src/lib.rs:1: reminder[TEXT007]: passive construction: `are returned`.
 Why: Passive actions can obscure who does what. Readers usually need current behavior, not implementation history.
 Suggestions:
   - Check the implementation before rewriting; this heuristic can flag valid state descriptions and runtime history.
@@ -458,12 +465,12 @@ Suggestions:
   - Keep implementation history out of comments and API docs, including internals, tests, and helpers. Use release or migration notes only for a genuine public-API compatibility concern. (file)
 ```
 
-`TEXT007` emits hints, grouped after warnings; hints alone exit 0.
+`TEXT007` emits reminders; reminders alone exit 0.
 
 ### Remarks
 
 This heuristic has no grammatical context: expect false positives and
-treat every hint as a review suggestion, never a rewrite.
+treat every reminder as a review suggestion, never a rewrite.
 
 Edge-case exceptions are listed in the rule's module documentation:
 [`text007_passive_narration/mod.rs`][module]

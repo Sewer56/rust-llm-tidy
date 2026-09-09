@@ -22,6 +22,7 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
         decl.diagnostic(
             Severity::Warning,
             CODE_VAGUE_ERRORS,
+            "vague `# Errors` section",
             "`<exception>` doc tags name no concrete exception type (`cref`).\n\n\
          Why: Concrete exception types help readers connect failure conditions to handling code.\n\n\
          Suggestions:\n\

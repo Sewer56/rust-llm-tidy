@@ -444,7 +444,7 @@ mod tests {
         let found = one_line(source);
 
         assert_eq!(found.len(), 1, "{source:?}");
-        assert_eq!(found[0].severity, Severity::Hint);
+        assert_eq!(found[0].severity, Severity::Reminder);
         assert!(is_narration_marker(&found[0]), "{source:?}");
         assert!(
             found[0]

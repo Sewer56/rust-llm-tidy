@@ -26,6 +26,7 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     }
 
     vec![Diagnostic {
+        title: Some("missing `# Errors` section".into()),
         severity: Severity::Error,
         code: CODE_MISSING_ERRORS,
         message: "pub fn returning Result is missing a `# Errors` doc section.\n\n\

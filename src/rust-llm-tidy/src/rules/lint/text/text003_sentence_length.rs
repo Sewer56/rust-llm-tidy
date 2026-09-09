@@ -105,6 +105,7 @@ fn sentence_diagnostic(line: usize, words: usize) -> Diagnostic {
     ];
 
     Diagnostic {
+        title: Some("long sentence".into()),
         severity: Severity::Warning,
         code: CODE_SENTENCE_LENGTH,
         message: format!(

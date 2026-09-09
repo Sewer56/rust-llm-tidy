@@ -8,13 +8,11 @@
 //! Every message follows the shared diagnostic shape: finding, `Why:`,
 //! `Suggestions:`.
 
-use crate::config::PerfHint;
-use std::borrow::Cow;
+use crate::config::{CompiledSymbolRule, SymbolLanguage};
 
-/// Built-in Rust reminders; a present `perf_hints` config replaces this
-/// list.
-pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
-    reminder(
+/// Constructor names and guidance, in first-match order.
+const REMINDERS: &[(&str, &str)] = &[
+    (
         "Vec::new",
         concat!(
             "`Vec::new()` starts with zero capacity.\n\n",
@@ -24,7 +22,7 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
             "- Keep `Vec::new()` when the final size is unknown; a wrong guess wastes memory."
         ),
     ),
-    reminder(
+    (
         "String::new",
         concat!(
             "`String::new()` starts with zero capacity.\n\n",
@@ -34,7 +32,7 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
             "- Keep `String::new()` when the final length is unknown; a wrong guess wastes memory."
         ),
     ),
-    reminder(
+    (
         "VecDeque::new",
         concat!(
             "`VecDeque::new()` starts with zero capacity.\n\n",
@@ -44,7 +42,7 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
             "- Keep `VecDeque::new()` when the final size is unknown; a wrong guess wastes memory."
         ),
     ),
-    reminder(
+    (
         "BinaryHeap::new",
         concat!(
             "`BinaryHeap::new()` starts with zero capacity.\n\n",
@@ -54,7 +52,7 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
             "- Keep `BinaryHeap::new()` when the final size is unknown; a wrong guess wastes memory."
         ),
     ),
-    reminder(
+    (
         "HashMap::new",
         concat!(
             "`HashMap::new()` starts with zero capacity.\n\n",
@@ -64,7 +62,7 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
             "- Keep `HashMap::new()` when the final size is unknown; a wrong guess wastes memory."
         ),
     ),
-    reminder(
+    (
         "HashSet::new",
         concat!(
             "`HashSet::new()` starts with zero capacity.\n\n",
@@ -76,10 +74,10 @@ pub(super) static DEFAULT_HINTS: &[PerfHint] = &[
     ),
 ];
 
-/// One reminder entry with borrowed strings.
-const fn reminder(pattern: &'static str, message: &'static str) -> PerfHint {
-    PerfHint {
-        pattern: Cow::Borrowed(pattern),
-        message: Cow::Borrowed(message),
-    }
+/// Built-in Rust reminders enabled by the PERF001 family.
+pub(super) fn reminders() -> Vec<CompiledSymbolRule> {
+    REMINDERS
+        .iter()
+        .map(|(symbol, message)| super::capacity_reminder(SymbolLanguage::Rust, symbol, message))
+        .collect()
 }

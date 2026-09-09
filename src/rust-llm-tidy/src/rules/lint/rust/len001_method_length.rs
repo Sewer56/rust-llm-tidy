@@ -78,6 +78,7 @@ pub(crate) fn check(parsed: &ParseResult, max_lines: usize) -> Vec<Diagnostic> {
 fn diagnostic(name: Option<&str>, measured: usize, max_lines: usize, line: usize) -> Diagnostic {
     let name = name.unwrap_or("<unnamed>");
     Diagnostic {
+        title: Some("oversized function or method".into()),
         severity: Severity::Hint,
         code: CODE_LEN001,
         message: indoc::formatdoc! {"

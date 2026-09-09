@@ -43,9 +43,8 @@ pub(crate) struct JsonRecord<'a> {
     item_kind: Cow<'a, str>,
     /// Name of the item, or `null` when unnamed.
     item_name: Option<Cow<'a, str>>,
-    /// Friendly title for the finding's rule code, e.g. "missing
-    /// documentation" for `DOC001`; `null` for change records.
-    title: Option<&'static str>,
+    /// Producer-owned title, or the raw code when absent; `null` for changes.
+    title: Option<&'a str>,
 }
 
 /// Selects the CLI's lint-diagnostic output format.
@@ -198,6 +197,51 @@ mod tests {
     use std::path::Path;
 
     #[rstest]
+    #[case::builtin("DOC001", Some("missing documentation"), "missing documentation", "")]
+    #[case::symbol("SYM", Some("API reminder"), "API reminder", "API reminder: ")]
+    #[case::untitled_known("DOC001", None, "DOC001", "")]
+    #[case::untitled_unknown("DOC999", None, "DOC999", "")]
+    #[case::untitled_symbol("SYM", None, "SYM", "")]
+    fn report_should_preserve_message_and_project_producer_title(
+        #[case] code: &'static str,
+        #[case] title: Option<&str>,
+        #[case] expected_title: &str,
+        #[case] prefix: &str,
+    ) {
+        let report = RunReport {
+            files: vec![FileReport {
+                path: "input.rs".into(),
+                diagnostics: vec![Diagnostic {
+                    severity: Severity::Warning,
+                    code,
+                    title: title.map(Into::into),
+                    message: "complete finding summary".into(),
+                    line: 1,
+                    item_kind: "fn".into(),
+                    item_name: None,
+                }],
+                ..FileReport::default()
+            }],
+            ..RunReport::default()
+        };
+        let mut rendered = Vec::new();
+
+        super::write_text(&mut rendered, &report).unwrap();
+        let json = serde_json::to_value(project_lint(
+            Path::new("input.rs"),
+            &report.files[0].diagnostics[0],
+        ))
+        .unwrap();
+
+        assert_eq!(json["title"], expected_title);
+        assert_eq!(json["message"], "complete finding summary");
+        assert_eq!(
+            String::from_utf8(rendered).unwrap(),
+            format!("input.rs:1: warning[{code}]: {prefix}complete finding summary (fn)\n")
+        );
+    }
+
+    #[rstest]
     #[case::error(Severity::Error, "error", 1)]
     #[case::warning(Severity::Warning, "warning", 0)]
     #[case::hint(Severity::Hint, "hint", 0)]
@@ -208,6 +252,7 @@ mod tests {
         #[case] errors: usize,
     ) {
         let diagnostic = |severity, line| Diagnostic {
+            title: None,
             severity,
             code: "DOC999",
             message: "finding".into(),
@@ -250,6 +295,7 @@ mod tests {
             ("hint_and_error", Severity::Error, 1),
         ] {
             let diagnostic = |severity, line| Diagnostic {
+                title: None,
                 severity,
                 code: "DOC999",
                 message: "finding".into(),
@@ -307,6 +353,7 @@ mod tests {
     #[test]
     fn project_lint_serializes_hint_severity() {
         let finding = Diagnostic {
+            title: None,
             severity: Severity::Hint,
             code: "DOC999",
             message: String::from("consider pre-allocating the buffer"),

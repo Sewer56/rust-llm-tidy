@@ -2,13 +2,14 @@
 
 use super::{RunOptions, effective_policy, file_execution};
 use crate::config::{
-    CompiledConfig, CompiledSymbolRule, PerfHint, ReportingScope, SymbolAction, SymbolLanguage,
+    CompiledConfig, CompiledSymbolRule, PerfCode, ReportingScope, SymbolAction, SymbolLanguage,
 };
 use crate::input::changed_lines::{self, ChangedLineCollection, ChangedLines};
 use crate::languages::{backend_for, registry as langs};
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::{self, symbols};
 use crate::source::ParseResult;
+use core::array::from_fn;
 use core::mem;
 use core::ops::Range;
 use std::collections::HashSet;
@@ -17,7 +18,7 @@ use std::path::{Path, PathBuf};
 /// Immutable policy shared by both execution phases and all selected files.
 pub(super) struct LintContext<'a> {
     pub(super) config: Option<&'a CompiledConfig>,
-    pub(super) scope: Option<ReportingScope>,
+    all_lines: bool,
     pub(super) snapshots: ChangedLineCollection,
     rust_hints: Vec<CompiledSymbolRule>,
     csharp_hints: Vec<CompiledSymbolRule>,
@@ -73,14 +74,19 @@ impl<'a> LintContext<'a> {
         Ok(mem::take(&mut self.snapshots.warnings))
     }
 
-    /// Resolve legacy replacement and extra lists once per language and run.
-    pub(super) fn new(config: Option<&'a CompiledConfig>, scope: Option<ReportingScope>) -> Self {
-        let base = config.and_then(CompiledConfig::configured_perf_hints);
-        let extra: &[PerfHint] = config.map_or(&[], CompiledConfig::extra_perf_hints);
-        let compile = |language, defaults| {
-            let mut rules =
-                symbols::legacy::compile_legacy_hints(language, base.unwrap_or(defaults), extra);
-            if language == SymbolLanguage::Csharp {
+    /// Compile selected built-in families once per language and run.
+    pub(super) fn new(config: Option<&'a CompiledConfig>, all_lines: bool) -> Self {
+        let selected = config.map_or(PerfCode::ALL, CompiledConfig::perf_hints);
+        let compile = |language| {
+            let include_array = language == SymbolLanguage::Csharp
+                && selected.contains(&PerfCode::ArrayInitialization);
+            let mut rules = if selected.contains(&PerfCode::Capacity) {
+                symbols::builtins::capacity_reminders(language)
+            } else {
+                Vec::with_capacity(usize::from(include_array))
+            };
+
+            if include_array {
                 rules.push(symbols::builtins::array_reminder());
             }
             rules
@@ -88,33 +94,28 @@ impl<'a> LintContext<'a> {
 
         Self {
             config,
-            scope,
+            all_lines,
             snapshots: ChangedLineCollection::default(),
-            rust_hints: compile(
-                SymbolLanguage::Rust,
-                lint::rust::perf001_allocation_hints::default_hints(),
-            ),
-            csharp_hints: compile(
-                SymbolLanguage::Csharp,
-                lint::csharp::perf001_allocation_hints::default_hints(),
-            ),
+            rust_hints: compile(SymbolLanguage::Rust),
+            csharp_hints: compile(SymbolLanguage::Csharp),
         }
     }
 
-    /// Resolve the universal override before the per-rule and per-code scopes.
+    /// Override all severities, then resolve per-rule, per-code, and severity scopes.
     pub(super) fn scope_for(
         &self,
         code: &str,
         severity: Severity,
         rule: Option<ReportingScope>,
     ) -> ReportingScope {
-        self.scope
+        self.all_lines
+            .then_some(ReportingScope::All)
             .or(rule)
             .or_else(|| self.config.and_then(|config| config.scope_for(code)))
             .unwrap_or_else(|| ReportingScope::for_severity(severity))
     }
 
-    /// Borrow configured rules independently of SYM001 enablement.
+    /// Borrow configured rules independently of SYM enablement.
     pub(super) fn rules(&self) -> &[CompiledSymbolRule] {
         self.config.map_or(&[], CompiledConfig::symbol_rules)
     }
@@ -123,20 +124,20 @@ impl<'a> LintContext<'a> {
     pub(super) fn needs_snapshot(&self, ext: &str, disabled: &HashSet<String>) -> bool {
         let language = SymbolLanguage::for_extension(ext);
         let symbol_hint = |rule: &CompiledSymbolRule| {
-            language.is_some_and(|language| rule.applies_to(language))
+            rule.applies_to_extension(ext)
                 && rule.action == SymbolAction::Hint
                 && !disabled.contains(rule.code)
                 && self.scope_for(rule.code, rule.severity, rule.scope)
                     == ReportingScope::ChangedLines
         };
-        if self.rules().iter().any(symbol_hint) || self.legacy_hints(ext).iter().any(symbol_hint) {
+        if self.rules().iter().any(symbol_hint) || self.builtin_hints(ext).iter().any(symbol_hint) {
             return true;
         }
 
         let profile = langs::profile_for(ext);
         lint::LINT_CODES.iter().any(|code| {
             let supported = match *code {
-                lint::CODE_PERF001 | lint::CODE_PERF002 | lint::CODE_SYM001 => false,
+                lint::CODE_SYM => false,
                 lint::CODE_MODULE_SIZE => {
                     matches!(
                         profile.module_size,
@@ -151,9 +152,15 @@ impl<'a> LintContext<'a> {
                 code if code.starts_with("TEXT") => profile.text_lints != langs::TextLints::None,
                 _ => language.is_some(),
             };
+            let severity = if *code == lint::CODE_PASSIVE_NARRATION {
+                Severity::Reminder
+            } else {
+                Severity::Error
+            };
+
             supported
                 && !disabled.contains(*code)
-                && self.scope_for(code, Severity::Error, None) == ReportingScope::ChangedLines
+                && self.scope_for(code, severity, None) == ReportingScope::ChangedLines
         })
     }
 
@@ -172,15 +179,21 @@ impl<'a> LintContext<'a> {
             .get(path)
             .and_then(Option::as_ref)
             .map_or_else(ChangedLines::empty, |snapshot| snapshot.remap(source));
-        let excluded = excluded_lines(source, &observations.excluded_ranges);
+        let excluded = excluded_lines(source, &observations.lint_exclusions);
+        let suppressed = |diagnostic: &Diagnostic| {
+            !matches!(
+                diagnostic.code,
+                lint::CODE_MODULE_SIZE | lint::CODE_MISSING_MODULE_DOCS
+            ) && lint::LINT_CODES
+                .iter()
+                .position(|code| *code == diagnostic.code)
+                .is_some_and(|index| excluded[index].overlaps(diagnostic.line, diagnostic.line))
+        };
 
         diagnostics.retain(|diagnostic| {
             self.scope_for(diagnostic.code, diagnostic.severity, None)
                 .admits(diagnostic, &changed)
-                && (matches!(
-                    diagnostic.code,
-                    lint::CODE_MODULE_SIZE | lint::CODE_MISSING_MODULE_DOCS
-                ) || !excluded.overlaps(diagnostic.line, diagnostic.line))
+                && !suppressed(diagnostic)
         });
         diagnostics.extend(
             observations
@@ -191,7 +204,7 @@ impl<'a> LintContext<'a> {
                         && self
                             .scope_for(hint.diagnostic.code, hint.diagnostic.severity, hint.scope)
                             .admits(&hint.diagnostic, &changed)
-                        && !excluded.overlaps(hint.diagnostic.line, hint.diagnostic.line)
+                        && !suppressed(&hint.diagnostic)
                 })
                 .map(|hint| hint.diagnostic),
         );
@@ -204,28 +217,26 @@ impl<'a> LintContext<'a> {
         ext: &str,
         disabled: &HashSet<String>,
     ) -> anyhow::Result<symbols::SymbolObservations> {
-        let mut observations = if disabled.contains(lint::CODE_SYM001) {
-            symbols::SymbolObservations {
-                excluded_ranges: symbols::excluded_ranges(parsed, ext, self.rules())?,
-                ..Default::default()
-            }
-        } else {
-            symbols::check(parsed, ext, self.rules())?
-        };
+        let mut observations = symbols::check_enabled(
+            parsed,
+            ext,
+            self.rules(),
+            !disabled.contains(lint::CODE_SYM),
+        )?;
         if self
-            .legacy_hints(ext)
+            .builtin_hints(ext)
             .iter()
             .any(|rule| !disabled.contains(rule.code))
         {
             observations
                 .hints
-                .extend(symbols::check(parsed, ext, self.legacy_hints(ext))?.hints);
+                .extend(symbols::check(parsed, ext, self.builtin_hints(ext))?.hints);
         }
         Ok(observations)
     }
 
-    /// Resolved legacy rules for supported input languages.
-    pub(super) fn legacy_hints(&self, ext: &str) -> &[CompiledSymbolRule] {
+    /// Selected built-in rules for supported input languages.
+    fn builtin_hints(&self, ext: &str) -> &[CompiledSymbolRule] {
         match SymbolLanguage::for_extension(ext) {
             Some(SymbolLanguage::Rust) => &self.rust_hints,
             Some(SymbolLanguage::Csharp) => &self.csharp_hints,
@@ -243,10 +254,9 @@ pub(super) fn protected_ranges(
     let Some(language) = SymbolLanguage::for_extension(ext) else {
         return Ok(Vec::new());
     };
-    if !rules
-        .iter()
-        .any(|rule| rule.action == SymbolAction::Exclude && rule.applies_to(language))
-    {
+    if !rules.iter().any(|rule| {
+        rule.action == SymbolAction::Exclude && rule.exclude_edits && rule.applies_to(language)
+    }) {
         return Ok(Vec::new());
     }
     let Some(backend) = backend_for(ext) else {
@@ -256,22 +266,27 @@ pub(super) fn protected_ranges(
     symbols::excluded_ranges(&backend.parse(source)?, ext, rules)
 }
 
-/// Translate protected bytes to diagnostic line coordinates in one source scan.
-fn excluded_lines(source: &str, ranges: &[Range<usize>]) -> ChangedLines {
+/// Index suppression by registered lint code, scanning source line starts once.
+fn excluded_lines(
+    source: &str,
+    ranges: &[(Range<usize>, u32)],
+) -> [ChangedLines; lint::LINT_CODES.len()] {
     if ranges.is_empty() {
-        return ChangedLines::empty();
+        return from_fn(|_| ChangedLines::empty());
     }
 
     let mut starts = vec![0];
     starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
 
-    ChangedLines::new(
-        ranges
-            .iter()
-            .filter(|range| !range.is_empty())
-            .map(|range| {
-                starts.partition_point(|start| *start <= range.start)
-                    ..=starts.partition_point(|start| *start < range.end)
-            }),
-    )
+    from_fn(|index| {
+        ChangedLines::new(
+            ranges
+                .iter()
+                .filter(|(range, mask)| !range.is_empty() && mask & (1 << index) != 0)
+                .map(|(range, _)| {
+                    starts.partition_point(|start| *start <= range.start)
+                        ..=starts.partition_point(|start| *start < range.end)
+                }),
+        )
+    })
 }
