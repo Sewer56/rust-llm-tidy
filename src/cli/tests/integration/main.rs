@@ -134,13 +134,6 @@ fn run_dir(dir: &Path, args: &[&str]) -> (String, String, i32) {
 fn run_dry_run(path: &Path) -> (String, String, i32) {
     let output = run_command(&["--include", "reorder", "--dry-run"], path);
 
-    assert!(
-        output.status.success(),
-        "rust-llm-tidy --dry-run failed on {}: {}",
-        path.display(),
-        String::from_utf8_lossy(&output.stderr)
-    );
-
     (
         String::from_utf8_lossy(&output.stdout).to_string(),
         String::from_utf8_lossy(&output.stderr).to_string(),

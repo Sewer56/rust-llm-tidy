@@ -232,8 +232,8 @@ fn fix_excludes_links_rule() {
         .output()
         .expect("failed to spawn rust-llm-tidy");
     assert!(
-        output.status.success(),
-        "default pipeline should succeed: {}",
+        !output.status.success(),
+        "dry-run must fail for proposed table changes: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 

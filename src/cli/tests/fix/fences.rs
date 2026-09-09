@@ -11,8 +11,8 @@ fn fix_fence_md_dry_run_reports_change() {
     let output = run_command(&["--include", "fences", "--dry-run"], &before);
 
     assert!(
-        output.status.success(),
-        "fix --dry-run should succeed: {}",
+        !output.status.success(),
+        "fix --dry-run must fail for proposed changes: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(

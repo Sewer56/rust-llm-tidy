@@ -45,9 +45,11 @@ macro_rules! synthetic_fixture {
         fn $name() {
             let (stdout, stderr, exit, before_path, expected_after) =
                 run_fixture!($lang, $ext, $name);
+            let needs_changes = stderr.contains("success[REORDER]");
+
             assert_eq!(
-                exit, 0,
-                concat!(stringify!($name), " dry-run should succeed")
+                exit, i32::from(needs_changes),
+                concat!(stringify!($name), " dry-run should fail only for needed changes")
             );
             assert!(
                 stdout.is_empty(),
@@ -56,12 +58,12 @@ macro_rules! synthetic_fixture {
                     " dry-run must not print reconstructed source to stdout"
                 )
             );
-            // Any stderr output from a reorder dry-run must be change records,
-            // never reconstructed source (which would lack the op marker).
+            // Only change records and the exit-status summary belong on stderr.
             for line in stderr.lines() {
                 assert!(
-                    line.contains("success[REORDER]"),
-                    "{} dry-run stderr must only carry change records: {}",
+                    line.contains("success[REORDER]")
+                        || line == "Error: dry-run found proposed transformations; rerun without --dry-run to apply them",
+                    "{} dry-run stderr must only carry change records and the failure summary: {}",
                     stringify!($name),
                     line
                 );

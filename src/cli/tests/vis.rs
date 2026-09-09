@@ -43,8 +43,8 @@ fn vis_dry_run_reports_changes() {
     let output = run_command(&["--include", "vis", "--dry-run"], &before);
 
     assert!(
-        output.status.success(),
-        "vis --dry-run should succeed: {}",
+        !output.status.success(),
+        "vis --dry-run must fail for proposed changes: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(

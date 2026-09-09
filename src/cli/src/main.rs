@@ -44,5 +44,9 @@ fn main() -> anyhow::Result<()> {
     let report = run(&options, compiled.as_ref())?;
 
     output::emit_report(&report, json)?;
-    report.ensure_success()
+    report.ensure_success()?;
+    if cli.dry_run && report.files.iter().any(|file| !file.changes.is_empty()) {
+        bail!("dry-run found proposed transformations; rerun without --dry-run to apply them");
+    }
+    Ok(())
 }

@@ -6,7 +6,7 @@
 use crate::{fix_fixture_dir, oversized_paragraph_md, run_command, temp_file, temp_md};
 use std::fs;
 
-/// `all --dry-run` applies table fixes to a `.md` file and reports the change
+/// `all --dry-run` previews table fixes to a `.md` file and reports the change
 /// record on stderr, leaving stdout empty.
 #[test]
 fn all_md_dry_run_fixes_tables() {
@@ -14,8 +14,8 @@ fn all_md_dry_run_fixes_tables() {
     let output = run_command(&["--dry-run"], &before);
 
     assert!(
-        output.status.success(),
-        "all --dry-run on markdown should succeed: {}",
+        !output.status.success(),
+        "all --dry-run on markdown must fail for proposed changes: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(

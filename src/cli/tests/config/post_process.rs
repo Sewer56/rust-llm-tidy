@@ -6,6 +6,43 @@ use super::temp_dir;
 use std::fs;
 use std::process::Command;
 
+/// `--dry-run` skips `post_process` entirely (a failing command does not run).
+#[rstest::rstest]
+#[case::no_changes("pub fn example() {}\n", 0)]
+#[case::proposed_changes("/// See [A](https://example.invalid).\npub struct A;\n", 1)]
+fn dry_run_should_skip_post_process(#[case] source: &str, #[case] exit: i32) {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let tmp = dir.join("lib.rs");
+    fs::write(&tmp, source).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(
+        &cfg,
+        format!(
+            "post_process:\n  - {}\n    extensions: [\"rs\"]\n",
+            post_process_command(1)
+        ),
+    )
+    .unwrap();
+
+    let output = Command::new(binary())
+        .args([
+            "--config",
+            cfg.to_str().unwrap(),
+            "--include",
+            "links",
+            "--dry-run",
+        ])
+        .arg(&tmp)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+
+    assert_eq!(output.status.code(), Some(exit), "{output:?}");
+    assert_eq!(fs::read(&tmp).unwrap(), source.as_bytes());
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("post_process"));
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// An excluded file is NOT post-processed.
 #[test]
 fn excluded_file_not_post_processed() {
@@ -172,41 +209,6 @@ fn post_process_runs_on_matching_extension() {
         output.status.success(),
         "successful post_process should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
-    );
-    let _ = fs::remove_dir_all(&dir);
-}
-
-/// `--dry-run` skips `post_process` entirely (a failing command does not run).
-#[test]
-fn post_process_skipped_under_dry_run() {
-    let dir = temp_dir();
-    fs::create_dir_all(&dir).unwrap();
-    let tmp = dir.join("lib.rs");
-    fs::write(&tmp, "pub fn example() {}\n").unwrap();
-    let cfg = dir.join(".rust-llm-tidy.yml");
-    fs::write(
-        &cfg,
-        format!(
-            "post_process:\n  - {}\n    extensions: [\"rs\"]\n",
-            post_process_command(1)
-        ),
-    )
-    .unwrap();
-
-    let output = Command::new(binary())
-        .args([
-            "--config",
-            cfg.to_str().unwrap(),
-            "--include",
-            "tables",
-            "--dry-run",
-        ])
-        .arg(&tmp)
-        .output()
-        .expect("failed to spawn rust-llm-tidy");
-    assert!(
-        output.status.success(),
-        "--dry-run must skip post_process so `false` never runs"
     );
     let _ = fs::remove_dir_all(&dir);
 }

@@ -58,21 +58,6 @@ mod common;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-// ── `all` subcommand ──────────────────────────────────────────────
-
-/// `all` on a clean file passes with no diagnostics.
-#[test]
-fn all_clean_file() {
-    let path = rust_fixture_dir().join("clean.rs");
-    let output = run_command(&["--dry-run"], &path);
-
-    assert!(
-        output.status.success(),
-        "all on clean file should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
 // ── Error handling ────────────────────────────────────────────────
 
 /// `all` on a file with doc gaps reports them after reordering.
@@ -164,6 +149,22 @@ fn check_recursive_directory() {
 /// The directory holding the default-run mixed-language fixtures.
 fn defaults_fixture_dir() -> PathBuf {
     fixture_dir().join("defaults")
+}
+
+// ── `all` subcommand ──────────────────────────────────────────────
+
+/// A lint-clean file still fails preview when its declarations need reordering.
+#[test]
+fn dry_run_should_fail_when_lint_clean_source_needs_reordering() {
+    let path = rust_fixture_dir().join("clean.rs");
+    let output = run_command(&["--dry-run"], &path);
+
+    assert!(
+        !output.status.success(),
+        "dry-run must fail for proposed reordering: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("success[REORDER]"));
 }
 
 /// The directory holding fix fixtures.

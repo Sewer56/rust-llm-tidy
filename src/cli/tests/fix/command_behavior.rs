@@ -16,8 +16,8 @@ fn fix_doc_comment_dry_run_reports_change() {
     let output = run_command(&["--include", "tables", "--dry-run"], &before);
 
     assert!(
-        output.status.success(),
-        "fix --dry-run should succeed: {}",
+        !output.status.success(),
+        "fix --dry-run must fail for proposed changes: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
@@ -168,8 +168,8 @@ fn fix_md_dry_run_reports_change() {
     let output = run_command(&["--include", "tables", "--dry-run"], &before);
 
     assert!(
-        output.status.success(),
-        "fix --dry-run should succeed: {}",
+        !output.status.success(),
+        "fix --dry-run must fail for proposed changes: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
@@ -191,8 +191,8 @@ fn fix_multi_entity_dry_run_reports_one_record_per_file() {
     let output = run_command(&["--include", "tables", "--dry-run"], &before);
 
     assert!(
-        output.status.success(),
-        "fix --dry-run should succeed: {}",
+        !output.status.success(),
+        "fix --dry-run must fail for proposed changes: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(

@@ -23,7 +23,7 @@ fn recursive_dir_collects_uppercase_variants_excludes_others() {
 
     // Rust-only reorder runs on the nested `.RS` and reports it by path.
     let (_stdout, stderr, exit) = run_dir(&dir, &["--dry-run"]);
-    assert_eq!(exit, 0, "dir with .RS/.MD/.org should succeed");
+    assert_eq!(exit, 1, "dry-run must fail for proposed Rust changes");
     assert!(
         stderr.contains("lib.RS"),
         "recursion must collect and process lib.RS: {stderr}"
@@ -31,7 +31,7 @@ fn recursive_dir_collects_uppercase_variants_excludes_others() {
 
     // Markdown table fix runs on the `.MD` and reports it by path.
     let (_stdout, md_stderr, md_exit) = run_dir(&dir, &["--include", "tables", "--dry-run"]);
-    assert_eq!(md_exit, 0, "tables dry-run on dir should succeed");
+    assert_eq!(md_exit, 1, "dry-run must fail for proposed table changes");
     assert!(
         md_stderr.contains("README.MD") && md_stderr.contains("success[FIX]"),
         "recursion must collect and process README.MD: {md_stderr}"
@@ -59,8 +59,8 @@ fn recursive_directory_dry_run_should_label_each_move_with_path() {
     let (stdout, stderr, exit) = run_dir(&dir, &["--dry-run"]);
     let _ = fs::remove_dir_all(&dir);
 
-    assert_eq!(exit, 0, "dry-run on directory should succeed");
-    assert!(stdout.is_empty(), "stdout should be empty on success");
+    assert_eq!(exit, 1, "dry-run must fail for proposed directory changes");
+    assert!(stdout.is_empty(), "text dry-run must leave stdout empty");
     assert!(
         stderr.contains("a.rs:") && stderr.contains("b.rs:"),
         "multi-file dry-run must label each change line with its path: {stderr}"

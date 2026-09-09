@@ -114,8 +114,8 @@ fn fix_links_rs_dry_run_reports_intra_doc_records() {
     let output = run_command(&["--include", "links", "--dry-run"], &tmp);
     let _ = fs::remove_file(&tmp);
     assert!(
-        output.status.success(),
-        "fix --dry-run should succeed: {}",
+        !output.status.success(),
+        "fix --dry-run must fail for proposed changes: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(

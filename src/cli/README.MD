@@ -57,23 +57,31 @@ rust-llm-tidy --output-mode json src/main.rs
 
 ### Flags
 
-| Flag                   | Effect                                                           |
-| ---------------------- | ---------------------------------------------------------------- |
-| `--dry-run`            | Print the changes that would be made instead of modifying files  |
-| `--config <PATH>`      | Explicit config path (overrides auto-discovery)                  |
-| `--no-config`          | Disable config discovery and loading                             |
-| `--validate`           | Validate config and exit (no files processed)                    |
-| `--include <OP>`       | Run only these ops/lint-codes (repeatable)                       |
-| `--exclude <OP>`       | Skip these ops/lint-codes (repeatable)                           |
-| `--output-mode <MODE>` | Lint output format: `text` (default) or `json`                   |
-| `--json`               | Alias for `--output-mode json`                                   |
-| `--all-lines`          | Report every severity on all lines, overriding configured scopes |
-| `--diff-base <REF>`    | Compare against the merge-base of local REF and HEAD             |
+| Flag                   | Effect                                                            |
+| ---------------------- | ----------------------------------------------------------------- |
+| `--dry-run`            | Preview without writing files; fail if transformations are needed |
+| `--config <PATH>`      | Explicit config path (overrides auto-discovery)                   |
+| `--no-config`          | Disable config discovery and loading                              |
+| `--validate`           | Validate config and exit (no files processed)                     |
+| `--include <OP>`       | Run only these ops/lint-codes (repeatable)                        |
+| `--exclude <OP>`       | Skip these ops/lint-codes (repeatable)                            |
+| `--output-mode <MODE>` | Lint output format: `text` (default) or `json`                    |
+| `--json`               | Alias for `--output-mode json`                                    |
+| `--all-lines`          | Report every severity on all lines, overriding configured scopes  |
+| `--diff-base <REF>`    | Compare against the merge-base of local REF and HEAD              |
 
 You can also set the baseline via `RUST_LLM_TIDY_DIFF_BASE`; `--diff-base`
 takes precedence.
 
 See [reporting scope] for scope precedence and baseline comparison.
+
+### Exit status
+
+Errors fail any run. `--dry-run` now also fails when edits are needed, without
+writing files. Warnings, hints, and reminders alone do not fail it.
+
+Preview operations read the original source and skip external `post_process`
+commands, so dry-run does not fully check apply-mode results.
 
 ### JSON output
 

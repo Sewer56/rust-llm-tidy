@@ -20,7 +20,10 @@ pub(crate) struct Cli {
     /// - Omitted paths: use changed files in the current git diff,
     ///   filtered to the allowed extensions.
     pub(crate) paths: Vec<PathBuf>,
-    /// Print the changes that would be made instead of modifying files.
+    /// Preview without modifying files; exit nonzero if transformations are needed.
+    ///
+    /// Processing failures and error findings also fail. Warnings, hints, and
+    /// reminders alone do not. Skips external post-processing commands.
     #[arg(long)]
     pub(crate) dry_run: bool,
     /// Local baseline reference. Overrides RUST_LLM_TIDY_DIFF_BASE.

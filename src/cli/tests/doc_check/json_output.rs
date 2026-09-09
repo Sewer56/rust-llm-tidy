@@ -25,8 +25,8 @@ fn csharp_json_dry_run_records_the_member_reorder() {
     );
 
     assert!(
-        output.status.success(),
-        "JSON dry-run should succeed: {}",
+        !output.status.success(),
+        "JSON dry-run must fail for proposed changes: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -135,13 +135,13 @@ fn json_dry_run_records_changes_for_both_flags() {
     );
 
     assert!(
-        alias.status.success(),
-        "--json dry-run should succeed: {}",
+        !alias.status.success(),
+        "--json dry-run must fail for proposed changes: {}",
         String::from_utf8_lossy(&alias.stderr)
     );
     assert!(
-        mode.status.success(),
-        "--output-mode json dry-run should succeed: {}",
+        !mode.status.success(),
+        "--output-mode json dry-run must fail for proposed changes: {}",
         String::from_utf8_lossy(&mode.stderr)
     );
     assert_eq!(
@@ -266,16 +266,15 @@ fn json_output_clean_file_prints_empty_array() {
     assert_eq!(String::from_utf8_lossy(&output.stdout), "[]\n");
 }
 
-/// `--output-mode json --dry-run` succeeds (no clap conflict) on a clean file
-/// and emits parseable JSON.
+/// JSON preview emits parseable output when a lint-clean file needs reordering.
 #[test]
 fn json_output_combines_with_dry_run() {
     let path = rust_fixture_dir().join("clean.rs");
     let output = run_command(&["--output-mode", "json", "--dry-run"], &path);
 
     assert!(
-        output.status.success(),
-        "JSON output must combine with --dry-run: {}",
+        !output.status.success(),
+        "JSON dry-run must fail for proposed reordering: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -377,8 +376,8 @@ fn json_output_records_reorder_changes() {
     );
 
     assert!(
-        output.status.success(),
-        "reorder dry-run in JSON mode should succeed: {}",
+        !output.status.success(),
+        "reorder dry-run in JSON mode must fail for proposed changes: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);

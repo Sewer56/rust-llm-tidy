@@ -147,7 +147,9 @@ Fields:
 
 In JSON mode the per-line plaintext diagnostics are not printed to stderr.
 Change records and lint findings are folded into the same document.
-`--dry-run` previews the changes without writing them.
+
+`--dry-run` previews without writing files and now fails when edits are needed.
+See [exit status contract] for preview limits.
 
 See [change reporting] for the shared record format.
 
@@ -303,6 +305,7 @@ Licensed under [Apache 2.0].
 [Contributing Guide]: https://reloaded-project.github.io/reloaded-templates-rust/manual/#contributing
 [Apache 2.0]: ./LICENSE
 [change reporting]: ./docs/lints.md#change-reporting
+[exit status contract]: ./src/cli/README.MD#exit-status
 [reporting scope]: ./docs/lints.md#reporting-scope
 [docs/reorder.md]: ./docs/reorder.md
 [docs/vis.md]: ./docs/vis.md
