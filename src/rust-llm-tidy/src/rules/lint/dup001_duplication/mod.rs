@@ -21,7 +21,7 @@ mod source;
 #[cfg(test)]
 mod tests;
 
-/// Analyze one source buffer without I/O or edits. Empty authority does no
+/// Analyze one source buffer without I/O or edits; empty authority does no
 /// work. NUL-containing buffers are treated as binary and return none.
 pub(crate) fn check(
     source: &str,

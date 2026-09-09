@@ -296,6 +296,7 @@ pub(crate) struct Profile {
     /// How the TEXT* text checks are sourced for this profile.
     pub text_lints: TextLints,
     /// File-size counting policy, independent of text-lint or parser support.
+    ///
     /// Also gates DUP001 source admission: WholeFile/RustNonTest participate,
     /// NonCode does not, None requires explicit declaration.
     pub module_size: ModuleSize,
