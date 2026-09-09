@@ -2,16 +2,18 @@
 
 use crate::output;
 use clap::Parser;
+use rust_llm_tidy::rules::registry::KNOWN_FIX_OPS;
 use std::path::PathBuf;
 
 /// Command-line arguments for `rust-llm-tidy`, parsed via `clap`.
 ///
-/// Collects the input paths plus flags controlling dry-run, validation, rule
-/// selection, allowed extensions, and config discovery.
+/// Collects the input paths plus flags controlling checks-only, dry-run,
+/// validation, rule selection, allowed extensions, and config discovery.
 #[derive(Parser)]
 #[command(
     name = "rust-llm-tidy",
-    about = "Fix, reorder, narrow visibility, and lint allowed source files"
+    about = "Fix, reorder, narrow visibility, and lint allowed source files",
+    version
 )]
 pub(crate) struct Cli {
     /// Paths to Rust source files or directories to process.
@@ -26,6 +28,9 @@ pub(crate) struct Cli {
     /// reminders alone do not. Skips external post-processing commands.
     #[arg(long)]
     pub(crate) dry_run: bool,
+    /// Run only lint checks; no transforms, writes, or post-process commands.
+    #[arg(long)]
+    pub(crate) checks_only: bool,
     /// Local baseline reference. Overrides RUST_LLM_TIDY_DIFF_BASE.
     ///
     /// Without paths, discover eligible files recursively from the current directory.
@@ -65,4 +70,31 @@ pub(crate) struct Cli {
     /// Alias for `--output-mode json`.
     #[arg(long, conflicts_with = "output_mode")]
     pub(crate) json: bool,
+}
+
+/// Resolve the `--checks-only` rule selection.
+///
+/// Transform ops move into `exclude` so configured `include` whitelists and
+/// `exclude` groups keep applying without `--include`.
+///
+/// `--include` drops its transform entries; an all-transform selection falls
+/// back to `lints`.
+pub(crate) fn checks_only_selection(include: &[String], exclude: &mut Vec<String>) -> Vec<String> {
+    exclude.extend(
+        KNOWN_FIX_OPS
+            .iter()
+            .filter(|op| **op != "lints")
+            .copied()
+            .map(String::from),
+    );
+    let selected: Vec<String> = include
+        .iter()
+        .filter(|rule| rule.as_str() == "lints" || !KNOWN_FIX_OPS.contains(&rule.as_str()))
+        .cloned()
+        .collect();
+    if selected.is_empty() && !include.is_empty() {
+        vec![String::from("lints")]
+    } else {
+        selected
+    }
 }

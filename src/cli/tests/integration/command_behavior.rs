@@ -1,5 +1,5 @@
-//! CLI behavior tests for `rust-llm-tidy`: dry-run reporting, failure
-//! modes, and empty inputs.
+//! CLI behavior tests for `rust-llm-tidy`: dry-run and checks-only
+//! reporting, failure modes, `--version`, and empty inputs.
 //!
 //! Every test runs the built CLI binary against a temp file or directory
 //! and asserts on its exit code, stdout, and stderr.
@@ -8,6 +8,185 @@ use super::{binary, run, run_command, run_dir, temp_dir};
 use rstest::rstest;
 use std::fs;
 use std::process::{Command, Output};
+
+// ── --checks-only ─────────────────────────────────────────────────
+
+/// `--checks-only` still fails on invalid config.
+#[test]
+fn checks_only_should_fail_for_invalid_config() {
+    let (output, _) = preview_with_flags(
+        "//! Module docs.\nfn example() {}\n",
+        "lints",
+        "include: [",
+        "text",
+        &["--checks-only"],
+    );
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("config"), "{stderr}");
+}
+
+/// `--checks-only` gates the exit on severity alone, without writing source.
+///
+/// Lint-code selections still narrow: only `SYM` runs for this config.
+#[rstest]
+#[case::warning("warning", 0)]
+#[case::hint("hint", 0)]
+#[case::reminder("reminder", 0)]
+#[case::error("error", 1)]
+fn checks_only_should_fail_only_for_error_findings(
+    #[case] severity: &str,
+    #[values("text", "json")] mode: &str,
+    #[case] exit: i32,
+) {
+    let source = "fn f() { needle(); }\n";
+    let config = format!(
+        "perf_hints: []\nsymbol_rules: [{{regex: needle, title: Review, message: finding, severity: {severity}}}]"
+    );
+
+    let (output, consumed) = preview_with_flags(source, "SYM", &config, mode, &["--checks-only"]);
+
+    assert_eq!(output.status.code(), Some(exit), "{output:?}");
+    assert_eq!(consumed, source.as_bytes(), "source must stay unchanged");
+    if mode == "json" {
+        let records: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0]["severity"], severity);
+        assert_eq!(records[0]["code"], "SYM");
+    } else {
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains(&format!("{severity}[SYM]")), "{stderr}");
+    }
+}
+
+/// `--checks-only` preserves configured `exclude` groups: an excluded lint
+/// stays off without `--include`.
+#[test]
+fn checks_only_should_preserve_configured_exclude() {
+    let config = "perf_hints: []\n\
+                  symbol_rules: [{regex: needle, title: Review, message: finding, severity: error}]\n\
+                  exclude:\n  - paths: [input.rs]\n    rules: [SYM]";
+    let (output, _) = preview_with_flags(
+        "//! Module docs.\nfn example() { needle(); }\n",
+        "",
+        config,
+        "text",
+        &["--checks-only"],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("SYM"), "{stderr}");
+}
+
+/// `--checks-only` preserves the configured include file scope: files
+/// matching no whitelist group run nothing.
+#[test]
+fn checks_only_should_preserve_configured_include_paths() {
+    let config = "include:\n  - paths: [config.yml]\n    rules: [lints]";
+    let (output, _) =
+        preview_with_flags("fn example() {}\n", "", config, "text", &["--checks-only"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert!(output.stderr.is_empty(), "no findings expected");
+}
+
+/// `--checks-only` without `--include` preserves a configured `include`
+/// whitelist: only the whitelisted lint runs.
+#[test]
+fn checks_only_should_preserve_configured_include_rules() {
+    let config = "perf_hints: []\n\
+                  symbol_rules: [{regex: needle, title: Review, message: finding, severity: error}]\n\
+                  include:\n  - paths: [input.rs]\n    rules: [SYM]";
+    let (output, _) = preview_with_flags(
+        "//! Module docs.\npub fn example() { needle(); }\n",
+        "",
+        config,
+        "text",
+        &["--checks-only"],
+    );
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error[SYM]"), "{stderr}");
+    assert!(!stderr.contains("DOC001"), "{stderr}");
+}
+
+/// `--checks-only` still rejects unknown rule selections.
+#[test]
+fn checks_only_should_reject_unknown_rules() {
+    let (output, _) = preview_with_flags(
+        "//! Module docs.\nfn example() {}\n",
+        "not_a_rule",
+        "{}",
+        "text",
+        &["--checks-only"],
+    );
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unknown op/rule"), "{stderr}");
+}
+
+/// Without `--include` or a configured selection, `--checks-only` still runs
+/// the default lints.
+#[test]
+fn checks_only_should_run_default_lints_without_include() {
+    let (output, _) = preview_with_flags("fn example() {}\n", "", "{}", "text", &["--checks-only"]);
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("DOC009"), "{stderr}");
+}
+
+/// `--checks-only` suppresses transform ops even when explicitly included:
+/// the run stays read-only, reports no change records, and exits 0.
+#[rstest]
+#[case::reorder("//! Module docs.\nfn a() {}\nfn b() { a(); }\n", "reorder")]
+#[case::visibility("//! Module docs.\npub(crate) mod m { pub fn f() {} }\n", "vis")]
+#[case::links(
+    "//! Module docs.\n/// See [A](https://example.invalid).\npub struct A;\n",
+    "links"
+)]
+#[case::tables(
+    "//! Module docs.\n/// | Name | Value | Description |\n/// | --- | --- | --- |\n/// | a | 1 | first |\n/// | longname | 200 | second item |\npub fn documented() {}\n",
+    "tables"
+)]
+#[case::fences(
+    "//! Module docs.\n/// Nested example:\n/// ```text\n/// ```rust\n/// tidy();\n/// ```\n/// ```\npub fn documented() {}\n",
+    "fences"
+)]
+fn checks_only_should_suppress_included_transforms(#[case] source: &str, #[case] op: &str) {
+    let (output, consumed) = preview_with_flags(source, op, "{}", "text", &["--checks-only"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(consumed, source.as_bytes(), "source must stay unchanged");
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("success["),
+        "suppressed {op} must not report change records: {stderr}"
+    );
+}
+
+/// A whitelisted transform op stays suppressed under `--checks-only` while
+/// whitelisted lints still run.
+#[test]
+fn checks_only_should_suppress_whitelisted_transforms() {
+    let config = "include:\n  - paths: [input.rs]\n    rules: [links, DOC001]";
+    let source =
+        "//! Module docs.\n/// See [A](https://example.invalid).\npub fn documented() {}\n";
+    let (output, consumed) = preview_with_flags(source, "", config, "text", &["--checks-only"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(consumed, source.as_bytes());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("success["), "links must not run: {stderr}");
+}
+
+// ── --dry-run ─────────────────────────────────────────────────────
 
 /// Findings retain their severity-based exit status in a non-mutating preview.
 #[rstest]
@@ -183,8 +362,32 @@ fn nonexistent_path_should_fail_with_error() {
     );
 }
 
+/// `--version` prints the CLI package version for release identification.
+#[test]
+fn version_should_print_package_version() {
+    let output = Command::new(binary()).arg("--version").output().unwrap();
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        format!("rust-llm-tidy {}", env!("CARGO_PKG_VERSION"))
+    );
+}
+
 /// Run a preview with explicit config and no inherited baseline, retaining bytes.
 fn preview(source: &str, rule: &str, config: &str, mode: &str) -> (Output, Vec<u8>) {
+    preview_with_flags(source, rule, config, mode, &["--dry-run"])
+}
+
+/// Run with explicit config plus extra flags (e.g. `--checks-only`) and no
+/// inherited baseline, retaining the consumed bytes.
+fn preview_with_flags(
+    source: &str,
+    rule: &str,
+    config: &str,
+    mode: &str,
+    flags: &[&str],
+) -> (Output, Vec<u8>) {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("input.rs");
     fs::write(&path, source).unwrap();
@@ -197,12 +400,16 @@ fn preview(source: &str, rule: &str, config: &str, mode: &str) -> (Output, Vec<u
             "--config",
             "config.yml",
             "--all-lines",
-            "--dry-run",
             "--output-mode",
             mode,
             "input.rs",
         ])
-        .args(rule.split(',').flat_map(|rule| ["--include", rule]))
+        .args(
+            rule.split(',')
+                .filter(|rule| !rule.is_empty())
+                .flat_map(|rule| ["--include", rule]),
+        )
+        .args(flags)
         .output()
         .unwrap();
 

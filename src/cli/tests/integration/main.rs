@@ -15,7 +15,8 @@
 //! - `fixture_macros`: the `synthetic_fixture!`/`run_fixture!` macros.
 //! - `rust_reorder`: Rust reorder fixtures and real-file reorder behavior.
 //! - `csharp_reorder`: C# reorder fixtures and member-profile reorders.
-//! - `command_behavior`: dry-run, failure, and empty-input CLI behavior.
+//! - `command_behavior`: dry-run, checks-only, failure, `--version`, and
+//!   empty-input CLI behavior.
 //! - `directory_processing`: recursive directory collection and reporting.
 //! - `language_selection`: extension flags and case-insensitive selection.
 //! - `fences`: fence flipping and TEXT005 fence-lint warnings.

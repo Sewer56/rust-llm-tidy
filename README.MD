@@ -41,6 +41,9 @@ rust-llm-tidy src/main.rs
 # Preview the changes that would be made without writing them
 rust-llm-tidy --dry-run src/main.rs
 
+# Lint checks only: no transforms, writes, or post-process
+rust-llm-tidy --checks-only src
+
 # Tidy every allowed source file under a directory recursively
 rust-llm-tidy src
 
@@ -70,6 +73,10 @@ rust-llm-tidy --include lints --diff-base main src
 Use `--dry-run`, `--config <PATH>`, `--no-config`, and `--validate` to control
 execution. Selection flags `--include <OP>`, `--exclude <OP>`, and
 `--extension <EXT>` are repeatable.
+
+`--checks-only` runs lint checks only: no transforms, no writes, and no
+external `post_process` commands; `--include` transform ops are overridden by
+the `lints` group.
 
 Reporting flags: `--output-mode text|json` (`--json` for short),
 `--all-lines`, and `--diff-base <REF>`.

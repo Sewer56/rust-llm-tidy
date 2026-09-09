@@ -27,18 +27,25 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    let (include, exclude) = if cli.checks_only {
+        let mut exclude = cli.exclude;
+        let include = args::checks_only_selection(&cli.include, &mut exclude);
+        (include, exclude)
+    } else {
+        (cli.include, cli.exclude)
+    };
     let options = RunOptions {
         paths: cli.paths,
-        apply: !cli.dry_run,
+        apply: !(cli.dry_run || cli.checks_only),
         git_changed: true,
         diff_base: cli
             .diff_base
             .or_else(|| env::var("RUST_LLM_TIDY_DIFF_BASE").ok()),
         all_lines: cli.all_lines,
         cargo_discovery: true,
-        post_process: true,
-        include: cli.include,
-        exclude: cli.exclude,
+        post_process: !cli.checks_only,
+        include,
+        exclude,
         extensions: cli.extension,
     };
     let report = run(&options, compiled.as_ref())?;

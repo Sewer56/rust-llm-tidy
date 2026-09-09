@@ -1,10 +1,52 @@
 //! `post_process:` step tests: extension gating, skipping under `--dry-run`
-//! and read-only ops, excluded files, and exit-code propagation.
+//! and `--checks-only` and read-only ops, excluded files, and exit-code
+//! propagation.
 
 use super::common::binary;
 use super::temp_dir;
 use std::fs;
 use std::process::Command;
+
+/// `--checks-only` skips `post_process` entirely (a failing command does not
+/// run), and the transforms that would qualify a file for it never run.
+#[rstest::rstest]
+#[case::clean("//! Module docs.\nfn example() {}\n")]
+#[case::suppressed_changes(
+    "//! Module docs.\n/// See [A](https://example.invalid).\npub struct A;\n"
+)]
+fn checks_only_should_skip_post_process(#[case] source: &str) {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let tmp = dir.join("lib.rs");
+    fs::write(&tmp, source).unwrap();
+    let cfg = dir.join(".rust-llm-tidy.yml");
+    fs::write(
+        &cfg,
+        format!(
+            "post_process:\n  - {}\n    extensions: [\"rs\"]\n",
+            post_process_command(1)
+        ),
+    )
+    .unwrap();
+
+    let output = Command::new(binary())
+        .args([
+            "--config",
+            cfg.to_str().unwrap(),
+            "--include",
+            "links",
+            "--checks-only",
+        ])
+        .arg(&tmp)
+        .output()
+        .expect("failed to spawn rust-llm-tidy");
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(fs::read(&tmp).unwrap(), source.as_bytes());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("post_process"), "{stderr:?}");
+    let _ = fs::remove_dir_all(&dir);
+}
 
 /// `--dry-run` skips `post_process` entirely (a failing command does not run).
 #[rstest::rstest]

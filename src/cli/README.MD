@@ -35,6 +35,9 @@ rust-llm-tidy src/main.rs
 # Report the changes that would be made instead of modifying the file
 rust-llm-tidy --dry-run src/main.rs
 
+# Lint checks only: no transforms, writes, or post-process
+rust-llm-tidy --checks-only src
+
 # Tidy every allowed source file under a directory recursively
 rust-llm-tidy src
 
@@ -60,6 +63,7 @@ rust-llm-tidy --output-mode json src/main.rs
 | Flag                   | Effect                                                            |
 | ---------------------- | ----------------------------------------------------------------- |
 | `--dry-run`            | Preview without writing files; fail if transformations are needed |
+| `--checks-only`        | Lint checks only; no writes, transforms, or post-process          |
 | `--config <PATH>`      | Explicit config path (overrides auto-discovery)                   |
 | `--no-config`          | Disable config discovery and loading                              |
 | `--validate`           | Validate config and exit (no files processed)                     |
@@ -69,6 +73,7 @@ rust-llm-tidy --output-mode json src/main.rs
 | `--json`               | Alias for `--output-mode json`                                    |
 | `--all-lines`          | Report every severity on all lines, overriding configured scopes  |
 | `--diff-base <REF>`    | Compare against the merge-base of local REF and HEAD              |
+| `--version`            | Print the CLI version and exit                                    |
 
 You can also set the baseline via `RUST_LLM_TIDY_DIFF_BASE`; `--diff-base`
 takes precedence.
@@ -77,8 +82,11 @@ See [reporting scope] for scope precedence and baseline comparison.
 
 ### Exit status
 
-Errors fail any run. `--dry-run` now also fails when edits are needed, without
-writing files. Warnings, hints, and reminders alone do not fail it.
+Errors fail any run, and `--dry-run` also fails when edits are needed,
+without writing files. Warnings, hints, and reminders alone do not fail it.
+
+`--checks-only` runs lint checks only, never modifies files, and keeps
+configured rule selections. Configured `post_process` commands never run.
 
 Preview operations read the original source and skip external `post_process`
 commands, so dry-run does not fully check apply-mode results.
