@@ -7,6 +7,7 @@ on:
       - "**/*.md"
       - ".rust-llm-tidy.yml"
       - ".githooks/**"
+      - "submodules/action"
 
 jobs:
   tidy:
@@ -24,6 +25,7 @@ jobs:
           submodules: recursive
 
       - name: Run rust-llm-tidy
+        # Pinned by the submodule pointer (action v2); no remote tag reference.
         uses: ./submodules/action
         with:
           # Build the binary from this repo's own source checkout.
