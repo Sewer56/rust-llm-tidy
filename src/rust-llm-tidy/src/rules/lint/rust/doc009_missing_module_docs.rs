@@ -48,6 +48,7 @@ pub(super) fn check(parsed: &ParseResult) -> Vec<Diagnostic> {
     }
 
     vec![Diagnostic {
+        title: Some("module file without top-level docs".into()),
         severity: Severity::Error,
         code: CODE_MISSING_MODULE_DOCS,
         message: indoc::formatdoc! {"

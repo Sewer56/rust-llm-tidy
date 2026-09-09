@@ -86,8 +86,15 @@ const DOCUMENTABLE: &[ItemKind] = &[
 impl Declaration<'_> {
     /// One diagnostic stamped with this declaration's line, kind, and
     /// name.
-    fn diagnostic(&self, severity: Severity, code: &'static str, message: String) -> Diagnostic {
+    fn diagnostic(
+        &self,
+        severity: Severity,
+        code: &'static str,
+        title: &str,
+        message: String,
+    ) -> Diagnostic {
         Diagnostic {
+            title: Some(title.into()),
             severity,
             code,
             message,

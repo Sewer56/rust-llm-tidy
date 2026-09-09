@@ -194,7 +194,7 @@ mod tests {
 
     // ── TEXT007: passive constructions ──
 
-    // Each unambiguous be-verb plus participle produces one hint.
+    // Each unambiguous be-verb plus participle produces one reminder.
     #[test]
     fn hints_should_identify_passive_pairs_when_unambiguous() {
         for (source, pair) in [
@@ -207,7 +207,7 @@ mod tests {
         ] {
             let found = one_line(source);
             assert_eq!(found.len(), 1, "{source:?}");
-            assert_eq!(found[0].severity, Severity::Hint);
+            assert_eq!(found[0].severity, Severity::Reminder);
             assert_eq!(found[0].line, 1);
             assert!(
                 found[0]

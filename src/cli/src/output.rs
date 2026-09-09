@@ -20,7 +20,7 @@ use std::path::Path;
 /// It matches the documented JSON schema (`{ path, line, severity,
 /// code, message, item_kind, item_name, title }`).
 ///
-/// Lint findings use severity `error`, `warning`, or `hint`; change
+/// Lint findings use severity `error`, `warning`, `hint`, or `reminder`; change
 /// records use `success`. `item_name` is `null` when the item is unnamed, and
 /// `title` is `null` for change records.
 ///
@@ -33,7 +33,7 @@ pub(crate) struct JsonRecord<'a> {
     /// Optional 1-based line number where the item starts; `null` when the
     /// record has no specific line (e.g. link/table fixes).
     line: Option<NonZeroU32>,
-    /// Lowercase `error`, `warning`, `hint`, or `success`.
+    /// Lowercase `error`, `warning`, `hint`, `reminder`, or `success`.
     severity: &'static str,
     /// Stable rule or operation code, e.g. "DOC001", "FIX", "REORDER", "VIS".
     code: &'static str,
@@ -43,9 +43,8 @@ pub(crate) struct JsonRecord<'a> {
     item_kind: Cow<'a, str>,
     /// Name of the item, or `null` when unnamed.
     item_name: Option<Cow<'a, str>>,
-    /// Friendly title for the finding's rule code, e.g. "missing
-    /// documentation" for `DOC001`; `null` for change records.
-    title: Option<&'static str>,
+    /// Producer-owned title, or the raw code when absent; `null` for changes.
+    title: Option<&'a str>,
 }
 
 /// Selects the CLI's lint-diagnostic output format.
@@ -152,6 +151,7 @@ fn project_lint<'a>(path: &Path, d: &'a Diagnostic) -> JsonRecord<'a> {
             Severity::Error => "error",
             Severity::Warning => "warning",
             Severity::Hint => "hint",
+            Severity::Reminder => "reminder",
         },
         code: d.code,
         message: Cow::Borrowed(d.message.as_ref()),
@@ -161,14 +161,14 @@ fn project_lint<'a>(path: &Path, d: &'a Diagnostic) -> JsonRecord<'a> {
     }
 }
 
-/// Write changes and findings in file order, followed by the separate hint group.
+/// Write changes and findings, followed by separate hint and reminder groups.
 fn write_text(output: &mut impl Write, report: &RunReport) -> io::Result<()> {
     for file in &report.files {
         for change in &file.changes {
             writeln!(output, "{}:{change}", file.path.display())?;
         }
         for diagnostic in &file.diagnostics {
-            if diagnostic.severity != Severity::Hint {
+            if matches!(diagnostic.severity, Severity::Error | Severity::Warning) {
                 writeln!(output, "{}:{diagnostic}", file.path.display())?;
             }
         }
@@ -177,10 +177,12 @@ fn write_text(output: &mut impl Write, report: &RunReport) -> io::Result<()> {
         }
     }
 
-    for file in &report.files {
-        for diagnostic in &file.diagnostics {
-            if diagnostic.severity == Severity::Hint {
-                writeln!(output, "{}:{diagnostic}", file.path.display())?;
+    for severity in [Severity::Hint, Severity::Reminder] {
+        for file in &report.files {
+            for diagnostic in &file.diagnostics {
+                if diagnostic.severity == severity {
+                    writeln!(output, "{}:{diagnostic}", file.path.display())?;
+                }
             }
         }
     }
@@ -190,8 +192,99 @@ fn write_text(output: &mut impl Write, report: &RunReport) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::project_lint;
+    use rstest::rstest;
     use rust_llm_tidy::reporting::{Diagnostic, FileReport, RunReport, Severity};
     use std::path::Path;
+
+    #[rstest]
+    #[case::builtin("DOC001", Some("missing documentation"), "missing documentation", "")]
+    #[case::symbol("SYM", Some("API reminder"), "API reminder", "API reminder: ")]
+    #[case::untitled_known("DOC001", None, "DOC001", "")]
+    #[case::untitled_unknown("DOC999", None, "DOC999", "")]
+    #[case::untitled_symbol("SYM", None, "SYM", "")]
+    fn report_should_preserve_message_and_project_producer_title(
+        #[case] code: &'static str,
+        #[case] title: Option<&str>,
+        #[case] expected_title: &str,
+        #[case] prefix: &str,
+    ) {
+        let report = RunReport {
+            files: vec![FileReport {
+                path: "input.rs".into(),
+                diagnostics: vec![Diagnostic {
+                    severity: Severity::Warning,
+                    code,
+                    title: title.map(Into::into),
+                    message: "complete finding summary".into(),
+                    line: 1,
+                    item_kind: "fn".into(),
+                    item_name: None,
+                }],
+                ..FileReport::default()
+            }],
+            ..RunReport::default()
+        };
+        let mut rendered = Vec::new();
+
+        super::write_text(&mut rendered, &report).unwrap();
+        let json = serde_json::to_value(project_lint(
+            Path::new("input.rs"),
+            &report.files[0].diagnostics[0],
+        ))
+        .unwrap();
+
+        assert_eq!(json["title"], expected_title);
+        assert_eq!(json["message"], "complete finding summary");
+        assert_eq!(
+            String::from_utf8(rendered).unwrap(),
+            format!("input.rs:1: warning[{code}]: {prefix}complete finding summary (fn)\n")
+        );
+    }
+
+    #[rstest]
+    #[case::error(Severity::Error, "error", 1)]
+    #[case::warning(Severity::Warning, "warning", 0)]
+    #[case::hint(Severity::Hint, "hint", 0)]
+    #[case::reminder(Severity::Reminder, "reminder", 0)]
+    fn report_should_group_reminders_last_and_gate_only_errors(
+        #[case] severity: Severity,
+        #[case] token: &str,
+        #[case] errors: usize,
+    ) {
+        let diagnostic = |severity, line| Diagnostic {
+            title: None,
+            severity,
+            code: "DOC999",
+            message: "finding".into(),
+            line,
+            item_kind: "fn".into(),
+            item_name: None,
+        };
+        let report = RunReport {
+            files: vec![FileReport {
+                path: "input.rs".into(),
+                diagnostics: vec![diagnostic(Severity::Reminder, 1), diagnostic(severity, 2)],
+                ..FileReport::default()
+            }],
+            ..RunReport::default()
+        };
+        let mut rendered = Vec::new();
+
+        super::write_text(&mut rendered, &report).unwrap();
+        let text = String::from_utf8(rendered).unwrap();
+        let json = serde_json::to_value(project_lint(
+            Path::new("input.rs"),
+            &report.files[0].diagnostics[1],
+        ))
+        .unwrap();
+
+        assert_eq!(report.error_count(), errors);
+        assert_eq!(report.ensure_success().is_err(), errors > 0);
+        assert_eq!(json["severity"], token);
+        assert!(text.contains(&format!("2: {token}[DOC999]")));
+        let last = text.lines().last().unwrap();
+        assert!(last.contains("reminder[DOC999]"));
+    }
 
     /// Rendering groups hints last while error counts remain severity-specific.
     #[test]
@@ -202,6 +295,7 @@ mod tests {
             ("hint_and_error", Severity::Error, 1),
         ] {
             let diagnostic = |severity, line| Diagnostic {
+                title: None,
                 severity,
                 code: "DOC999",
                 message: "finding".into(),
@@ -259,6 +353,7 @@ mod tests {
     #[test]
     fn project_lint_serializes_hint_severity() {
         let finding = Diagnostic {
+            title: None,
             severity: Severity::Hint,
             code: "DOC999",
             message: String::from("consider pre-allocating the buffer"),

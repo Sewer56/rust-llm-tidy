@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 /// Select files and processing behavior without enabling side effects by default.
 ///
-/// Empty paths process nothing unless `git_changed` is enabled.
+/// Empty paths process nothing unless `git_changed` or `diff_base` is set.
 #[derive(Debug, Default, Clone)]
 pub struct RunOptions {
     /// Files or directories to process, expanded using the effective extensions.
@@ -13,10 +13,21 @@ pub struct RunOptions {
     pub apply: bool,
     /// Query tracked Git changes when `paths` is empty.
     pub git_changed: bool,
+    /// Local Git baseline reference; also grants Git reads on explicit paths.
+    /// With no paths, discover eligible files under the current directory.
+    pub diff_base: Option<String>,
+    /// Report all lines for every severity, overriding entry and lint-code scopes.
+    ///
+    /// False respects entry, config, and severity defaults. Does not enable lints,
+    /// change file discovery, or grant subprocess permissions.
+    pub all_lines: bool,
     /// Permit Cargo subprocesses for Rust project discovery.
     /// Without permission, visibility uses only standalone file facts.
     pub cargo_discovery: bool,
     /// Permit configured subprocesses after processing; ignored during preview.
+    ///
+    /// Matching declaration rules with `exclude_post_process: true` skip the file.
+    /// Edit exclusion alone does not constrain external tools.
     pub post_process: bool,
     /// Rule or operation whitelist overriding configuration when nonempty.
     pub include: Vec<String>,

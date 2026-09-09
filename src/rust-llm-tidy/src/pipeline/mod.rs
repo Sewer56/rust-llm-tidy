@@ -29,6 +29,9 @@ mod buffer;
 mod comment_fixes;
 mod file_execution;
 mod files;
+mod lint_context;
+#[cfg(test)]
+mod lint_context_tests;
 mod run_options;
 mod source_options;
 
@@ -47,9 +50,9 @@ impl FileReport {
 /// Inspect [`RunReport::ensure_success`] after consuming the report.
 /// Configuration discovery is explicit through [`crate::config`].
 ///
-/// The opt-in TEXT007 lint runs only when the config's
-/// `passive_narration.enable` setting is on or the selection names the
-/// code explicitly.
+/// TEXT007 defaults to Reminder severity and changed-line reporting.
+/// `passive_narration.enable: false` disables it unless explicitly included.
+/// Changed-line reporting requires Git permission in [`RunOptions`].
 ///
 /// File previews leave each pass reading the original disk source; see
 /// [`tidy_source`] for final-buffer linting.
@@ -92,6 +95,14 @@ impl FileReport {
 /// - Project discovery failure: a C# project source directory cannot be
 ///   traversed
 ///
+/// Changed-line reporting failures:
+///
+/// - Explicit baseline failure: the reference or HEAD cannot resolve locally,
+///   or their merge-base is unavailable, even when no inputs are selected
+/// - Snapshot failure: a scoped input or baseline cannot be read as bounded
+///   UTF-8 source, or Git output exceeds the collection limits in
+///   [`crate::input::changed_lines`]
+///
 /// # Remarks
 ///
 /// License documents are excluded by default for all path selections. Set
@@ -101,60 +112,54 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
     validate_selection(&options.include, &options.exclude, &options.extensions)?;
 
     let allowed = langs::allowed_extensions(config, &options.extensions);
+    let discovery = [PathBuf::from(".")];
+    let inputs = if options.paths.is_empty() && options.diff_base.is_some() {
+        discovery.as_slice()
+    } else {
+        &options.paths
+    };
     let paths = dedup_inputs(paths::resolve_inputs(
-        &options.paths,
+        inputs,
         options.git_changed,
         &allowed,
         config.is_none_or(CompiledConfig::exclude_license_documents),
     )?);
     let mut report = RunReport::default();
-    if paths.is_empty() {
-        return Ok(report);
-    }
-
     let included: Option<HashSet<String>> =
         (!options.include.is_empty()).then(|| options.include.iter().cloned().collect());
     let disabled: HashSet<String> = options.exclude.iter().cloned().collect();
-    let visibility_inputs: Vec<_> = if options.cargo_discovery {
-        paths
-            .iter()
-            .filter(|path| {
-                let policy = effective_policy(path, config, included.as_ref(), &disabled);
-                !policy.skip
-                    && paths::ext_in(path.extension().and_then(|ext| ext.to_str()), &["rs"])
-                    && langs::profile_for("rs").op_enabled("vis", &policy.enabled, &policy.disabled)
-            })
-            .cloned()
-            .collect()
-    } else {
-        Vec::new()
-    };
-    let context = if !visibility_inputs.is_empty() {
-        files::resolve_vis_context(&visibility_inputs, &mut report.warnings)
-    } else {
-        None
-    };
+    let mut lint_context = lint_context::LintContext::new(config, options.all_lines);
+    report.warnings = lint_context.capture(&paths, options, included.as_ref(), &disabled)?;
+    if paths.is_empty() {
+        return Ok(report);
+    }
+    let context = resolve_visibility(
+        &paths,
+        options,
+        config,
+        included.as_ref(),
+        &disabled,
+        &mut report.warnings,
+    );
 
     let parallel = should_parallelize(&paths);
     let lints_may_run = !disabled.contains("lints")
         && included.as_ref().is_none_or(|set| {
             set.contains("lints") || check::LINT_CODES.iter().any(|code| set.contains(*code))
         });
-    let mut csharp = if lints_may_run {
-        Some(CSharpIndex::build(&paths)?)
-    } else {
-        None
-    };
+    let mut csharp = lints_may_run
+        .then(|| CSharpIndex::build(&paths))
+        .transpose()?;
 
     let mutate = |path: &PathBuf| {
         file_execution::process_one(
             path,
-            config,
             included.as_ref(),
             &disabled,
             context.as_ref(),
             !options.apply,
             (None, None),
+            &lint_context,
         )
     };
     let results: Vec<_> = if parallel {
@@ -173,12 +178,12 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
         }
         file_execution::process_one(
             path,
-            config,
             included.as_ref(),
             &disabled,
             context.as_ref(),
             !options.apply,
             (Some(out), csharp.as_ref()),
+            &lint_context,
         )
     };
     report.files = if parallel {
@@ -191,16 +196,19 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
         paths.iter().zip(results).map(lint).collect()
     };
 
+    for file in &report.files {
+        report.warnings.extend(
+            file.warnings
+                .iter()
+                .map(|warning| format!("{}: {warning}", file.path.display())),
+        );
+    }
+
     if options.apply
         && options.post_process
         && let Some(config) = config
     {
-        let processed: Vec<_> = report
-            .files
-            .iter()
-            .filter(|file| file.processed)
-            .map(|file| file.path.clone())
-            .collect();
+        let processed = files::post_process_inputs(&mut report, lint_context.rules());
         report.post_process_failures = run_post_process(config.post_process_steps(), &processed);
     }
     Ok(report)
@@ -343,29 +351,36 @@ fn dedup_inputs(paths: Vec<PathBuf>) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Resolve configuration and explicit selections before discovery or execution.
-fn effective_policy(
-    path: &Path,
+/// Resolve the crate-aware visibility context from the eligible Rust inputs.
+///
+/// Returns `None` when cargo discovery is off or no input selects `vis`, so
+/// processing falls back to standalone narrowing facts.
+fn resolve_visibility(
+    paths: &[PathBuf],
+    options: &RunOptions,
     config: Option<&CompiledConfig>,
     included: Option<&HashSet<String>>,
     disabled: &HashSet<String>,
-) -> FilePolicy {
-    let mut policy = config
-        .map(|config| config.policy_for(path))
-        .unwrap_or_default();
-    if policy.skip {
-        return policy;
+    warnings: &mut Vec<String>,
+) -> Option<files::VisContext> {
+    if !options.cargo_discovery {
+        return None;
     }
-
-    if let Some(included) = included {
-        policy.enabled = Some(included.clone());
-        policy.disabled.clear();
+    let inputs: Vec<_> = paths
+        .iter()
+        .filter(|path| {
+            let policy = effective_policy(path, config, included, disabled);
+            !policy.skip
+                && paths::ext_in(path.extension().and_then(|ext| ext.to_str()), &["rs"])
+                && langs::profile_for("rs").op_enabled("vis", &policy.enabled, &policy.disabled)
+        })
+        .cloned()
+        .collect();
+    if inputs.is_empty() {
+        None
+    } else {
+        files::resolve_vis_context(&inputs, warnings)
     }
-    policy.disabled.extend(disabled.iter().cloned());
-    if let Some(enabled) = &mut policy.enabled {
-        enabled.retain(|rule| !disabled.contains(rule));
-    }
-    policy
 }
 
 /// Execute configured commands only for eligible files, without invoking a
@@ -404,6 +419,31 @@ fn run_post_process(steps: &[PostProcessStep], files: &[PathBuf]) -> Vec<PostPro
     failures
 }
 
+/// Resolve configuration and explicit selections before discovery or execution.
+fn effective_policy(
+    path: &Path,
+    config: Option<&CompiledConfig>,
+    included: Option<&HashSet<String>>,
+    disabled: &HashSet<String>,
+) -> FilePolicy {
+    let mut policy = config
+        .map(|config| config.policy_for(path))
+        .unwrap_or_default();
+    if policy.skip {
+        return policy;
+    }
+
+    if let Some(included) = included {
+        policy.enabled = Some(included.clone());
+        policy.disabled.clear();
+    }
+    policy.disabled.extend(disabled.iter().cloned());
+    if let Some(enabled) = &mut policy.enabled {
+        enabled.retain(|rule| !disabled.contains(rule));
+    }
+    policy
+}
+
 #[cfg(test)]
 mod tests {
     use super::dedup_inputs;
@@ -439,12 +479,12 @@ mod tests {
             fs::write(&path, source).unwrap();
             let mutated = process_one(
                 &path,
-                None,
                 Some(&included),
                 &disabled,
                 None,
                 false,
                 (None, None),
+                &super::lint_context::LintContext::new(None, false),
             );
             assert!(mutated.processed, "{label}");
             if remove {
@@ -453,12 +493,12 @@ mod tests {
 
             let linted = process_one(
                 &path,
-                None,
                 Some(&included),
                 &disabled,
                 None,
                 false,
                 (Some(mutated), None),
+                &super::lint_context::LintContext::new(None, false),
             );
 
             assert_eq!(linted.failure.is_some(), remove, "{label}");

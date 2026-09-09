@@ -67,6 +67,7 @@ pub(super) fn check(item: &SourceItem, enums: &[DeclaredEnum<'_>]) -> Vec<Diagno
     }
 
     vec![Diagnostic {
+        title: Some("error variants out of alphabetical order".into()),
         severity: Severity::Error,
         code: CODE_ERROR_VARIANT_ORDER,
         message: format!(

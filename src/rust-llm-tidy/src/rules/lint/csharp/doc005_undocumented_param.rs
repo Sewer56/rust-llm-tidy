@@ -27,6 +27,7 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
     vec![decl.diagnostic(
         Severity::Warning,
         CODE_UNDOCUMENTED_PARAM,
+        "undocumented parameter",
         format!(
             "parameter(s) not documented in `<param>` tags: `{}`.\n\n\
              Why: Omitted parameters leave readers guessing how to supply those inputs.\n\n\

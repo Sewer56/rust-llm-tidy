@@ -6,7 +6,7 @@ The `lints` op runs read-only checks.
 
 - It is on by default in the pipeline and never mutates files.
 - Exits non-zero when any error-severity finding is present (warnings and
-  hints do not fail).
+  hints and reminders do not fail).
 
 The lint codes are sub-checks of `lints`; they stay individually
 toggleable through the same rule namespace as the ops.
@@ -16,7 +16,7 @@ So `exclude: [{rules: [DOC001]}]` turns off just missing-docs and
 
 Which codes run depends on the language:
 
-- Rust: every code, read from a tree-sitter parse.
+- Rust: documentation, text, test, module, length, and symbol checks.
 - C#: checks XML documentation and test names ([lints for C#]).
 - Python: checks module docstrings ([`DOC009`]).
 
@@ -45,13 +45,33 @@ Text lints for other languages use these sources ([text lints]):
 | [`TEXT004`] | Warning  | A doc opener with 3+ sentences or over 160 chars (file, item, or heading).        |
 | [`TEXT005`] | Warning  | A fenced code block opens with no tag or bare `ignore` (all markdown prose).      |
 | [`TEXT006`] | Hint     | A doc line has a shorter alternative for a word, phrase, or filler.               |
-| [`TEXT007`] | Hint     | A doc line may hold passive voice or implementation history.                      |
+| [`TEXT007`] | Reminder | A doc line may hold passive voice or implementation history.                      |
 | [`TEXT008`] | Warning  | A bullet list exceeds 10 source lines.                                            |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
 | [`MOD001`]  | Warning  | A code file exceeds `module_size.max_lines` (default 500).                        |
 | [`MOD002`]  | Error    | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
 | [`MOD003`]  | Hint     | A path includes the full namespace.                                               |
 | [`LEN001`]  | Hint     | A Rust fn body exceeds `method_length.max_lines` (default 100).                   |
+| [`SYM`]     | Reminder | A configured text or symbol hint matches; severity is configurable.               |
+
+## Reporting scope
+
+- Reminders default to changed lines; other severities default to whole files.
+- Set `lint_scopes: {DOC001: changed_lines}` to limit a lint to changed lines.
+- Use `--all-lines` to report every severity across whole files.
+- Priority: `--all-lines` > symbol `scope` > `lint_scopes` > severity default.
+  Scopes affect findings, not file selection or edits. Only errors fail the run.
+
+### Git baseline
+
+- Default: compare working files with local `HEAD`.
+- `--diff-base main` compares current files with their common ancestor
+  with `main`.
+  You can also set the reference via `RUST_LLM_TIDY_DIFF_BASE`.
+- No paths? Check changed files, or scan the current directory with
+  `--diff-base`.
+- Without Git history, skip changed-line findings and warn.
+  An invalid `--diff-base` stops the run.
 
 ## Examples
 
@@ -718,6 +738,14 @@ Suggestions:
 
 `LEN001` is hint-severity, so the run exits 0.
 
+### SYM - configured symbol policies
+
+`SYM` reports text hints across supported text languages and custom or
+built-in symbol hints for Rust and C#.
+
+See [symbol rules] for matching, configuration, declaration exclusions,
+and built-in symbols.
+
 ## Config
 
 ```yaml
@@ -769,28 +797,30 @@ in both in-place and `--dry-run` runs.
 
 Fields:
 
-- `severity` - `"error"`, `"warning"`, or `"hint"` for lint findings,
+- `severity` - `"error"`, `"warning"`, `"hint"`, or `"reminder"` for findings,
   `"success"` for change records (applied or would-be changes)
-- `line` - 1-based item start line; `null` when the record has no
+- `line` - 1-based reported line; `null` when the record has no
   specific line (e.g. link/table fixes)
 - `item_name` - item name, `null` when unnamed
-- `title` - friendly per-code title for lint findings, `null` for change
-  records
+- `title` - friendly title for lint findings,
+  `null` for change records
 - `path`, `code`, `message`, `item_kind` - as in plaintext
 
 In JSON mode the plaintext `path:line: sev[CODE]: ...` diagnostics are not
 printed to stderr. Change records and lint findings are folded into the same
 document, in both in-place and `--dry-run` runs.
 
-## Hints
+## Hints and reminders
 
-`hint` is an advisory severity for suggestions an LLM or human may want to
-investigate, such as a possible pre-allocation.
+`hint` is an advisory severity for suggestions such as shorter wording.
 
 - Hints never gate the exit code; only `error` findings do.
 - Text mode prints them in a separate group at the end, in the usual
   `path:line: hint[CODE]: ...` shape.
 - JSON mode records them with `severity: "hint"` and the usual lint fields.
+
+Reminders are hints scoped to [changed lines] by default.
+They report as `reminder` in text and JSON output.
 
 ## Change reporting
 
@@ -853,6 +883,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`MOD003`]: #mod003---full-namespace-qualification-in-code
 [C# MOD003]: languages/lints/csharp.md#mod003---full-namespace-qualification-in-code
 [`LEN001`]: #len001---oversized-function-or-method
+[`SYM`]: #sym---configured-symbol-policies
 [lints for C#]: ./languages/lints/csharp.md
 [text lints]: ./text-lints.md
 
@@ -863,3 +894,5 @@ For complete processing and project context, see [library entry points].
 
 [library entry points]: architecture.md#library-entry-points
 [opt-in below]: #mod001-counting-options
+[changed lines]: #reporting-scope
+[symbol rules]: symbol-rules.md

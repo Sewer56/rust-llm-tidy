@@ -7,15 +7,17 @@
 // `load` is `pub(super)` so sibling `config` unit tests can reuse its
 // `compile` fixture helper; `compiled` itself stays private.
 use super::{
-    FilePolicy, LinkConfig, MethodLengthConfig, ModuleSizeConfig, PassiveNarrationConfig,
-    PostProcessStep,
+    FilePolicy, LinkConfig, MethodLengthConfig, ModuleSizeConfig, PassiveNarrationConfig, PerfCode,
+    PostProcessStep, ReportingScope,
 };
 use globset::GlobSet;
 pub use load::load_and_compile;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use symbol_rules::CompiledSymbolRule;
 
 pub(super) mod load;
+pub(crate) mod symbol_rules;
 
 /// A loaded and validated config, ready to answer `policy_for` queries.
 #[derive(Debug)]
@@ -47,6 +49,12 @@ pub struct CompiledConfig {
     /// Resolved `passive_narration` settings (section defaults when the
     /// top-level key is absent).
     passive_narration: PassiveNarrationConfig,
+    /// Selected built-in families; absent enables every built-in family.
+    configured_perf_hints: Option<Vec<PerfCode>>,
+    /// Validated overrides, separate from lint enablement.
+    lint_scopes: HashMap<String, ReportingScope>,
+    /// Symbol patterns compiled once when the configuration is loaded.
+    symbol_rules: Vec<CompiledSymbolRule>,
 }
 
 /// A compiled `include`/`exclude` group: one glob set plus its rule names.
@@ -57,6 +65,16 @@ struct CompiledRuleGroup {
 }
 
 impl CompiledConfig {
+    /// Configured reporting override; absent leaves the severity default intact.
+    pub(crate) fn scope_for(&self, code: &str) -> Option<ReportingScope> {
+        self.lint_scopes.get(code).copied()
+    }
+
+    /// Compiled symbol policies in configuration order.
+    pub(crate) fn symbol_rules(&self) -> &[CompiledSymbolRule] {
+        &self.symbol_rules
+    }
+
     /// Whether discovery skips conventional license documents.
     pub(crate) fn exclude_license_documents(&self) -> bool {
         self.exclude_license_documents
@@ -67,9 +85,16 @@ impl CompiledConfig {
         self.passive_narration.suppress_in_release_notes
     }
 
-    /// Whether to run the opt-in `passive_narration.enable` lint.
+    /// Whether `passive_narration.enable` permits TEXT007 by default.
     pub(crate) fn passive_narration(&self) -> bool {
         self.passive_narration.enable
+    }
+
+    /// Resolve omitted selection to all built-in families.
+    pub(crate) fn perf_hints(&self) -> &[PerfCode] {
+        self.configured_perf_hints
+            .as_deref()
+            .unwrap_or(PerfCode::ALL)
     }
 
     /// Borrow the post-processing steps so the pipeline can run them after the

@@ -102,7 +102,9 @@ fn csharp_doc002_should_degrade_for_loose_files_and_keep_doc003_warning_exit() {
     fs::remove_file(helper).unwrap();
 
     assert!(loose.status.success());
-    assert!(loose.stderr.is_empty());
+    let loose_stderr = String::from_utf8_lossy(&loose.stderr);
+    assert!(!loose_stderr.contains("[DOC002]"), "{loose_stderr}");
+    assert!(!loose_stderr.contains("[DOC003]"), "{loose_stderr}");
     assert!(paired.status.success(), "{stderr}");
     assert_eq!(stderr.matches("warning[DOC003]").count(), 1, "{stderr}");
     assert_eq!(stderr.matches("warning[").count(), 1, "{stderr}");

@@ -57,6 +57,7 @@ indoc = "2"
 memchr = "2"
 quick-xml = { version = "0.42.0", default-features = false }
 rayon = "1.12"
+regex = "1.12.4"
 serde = { version = "1", features = ["derive"] }
 serde_yml = "0.0.13"
 smallvec = "1"

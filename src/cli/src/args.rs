@@ -23,6 +23,15 @@ pub(crate) struct Cli {
     /// Print the changes that would be made instead of modifying files.
     #[arg(long)]
     pub(crate) dry_run: bool,
+    /// Local baseline reference. Overrides RUST_LLM_TIDY_DIFF_BASE.
+    ///
+    /// Without paths, discover eligible files recursively from the current directory.
+    #[arg(long, value_name = "REF")]
+    pub(crate) diff_base: Option<String>,
+    /// Report all lines for every severity, overriding entry and config scopes.
+    /// Omitted respects configured defaults; does not enable lints or change discovery.
+    #[arg(long)]
+    pub(crate) all_lines: bool,
     /// Validate the config and exit; do not process files.
     #[arg(long)]
     pub(crate) validate: bool,

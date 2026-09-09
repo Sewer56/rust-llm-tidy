@@ -91,6 +91,7 @@ fn opener_diagnostic(para: &Paragraph, summary: &str) -> Diagnostic {
         "Keep a connected explanation in a separate short paragraph.".to_string(),
     ];
     Diagnostic {
+        title: Some("header opener shape".into()),
         severity: Severity::Warning,
         code: CODE_HEADER_OPENER,
         message: bulleted(

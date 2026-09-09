@@ -831,6 +831,7 @@ dependencies = [
  "memchr",
  "quick-xml",
  "rayon",
+ "regex",
  "rstest",
  "serde",
  "serde_yml",

@@ -23,8 +23,10 @@ against misread declarations.
 | `TEXT006` | Hint     | Shorter-wording suggestions for words, phrases, redundancies, and filler in doc text             |
 | `TEST001` | Warning  | A `TestMethod`/`Test`/`Fact`/`Theory` method uses a `test_*`, `case_*`, or `test` + digits name. |
 | `MOD003`  | Hint     | A path includes the full namespace.                                                              |
+| `SYM`     | Reminder | A configured text or symbol hint matches; severity is configurable.                              |
 
-Errors fail the run with a non-zero exit; warnings and hints do not.
+Errors fail the run with a non-zero exit; warnings, hints, and reminders do
+not.
 
 ## Examples
 
@@ -707,6 +709,17 @@ Hints never fail the run or rewrite source.
 See [shared MOD003 policy] for Rust behavior.
 
 [shared MOD003 policy]: ../../lints.md#mod003---full-namespace-qualification-in-code
+
+## SYM - symbol rules
+
+Add custom hints or exclude declarations with [symbol rules].
+
+- [Array matching] covers C# array creations.
+- [Built-in symbols] covers capacity and array reminders.
+
+[symbol rules]: ../../symbol-rules.md
+[Array matching]: ../../symbol-rules.md#usage-constraints
+[Built-in symbols]: ../../symbol-rules.md#built-in-symbols
 
 ## Library access
 

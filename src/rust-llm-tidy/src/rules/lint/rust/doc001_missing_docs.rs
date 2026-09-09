@@ -37,6 +37,7 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     }
 
     vec![Diagnostic {
+        title: Some("missing documentation".into()),
         severity: Severity::Error,
         code: CODE_MISSING_DOCS,
         message: "non-private item is missing a doc comment.\n\n\

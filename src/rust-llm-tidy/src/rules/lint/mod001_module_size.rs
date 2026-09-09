@@ -62,6 +62,7 @@ pub(super) fn diagnostic(
     exclusions: &str,
 ) -> Diagnostic {
     Diagnostic {
+        title: Some("oversized module".into()),
         severity: Severity::Warning,
         code: CODE_MODULE_SIZE,
         message: indoc::formatdoc! {"

@@ -28,6 +28,7 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     }
 
     vec![Diagnostic {
+        title: Some("missing `# Arguments` section".into()),
         severity: Severity::Warning,
         code: CODE_MISSING_ARGUMENTS,
         message: "pub fn with parameters is missing a `# Arguments` doc section.\n\n\

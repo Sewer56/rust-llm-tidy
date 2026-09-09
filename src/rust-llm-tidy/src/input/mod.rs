@@ -1,6 +1,7 @@
-//! Path resolution utilities: expanding directories, collecting files by
-//! extension, and resolving the effective input list (explicit paths or git
-//! diff).
+//! Resolve input paths and capture optional changed-line eligibility.
+//!
+//! Expand directories and collect files by extension or Git diff.
+//! [`changed_lines`] captures opt-in, pre-transform line eligibility.
 //!
 //! Discovery excludes license documents unless config sets
 //! `exclude_license_documents: false`:
@@ -14,6 +15,7 @@ use anyhow::{Context, bail};
 use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
 
+pub mod changed_lines;
 pub mod file_io;
 pub mod git;
 

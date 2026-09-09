@@ -39,6 +39,7 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     }
 
     vec![Diagnostic {
+        title: Some("undocumented parameter".into()),
         severity: Severity::Warning,
         code: CODE_UNDOCUMENTED_PARAM,
         message: format!(

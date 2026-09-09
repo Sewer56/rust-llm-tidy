@@ -20,6 +20,7 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
         decl.diagnostic(
             Severity::Warning,
             CODE_MISSING_ARGUMENTS,
+            "missing `# Arguments` section",
             "member with parameters is missing `<param>` doc tags.\n\n\
          Why: Readers need parameter roles and constraints to supply appropriate inputs.\n\n\
          Suggestions:\n\

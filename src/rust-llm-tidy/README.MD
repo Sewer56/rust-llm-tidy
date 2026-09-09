@@ -38,23 +38,49 @@ assert_eq!(result.diagnostics[0].code, "DOC001");
 # Ok::<(), anyhow::Error>(())
 ```
 
-Source processing returns final transformed text and findings against that text.
+`tidy_source` returns the transformed text and findings against it, using only
+facts available in the buffer. Use `run` when checks need cross-file analysis.
 
-- Project-dependent checks use standalone facts
-- Use `run` for cross-file analysis
+Set `SourceOptions::symbol_rules` for custom hints and declaration exclusions.
+Exclusions can suppress selected lints while allowing edits such as reordering.
+
+Buffers have no Git diff, so reminders are hidden by default. To include them,
+set `SourceOptions::all_lines` to `true`. This overrides reporting scopes for
+every severity.
+
+Hints, warnings, and errors still cover the whole buffer.
 
 ### File processing
 
-`RunOptions::default()` previews explicit inputs. It does not discover
-configuration or query Git automatically.
+Pass files or directories in `RunOptions::paths` and optional configuration from
+`config::load_and_compile` to `run`.
 
-- Set `paths` to files or directories
+The defaults preview those inputs without
+discovering configuration, querying Git, or starting subprocesses.
+
 - Set `apply` to permit file writes
 - Set `git_changed` to query tracked Git changes when paths are empty
 - Set `cargo_discovery` to permit Cargo-based Rust project discovery
 - Set `post_process` to permit configured subprocesses during an apply run
-- Use `config::load_and_compile` to supply configuration explicitly
-- Inspect `RunReport::ensure_success` after consuming partial results
+
+`RunOptions::all_lines: true` overrides symbol-entry and `lint_scopes` settings
+for every severity. The default, `false`, respects configured scopes.
+Reminders default to changed lines; hints, warnings, and errors default to all.
+
+`diff_base` permits Git reads against the merge-base of a local reference and
+`HEAD`. With no paths, it also discovers eligible files below the current
+directory. With `git_changed` alone, the baseline is `HEAD` versus working
+content.
+
+Changed-line findings need a usable snapshot. Missing Git permission or
+context produces a warning and skips those findings, not an all-lines
+fallback. An invalid explicit baseline is an error.
+
+Consume the returned results before calling `RunReport::ensure_success` to
+check for errors, including failures that left partial results.
+
+See [symbol policies] for matching and declaration protection, and
+[reporting scope] for scope precedence and baseline comparison.
 
 See the [API documentation] for executable examples and error contracts.
 
@@ -77,5 +103,7 @@ See [architecture and migration] for the retired crate mappings.
 Licensed under [Apache 2.0].
 
 [API documentation]: https://docs.rs/rust-llm-tidy
+[symbol policies]: ../../docs/symbol-rules.md
+[reporting scope]: ../../docs/lints.md#reporting-scope
 [architecture and migration]: ../../docs/architecture.md
 [Apache 2.0]: ../../LICENSE

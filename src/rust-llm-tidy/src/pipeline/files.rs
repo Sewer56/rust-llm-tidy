@@ -1,17 +1,17 @@
 //! File operations and project-aware visibility context.
 
-use crate::config::{MethodLengthConfig, ModuleSizeConfig};
+use crate::config::{CompiledSymbolRule, MethodLengthConfig, ModuleSizeConfig};
 use crate::input as paths;
 use crate::input::file_io as io;
 use crate::languages::{backend_for, registry as langs};
 use crate::project::csharp as csharp_index;
-use crate::reporting::Diagnostic;
 use crate::reporting::change as changes;
+use crate::reporting::{Diagnostic, RunReport};
 use crate::rules::lint as check;
 use crate::rules::transform::reorder;
 use crate::rules::transform::visibility::rust::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
-    discover_crate_root, narrow_vis_in_tree,
+    discover_crate_root, narrow_vis_in_tree_protected,
 };
 use crate::source::preservation as safety;
 use crate::text::comments;
@@ -34,8 +34,7 @@ pub(crate) struct VisContext {
 
 /// Check a single source file and return its lint diagnostics.
 ///
-/// Returns `(path, diagnostics)` pairs so the caller can either print the
-/// plaintext lines to stderr (default output) or project them to JSON.
+/// Returns diagnostics and skipped-check warnings for the file report.
 ///
 /// The profile decides which passes run: parser-driven checks need a
 /// registered backend; text lints source TEXT* per tier. MOD001 counts whole
@@ -48,24 +47,29 @@ pub(crate) struct VisContext {
 ///   TEXT007 narration markers in release and migration notes
 /// - `module_size`: resolved MOD001 eligibility and counting options
 /// - `method_length`: resolved LEN001 `max_lines` threshold
+/// - `lint_context`: compiled hints, exclusion policies and reporting scopes
 /// - `index`: refreshed C# facts and cached parses for this run
 ///
 /// # Errors
-/// Returns an error when reading source or constructing its syntax tree fails.
+/// Returns an error when reading source or constructing its syntax tree fails,
+/// or declaration policies encounter syntax errors or missing tokens.
 pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
     suppress_in_release_notes: bool,
     module_size: ModuleSizeConfig,
     method_length: MethodLengthConfig,
+    lint_context: &super::lint_context::LintContext<'_>,
     index: Option<&csharp_index::CSharpIndex>,
-) -> anyhow::Result<Vec<(PathBuf, Diagnostic)>> {
+) -> anyhow::Result<(Vec<Diagnostic>, Vec<String>)> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let profile = langs::profile_for(ext);
 
     let mut diagnostics = Vec::new();
+    let mut warnings = Vec::new();
+    let mut observations = check::symbols::SymbolObservations::default();
     if profile.backend
         && let Some(backend) = backend_for(ext)
     {
@@ -82,6 +86,13 @@ pub(crate) fn check_file(
             Some(index) => backend.lint_indexed(parsed, &index.index),
             None => backend.lint(parsed),
         };
+        observations = lint_context.observe(parsed, ext, disabled)?;
+        if !disabled.contains(check::CODE_SYM) {
+            let text =
+                check::symbols::text_regex::check(&source, ext, Some(parsed), lint_context.rules());
+            observations.hints.extend(text.hints);
+            warnings.extend(text.warnings);
+        }
         // MOD001 is file-level: it needs the path and the threshold, which
         // never reach `LanguageBackend::lint`, so it runs at this seam.
         if profile.module_size == langs::ModuleSize::RustNonTest
@@ -104,6 +115,12 @@ pub(crate) fn check_file(
                 method_length.max_lines,
             ));
         }
+    }
+
+    if !profile.backend && !disabled.contains(check::CODE_SYM) {
+        let text = check::symbols::text_regex::check(&source, ext, None, lint_context.rules());
+        observations.hints.extend(text.hints);
+        warnings.extend(text.warnings);
     }
 
     if (profile.module_size == langs::ModuleSize::WholeFile
@@ -131,10 +148,9 @@ pub(crate) fn check_file(
         diagnostics.retain(|d| !check::is_narration_marker(d));
     }
 
-    Ok(diagnostics
-        .into_iter()
-        .map(|d| (path.to_path_buf(), d))
-        .collect())
+    lint_context.filter(path, &source, observations, &mut diagnostics, disabled);
+
+    Ok((diagnostics, warnings))
 }
 
 /// Fix table alignment, nested fence delimiters, and repeated inline links in a
@@ -160,7 +176,8 @@ pub(crate) fn check_file(
 /// A no-op pass borrows its text back and yields no record.
 ///
 /// # Errors
-/// Returns an error when reading source or atomically writing the result fails.
+/// Returns an error when reading source or atomically writing the result fails,
+/// or applicable exclusions cannot parse a complete declaration tree.
 pub(crate) fn fix_file(
     path: &Path,
     dry_run: bool,
@@ -168,23 +185,71 @@ pub(crate) fn fix_file(
     enabled: &Option<HashSet<String>>,
     disabled: &HashSet<String>,
     links_min_occurrences: usize,
+    rules: &[CompiledSymbolRule],
 ) -> anyhow::Result<Vec<changes::Change>> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
-    let (out, change_records) = super::buffer::fix_source(
+    let ranges = super::lint_context::protected_ranges(&source, ext, rules)?;
+    let (out, change_records) = super::buffer::fix_source_protected(
         &source,
         ext,
         profile,
         enabled,
         disabled,
         links_min_occurrences,
+        &ranges,
     );
     if !dry_run && out != source {
         io::atomic_write(path, &out)
             .with_context(|| format!("failed to write {}", path.display()))?;
     }
     Ok(change_records)
+}
+
+/// Withhold files with matching post-processing opt-outs; fail closed on reads
+/// or declaration parsing required by applicable opt-outs.
+pub(super) fn post_process_inputs(
+    report: &mut RunReport,
+    rules: &[CompiledSymbolRule],
+) -> Vec<PathBuf> {
+    let mut processed = Vec::with_capacity(report.files.len());
+    for file in &mut report.files {
+        if !file.processed {
+            continue;
+        }
+        let ext = file
+            .path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("");
+        let exclusions: Vec<_> = rules
+            .iter()
+            .filter(|rule| rule.exclude_post_process && rule.applies_to_extension(ext))
+            .collect();
+        if exclusions.is_empty() {
+            processed.push(file.path.clone());
+            continue;
+        }
+
+        let protection = fs::read_to_string(&file.path)
+            .map_err(anyhow::Error::from)
+            .and_then(|source| {
+                let backend =
+                    backend_for(ext).context("post-processing exclusion needs a parser")?;
+                check::symbols::excludes_post_process(&backend.parse(&source)?, ext, &exclusions)
+            });
+
+        match protection {
+            Ok(false) => processed.push(file.path.clone()),
+            Ok(true) => report.warnings.push(format!(
+                "post-processing skipped for {}: matching declaration sets exclude_post_process",
+                file.path.display()
+            )),
+            Err(error) => file.fail(&error),
+        }
+    }
+    processed
 }
 
 /// Reorder a single source file.
@@ -207,6 +272,7 @@ pub(crate) fn reorder_file(
     path: &Path,
     dry_run: bool,
     disabled: &HashSet<String>,
+    rules: &[CompiledSymbolRule],
 ) -> anyhow::Result<Vec<changes::Change>> {
     if disabled.contains("reorder") {
         return Ok(Vec::new());
@@ -226,12 +292,14 @@ pub(crate) fn reorder_file(
         .with_context(|| format!("failed to parse {}", path.display()))?;
 
     // 3. Compute the item and member order; a declined source is a no-op.
-    let Some(permutation) = backend
+    let ranges = check::symbols::excluded_ranges(&parsed, ext, rules)?;
+    let Some(mut permutation) = backend
         .reorder_permutation(&parsed)
         .context("failed to compute item order")?
     else {
         return Ok(Vec::new());
     };
+    permutation.protect(&parsed, &ranges)?;
 
     // 4. Emit the reordered source.
     let output = reorder::emit(&parsed, &permutation).context("failed to emit reordered source")?;
@@ -296,7 +364,7 @@ pub(crate) fn resolve_vis_context(
             let crate_dir = root.parent().unwrap_or_else(|| Path::new("."));
             let mut rs_files: Vec<PathBuf> = Vec::new();
             let _ = paths::collect_files(crate_dir, &["rs"], &mut rs_files, true);
-            let mut files: Vec<ParsedFile> = Vec::new();
+            let mut files: Vec<ParsedFile> = Vec::with_capacity(rs_files.len());
             for f in &rs_files {
                 if let Ok(src) = fs::read_to_string(f) {
                     // Canonicalize so tree keys match the per-file floor_for lookup
@@ -348,12 +416,14 @@ pub(crate) fn vis_file(
     dry_run: bool,
     ctx: Option<&VisContext>,
     disabled: &HashSet<String>,
+    rules: &[CompiledSymbolRule],
 ) -> anyhow::Result<Vec<changes::Change>> {
     if disabled.contains("vis") {
         return Ok(Vec::new());
     }
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let ranges = super::lint_context::protected_ranges(&source, "rs", rules)?;
 
     let output = match ctx {
         Some(VisContext { tree, reexports }) => {
@@ -366,7 +436,7 @@ pub(crate) fn vis_file(
                 // guard is built from every .rs under the crate src dir, so
                 // cross-file re-exports are sound.
                 let floor = tree.floor_for(&canon);
-                narrow_vis_in_tree(&source, floor, reexports)
+                narrow_vis_in_tree_protected(&source, floor, reexports, &ranges)
             } else {
                 // Narrow standalone with a per-file re-export guard instead.
                 //
@@ -376,14 +446,14 @@ pub(crate) fn vis_file(
                 // file's own `pub use`.
                 let pf = ParsedFile::new(path.to_path_buf(), source.clone())?;
                 let per_file = collect_crate_reexports(iter::once(&pf));
-                narrow_vis_in_tree(&source, None, &per_file)
+                narrow_vis_in_tree_protected(&source, None, &per_file, &ranges)
             }
         }
         None => {
             // Standalone: build a per-file re-export guard from this file only.
             let pf = ParsedFile::new(path.to_path_buf(), source.clone())?;
             let reexports = collect_crate_reexports(iter::once(&pf));
-            narrow_vis_in_tree(&source, None, &reexports)
+            narrow_vis_in_tree_protected(&source, None, &reexports, &ranges)
         }
     }
     .with_context(|| format!("failed to narrow {}", path.display()))?;

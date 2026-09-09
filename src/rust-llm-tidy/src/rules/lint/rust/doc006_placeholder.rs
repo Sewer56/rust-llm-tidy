@@ -31,6 +31,7 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     }
 
     vec![Diagnostic {
+        title: Some("placeholder text".into()),
         severity: Severity::Warning,
         code: CODE_DOC_PLACEHOLDER,
         message: "doc comment contains placeholder text (TODO/FIXME/TBD).\n\n\

@@ -18,6 +18,7 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
         return vec![decl.diagnostic(
             Severity::Warning,
             CODE_TEST_NAMING,
+            "non-behavioral test name",
             format!(
                 "test method `{name}` uses a discouraged naming pattern.\n\n\
                  Why: Behavioral names help readers understand a test's claim without opening its body.\n\n\

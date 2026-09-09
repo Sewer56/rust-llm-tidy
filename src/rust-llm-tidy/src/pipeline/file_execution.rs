@@ -2,7 +2,7 @@
 
 use super::effective_policy;
 use super::files::{self, VisContext};
-use crate::config::{CompiledConfig, MethodLengthConfig, ModuleSizeConfig};
+use crate::config::{CompiledConfig, FilePolicy, MethodLengthConfig, ModuleSizeConfig};
 use crate::languages::{backend_for, registry as langs};
 use crate::project::csharp::CSharpIndex;
 use crate::reporting::FileReport;
@@ -21,6 +21,23 @@ struct LintGate {
     lints_on: bool,
 }
 
+/// Whether the resolved file policy permits a lint phase at all.
+pub(super) fn lints_enabled(
+    path: &Path,
+    config: Option<&CompiledConfig>,
+    policy: &FilePolicy,
+) -> bool {
+    let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+    !policy.skip
+        && lint_gate(
+            config,
+            langs::profile_for(ext),
+            &policy.enabled,
+            &policy.disabled,
+        )
+        .lints_on
+}
+
 /// Process one mutation or lint phase, retaining changes and findings.
 ///
 /// - `dry_run`: preview without writing source
@@ -36,13 +53,14 @@ struct LintGate {
 /// even under aliases.
 pub(super) fn process_one(
     path: &Path,
-    config: Option<&CompiledConfig>,
     cli_include: Option<&HashSet<String>>,
     cli_disabled: &HashSet<String>,
     ctx: Option<&VisContext>,
     dry_run: bool,
     phase: (Option<FileReport>, Option<&CSharpIndex>),
+    lint_context: &super::lint_context::LintContext<'_>,
 ) -> FileReport {
+    let config = lint_context.config;
     let (prior, index) = phase;
     let lint_phase = prior.is_some();
     let mut out = prior.unwrap_or_else(|| FileReport {
@@ -87,7 +105,15 @@ pub(super) fn process_one(
             Some(c) => c.links_min_occurrences_for(ext),
             None => 1,
         };
-        match files::fix_file(path, dry_run, profile, enabled, disabled, links_min) {
+        match files::fix_file(
+            path,
+            dry_run,
+            profile,
+            enabled,
+            disabled,
+            links_min,
+            lint_context.rules(),
+        ) {
             Ok(found) => out.changes.extend(found),
             Err(e) => {
                 out.fail(&e);
@@ -98,7 +124,7 @@ pub(super) fn process_one(
 
     // Reorder next (fixes ordering).
     if !lint_phase && ast_op_on("reorder") {
-        match files::reorder_file(path, dry_run, disabled) {
+        match files::reorder_file(path, dry_run, disabled, lint_context.rules()) {
             Ok(found) => out.changes.extend(found),
             Err(e) => {
                 out.fail(&e);
@@ -109,7 +135,7 @@ pub(super) fn process_one(
     // Narrow visibility next (fixes misleading bare `pub` inside
     // restricted-visibility inline modules).
     if !lint_phase && ast_op_on("vis") {
-        match files::vis_file(path, dry_run, ctx, disabled) {
+        match files::vis_file(path, dry_run, ctx, disabled, lint_context.rules()) {
             Ok(found) => out.changes.extend(found),
             Err(e) => {
                 out.fail(&e);
@@ -126,11 +152,13 @@ pub(super) fn process_one(
             config.is_none_or(CompiledConfig::suppress_in_release_notes),
             gate.module_size,
             gate.method_length,
+            lint_context,
             index,
         ) {
-            Ok(found) => out
-                .diagnostics
-                .extend(found.into_iter().map(|(_, diagnostic)| diagnostic)),
+            Ok((found, warnings)) => {
+                out.diagnostics.extend(found);
+                out.warnings.extend(warnings);
+            }
             Err(e) => {
                 out.fail(&e);
                 return out;
@@ -146,7 +174,7 @@ pub(super) fn process_one(
 
 /// Resolve the disabled lint codes for the lint phase under the active
 /// selection.
-fn lint_disabled_set(
+pub(super) fn lint_disabled_set(
     enabled: &Option<HashSet<String>>,
     disabled: &HashSet<String>,
     config: Option<&CompiledConfig>,
@@ -160,15 +188,15 @@ fn lint_disabled_set(
             .map(|c| c.to_string())
             .chain(disabled.iter().cloned())
             .collect(),
-        // TEXT007 is opt-in: it runs only when the config enables it or
-        // the selection names the code; `lints` alone does not.
+        // Explicit code inclusion overrides the TEXT007 config opt-out;
+        // selecting the whole group respects it.
         _ => {
-            let opted_in = config.is_some_and(CompiledConfig::passive_narration)
+            let narration_enabled = config.is_none_or(CompiledConfig::passive_narration)
                 || enabled
                     .as_ref()
                     .is_some_and(|set| set.contains(check::CODE_PASSIVE_NARRATION));
             let mut codes = disabled.clone();
-            if !opted_in {
+            if !narration_enabled {
                 codes.insert(check::CODE_PASSIVE_NARRATION.to_string());
             }
             codes

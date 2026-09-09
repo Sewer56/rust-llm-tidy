@@ -47,6 +47,7 @@ fn cli_should_match_library_source_and_records() {
                         rust_llm_tidy::reporting::Severity::Error => "error",
                         rust_llm_tidy::reporting::Severity::Warning => "warning",
                         rust_llm_tidy::reporting::Severity::Hint => "hint",
+                        rust_llm_tidy::reporting::Severity::Reminder => "reminder",
                     },
                     "code": d.code, "message": d.message, "item_kind": d.item_kind,
                     "item_name": d.item_name, "title": d.title(),

@@ -33,6 +33,7 @@ fn discovery_probe() {
     let excluded = mode == "excluded" || mode == "allowed_excluded";
     let options = RunOptions {
         paths: vec![source],
+        all_lines: true,
         cargo_discovery: mode.starts_with("allowed") || mode == "config_excluded",
         exclude: if excluded {
             vec!["vis".into()]

@@ -8,6 +8,7 @@ use crate::source::{ItemKind, ParseResult, SourceItem};
 use ahash::AHashMap;
 use anyhow::{Result, ensure};
 use core::fmt;
+use core::ops::Range;
 
 /// A validated permutation of items.
 ///
@@ -21,6 +22,8 @@ pub struct Permutation {
     /// In-type member permutations by item index. Empty unless member
     /// reordering applies; the Rust parse emits no members.
     member_orders: AHashMap<usize, Vec<usize>>,
+    /// Protected emission keeps original trivia instead of deriving spacing.
+    preserve_spacing: bool,
 }
 
 /// A single reorder move: one item whose output position differs from its
@@ -77,6 +80,7 @@ impl Permutation {
         Ok(Self {
             order,
             member_orders: AHashMap::new(),
+            preserve_spacing: false,
         })
     }
 
@@ -121,6 +125,68 @@ impl Permutation {
         }
 
         self.member_orders.insert(item_idx, member_order);
+        Ok(())
+    }
+
+    /// Pin overlapping items and members, preserving order within each free run.
+    ///
+    /// Ranges refer to the current parsed source. A protected nested declaration
+    /// pins its enclosing item; unprotected members may still reorder on either
+    /// side of a protected member. Emission retains original whitespace.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for:
+    /// - An item count different from this permutation's count.
+    /// - A member order with a missing item or different member count.
+    /// - A reversed range or an endpoint outside source or inside a UTF-8 character.
+    /// - Nonempty protection supplied for a syntax-error tree.
+    pub(crate) fn protect(&mut self, parsed: &ParseResult, ranges: &[Range<usize>]) -> Result<()> {
+        ensure!(
+            self.order.len() == parsed.items.len(),
+            "protected permutation item count mismatch"
+        );
+        for range in ranges {
+            ensure!(
+                range.start <= range.end
+                    && parsed.source.is_char_boundary(range.start)
+                    && parsed.source.is_char_boundary(range.end),
+                "invalid protection byte range"
+            );
+        }
+        if ranges.is_empty() {
+            return Ok(());
+        }
+        ensure!(
+            !parsed.syntax_tree().root_node().has_error(),
+            "cannot protect a syntax-error tree"
+        );
+        for (&index, order) in &self.member_orders {
+            ensure!(
+                parsed
+                    .items
+                    .get(index)
+                    .is_some_and(|item| item.members().len() == order.len()),
+                "protected permutation member count mismatch"
+            );
+        }
+
+        let overlaps = |start, end| {
+            ranges
+                .iter()
+                .any(|range| start < range.end && range.start < end)
+        };
+        pin_runs(&mut self.order, |index| {
+            let item = &parsed.items[index];
+            overlaps(item.start, item.end)
+        });
+        for (&index, order) in &mut self.member_orders {
+            let members = parsed.items[index].members();
+            pin_runs(order, |index| {
+                overlaps(members[index].start, members[index].end)
+            });
+        }
+        self.preserve_spacing = true;
         Ok(())
     }
 
@@ -255,6 +321,9 @@ pub fn compute_moves(items: &[SourceItem], perm: &Permutation) -> Vec<ReorderMov
 /// Inter-item spacing is then re-derived from the compact-group logic below.
 /// The preamble and trailer are placed at the start and end.
 ///
+/// Internally protected permutations instead retain original item/member slices,
+/// adding a separator only when a moved EOF item has no trailing newline.
+///
 /// # Arguments
 ///
 /// - `parsed` - the parsed source being reordered; its `source`, item
@@ -272,11 +341,8 @@ pub fn compute_moves(items: &[SourceItem], perm: &Permutation) -> Vec<ReorderMov
 ///
 /// # Panics
 ///
-/// Panics if `perm` contains an out-of-range item or member index.
-///
-/// An item index is out of range for `parsed.items`, or a member index is
-/// out of range for that item's parsed members; both are indexed here
-/// without a further bounds check.
+/// Panics if an item index is outside `parsed.items` or a member index is
+/// outside that item's parsed members.
 ///
 /// # Line endings
 ///
@@ -284,6 +350,9 @@ pub fn compute_moves(items: &[SourceItem], perm: &Permutation) -> Vec<ReorderMov
 /// line ending ([`dominant_line_ending`]), so an in-place reorder never
 /// flips CRLF <-> LF.
 pub fn emit(parsed: &ParseResult, perm: &Permutation) -> Result<String> {
+    if perm.preserve_spacing {
+        return Ok(emit_protected(parsed, perm));
+    }
     let source = &parsed.source;
     let le = dominant_line_ending(source);
     let mut output = String::with_capacity(source.len());
@@ -299,15 +368,8 @@ pub fn emit(parsed: &ParseResult, perm: &Permutation) -> Result<String> {
     for (i, &idx) in perm.order.iter().enumerate() {
         let item = &parsed.items[idx];
         if let Some(member_order) = member_splice_order(perm, idx) {
-            // Splice the type body: head and tail stay fixed, and the
-            // reordered member spans tile the body back-to-back between
-            // them.
-            //
-            // The head runs up to the first member; the tail starts after
-            // the last member.
-            //
-            // Member slices are verbatim, so carried whitespace travels
-            // with each member.
+            // Keep the type head/tail fixed and splice verbatim member spans
+            // between them. Carried whitespace travels with each member.
             let members = item.members();
             // Re-check the member count against the parsed members so a
             // divergent count errors instead of indexing out of bounds.
@@ -358,15 +420,54 @@ fn describe(item: &SourceItem) -> String {
     format!("{} at line {}", item.kind(), item.start_line())
 }
 
-/// The member permutation to splice for item `idx`, or `None` when the item
-/// emits its plain slice.
-///
-/// A plain slice means no attached member order, or an identity one, which
-/// must keep the original bytes.
-fn member_splice_order(perm: &Permutation, idx: usize) -> Option<&[usize]> {
-    let order = perm.member_orders.get(&idx)?;
-    let identity = order.iter().enumerate().all(|(pos, &member)| pos == member);
-    (!identity).then_some(order.as_slice())
+/// Emit original item/member slices without changing protected trivia.
+fn emit_protected(parsed: &ParseResult, perm: &Permutation) -> String {
+    let source = &parsed.source;
+    let mut output = String::with_capacity(source.len());
+    output.push_str(&source[..parsed.preamble_end]);
+
+    for (position, &index) in perm.order.iter().enumerate() {
+        let item = &parsed.items[index];
+        if let Some(order) = member_splice_order(perm, index) {
+            let members = item.members();
+            output.push_str(&source[item.start..members[0].start]);
+            for &index in order {
+                let member = &members[index];
+                output.push_str(&source[member.start..member.end]);
+            }
+            output.push_str(&source[members[members.len() - 1].end..item.end]);
+        } else {
+            output.push_str(&source[item.start..item.end]);
+        }
+
+        // An EOF item may lack a newline. Keep its last token/comment separate
+        // when it moves ahead of another item, without trimming either slice.
+        if position + 1 < perm.order.len() && !output.ends_with('\n') {
+            output.push_str(dominant_line_ending(source));
+        }
+    }
+    output.push_str(&source[parsed.trailer_start..]);
+    output
+}
+
+/// Keep the requested relative order only inside contiguous unpinned runs.
+fn pin_runs(order: &mut [usize], pinned: impl Fn(usize) -> bool) {
+    let mut rank = vec![0; order.len()];
+    for (position, &index) in order.iter().enumerate() {
+        rank[index] = position;
+    }
+    for (index, slot) in order.iter_mut().enumerate() {
+        *slot = index;
+    }
+
+    let mut start = 0;
+    for index in 0..order.len() {
+        if pinned(index) {
+            order[start..index].sort_unstable_by_key(|&item| rank[item]);
+            start = index + 1;
+        }
+    }
+    order[start..].sort_unstable_by_key(|&item| rank[item]);
 }
 
 /// Spacing group for items that should stay packed without a blank line.
@@ -381,6 +482,17 @@ fn spacing_group(kind: &ItemKind) -> Option<u8> {
     }
 }
 
+/// The member permutation to splice for item `idx`, or `None` when the item
+/// emits its plain slice.
+///
+/// A plain slice means no attached member order, or an identity one, which
+/// must keep the original bytes.
+fn member_splice_order(perm: &Permutation, idx: usize) -> Option<&[usize]> {
+    let order = perm.member_orders.get(&idx)?;
+    let identity = order.iter().enumerate().all(|(pos, &member)| pos == member);
+    (!identity).then_some(order.as_slice())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -389,6 +501,118 @@ mod tests {
     use crate::rules::transform::reorder::graph::test_profiles::{
         CallersFirstProfile, MembersFirstProfile,
     };
+
+    #[rstest::rstest]
+    #[case::reversed(Range { start: 2, end: 1 })]
+    #[case::outside_source(0..usize::MAX)]
+    #[case::inside_character("fn caf".len() + 1.."fn café".len())]
+    fn protect_should_reject_invalid_ranges(#[case] range: Range<usize>) {
+        let parsed = RustBackend.parse("fn café() {}\n").unwrap();
+        let mut permutation = Permutation::new(parsed.items.len(), vec![0]).unwrap();
+
+        let result = permutation.protect(&parsed, &[range]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn protect_should_preserve_whole_type_and_all_members() {
+        let source = "class Cache {\n    void B() {}\n    void A() {}\n}\n";
+        let parsed = crate::languages::backend_for("cs")
+            .unwrap()
+            .parse(source)
+            .unwrap();
+        let mut permutation = Permutation::new(parsed.items.len(), vec![0]).unwrap();
+        permutation.set_member_order(0, 2, vec![1, 0]).unwrap();
+
+        permutation
+            .protect(&parsed, core::slice::from_ref(&(0..source.len())))
+            .unwrap();
+        let output = emit(&parsed, &permutation).unwrap();
+
+        assert_eq!(output, source);
+        assert_eq!(permutation.member_order(0), Some([0, 1].as_slice()));
+    }
+
+    #[test]
+    fn protect_should_separate_moved_eof_item_without_newline() {
+        let source = "fn keep() {}\nfn a() {}\nfn b() {}";
+        let parsed = RustBackend.parse(source).unwrap();
+        let mut permutation = Permutation::new(parsed.items.len(), vec![0, 2, 1]).unwrap();
+
+        permutation
+            .protect(&parsed, core::slice::from_ref(&(0.."fn keep() {}".len())))
+            .unwrap();
+        let output = emit(&parsed, &permutation).unwrap();
+
+        assert_eq!(output, "fn keep() {}\nfn b() {}\nfn a() {}\n");
+    }
+
+    #[test]
+    fn protect_should_keep_impl_bytes_and_reorder_siblings_within_barriers() {
+        let source = "fn a() {}\nfn b() {}\n/// Impl docs.\nimpl Cache {\n    /// Keep.\n    fn get() {}\n}\nfn c() {}\nfn d() {}\n";
+        let parsed = RustBackend.parse(source).unwrap();
+        let protected = crate::source::symbols::declarations(&parsed, "rs")
+            .unwrap()
+            .into_iter()
+            .find(|item| item.path.as_ref() == "Cache::get")
+            .unwrap()
+            .bytes;
+        let mut permutation = Permutation::new(parsed.items.len(), vec![4, 3, 2, 1, 0]).unwrap();
+
+        permutation.protect(&parsed, &[protected]).unwrap();
+        let output = emit(&parsed, &permutation).unwrap();
+
+        assert_eq!(
+            output,
+            "fn b() {}\nfn a() {}\n/// Impl docs.\nimpl Cache {\n    /// Keep.\n    fn get() {}\n}\nfn d() {}\nfn c() {}\n"
+        );
+        assert!(
+            compute_moves(&parsed.items, &permutation)
+                .iter()
+                .all(|item| item.kind() != &ItemKind::Impl)
+        );
+    }
+
+    #[test]
+    fn protect_should_pin_csharp_type_and_only_target_member() {
+        let source = "class Before {}\nclass Cache {\n    void A() {}\n    void B() {}\n    /// Keep.\n    [Obsolete] void Keep() {}\n    void C() {}\n    void D() {}\n}\nclass After {}\n";
+        let parsed = crate::languages::backend_for("cs")
+            .unwrap()
+            .parse(source)
+            .unwrap();
+        let protected = crate::source::symbols::declarations(&parsed, "cs")
+            .unwrap()
+            .into_iter()
+            .find(|item| item.path.as_ref() == "Cache::Keep")
+            .unwrap()
+            .bytes;
+        let mut permutation = Permutation::new(parsed.items.len(), vec![2, 1, 0]).unwrap();
+        permutation
+            .set_member_order(1, 5, vec![4, 3, 2, 1, 0])
+            .unwrap();
+
+        permutation.protect(&parsed, &[protected]).unwrap();
+        let output = emit(&parsed, &permutation).unwrap();
+
+        assert_eq!(
+            output,
+            "class Before {}\nclass Cache {\n    void B() {}\n    void A() {}\n    /// Keep.\n    [Obsolete] void Keep() {}\n    void D() {}\n    void C() {}\n}\nclass After {}\n"
+        );
+        assert!(compute_moves(&parsed.items, &permutation).is_empty());
+    }
+
+    #[test]
+    fn protect_should_match_original_emission_when_ranges_empty() {
+        let parsed = RustBackend.parse("fn a() {}\nfn b() {}\n").unwrap();
+        let mut permutation = Permutation::new(parsed.items.len(), vec![1, 0]).unwrap();
+        let original = emit(&parsed, &permutation).unwrap();
+
+        permutation.protect(&parsed, &[]).unwrap();
+        let protected = emit(&parsed, &permutation).unwrap();
+
+        assert_eq!(protected, original);
+    }
 
     /// Full reorder pipeline: parse, compute order, build permutation, emit.
     fn reorder(source: &str) -> String {

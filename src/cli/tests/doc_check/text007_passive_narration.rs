@@ -1,6 +1,6 @@
-//! TEXT007 narration-marker and passive-voice hints.
+//! TEXT007 narration-marker and passive-voice reminders.
 //!
-//! One test drives the opt-in code on an ordinary markdown file in both
+//! One test audits an ordinary markdown file in both
 //! stderr and JSON modes. The other walks the release-note suppression
 //! matrix with per-run configuration.
 
@@ -9,7 +9,7 @@ use crate::{run_command, temp_dir, temp_named_file, text007_marker_and_passive_m
 use std::fs;
 use std::process::Command;
 
-/// Config controls narration suppression without hiding passive hints.
+/// Config controls narration suppression without hiding passive reminders.
 #[test]
 fn narration_should_follow_suppression_setting_when_checking_note_paths() {
     for (yaml, suppress) in [
@@ -47,7 +47,7 @@ fn narration_should_follow_suppression_setting_when_checking_note_paths() {
 
             let output = Command::new(binary())
                 .current_dir(&dir)
-                .args(["--include", "TEXT007"])
+                .args(["--include", "TEXT007", "--all-lines"])
                 .arg(&path)
                 .output()
                 .unwrap();
@@ -55,12 +55,12 @@ fn narration_should_follow_suppression_setting_when_checking_note_paths() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             assert!(output.status.success(), "{rel}, {yaml:?}: {stderr}");
             assert_eq!(
-                stderr.contains(":1: hint[TEXT007]"),
+                stderr.contains(":1: reminder[TEXT007]"),
                 !(suppress && is_note),
                 "narration in {rel}, {yaml:?}: {stderr}"
             );
             assert!(
-                stderr.contains(":2: hint[TEXT007]"),
+                stderr.contains(":2: reminder[TEXT007]"),
                 "passive voice in {rel}, {yaml:?}: {stderr}"
             );
         }
@@ -70,20 +70,20 @@ fn narration_should_follow_suppression_setting_when_checking_note_paths() {
 }
 
 /// An ordinarily named markdown file yields both TEXT007 classes, one
-/// per offending line, when the opt-in code is explicitly included.
+/// per offending line, when auditing all lines.
 #[test]
-fn text007_should_render_hints_when_checking_an_ordinary_file() {
+fn text007_should_render_reminders_when_checking_an_ordinary_file() {
     let path = temp_named_file("notes.md", &text007_marker_and_passive_md());
-    let output = run_command(&["--include", "lints", "--include", "TEXT007"], &path);
+    let output = run_command(&["--include", "TEXT007"], &path);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "TEXT007 hints must not fail the run: {stderr}"
+        "TEXT007 reminders must not fail the run: {stderr}"
     );
     assert!(
-        stderr.contains(":1: hint[TEXT007]") && stderr.contains(":2: hint[TEXT007]"),
-        "both the narration marker and the passive construction must emit hints:\n{stderr}"
+        stderr.contains(":1: reminder[TEXT007]") && stderr.contains(":2: reminder[TEXT007]"),
+        "both finding classes must emit reminders:\n{stderr}"
     );
 
     let output = run_command(&["--include", "TEXT007", "--json"], &path);
@@ -92,5 +92,9 @@ fn text007_should_render_hints_when_checking_an_ordinary_file() {
     assert!(output.status.success());
     let records = records.as_array().unwrap();
     assert_eq!(records.len(), 2);
-    assert!(records.iter().all(|record| record["severity"] == "hint"));
+    assert!(
+        records
+            .iter()
+            .all(|record| record["severity"] == "reminder")
+    );
 }

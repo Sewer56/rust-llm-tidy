@@ -18,6 +18,7 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
         decl.diagnostic(
             Severity::Error,
             CODE_MISSING_DOCS,
+            "missing documentation",
             "non-private item is missing a doc comment.\n\n\
          Why: Readers need its purpose and contract without tracing the implementation.\n\n\
          Suggestions:\n\

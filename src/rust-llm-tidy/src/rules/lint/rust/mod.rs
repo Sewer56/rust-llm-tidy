@@ -11,8 +11,8 @@
 //! [`mod003_qualified_path`] walks the whole retained tree once per
 //! file at the end of [`run_all`].
 //!
-//! [`len001_method_length`] consumes a config threshold, so the
-//! pipeline runs it from `check_file` outside [`run_all`].
+//! [`len001_method_length`] consumes a config threshold, so the pipeline runs it
+//! from `check_file` outside [`run_all`].
 //!
 //! The C# backend's `lints` module implements the same codes over its own
 //! parse; both consume the shared code constants from

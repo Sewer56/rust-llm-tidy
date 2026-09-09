@@ -15,11 +15,12 @@
 //! - `doc008_error_variant_order`: DOC008 out-of-order error variants
 //! - `doc009_missing_module_docs`: missing module documentation
 //!
-//! Size, naming, and text modules:
+//! Size, naming, text, and perf modules:
 //!
 //! - `mod001_module_size`: MOD001 rust-specific counting and selection
 //! - `mod003_qualified_path`: MOD003 fully-qualified path hints
 //! - `len001_method_length`: LEN001 end-to-end acceptance and selection
+//! - `perf001_allocation_hints`: built-in PERF001 capacity reminders via SYM
 //! - `test001_test_naming`: TEST001 discouraged test-function names
 //! - `text001_paragraph_size`: TEXT001 over-budget doc paragraphs
 //! - `text002_line_length`: TEXT002 over-long doc lines
@@ -41,6 +42,7 @@ mod doc009_missing_module_docs;
 mod len001_method_length;
 mod mod001_module_size;
 mod mod003_qualified_path;
+mod perf001_allocation_hints;
 mod test001_test_naming;
 mod text001_paragraph_size;
 mod text002_line_length;
@@ -67,9 +69,8 @@ fn clean_file_no_diagnostics() {
 /// The rs text checks cover line comments plus `/** */` and
 /// `#[doc = "..."]` docs.
 ///
-/// rs dispatch adds nothing and drops nothing. TEXT007 is included
-/// explicitly because the backend composition runs it while the default
-/// `lints` selection keeps the opt-in code off.
+/// rs dispatch adds nothing and drops nothing. All-line reporting includes
+/// TEXT007 reminders, matching the unfiltered backend composition.
 #[test]
 fn rs_diagnostics_match_direct_check_composition() {
     for name in [
@@ -121,6 +122,7 @@ fn rs_diagnostics_match_direct_check_composition() {
                     rust_llm_tidy::reporting::Severity::Error => "error",
                     rust_llm_tidy::reporting::Severity::Warning => "warning",
                     rust_llm_tidy::reporting::Severity::Hint => "hint",
+                    rust_llm_tidy::reporting::Severity::Reminder => "reminder",
                 };
                 (d.line, sev.to_string(), d.code.to_string())
             })

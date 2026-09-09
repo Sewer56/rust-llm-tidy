@@ -1,8 +1,10 @@
 //! Read, parse, validate, and compile a config file into a `CompiledConfig`.
 
+use super::symbol_rules::compile_symbol_rules;
 use super::{CompiledConfig, CompiledRuleGroup};
 use crate::config::{Config, RuleGroup, known_rules};
 use crate::languages::registry;
+use crate::rules::registry::LINT_CODES;
 use anyhow::{Context, anyhow, bail};
 use glob::glob as fs_glob;
 use globset::{GlobBuilder, GlobSet};
@@ -39,13 +41,35 @@ static COMPILE_COUNTER: core::sync::atomic::AtomicU64 = core::sync::atomic::Atom
 ///
 /// Returns `anyhow::Error` if:
 /// - The file cannot be read or parsed as YAML.
-/// - The config path has no parent directory.
-/// - The config directory cannot be canonicalized.
+/// - The config path has no parent directory or cannot be canonicalized.
 /// - `include` and `exclude` are both non-empty.
 /// - Any `extensions` or `extra_extensions` entry is empty or contains a dot,
 ///   a path separator, or whitespace.
-/// - `module_size.max_lines` or `method_length.max_lines` is below 1.
+/// - A link occurrence threshold, `module_size.max_lines`, or
+///   `method_length.max_lines` is below 1.
+/// - `perf_hints` contains anything other than `PERF001` or `PERF002` codes.
+///
+/// Symbol policy errors:
+///
 /// - Any rule name is not in [`known_rules()`].
+/// - A `lint_scopes` key is not a registered lint code.
+/// - A symbol rule has both or neither `symbol` and `regex`, a blank pattern,
+///   or an invalid literal path.
+/// - Regex compilation rejects syntax or exceeds dependency-default limits.
+/// - A symbol hint lacks a nonblank title or message, or an exclusion has a
+///   title, message, scope, usage target, or usage constraint.
+/// - A hint has `exclude_lints`, `exclude_edits`, or `exclude_post_process`.
+/// - `exclude_lints` lists a code absent from the registered lint codes.
+///
+/// Symbol selector errors:
+///
+/// - A declaration hint has an argument, initializer, or array-kind constraint.
+/// - Symbol languages or extensions are empty, malformed, or unsupported.
+/// - A usage regex has languages, argument, initializer, or array-kind constraints.
+/// - A literal or declaration matcher has comment selection.
+///
+/// File pattern errors:
+///
 /// - Any glob pattern has invalid syntax.
 /// - Any pattern matches zero files under the config directory.
 ///
@@ -65,6 +89,13 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
     }
 
     validate_thresholds(&config)?;
+
+    for code in config.lint_scopes.keys() {
+        if !LINT_CODES.contains(&code.as_str()) {
+            bail!("unknown lint code `{code}` in lint_scopes; use a registered lint code");
+        }
+    }
+    let symbol_rules = compile_symbol_rules(&config.symbol_rules)?;
 
     let valid = known_rules();
 
@@ -104,6 +135,9 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         extensions: config.extensions,
         extra_extensions: config.extra_extensions,
         passive_narration: config.passive_narration.unwrap_or_default(),
+        configured_perf_hints: config.perf_hints,
+        lint_scopes: config.lint_scopes,
+        symbol_rules,
     })
 }
 
@@ -283,6 +317,8 @@ fn compile_glob_set(patterns: &[String], _config_dir: &Path) -> anyhow::Result<G
 mod tests {
     use super::compile;
     use super::load_and_compile;
+    use crate::config::PerfCode;
+    use rstest::rstest;
 
     #[test]
     fn empty_config_compiles_to_no_op() {
@@ -392,5 +428,70 @@ mod tests {
             !cc.policy_for(&nested).skip,
             "*.rs must NOT cross / and match a nested file"
         );
+    }
+
+    #[rstest]
+    #[case::omitted("{}", PerfCode::ALL)]
+    #[case::both("perf_hints: [PERF001, PERF002]", PerfCode::ALL)]
+    #[case::capacity("perf_hints: [PERF001]", &[PerfCode::Capacity])]
+    #[case::array("perf_hints: [PERF002]", &[PerfCode::ArrayInitialization])]
+    #[case::disabled("perf_hints: []", &[])]
+    fn perf_hints_should_select_builtin_families(
+        #[case] yaml: &str,
+        #[case] expected: &[PerfCode],
+    ) {
+        let config = compile(yaml, &[]);
+
+        assert_eq!(config.perf_hints(), expected);
+    }
+
+    /// Load a YAML config from a fresh temp dir and return the rendered
+    /// error, if any.
+    fn load_error(yaml: &str) -> String {
+        let dir = std::env::temp_dir().join(format!(
+            "rlt-cfg-hint-{}-{}",
+            std::process::id(),
+            super::COMPILE_COUNTER.fetch_add(1, core::sync::atomic::Ordering::Relaxed,)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_path = dir.join(".rust-llm-tidy.yml");
+        std::fs::write(&cfg_path, yaml).unwrap();
+        let result = load_and_compile(&cfg_path);
+        let _ = std::fs::remove_dir_all(&dir);
+        match result {
+            Ok(_) => panic!("config should not compile: {yaml}"),
+            Err(err) => format!("{err:#}"),
+        }
+    }
+
+    #[rstest]
+    #[case::unknown_code("NOPE")]
+    #[case::fix_operation("tables")]
+    #[case::lint_group("lints")]
+    #[case::retired_capacity_code("PERF001")]
+    #[case::retired_array_code("PERF002")]
+    fn lint_scopes_should_reject_non_lint_keys(#[case] code: &str) {
+        let error = load_error(&format!("lint_scopes: {{{code}: all}}"));
+
+        assert!(error.contains("unknown lint code") && error.contains(code));
+    }
+
+    #[rstest]
+    #[case::unknown_code("perf_hints: [PERF999]", "unknown variant `PERF999`")]
+    #[case::lint_code("perf_hints: [SYM]", "unknown variant `SYM`")]
+    #[case::old_object(
+        "perf_hints: [{pattern: run, message: reminder}]",
+        "unknown variant `pattern`"
+    )]
+    #[case::removed_extras("extra_perf_hints: []", "unknown field: extra_perf_hints")]
+    #[case::retired_include("include: [{rules: [PERF001]}]", "unknown rule `PERF001`")]
+    #[case::retired_exclude("exclude: [{rules: [PERF002]}]", "unknown rule `PERF002`")]
+    fn config_should_reject_obsolete_or_unknown_performance_controls(
+        #[case] yaml: &str,
+        #[case] expected: &str,
+    ) {
+        let error = load_error(yaml);
+
+        assert!(error.contains(expected), "{error}");
     }
 }
