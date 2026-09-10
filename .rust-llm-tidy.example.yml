@@ -49,6 +49,15 @@
 #       docs: true
 #       comments: false
 
+# Replace the defaults with your own list; an empty list disables TEXT009.
+# forbidden_characters:
+#   - characters: ["\u2026"]
+#     title: Use three dots
+#     message: |
+#       Why: Plain ASCII keeps terminals and diffs readable.
+#       Suggestions:
+#       - Use three dots, preserving the meaning.
+
 # ── Passive narration (TEXT007) ──
 # Enabled by default as a reminder on changed lines.
 
