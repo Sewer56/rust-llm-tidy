@@ -41,7 +41,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`DOC008`]  | Error    | An `# Errors` section lists enum variants out of alphabetical order.              |
 | [`DOC009`]  | Error    | A module file has no top-level module docs (`//!` in Rust, docstring in Python).  |
 | [`TEXT001`] | Error    | A doc paragraph over 240 chars of full text (bullets warn).                       |
-| [`TEXT002`] | Warning  | A doc line over 80 chars of full text (code blocks, tables, link defs exempt).    |
+| [`TEXT002`] | Warning  | A doc line over 80 chars (trailing URL, code blocks, tables, link defs exempt).   |
 | [`TEXT003`] | Warning  | A doc sentence over 25 words (words join across wrapped lines).                   |
 | [`TEXT004`] | Warning  | A doc opener with 3+ sentences or over 160 chars (file, item, or heading).        |
 | [`TEXT005`] | Warning  | A fenced code block opens with no tag or bare `ignore` (all markdown prose).      |

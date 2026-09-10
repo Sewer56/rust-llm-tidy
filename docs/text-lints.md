@@ -116,9 +116,10 @@ exit 0.
 ## TEXT002 - long line
 
 A doc line over 80 chars is a warning. Lines count in full: code spans,
-URLs, and link targets included.
+link labels, mid-line URLs, and link targets included.
 
-Code blocks, table rows, and link reference definitions are exempt.
+A URL ending the line is excluded from the count. Code blocks, table rows,
+and link reference definitions are exempt.
 
 Before:
 
@@ -142,12 +143,28 @@ Why: Long lines are harder to follow in narrow editors and side-by-side reviews.
 Suggestions:
   - Wrap prose at word boundaries to 80 chars or fewer per line.
   - Preserve paragraph and list structure; do not split code identifiers, code spans, or URLs.
-  - Code spans, URLs, and link targets count.
+  - A URL at the end of the line is excluded from the count; URLs mid-line count.
   - Code blocks, table rows, and link definitions are exempt.
   - Borders are ignored. (file)
 ```
 
 `TEXT002` is warning-severity, so the run exits 0.
+
+### Remarks
+
+URL schemes are a fixed, case-insensitive allowlist:
+
+- `http://`, `https://`, `ftp://`, `ftps://`
+- `ssh://`, `git://`, `ws://`, `wss://`
+- `file://`, `mailto:`, `nxm://`, `r2:`
+
+Boundary rules:
+
+- A scheme must start a token and carry a nonempty destination.
+- Only the URL is excluded.
+- Punctuation (`.`, `,`, `;`, `:`, `!`, `?`, `'`, `"`) still counts.
+- Markdown closers (`>`, `]`, a backtick) still count.
+- A balanced `)` stays with the URL, as in `https://a.test/x_(y)`.
 
 ## TEXT003 - long sentence
 
