@@ -118,7 +118,7 @@ fn url_body_end(line: &str, body_start: usize) -> usize {
 /// Trailing sentence punctuation that belongs to the surrounding prose, not
 /// the URL.
 fn is_sentence_punctuation(ch: char) -> bool {
-    matches!(ch, '.' | ',' | ';' | ':' | '!' | '?' | '\'' | '"' | '`')
+    matches!(ch, '.' | ',' | ';' | ':' | '!' | '?' | '\'' | '"')
 }
 
 #[cfg(test)]
@@ -162,7 +162,7 @@ mod tests {
         Some("https://example.test/x_(y)")
     )]
     #[case::ipv6_host("See https://[::1]/status", Some("https://[::1]/status"))]
-    #[case::code_span("See `https://example.test/a`", Some("https://example.test/a"))]
+    #[case::code_span("See `https://example.test/a`", None)]
     #[case::trailing_space("See https://example.test/a ", Some("https://example.test/a"))]
     #[case::mailto("Mail mailto:team@example.test", Some("mailto:team@example.test"))]
     #[case::nexus("See nxm://example.test/mods/1", Some("nxm://example.test/mods/1"))]
