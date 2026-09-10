@@ -1,6 +1,7 @@
 //! `TEST001` - test-function naming.
 //!
-//! [`check`] fires on `#[test]` functions whose names use a discouraged
+//! [`check`] fires on test-marked functions (`#[test]`, `#[rstest]`,
+//! `#[test_case]`, and their scoped spellings) whose names use a discouraged
 //! pattern (`test_*`, `case_*`, `test` + digits).
 
 use crate::reporting::{Diagnostic, Severity};
@@ -9,7 +10,7 @@ use crate::source::SourceItem;
 
 /// `TEST001` - test functions should use behavioral names.
 ///
-/// Fires on `#[test]` functions whose names use a discouraged pattern
+/// Fires on test-marked functions whose names use a discouraged pattern
 /// (`test_*`, `case_*`, `test` + digits) instead of a behavioral claim shaped
 /// `subject_should_expectation_when_condition`.
 ///
@@ -71,18 +72,28 @@ fn is_test_plus_digits(name: &str) -> bool {
 mod tests {
     use super::*;
     use crate::rules::lint::rust::tests::parse_one;
+    use rstest::rstest;
 
     // ── TEST001: test naming ──
 
-    // Name starts with test_ -> warning.
-    #[test]
-    fn check_should_request_asserted_behavior_when_test_name_has_a_redundant_prefix() {
-        let item = parse_one("#[test]\nfn test_foo() {}");
+    // Every test marker reports the redundant-prefix warning.
+    #[rstest]
+    #[case::test("#[test]\nfn test_foo() {}")]
+    #[case::scoped_test("#[tokio::test]\nfn test_foo() {}")]
+    #[case::rstest("#[rstest]\nfn test_foo() {}")]
+    #[case::scoped_rstest("#[rstest::rstest]\nfn test_foo() {}")]
+    #[case::test_case("#[test_case]\nfn test_foo() {}")]
+    #[case::scoped_test_case("#[test_case::test_case]\nfn test_foo() {}")]
+    fn check_should_request_asserted_behavior_when_test_name_has_a_redundant_prefix(
+        #[case] source: &str,
+    ) {
+        let item = parse_one(source);
 
         let diags = check(&item);
 
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, CODE_TEST_NAMING);
+        assert_eq!(diags[0].severity, Severity::Warning);
         assert_eq!(
             diags[0].message,
             "test function `test_foo` uses a discouraged test-name pattern.\n\n\

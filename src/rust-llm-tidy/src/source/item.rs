@@ -101,8 +101,16 @@ pub struct SourceItem {
     /// Named parameter idents of a fn, excluding `self`/`&self`/`&mut self`.
     /// Empty for non-fn items.
     params: Vec<String>,
-    /// True for fn items carrying a `#[test]` or `#[...::test]` attribute.
+    /// True for fn items carrying a test marker: `#[test]`, `#[...::test]`,
+    /// `#[rstest]`, `#[...::rstest]`, `#[test_case]`, or `#[...::test_case]`.
     is_test_fn: bool,
+    /// True when a comment sits directly above this item's leading attributes
+    /// (or its body, when it carries no attributes).
+    ///
+    /// Accepts an outer doc comment (`///`/`/** */`) or a plain `//`/`/* */`
+    /// comment on the immediately preceding line. A blank line between the
+    /// comment and the attributes breaks the run.
+    has_summary_comment: bool,
     /// Preprocessor region id this item belongs to.
     ///
     /// Reordering permutes items only within one region id, so no item
@@ -253,10 +261,21 @@ impl SourceItem {
         &self.params
     }
 
-    /// True for fn items carrying a `#[test]` or `#[...::test]` attribute.
+    /// True for fn items carrying a test marker: `#[test]`, `#[...::test]`,
+    /// `#[rstest]`, `#[...::rstest]`, `#[test_case]`, or `#[...::test_case]`.
     #[inline]
     pub fn is_test_fn(&self) -> bool {
         self.is_test_fn
+    }
+
+    /// True when a comment sits directly above this item's attributes.
+    ///
+    /// Accepts an outer doc comment (`///`/`/** */`) or a plain `//`/`/* */`
+    /// comment on the immediately preceding line. See the field docs for the
+    /// exact contract.
+    #[inline]
+    pub fn has_summary_comment(&self) -> bool {
+        self.has_summary_comment
     }
 
     /// 1-based source line where this item starts (including prefix
@@ -303,6 +322,13 @@ impl SourceItem {
         self
     }
 
+    /// Set whether a comment sits above the item's attributes
+    /// (see [`SourceItem::has_summary_comment`]).
+    pub fn with_summary_comment(mut self, value: bool) -> Self {
+        self.has_summary_comment = value;
+        self
+    }
+
     #[allow(clippy::too_many_arguments)]
     /// Creates a new `SourceItem`.
     ///
@@ -343,6 +369,7 @@ impl SourceItem {
             result_error_type: None,
             params,
             is_test_fn,
+            has_summary_comment: false,
             region: 0,
             members: Vec::new(),
         }

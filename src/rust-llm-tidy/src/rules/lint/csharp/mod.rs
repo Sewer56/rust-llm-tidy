@@ -38,6 +38,7 @@
 //!
 //! - TEST001: `TestMethod`/`Test`/`Fact`/`Theory`-marked methods with
 //!   discouraged (`test_*`, `case_*`, `test` + digits) names.
+//! - TEST002: test-marked methods with no comment above their attribute list.
 //! - MOD003: fully-qualified dotted paths an in-scope `using` covers
 //!   or that repeat past the configured threshold (hint severity).
 //! - TEXT*: `///` doc-comment prose measured with the XML doc
@@ -66,6 +67,7 @@ mod doc005_undocumented_param;
 mod doc006_placeholder;
 mod mod003_qualified_path;
 mod test001_test_naming;
+mod test002_test_summary;
 
 /// Kinds whose non-private declarations need doc comments.
 const DOCUMENTABLE: &[ItemKind] = &[
@@ -174,6 +176,7 @@ fn check_declaration(decl: &Declaration<'_>, diagnostics: &mut Vec<Diagnostic>) 
     diagnostics.extend(doc005_undocumented_param::check(decl));
     diagnostics.extend(doc006_placeholder::check(decl));
     diagnostics.extend(test001_test_naming::check(decl));
+    diagnostics.extend(test002_test_summary::check(decl));
 }
 
 #[cfg(test)]

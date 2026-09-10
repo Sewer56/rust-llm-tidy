@@ -16,6 +16,7 @@
 //! - `mod003_qualified_path`: MOD003 fully-qualified path hints
 //! - `perf001_allocation_hints`: built-in PERF001 capacity reminders via SYM
 //! - `test001_test_naming`: TEST001 discouraged test-method names
+//! - `test002_test_summary`: TEST002 missing test summary comments
 
 use crate::{manifest_dir, run_command};
 use std::path::PathBuf;
@@ -30,6 +31,7 @@ mod doc009_missing_module_docs;
 mod mod003_qualified_path;
 mod perf001_allocation_hints;
 mod test001_test_naming;
+mod test002_test_summary;
 
 /// Run `rust-llm-tidy --include lints` on a C# fixture and return its
 /// (stderr, exit_code).

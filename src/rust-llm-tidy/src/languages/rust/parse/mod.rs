@@ -148,6 +148,7 @@ fn build_items(raw: &[RawEntry<'_>], source: &str, line_starts: &[usize]) -> Vec
 
         let start_line = line_of(line_starts, attached_start);
 
+        let has_summary_comment = entry.pending.has_summary_comment(body, source);
         let class = classify_item(body, source, &entry.pending);
         out.push(
             SourceItem::new(
@@ -166,7 +167,8 @@ fn build_items(raw: &[RawEntry<'_>], source: &str, line_starts: &[usize]) -> Vec
                 class.params,
                 class.is_test_fn,
             )
-            .with_result_error_type(result_error_type(body, source)),
+            .with_result_error_type(result_error_type(body, source))
+            .with_summary_comment(has_summary_comment),
         );
         prev_end = end;
     }
@@ -193,7 +195,9 @@ fn collect_item_entries(root: tree_sitter::Node<'_>) -> Vec<RawEntry<'_>> {
         if is_attachable(child) {
             pending.push(child);
         } else if is_transparent_comment(child) {
-            // Transparent: ignored, pending run preserved.
+            // Transparent: ignored for attachment, but a comment directly
+            // above the item's attributes is its summary comment.
+            pending.note_comment(child);
         } else if let Some(entry) = item_entry_for(child) {
             entries.push(RawEntry {
                 body: entry,
@@ -289,6 +293,7 @@ fn is_macro_invocation_stmt(stmt: tree_sitter::Node) -> bool {
 mod tests {
     use super::parse_source;
     use crate::source::ItemKind;
+    use rstest::rstest;
 
     /// Gap-anchored spans: each non-first item's `start` is the previous
     /// item's `end`, `end` includes the trailing newline.
@@ -440,5 +445,57 @@ fn a() {}\n";
         assert_eq!(parsed.items[0].name(), Some("println"));
         assert_eq!(parsed.items[1].kind(), &ItemKind::Macro);
         assert_eq!(parsed.items[1].name(), Some("m"));
+    }
+
+    /// Test markers classify `#[test]`, `#[rstest]`, and `#[test_case]` in
+    /// both bare and scoped spellings.
+    #[rstest]
+    #[case::bare_test("#[test]\nfn f() {}")]
+    #[case::scoped_test("#[tokio::test]\nfn f() {}")]
+    #[case::rstest("#[rstest]\nfn f() {}")]
+    #[case::scoped_rstest("#[rstest::rstest]\nfn f() {}")]
+    #[case::test_case("#[test_case]\nfn f() {}")]
+    #[case::scoped_test_case("#[test_case::test_case]\nfn f() {}")]
+    fn test_markers_classify_as_tests(#[case] source: &str) {
+        let parsed = parse_source(source).unwrap();
+
+        assert!(
+            parsed.items[0].is_test_fn(),
+            "marker should classify as a test: {source}"
+        );
+    }
+
+    /// An attribute that is not a test marker does not classify as a test.
+    #[test]
+    fn non_test_attribute_is_not_a_test() {
+        let parsed = parse_source("#[cfg(test)]\nfn f() {}").unwrap();
+
+        assert!(!parsed.items[0].is_test_fn());
+    }
+
+    /// `has_summary_comment` accepts a comment directly above the attributes
+    /// and rejects one missing, detached, or below them.
+    #[rstest]
+    #[case::plain_above("// Note.\n#[test]\nfn f() {}", true)]
+    #[case::doc_above("/// Note.\n#[test]\nfn f() {}", true)]
+    #[case::doc_blank_line("/// Note.\n\n#[test]\nfn f() {}", false)]
+    #[case::doc_block_above("/** Note. */\n#[test]\nfn f() {}", true)]
+    #[case::doc_block_blank_line("/** Note. */\n\n#[test]\nfn f() {}", false)]
+    #[case::multi_line_doc_above("/// One.\n/// Two.\n#[test]\nfn f() {}", true)]
+    #[case::nearer_plain_comment("/// Old.\n\n// Summary.\n#[test]\nfn f() {}", true)]
+    #[case::block_above("/* Note. */\n#[test]\nfn f() {}", true)]
+    #[case::block_blank_line("/* Note. */\n\n#[test]\nfn f() {}", false)]
+    #[case::inner_doc_above("//! Note.\n#[test]\nfn f() {}", true)]
+    #[case::module_doc_blank_line("//! Note.\n\n#[test]\nfn f() {}", false)]
+    #[case::blank_line("// Note.\n\n#[test]\nfn f() {}", false)]
+    #[case::below_attributes("#[test]\n// Note.\nfn f() {}", false)]
+    #[case::comment_between_attributes("#[test]\n// Note.\n#[ignore]\nfn f() {}", false)]
+    #[case::crlf_plain_above("// Note.\r\n#[test]\r\nfn f() {}", true)]
+    #[case::crlf_blank_line("// Note.\r\n\r\n#[test]\r\nfn f() {}", false)]
+    #[case::no_comment("#[test]\nfn f() {}", false)]
+    fn summary_comment_reflects_comment_adjacency(#[case] source: &str, #[case] expected: bool) {
+        let parsed = parse_source(source).unwrap();
+
+        assert_eq!(parsed.items[0].has_summary_comment(), expected, "{source}");
     }
 }

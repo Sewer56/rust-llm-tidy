@@ -22,6 +22,7 @@
 //! - `len001_method_length`: LEN001 end-to-end acceptance and selection
 //! - `perf001_allocation_hints`: built-in PERF001 capacity reminders via SYM
 //! - `test001_test_naming`: TEST001 discouraged test-function names
+//! - `test002_test_summary`: TEST002 missing test summary comments
 //! - `text001_paragraph_size`: TEXT001 over-budget doc paragraphs
 //! - `text002_line_length`: TEXT002 over-long doc lines
 //! - `text003_sentence_length`: TEXT003 over-budget doc sentences
@@ -44,6 +45,7 @@ mod mod001_module_size;
 mod mod003_qualified_path;
 mod perf001_allocation_hints;
 mod test001_test_naming;
+mod test002_test_summary;
 mod text001_paragraph_size;
 mod text002_line_length;
 mod text003_sentence_length;

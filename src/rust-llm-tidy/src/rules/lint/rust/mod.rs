@@ -1,7 +1,7 @@
 //! The Rust lint rules: DOC*, TEST*, LEN*, and MOD*.
 //!
 //! One module per rule, named by lint code: [`doc001_missing_docs`]
-//! through [`test001_test_naming`].
+//! through [`test002_test_summary`].
 //!
 //! Most rules are pure functions over a [`SourceItem`] returning
 //! [`Vec<Diagnostic>`]; [`run_all`] runs every rule in code order.
@@ -41,6 +41,7 @@ pub(crate) mod mod001_module_size;
 mod mod002_fn_local_use;
 mod mod003_qualified_path;
 mod test001_test_naming;
+mod test002_test_summary;
 
 /// Accepted rustdoc headers for documenting function parameters.
 ///
@@ -195,6 +196,7 @@ fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
         diags.extend(doc006_placeholder::check(item));
         diags.extend(doc008_error_variant_order::check(item, &enums));
         diags.extend(test001_test_naming::check(item));
+        diags.extend(test002_test_summary::check(item));
     }
     diags.extend(mod003_qualified_path::check(parsed));
     diags

@@ -7,6 +7,9 @@
 //! doc-comment extraction from it, and the attribute reads behind
 //! `#[test]`/`#[cfg(test)]` detection.
 //!
+//! It also tracks the comment directly above the first attribute, which the
+//! TEST002 rule reads as the item's summary comment.
+//!
 //! `doc_attribute_content` and `is_outer_doc` are shared beyond this
 //! module tree: the parse module re-exports them for the language
 //! module's doc-region producer.
@@ -22,15 +25,65 @@ use tree_sitter::Node;
 #[derive(Default)]
 pub(in super::super) struct PendingTrivia<'a> {
     pub(super) nodes: Vec<Node<'a>>,
+    /// The first `#[...]` attribute item in the run, if any.
+    first_attr: Option<Node<'a>>,
+    /// The comment directly above [`Self::first_attr`], recorded when that
+    /// attribute is pushed. `None` when the attribute opens the run.
+    first_attr_comment: Option<Node<'a>>,
+    /// The most recent comment node in the run, doc or transparent. Used when
+    /// the item carries no attributes.
+    last_comment: Option<Node<'a>>,
 }
 
 impl<'a> PendingTrivia<'a> {
     pub(in super::super) fn new() -> Self {
-        Self { nodes: Vec::new() }
+        Self {
+            nodes: Vec::new(),
+            first_attr: None,
+            first_attr_comment: None,
+            last_comment: None,
+        }
     }
 
     pub(in super::super) fn push(&mut self, node: Node<'a>) {
+        // Freeze the summary candidate at the first attribute: later comments
+        // sit below the attribute block and cannot qualify.
+        if node.kind() == "attribute_item" && self.first_attr.is_none() {
+            self.first_attr = Some(node);
+            self.first_attr_comment = self.last_comment;
+        }
+
+        if is_comment(node) {
+            self.last_comment = Some(node);
+        }
+
         self.nodes.push(node);
+    }
+
+    /// Record a transparent comment as the most recent comment in the run.
+    ///
+    /// Plain `//` comments and inner `//!` docs are transparent to
+    /// attachment; a nearer one supersedes any doc above it.
+    pub(in super::super) fn note_comment(&mut self, node: Node<'a>) {
+        if is_comment(node) {
+            self.last_comment = Some(node);
+        }
+    }
+
+    /// True when a comment sits directly above the item's first attribute (or
+    /// its body, when it carries no attributes).
+    ///
+    /// Accepts an outer doc comment (`///`/`/** */`) or a plain `//`/`/* */`
+    /// comment on the line directly above the boundary. The last line of a
+    /// multi-line run counts. A blank line between the comment and the
+    /// boundary breaks the run.
+    pub(in super::super) fn has_summary_comment(&self, body: Node<'a>, source: &str) -> bool {
+        let (comment, target) = match self.first_attr {
+            Some(attr) => (self.first_attr_comment, attr),
+            None => (self.last_comment, body),
+        };
+
+        comment.is_some_and(|c| comment_adjacent(c, target, source))
     }
 
     /// Byte offset of the first attachable trivia node, i.e. the item's
@@ -114,14 +167,15 @@ pub(in super::super) fn is_attachable(node: Node) -> bool {
     }
 }
 
-/// True when the attrs contain a `#[test]` or `#[...::test]` attribute.
+/// True when the attrs carry a test-marker attribute.
 ///
-/// Matching the last path segment covers both `#[test]` and framework variants
-/// like `#[tokio::test]`.
+/// Matching the last path segment covers both the bare attribute and its
+/// framework-scoped spelling: `#[test]`/`#[tokio::test]`, `#[rstest]`/
+/// `#[path::rstest]`, and `#[test_case]`/`#[path::test_case]`.
 pub(super) fn is_test_fn(attrs: &[Node<'_>], source: &str) -> bool {
-    attrs
-        .iter()
-        .any(|a| attr_last_segment(*a, source) == Some("test"))
+    attrs.iter().any(|a| {
+        attr_last_segment(*a, source).is_some_and(|s| matches!(s, "test" | "rstest" | "test_case"))
+    })
 }
 
 /// True when the attrs contain a `#[cfg(test)]` attribute (exactly `cfg(test)`).
@@ -238,6 +292,22 @@ fn attr_last_segment<'a>(attr: Node<'a>, source: &'a str) -> Option<&'a str> {
             .and_then(|n| n.utf8_text(source.as_bytes()).ok()),
         _ => None,
     }
+}
+
+/// True when `comment` ends on the line directly above `target`.
+///
+/// A line comment carries its trailing newline in the node, so its end
+/// position already sits on the next line; a block comment does not.
+fn comment_adjacent(comment: Node<'_>, target: Node<'_>, source: &str) -> bool {
+    let end = comment.end_byte();
+    let ends_with_newline = end > 0 && source.as_bytes()[end - 1] == b'\n';
+
+    comment.end_position().row - usize::from(ends_with_newline) + 1 == target.start_position().row
+}
+
+/// True for a comment node of either spelling.
+fn is_comment(node: Node<'_>) -> bool {
+    matches!(node.kind(), "line_comment" | "block_comment")
 }
 
 /// The attribute's path child (identifier/scoped_identifier/etc.).
