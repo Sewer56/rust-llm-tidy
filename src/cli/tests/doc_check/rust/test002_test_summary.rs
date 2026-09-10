@@ -6,6 +6,7 @@
 
 use super::run_rust_fixture;
 use crate::{run_command, rust_fixture_dir, temp_named_file};
+use std::path::Path;
 
 /// TEST002 reaches the same decision in both backends for the same comment
 /// adjacency.
@@ -111,7 +112,7 @@ fn test002_json_record_carries_the_documented_fields() {
 
 /// Run TEST002 in JSON mode and return each finding's `code/severity` plus its
 /// message with the language noun normalized away.
-fn test002_records(path: &std::path::Path) -> Vec<(String, String)> {
+fn test002_records(path: &Path) -> Vec<(String, String)> {
     let output = run_command(&["--include", "TEST002", "--output-mode", "json"], path);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let findings: serde_json::Value = serde_json::from_str(&stdout)

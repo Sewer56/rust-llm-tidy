@@ -376,6 +376,10 @@ Error: found 1 error(s)
 
 ### TEXT002 - long line
 
+A tag-stripped doc line over 80 chars is a warning. A URL ending the line
+is excluded from the count; see [`TEXT002`] for the schemes and boundary
+rules.
+
 Before:
 
 ```csharp
@@ -414,10 +418,12 @@ Why: Long lines are harder to follow in narrow editors and side-by-side reviews.
 Suggestions:
   - Wrap prose at word boundaries to 80 chars or fewer per line.
   - Preserve paragraph and list structure; do not split code identifiers, code spans, or URLs.
-  - Code spans, URLs, and link targets count.
+  - A URL at the end of the line is excluded from the count; URLs mid-line count.
   - Code blocks, table rows, and link definitions are exempt.
   - Borders are ignored. (file)
 ```
+
+[`TEXT002`]: ../../text-lints.md#text002---long-line
 
 ### TEXT003 - long sentence
 
