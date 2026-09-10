@@ -3,6 +3,7 @@
 use super::{analyze, check};
 use crate::config::DuplicationConfig;
 use crate::input::changed_lines::ChangedLines;
+use core::iter::once;
 use core::ops::RangeInclusive;
 use rstest::rstest;
 
@@ -28,7 +29,7 @@ fn check_should_compare_only_selected_whitespace_normalization(
         ..DuplicationConfig::default()
     };
 
-    let diagnostics = check(&source, &ChangedLines::new([5..=6]), config);
+    let diagnostics = check(&source, &ChangedLines::new(once(5..=6)), config);
 
     assert_eq!(diagnostics.len(), count, "{diagnostics:?}");
 }
@@ -50,26 +51,14 @@ fn check_should_count_non_overlapping_sites(#[case] lines: usize, #[case] count:
 
 #[test]
 fn check_should_emit_the_documented_finding_for_the_added_struct_literal() {
-    let docs = include_str!("../../../../../../docs/lints.md");
-    let section = docs
-        .split_once("### DUP001 - same-file textual duplication")
-        .unwrap()
-        .1;
-    let source = section
-        .split_once("```rust\n")
-        .unwrap()
-        .1
-        .split_once("```")
-        .unwrap()
-        .0;
-    let expected = section
-        .split_once("```text\n")
-        .unwrap()
-        .1
-        .split_once("```")
-        .unwrap()
-        .0
-        .trim_end();
+    // The before/after pair from `docs/lints.md`, kept in fixtures so the test
+    // never parses the documentation tree. Git may check the fixtures out with
+    // CRLF on Windows; the rule and its render always use LF.
+    let source = include_str!("../../../../tests/fixtures/dup001/documented_source.rs")
+        .replace("\r\n", "\n");
+    let expected = include_str!("../../../../tests/fixtures/dup001/documented_expected.txt")
+        .replace("\r\n", "\n");
+    let expected = expected.trim_end();
     let query_start = source
         .lines()
         .position(|line| line.starts_with("let metrics ="))
@@ -77,8 +66,8 @@ fn check_should_emit_the_documented_finding_for_the_added_struct_literal() {
         + 1;
 
     let findings = check(
-        source,
-        &ChangedLines::new([query_start..=source.lines().count()]),
+        &source,
+        &ChangedLines::new(once(query_start..=source.lines().count())),
         DuplicationConfig::default(),
     );
 
@@ -99,7 +88,9 @@ fn check_should_expose_literal_and_indentation_limits(
         min_meaningful_lines: 3,
         ..DuplicationConfig::default()
     };
-    let eligible = ChangedLines::new([indented.lines().count() * 2 + 1..=source.lines().count()]);
+    let eligible = ChangedLines::new(once(
+        indented.lines().count() * 2 + 1..=source.lines().count(),
+    ));
 
     let normalized = check(&source, &eligible, config);
     let exact = check(
@@ -123,7 +114,7 @@ fn check_should_include_a_query_that_overlaps_an_earlier_match() {
         ..DuplicationConfig::default()
     };
 
-    let diagnostics = check(&source, &ChangedLines::new([2..=4]), config);
+    let diagnostics = check(&source, &ChangedLines::new(once(2..=4)), config);
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].line, 2);
@@ -226,7 +217,7 @@ fn check_should_preserve_non_whitespace_source_text(
 
     let diagnostics = check(
         &source,
-        &ChangedLines::new([start..=source.lines().count()]),
+        &ChangedLines::new(once(start..=source.lines().count())),
         config,
     );
 
@@ -309,7 +300,7 @@ fn check_should_respect_threshold_boundaries(
         .map(|index| format!("step_{index}();\n"))
         .collect();
     let source = block.repeat(occurrences);
-    let query = ChangedLines::new([1..=meaningful_lines]);
+    let query = ChangedLines::new(once(1..=meaningful_lines));
 
     let findings = check(&source, &query, config);
 

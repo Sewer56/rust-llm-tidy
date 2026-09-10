@@ -1,0 +1,8 @@
+input.rs:19: reminder[DUP001]: 5 meaningful lines repeat at 3 non-overlapping sites in this file. Locations: 3-7, 11-15, 19-23.
+
+Why:
+- Less repeated code is easier to audit and keep consistent.
+
+Suggestions:
+- Consider a constructor or helper if it preserves behavior, contracts, and performance.
+- A useful refactor may not clear this reminder. That is OK; do not force further changes just to silence it. (source sequence)
