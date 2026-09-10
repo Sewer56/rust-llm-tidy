@@ -47,7 +47,7 @@ rust-llm-tidy --checks-only src
 # Tidy every allowed source file under a directory recursively
 rust-llm-tidy src
 
-# No paths given -> process the changed files in the current git diff
+# No paths given -> process changed and untracked files in the current git repo
 rust-llm-tidy
 
 # Run only specific ops (repeatable); overrides the config `include` mode

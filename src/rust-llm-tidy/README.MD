@@ -61,7 +61,7 @@ The defaults preview those inputs without
 discovering configuration, querying Git, or starting subprocesses.
 
 - Set `apply` to permit file writes
-- Set `git_changed` to query tracked Git changes when paths are empty
+- Set `git_changed` to query changes and untracked files when paths are empty
 - Set `cargo_discovery` to permit Cargo-based Rust project discovery
 - Set `post_process` to permit configured subprocesses during an apply run
 

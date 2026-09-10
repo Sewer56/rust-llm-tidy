@@ -11,7 +11,7 @@ pub struct RunOptions {
     pub paths: Vec<PathBuf>,
     /// Write changes to files instead of previewing them.
     pub apply: bool,
-    /// Query tracked Git changes when `paths` is empty.
+    /// Query tracked changes and untracked files when `paths` is empty.
     pub git_changed: bool,
     /// Local Git baseline reference; also grants Git reads on explicit paths.
     /// With no paths, discover eligible files under the current directory.

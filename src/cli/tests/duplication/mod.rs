@@ -39,7 +39,7 @@ fn duplication_should_compare_an_explicit_committed_baseline() {
 #[rstest]
 #[case::explicit_untracked(false, false, 1)]
 #[case::explicit_staged(true, false, 1)]
-#[case::implicit_untracked(false, true, 0)]
+#[case::implicit_untracked(false, true, 1)]
 #[case::implicit_staged(true, true, 1)]
 fn duplication_should_preserve_new_file_discovery(
     #[case] staged: bool,

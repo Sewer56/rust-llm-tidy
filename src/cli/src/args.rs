@@ -19,8 +19,8 @@ pub(crate) struct Cli {
     /// Paths to Rust source files or directories to process.
     ///
     /// - Directories: expanded recursively.
-    /// - Omitted paths: use changed files in the current git diff,
-    ///   filtered to the allowed extensions.
+    /// - Omitted paths: use changed files in the current git diff plus
+    ///   untracked, non-ignored files, filtered to the allowed extensions.
     pub(crate) paths: Vec<PathBuf>,
     /// Preview without modifying files; exit nonzero if transformations are needed.
     ///

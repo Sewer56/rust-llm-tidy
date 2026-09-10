@@ -43,7 +43,7 @@ pub(crate) fn collect_files(
 // ---------------------------------------------------------------------------
 
 /// Resolve the effective input file list: explicit paths (with directory
-/// expansion) when given, else changed files from the git diff.
+/// expansion) when given, else changed and untracked files from git.
 pub(crate) fn resolve_inputs(
     inputs: &[PathBuf],
     git_changed: bool,

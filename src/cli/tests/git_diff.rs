@@ -17,23 +17,6 @@ mod duplication;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-#[test]
-fn all_lines_should_not_discover_unchanged_or_untracked_files() {
-    let repo = init_repo().expect("Git is required for discovery acceptance");
-    fs::write(repo.join(".rust-llm-tidy.yml"), "{}").unwrap();
-    fs::write(repo.join("input.rs"), "fn f() { Vec::new(); }").unwrap();
-    git(&repo, &["add", "."]);
-    git(&repo, &["commit", "--quiet", "-m", "baseline"]);
-    fs::write(repo.join("untracked.rs"), "fn f() { Vec::new(); }").unwrap();
-
-    let output = run(&repo, &["--all-lines", "--include", "SYM", "--json"]);
-    let records: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
-
-    assert!(output.status.success(), "{output:?}");
-    assert!(records.is_empty(), "{records:?}");
-    cleanup(&repo);
-}
-
 #[rstest]
 #[case::new_token("long", "3", "PERF002", false, 2)]
 #[case::size_only("int", "4", "PERF002", false, 0)]
@@ -313,6 +296,97 @@ fn no_args_selects_uppercase_extension_variants() {
     cleanup(&repo);
 }
 
+/// Untracked files are discovered repo-wide from any cwd, not only under the
+/// invocation directory, and keep repo-root spelling.
+#[test]
+fn no_args_should_discover_repo_wide_untracked_files_from_any_cwd() {
+    let Some(repo) = init_repo() else {
+        return;
+    };
+    let nested = repo.join("nested");
+    let sibling = repo.join("sibling");
+    fs::create_dir_all(&nested).unwrap();
+    fs::create_dir_all(&sibling).unwrap();
+    fs::write(repo.join("baseline.rs"), "fn a() {}\n").unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "--quiet", "-m", "baseline"]);
+    for name in ["root_new.rs", "nested/new.rs", "sibling/new.rs"] {
+        fs::write(repo.join(name), "#[test]\nfn summarised() {}\n").unwrap();
+    }
+
+    let args = ["--no-config", "--include", "TEST002", "--json"];
+    let root_paths = sorted_paths(&run(&repo, &args));
+    let nested_paths = sorted_paths(&run(&nested, &args));
+
+    assert_eq!(root_paths, nested_paths, "cwd must not change discovery");
+    assert_eq!(root_paths.len(), 3, "{root_paths:?}");
+    for suffix in ["root_new.rs", "nested/new.rs", "sibling/new.rs"] {
+        assert!(
+            root_paths.iter().any(|path| path.ends_with(suffix)),
+            "{suffix} missing from {root_paths:?}"
+        );
+    }
+    cleanup(&repo);
+}
+
+/// No-args discovery is the git diff plus untracked files: an unchanged
+/// tracked file stays invisible while an untracked file is selected.
+///
+/// The `--all-lines` cases remove line gating, so a mistakenly discovered
+/// unchanged file would report and fail the run.
+#[rstest]
+#[case::unchanged_tracked("tracked.rs", false, false)]
+#[case::untracked("new.rs", false, true)]
+#[case::unchanged_tracked_all_lines("tracked.rs", true, false)]
+#[case::untracked_all_lines("new.rs", true, true)]
+fn no_args_should_discover_untracked_but_not_unchanged_files(
+    #[case] name: &str,
+    #[case] all_lines: bool,
+    #[case] discovered: bool,
+) {
+    let Some(repo) = init_repo() else {
+        return;
+    };
+    fs::write(repo.join("tracked.rs"), "#[test]\nfn summarised() {}\n").unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "--quiet", "-m", "baseline"]);
+    if name != "tracked.rs" {
+        fs::write(repo.join(name), "#[test]\nfn summarised() {}\n").unwrap();
+    }
+
+    let mut args = vec!["--no-config", "--include", "TEST002", "--json"];
+    if all_lines {
+        args.push("--all-lines");
+    }
+    let output = run(&repo, &args);
+    let findings: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(findings.len(), usize::from(discovered), "{findings:?}");
+    cleanup(&repo);
+}
+
+/// Untracked files honour `.gitignore` under the default `--exclude-standard`.
+#[rstest]
+#[case::untracked("new.rs", true)]
+#[case::ignored("ignored.rs", false)]
+fn no_args_should_exclude_ignored_untracked_files(#[case] name: &str, #[case] discovered: bool) {
+    let Some(repo) = init_repo() else {
+        return;
+    };
+    fs::write(repo.join(".gitignore"), "ignored.rs\n").unwrap();
+    git(&repo, &["add", ".gitignore"]);
+    git(&repo, &["commit", "--quiet", "-m", "baseline"]);
+    fs::write(repo.join(name), "#[test]\nfn summarised() {}\n").unwrap();
+
+    let output = run(&repo, &["--no-config", "--include", "TEST002", "--json"]);
+    let findings: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(findings.len(), usize::from(discovered), "{findings:?}");
+    cleanup(&repo);
+}
+
 #[test]
 fn no_paths_should_reject_bad_explicit_baseline_without_selected_files() {
     let repo = init_repo().expect("Git is required for baseline acceptance");
@@ -467,6 +541,23 @@ fn run(current_dir: &Path, args: &[&str]) -> Output {
         .args(args)
         .output()
         .expect("failed to spawn")
+}
+
+/// Sorted paths from a successful `--json` run.
+fn sorted_paths(output: &Output) -> Vec<String> {
+    assert!(output.status.success(), "{output:?}");
+    let findings: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+    let mut paths: Vec<String> = findings
+        .iter()
+        .map(|finding| {
+            finding["path"]
+                .as_str()
+                .expect("path is a string")
+                .to_owned()
+        })
+        .collect();
+    paths.sort();
+    paths
 }
 
 fn git(repo: &Path, args: &[&str]) -> String {

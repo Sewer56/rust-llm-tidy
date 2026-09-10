@@ -71,8 +71,8 @@ Text lints for other languages use these sources ([text lints]):
 - `--diff-base main` compares current files with their common ancestor
   with `main`.
   You can also set the reference via `RUST_LLM_TIDY_DIFF_BASE`.
-- No paths? Check changed files, or scan the current directory with
-  `--diff-base`.
+- No paths? Check changed and untracked files, or scan the current directory
+  with `--diff-base`.
 - Without Git history, skip changed-line findings and warn.
   An invalid `--diff-base` stops the run.
 
