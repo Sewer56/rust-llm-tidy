@@ -91,8 +91,8 @@ fn trim_tail(raw: &str) -> &str {
 /// Byte offset just past the URL body starting at `body_start`.
 ///
 /// The body ends at whitespace or at a markdown closer: `>`, a backtick, or
-/// a `)` or `]` that closes an enclosing construct rather than a URL-internal
-/// pair.
+/// a `)` or `]`. Such a closer must close an enclosing construct rather than
+/// a URL-internal pair.
 ///
 /// Brackets and parentheses balanced inside the body stay, so
 /// `https://a.test/x_(y)` and an IPv6 host such as `https://[::1]/x` keep

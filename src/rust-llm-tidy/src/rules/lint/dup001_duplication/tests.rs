@@ -51,9 +51,11 @@ fn check_should_count_non_overlapping_sites(#[case] lines: usize, #[case] count:
 
 #[test]
 fn check_should_emit_the_documented_finding_for_the_added_struct_literal() {
-    // The before/after pair from `docs/lints.md`, kept in fixtures so the test
-    // never parses the documentation tree. Git may check the fixtures out with
-    // CRLF on Windows; the rule and its render always use LF.
+    // The before/after pair from `docs/lints.md` lives in fixtures, so the
+    // test never parses the documentation tree.
+    //
+    // Git may check the fixtures out with CRLF on Windows; the rule and its
+    // render always use LF.
     let source = include_str!("../../../../tests/fixtures/dup001/documented_source.rs")
         .replace("\r\n", "\n");
     let expected = include_str!("../../../../tests/fixtures/dup001/documented_expected.txt")

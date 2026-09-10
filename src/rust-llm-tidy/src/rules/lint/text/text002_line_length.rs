@@ -209,9 +209,9 @@ mod tests {
         assert!(found[0].message.starts_with("line is 101 chars long."));
     }
 
-    // A URL that ends the line is excluded, so a long line still passes:
-    // bare, as a markdown link, as an autolink, or with a bracketed IPv6
-    // host.
+    // A URL that ends the line is excluded.
+    // A long line still passes: bare, as a markdown link, as an autolink, or
+    // with a bracketed IPv6 host.
     #[rstest]
     #[case::bare(
         "See the reference at https://example.com/a/very/long/path/that/keeps/going/beyond/the/eighty/char/limit"
