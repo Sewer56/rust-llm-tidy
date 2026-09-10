@@ -21,9 +21,12 @@
 //! [`SourceItem`]: crate::source::SourceItem
 
 use super::run_region_checks;
-use crate::languages::rust::text_regions::doc_regions;
+use crate::config::forbidden_character_rule::defaults;
+use crate::languages::rust::text_regions::{doc_regions, forbidden_character_regions};
 use crate::reporting::Diagnostic;
+use crate::rules::registry::CODE_FORBIDDEN_CHARACTERS;
 use crate::source::{ItemKind, ParseResult, SourceItem, VisibilityTier};
+use crate::text::measurement::measure;
 
 mod doc001_missing_docs;
 mod doc002_missing_errors_section;
@@ -56,6 +59,11 @@ const ARGUMENTS_HEADERS: &[&str] = &[
 pub(crate) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
     let mut diagnostics = run_all(parsed);
     diagnostics.extend(run_region_checks(doc_regions(parsed)));
+    diagnostics.retain(|d| d.code != CODE_FORBIDDEN_CHARACTERS);
+    diagnostics.extend(super::text::forbidden_characters::diagnostics(
+        &measure(forbidden_character_regions(parsed)),
+        defaults(),
+    ));
     diagnostics.extend(mod002_fn_local_use::check(parsed));
     diagnostics
 }

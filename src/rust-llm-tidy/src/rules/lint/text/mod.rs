@@ -1,14 +1,16 @@
-//! The text rules: TEXT001 through TEXT008 over one measured document,
+//! The text rules: TEXT001 through TEXT009 over one measured document,
 //! in source order.
 //!
 //! [`Document`] is the measured input from the plaintext pipeline.
 //!
 //! [`Document`]: crate::text::measurement::Document
 
+use crate::config::forbidden_character_rule::defaults;
 use crate::reporting::diagnostic::Diagnostic;
 use crate::text::measurement::Document;
 pub(crate) use text007_passive_narration::is_narration_marker;
 
+pub(crate) mod forbidden_characters;
 mod text001_paragraph_size;
 mod text002_line_length;
 mod text003_sentence_length;
@@ -18,7 +20,7 @@ mod text006_verbose_synonyms;
 mod text007_passive_narration;
 mod text008_list_density;
 
-/// TEXT001 through TEXT008 diagnostics for one measured document.
+/// TEXT001 through TEXT009 diagnostics for one measured document.
 ///
 /// Called by the `run_text_checks` and `run_region_checks` entry points
 /// in [`crate::rules::registry`]. TEXT005 reads the recorded fence
@@ -32,6 +34,7 @@ pub(crate) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     diags.extend(text006_verbose_synonyms::diagnostics(doc));
     diags.extend(text007_passive_narration::diagnostics(doc));
     diags.extend(text008_list_density::diagnostics(doc));
+    diags.extend(forbidden_characters::diagnostics(doc, defaults()));
     diags
 }
 

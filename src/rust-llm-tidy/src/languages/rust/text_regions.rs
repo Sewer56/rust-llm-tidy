@@ -28,6 +28,7 @@ use crate::reporting::Diagnostic;
 #[cfg(test)]
 use crate::rules::lint::run_region_checks;
 use crate::source::ParseResult;
+use crate::text::forbidden_character_regions::parsed_regions;
 use crate::text::measurement::{Dialect, DocRegion, RegionLine, line_marker_regions};
 use core::iter;
 
@@ -41,6 +42,23 @@ enum DocNode<'a> {
         item: tree_sitter::Node<'a>,
         content: tree_sitter::Node<'a>,
     },
+}
+
+/// String-based Rust documentation, excluding block comments handled by spans.
+pub(crate) fn attribute_regions(parsed: &ParseResult) -> Vec<DocRegion> {
+    ast_doc_regions(parsed)
+        .into_iter()
+        .filter(|region| region.dialect == Dialect::Markdown)
+        .collect()
+}
+
+/// TEXT009 regions with line comments attributed by the syntax tree.
+/// Other text rules retain their existing extraction behavior.
+pub(crate) fn forbidden_character_regions(parsed: &ParseResult) -> Vec<DocRegion> {
+    let (mut docs, comments) = parsed_regions(parsed, "rs");
+    docs.extend(comments);
+    docs.sort_by_key(first_line);
+    docs
 }
 
 /// Runs the TEXT* text checks over `parsed`'s doc prose: the

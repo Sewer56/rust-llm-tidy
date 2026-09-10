@@ -39,8 +39,7 @@ Block forms measured per family:
 
 Never measured:
 
-- Rust: plain `/* */` comments and the inner `/*! */` and
-  `#![doc = "..."]` forms.
+- Rust: `#![doc = "..."]` attributes.
 - Python: triple-quoted strings that are not docstrings.
 - The marker families: string content, heredoc payload, and code lines.
 - Block docs: `*` continuations and `@tag` name tokens
@@ -542,9 +541,28 @@ Suggestions:
 
 [`lints`]: ./lints.md
 
+## TEXT009 - forbidden characters
+
+Reject selected characters in docs and code comments with per-entry guidance.
+
+Defaults reject en/em dashes (`U+2013`, `U+2014`), curly single quotes and
+apostrophes (`U+2018`, `U+2019`), curly double quotes (`U+201C`, `U+201D`),
+and the ellipsis character (`U+2026`).
+
+Findings are errors and never rewrite text.
+
+See the [example configuration] to customize
+characters, guidance, and docs/comment scope.
+
+### Remarks
+
+Checks include headings and table prose, but skip code blocks, inline code,
+and link destinations.
+
 ## Library access
 
 Use `rust_llm_tidy::rules::lint::{run_text_checks, run_region_checks}`.
 For complete processing and project context, see [library entry points].
 
 [library entry points]: architecture.md#library-entry-points
+[example configuration]: ../.rust-llm-tidy.example.yml

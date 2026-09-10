@@ -89,6 +89,7 @@
 
 use crate::reporting::Diagnostic;
 use crate::rules::lint::run_region_checks;
+use crate::text::measurement::DocRegion;
 use core::cmp::Ordering;
 use core::ops::Range;
 use families::LEXED_EXTENSIONS;
@@ -147,6 +148,13 @@ pub fn text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
 /// is unavailable or uncertain. Strict scans also reject unmodeled slash literals.
 pub(crate) fn comment_spans(source: &str, ext: &str) -> Option<Vec<Range<usize>>> {
     scan::comment_spans(source, lexicon_for(ext)?)
+}
+
+/// Extract comment regions, returning none when attribution is uncertain.
+pub(crate) fn doc_regions(source: &str, ext: &str) -> Vec<DocRegion> {
+    lexicon_for(ext)
+        .and_then(|lex| scan::scan(source, lex))
+        .unwrap_or_default()
 }
 
 /// The lexicon for `ext`, ASCII case-insensitively (`.JS` resolves like

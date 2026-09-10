@@ -1,6 +1,7 @@
 //! Shared source-only operations used by buffer and file entry points.
 
 use crate::SourceOptions;
+use crate::config::forbidden_character_rule::defaults;
 use crate::config::{CompiledSymbolRule, compile_symbol_rules};
 use crate::languages::{backend_for, registry};
 use crate::reporting::{Change, ChangeKind, Diagnostic, SourceReport, change};
@@ -428,7 +429,13 @@ fn lint_source(
         && let Some(backend) = backend_for(ext)
     {
         let parsed = backend.parse(source)?;
-        let diagnostics = backend.lint(&parsed);
+        let mut diagnostics = backend.lint(&parsed);
+        diagnostics.retain(|diagnostic| diagnostic.code != lint::CODE_FORBIDDEN_CHARACTERS);
+        diagnostics.extend(lint::text::forbidden_characters::parsed_diagnostics(
+            &parsed,
+            ext,
+            defaults(),
+        ));
         observations = lint::symbols::check_enabled(&parsed, ext, rules, hints_enabled)?;
         if hints_enabled {
             observations

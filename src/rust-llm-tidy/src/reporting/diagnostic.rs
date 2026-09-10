@@ -4,7 +4,7 @@
 //! human-readable message, and a location. The location is a 1-based line
 //! number plus the item kind and name that produced the finding.
 
-use crate::rules::registry::CODE_SYM;
+use crate::rules::registry::{CODE_FORBIDDEN_CHARACTERS, CODE_SYM};
 use core::fmt;
 use serde::Deserialize;
 
@@ -17,7 +17,7 @@ pub struct Diagnostic {
     pub code: &'static str,
     /// Producer-owned title; absent falls back to `code` in [`Self::title`].
     ///
-    /// Plaintext prefixes only `SYM` messages with this title; other
+    /// Plaintext prefixes `SYM` and `TEXT009` messages with this title; other
     /// diagnostics already carry a complete finding summary in `message`.
     pub title: Option<Box<str>>,
     /// Human-readable description of the problem.
@@ -72,7 +72,10 @@ impl fmt::Display for Diagnostic {
             Severity::Hint => "hint",
             Severity::Reminder => "reminder",
         };
-        let title = self.title.as_deref().filter(|_| self.code == CODE_SYM);
+        let title = self
+            .title
+            .as_deref()
+            .filter(|_| matches!(self.code, CODE_SYM | CODE_FORBIDDEN_CHARACTERS));
         let separator = if title.is_some() { ": " } else { "" };
         let title = title.unwrap_or_default();
 
