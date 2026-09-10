@@ -178,9 +178,20 @@ fn write_text(output: &mut impl Write, report: &RunReport) -> io::Result<()> {
     }
 
     for severity in [Severity::Hint, Severity::Reminder] {
+        let mut explanation_written = false;
         for file in &report.files {
             for diagnostic in &file.diagnostics {
                 if diagnostic.severity == severity {
+                    if severity == Severity::Reminder && !explanation_written {
+                        writeln!(
+                            output,
+                            "\nReminders are prompts to consider, not required fixes. They cannot always\n\
+                             be resolved and may remain even when the code is appropriate.\n\
+                             Reminders alone do not fail the check.\n"
+                        )?;
+                        explanation_written = true;
+                    }
+
                     writeln!(output, "{}:{diagnostic}", file.path.display())?;
                 }
             }
@@ -235,6 +246,7 @@ mod tests {
 
         assert_eq!(json["title"], expected_title);
         assert_eq!(json["message"], "complete finding summary");
+        assert!(!String::from_utf8_lossy(&rendered).contains("Reminders are prompts"));
         assert_eq!(
             String::from_utf8(rendered).unwrap(),
             format!("input.rs:1: warning[{code}]: {prefix}complete finding summary (fn)\n")
@@ -284,6 +296,8 @@ mod tests {
         assert!(text.contains(&format!("2: {token}[DOC999]")));
         let last = text.lines().last().unwrap();
         assert!(last.contains("reminder[DOC999]"));
+        assert_eq!(text.matches("Reminders are prompts to consider").count(), 1);
+        assert!(text.find("Reminders are prompts").unwrap() < text.find("reminder[").unwrap());
     }
 
     /// Rendering groups hints last while error counts remain severity-specific.
