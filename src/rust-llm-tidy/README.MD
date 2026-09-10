@@ -52,6 +52,8 @@ Hints, warnings, and errors still cover the whole buffer.
 
 Enabled DUP001 warns and skips buffer analysis unless `all_lines` is true.
 
+`TEXT010` is file-context only: buffer entry points never emit it.
+
 ### File processing
 
 Pass files or directories in `RunOptions::paths` and optional configuration from

@@ -25,6 +25,7 @@ pub const LINT_CODES: &[&str] = &[
     CODE_PASSIVE_NARRATION,
     CODE_TEXT008,
     CODE_FORBIDDEN_CHARACTERS,
+    CODE_DOCUMENTATION_CONTEXT,
     CODE_TEST_NAMING,
     CODE_TEST_SUMMARY,
     CODE_MODULE_SIZE,
@@ -34,6 +35,8 @@ pub const LINT_CODES: &[&str] = &[
     CODE_SYM,
     CODE_DUPLICATION,
 ];
+/// Rule code for the documentation-context audience reminder.
+pub const CODE_DOCUMENTATION_CONTEXT: &str = "TEXT010";
 /// Rule code for placeholder text in doc comments.
 pub const CODE_DOC_PLACEHOLDER: &str = "DOC006";
 /// Rule code for same-file textual duplication reminders.
@@ -113,6 +116,7 @@ mod tests {
             CODE_PASSIVE_NARRATION,
             CODE_TEXT008,
             CODE_FORBIDDEN_CHARACTERS,
+            CODE_DOCUMENTATION_CONTEXT,
             CODE_TEST_NAMING,
             CODE_TEST_SUMMARY,
             CODE_MODULE_SIZE,

@@ -48,6 +48,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`TEXT006`] | Hint     | A doc line has a shorter alternative for a word, phrase, or filler.               |
 | [`TEXT007`] | Reminder | A doc line may hold passive voice or implementation history.                      |
 | [`TEXT008`] | Warning  | A bullet list exceeds 10 source lines.                                            |
+| [`TEXT010`] | Reminder | A likely documentation file; asks to review the changed section's audience.       |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
 | [`TEST002`] | Reminder | A test fn carries no comment above its attributes.                                |
 | [`MOD001`]  | Warning  | A code file exceeds `module_size.max_lines` (default 500).                        |
@@ -994,6 +995,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`TEXT006`]: ./text-lints.md#text006---verbose-synonyms
 [`TEXT007`]: ./text-lints.md#text007---passive-voice-and-past-behaviour
 [`TEXT008`]: ./text-lints.md#text008---dense-bullet-list
+[`TEXT010`]: ./text-lints.md#text010---documentation-context
 [`TEST001`]: #test001---non-behavioral-test-name
 [`TEST002`]: #test002---test-missing-its-summary-comment
 [`MOD001`]: #mod001---oversized-module

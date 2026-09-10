@@ -54,6 +54,9 @@ impl FileReport {
 /// `passive_narration.enable: false` disables it unless explicitly included.
 /// Changed-line reporting requires Git permission in [`RunOptions`].
 ///
+/// TEXT010 reports one file-context reminder for likely documentation, so it
+/// needs `run` and never fires from [`tidy_source`].
+///
 /// File previews leave each pass reading the original disk source; see
 /// [`tidy_source`] for final-buffer linting.
 /// Cargo project discovery requires `options.cargo_discovery`; otherwise
@@ -129,6 +132,9 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
         (!options.include.is_empty()).then(|| options.include.iter().cloned().collect());
     let disabled: HashSet<String> = options.exclude.iter().cloned().collect();
     let mut lint_context = lint_context::LintContext::new(config, options.all_lines);
+    // Classify documentation locations once per run: the lint phase reuses
+    // these facts and never resolves ancestors itself.
+    lint_context.classify_documentation(&paths);
     report.warnings = lint_context.capture(&paths, options, included.as_ref(), &disabled)?;
     if paths.is_empty() {
         return Ok(report);
