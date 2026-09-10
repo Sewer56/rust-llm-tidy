@@ -73,10 +73,12 @@ impl<'a> PendingTrivia<'a> {
     /// True when a comment sits directly above the item's first attribute (or
     /// its body, when it carries no attributes).
     ///
-    /// Accepts an outer doc comment (`///`/`/** */`) or a plain `//`/`/* */`
-    /// comment on the line directly above the boundary. The last line of a
-    /// multi-line run counts. A blank line between the comment and the
-    /// boundary breaks the run.
+    /// Accepts any line or block comment on the line directly above the
+    /// boundary: outer docs (`///`/`/** */`), inner docs (`//!`/`/*! */`),
+    /// and plain `//`/`/* */` comments.
+    ///
+    /// The last line of a multi-line run counts. A blank line between the
+    /// comment and the boundary breaks the run.
     pub(in super::super) fn has_summary_comment(&self, body: Node<'a>, source: &str) -> bool {
         let (comment, target) = match self.first_attr {
             Some(attr) => (self.first_attr_comment, attr),

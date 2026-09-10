@@ -107,9 +107,10 @@ pub struct SourceItem {
     /// True when a comment sits directly above this item's leading attributes
     /// (or its body, when it carries no attributes).
     ///
-    /// Accepts an outer doc comment (`///`/`/** */`) or a plain `//`/`/* */`
-    /// comment on the immediately preceding line. A blank line between the
-    /// comment and the attributes breaks the run.
+    /// Accepts any line or block comment on the immediately preceding line:
+    /// outer docs (`///`/`/** */`), inner docs (`//!`/`/*! */`), and plain
+    /// `//`/`/* */` comments. A blank line between the comment and the
+    /// attributes breaks the run.
     has_summary_comment: bool,
     /// Preprocessor region id this item belongs to.
     ///
@@ -270,9 +271,9 @@ impl SourceItem {
 
     /// True when a comment sits directly above this item's attributes.
     ///
-    /// Accepts an outer doc comment (`///`/`/** */`) or a plain `//`/`/* */`
-    /// comment on the immediately preceding line. See the field docs for the
-    /// exact contract.
+    /// Accepts any line or block comment on the immediately preceding line:
+    /// outer docs (`///`/`/** */`), inner docs (`//!`/`/*! */`), and plain
+    /// `//`/`/* */` comments. See the field docs for the exact contract.
     #[inline]
     pub fn has_summary_comment(&self) -> bool {
         self.has_summary_comment
