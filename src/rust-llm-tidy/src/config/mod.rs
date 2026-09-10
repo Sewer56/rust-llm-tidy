@@ -148,7 +148,8 @@ mod tests {
         // MOD), plus the six fix/operation names (including lints).
         for code in [
             "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "DOC008", "DOC009",
-            "TEXT001", "TEXT002", "TEXT003", "TEXT004", "TEST001", "MOD002", "MOD003", "SYM",
+            "TEXT001", "TEXT002", "TEXT003", "TEXT004", "TEST001", "TEST002", "MOD002", "MOD003",
+            "SYM",
         ] {
             assert!(rules.contains(&code), "missing lint code {code}");
         }

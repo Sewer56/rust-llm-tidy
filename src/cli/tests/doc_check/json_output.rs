@@ -409,11 +409,11 @@ fn json_output_records_reorder_changes() {
 }
 
 /// `--output-mode json` prints one JSON array on stdout with every finding
-/// for all processed files, using the documented fields and lowercase severity.
+/// for the selected rule, using the documented fields and lowercase severity.
 #[test]
 fn json_output_reports_all_findings() {
     let path = rust_fixture_dir().join("test001_test_naming.rs");
-    let output = run_command(&["--include", "lints", "--output-mode", "json"], &path);
+    let output = run_command(&["--include", "TEST001", "--output-mode", "json"], &path);
 
     assert!(
         output.status.success(),

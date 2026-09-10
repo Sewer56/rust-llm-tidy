@@ -62,6 +62,8 @@ exclude_files:
 
 # Disable specific rules for files matching a group's patterns.
 exclude:
+  # TEMPORARY: TEST002 disabled repo-wide until the test-summary backfill lands.
+  - rules: [TEST002]
   # Keep the TEXT007 detection-pattern reference list together.
   - paths: ["docs/text-lints.md"]
     rules: [TEXT008]

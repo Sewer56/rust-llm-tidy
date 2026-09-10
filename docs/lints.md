@@ -17,7 +17,8 @@ So `exclude: [{rules: [DOC001]}]` turns off just missing-docs and
 Which codes run depends on the language:
 
 - Rust: documentation, text, test, module, length, and symbol checks.
-- C#: checks XML documentation and test names ([lints for C#]).
+- C#: checks XML documentation, test names, and test summary comments
+  ([lints for C#]).
 - Python: checks module docstrings ([`DOC009`]).
 
 Text lints for other languages use these sources ([text lints]):
@@ -48,6 +49,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`TEXT007`] | Reminder | A doc line may hold passive voice or implementation history.                      |
 | [`TEXT008`] | Warning  | A bullet list exceeds 10 source lines.                                            |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
+| [`TEST002`] | Error    | A test fn carries no comment above its attributes.                                |
 | [`MOD001`]  | Warning  | A code file exceeds `module_size.max_lines` (default 500).                        |
 | [`MOD002`]  | Error    | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
 | [`MOD003`]  | Hint     | A path includes the full namespace.                                               |
@@ -510,6 +512,55 @@ Suggestions:
 
 `TEST001` is warning-severity, so the run exits 0.
 
+### TEST002 - test missing its summary comment
+
+Test functions must open with a short comment above their attribute block. A
+`///` doc run or a plain `//` block above them satisfies it.
+
+Detection checks presence only, never wording. A blank line between the
+comment and the attributes does not count.
+
+Before:
+
+```rust
+#[test]
+fn parse_returns_ok_when_input_is_valid() {
+    assert_eq!(parse("ok"), Ok(()));
+}
+```
+
+After:
+
+```rust
+// Verifies the parser accepts a valid input.
+#[test]
+fn parse_returns_ok_when_input_is_valid() {
+    assert_eq!(parse("ok"), Ok(()));
+}
+```
+
+#### TEST002 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include TEST002 src/lib.rs
+src/lib.rs:1: error[TEST002]: test function `parse_returns_ok_when_input_is_valid` is missing a short explanatory comment above its attributes.
+
+Why: Readers need to understand why this test matters without tracing its body.
+
+Suggestions:
+- Explain the requirement, edge case, or regression the test protects against.
+- Add context rather than restating the test name.
+- Consider Arrange–Act–Assert: setup, action, then assertions, separated by comments. (fn `parse_returns_ok_when_input_is_valid`)
+```
+
+`TEST002` is error-severity, so the run exits non-zero. C# reports the same
+rule for `TestMethod`/`Test`/`Fact`/`Theory` methods; see [lints for C#].
+
+#### Remarks
+
+Rust checks top-level test functions only; functions inside inline modules,
+including `#[cfg(test)] mod tests`, are not inspected.
+
 ### MOD001 - oversized module
 
 Warn once when a code file exceeds the line budget (default 500).
@@ -944,6 +995,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`TEXT007`]: ./text-lints.md#text007---passive-voice-and-past-behaviour
 [`TEXT008`]: ./text-lints.md#text008---dense-bullet-list
 [`TEST001`]: #test001---non-behavioral-test-name
+[`TEST002`]: #test002---test-missing-its-summary-comment
 [`MOD001`]: #mod001---oversized-module
 [`MOD002`]: #mod002---function-local-use-without-cfg
 [`MOD003`]: #mod003---full-namespace-qualification-in-code

@@ -26,6 +26,7 @@ pub const LINT_CODES: &[&str] = &[
     CODE_TEXT008,
     CODE_FORBIDDEN_CHARACTERS,
     CODE_TEST_NAMING,
+    CODE_TEST_SUMMARY,
     CODE_MODULE_SIZE,
     CODE_MOD002,
     CODE_QUALIFIED_PATH,
@@ -75,6 +76,8 @@ pub const CODE_SENTENCE_LENGTH: &str = "TEXT003";
 pub const CODE_SYM: &str = "SYM";
 /// Rule code for a discouraged test-function name.
 pub const CODE_TEST_NAMING: &str = "TEST001";
+/// Rule code for a test function missing its summary comment.
+pub const CODE_TEST_SUMMARY: &str = "TEST002";
 /// Rule code for a bullet list exceeding its source-line budget.
 pub const CODE_TEXT008: &str = "TEXT008";
 /// Rule code for an undocumented parameter.
@@ -111,6 +114,7 @@ mod tests {
             CODE_TEXT008,
             CODE_FORBIDDEN_CHARACTERS,
             CODE_TEST_NAMING,
+            CODE_TEST_SUMMARY,
             CODE_MODULE_SIZE,
             CODE_MOD002,
             CODE_QUALIFIED_PATH,

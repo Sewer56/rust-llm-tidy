@@ -117,6 +117,16 @@ pub(crate) fn doc_run_start_line(node: tree_sitter::Node<'_>, source: &str) -> O
     doc_run_node(node, source).map(|run| run.start_position().row + 1)
 }
 
+/// True when a comment sits on the line directly above `node`, i.e. above
+/// its attribute list when it carries one.
+///
+/// Accepts a `///` doc run or a plain `//` block. A blank line between the
+/// comment and `node` breaks the run, and a comment below the attributes
+/// does not count.
+pub(crate) fn has_leading_comment(node: tree_sitter::Node<'_>, source: &str) -> bool {
+    adjacent_comment_above(node, source).is_some()
+}
+
 /// True when `node` carries an attribute naming one of the accepted test
 /// markers, matching the attribute name with its customary `Attribute`
 /// suffix stripped.

@@ -22,6 +22,7 @@ against misread declarations.
 | `TEXT003` | Warning  | A doc sentence whose tag-stripped inner text exceeds 25 words.                                   |
 | `TEXT006` | Hint     | Shorter-wording suggestions for words, phrases, redundancies, and filler in doc text             |
 | `TEST001` | Warning  | A `TestMethod`/`Test`/`Fact`/`Theory` method uses a `test_*`, `case_*`, or `test` + digits name. |
+| `TEST002` | Error    | A `TestMethod`/`Test`/`Fact`/`Theory` method has no comment above its attributes.                |
 | `MOD003`  | Hint     | A path includes the full namespace.                                                              |
 | `SYM`     | Reminder | A configured text or symbol hint matches; severity is configurable.                              |
 
@@ -569,6 +570,56 @@ Suggestions:
 - Rename it to describe the subject and expected behavior, adding a condition only when it matters.
 - Use `subject_should_expectation[_when_condition]` in the project's casing style. (fn `test_load`)
 ```
+
+### TEST002 - test missing its summary comment
+
+A `TestMethod`/`Test`/`Fact`/`Theory` method must open with a summary comment
+above its attribute list.
+
+An XML doc run (`///`) or a plain `//` block above them satisfies it.
+Detection checks presence only, never wording. A blank line between the
+comment and the attributes does not count.
+
+Before:
+
+```csharp
+public class LoaderTests
+{
+    [TestMethod]
+    public void Load_returns_the_value_for_a_known_key()
+    {
+    }
+}
+```
+
+After:
+
+```csharp
+public class LoaderTests
+{
+    // Verifies the loader resolves a known key.
+    [TestMethod]
+    public void Load_returns_the_value_for_a_known_key()
+    {
+    }
+}
+```
+
+#### TEST002 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include TEST002 Loader.cs
+Loader.cs:3: error[TEST002]: test method `Load_returns_the_value_for_a_known_key` is missing a short explanatory comment above its attributes.
+
+Why: Readers need to understand why this test matters without tracing its body.
+
+Suggestions:
+- Explain the requirement, edge case, or regression the test protects against.
+- Add context rather than restating the test name.
+- Consider Arrange–Act–Assert: setup, action, then assertions, separated by comments. (fn `Load_returns_the_value_for_a_known_key`)
+```
+
+`TEST002` is error-severity, so the run exits non-zero.
 
 ### Multiple findings at once
 
