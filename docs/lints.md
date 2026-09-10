@@ -49,7 +49,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`TEXT007`] | Reminder | A doc line may hold passive voice or implementation history.                      |
 | [`TEXT008`] | Warning  | A bullet list exceeds 10 source lines.                                            |
 | [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
-| [`TEST002`] | Error    | A test fn carries no comment above its attributes.                                |
+| [`TEST002`] | Reminder | A test fn carries no comment above its attributes.                                |
 | [`MOD001`]  | Warning  | A code file exceeds `module_size.max_lines` (default 500).                        |
 | [`MOD002`]  | Error    | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
 | [`MOD003`]  | Hint     | A path includes the full namespace.                                               |
@@ -542,8 +542,8 @@ fn parse_returns_ok_when_input_is_valid() {
 #### TEST002 CLI output
 
 ```text
-$ rust-llm-tidy --no-config --include TEST002 src/lib.rs
-src/lib.rs:1: error[TEST002]: test function `parse_returns_ok_when_input_is_valid` is missing a short explanatory comment above its attributes.
+$ rust-llm-tidy --no-config --all-lines --include TEST002 src/lib.rs
+src/lib.rs:1: reminder[TEST002]: test function `parse_returns_ok_when_input_is_valid` is missing a short explanatory comment above its attributes.
 
 Why: Readers need to understand why this test matters without tracing its body.
 
@@ -553,8 +553,8 @@ Suggestions:
 - Consider Arrange–Act–Assert: setup, action, then assertions, separated by comments. (fn `parse_returns_ok_when_input_is_valid`)
 ```
 
-`TEST002` is error-severity, so the run exits non-zero. C# reports the same
-rule for `TestMethod`/`Test`/`Fact`/`Theory` methods; see [lints for C#].
+`TEST002` is reminder-severity, so the run exits 0 and it reports on changed
+lines by default. C# reports the same rule; see [lints for C#].
 
 #### Remarks
 

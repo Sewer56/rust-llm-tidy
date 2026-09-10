@@ -45,8 +45,8 @@ fn test002_decisions_match_across_backends() {
 fn test002_flags_only_unsummarised_tests() {
     let (stderr, exit) = run_rust_fixture("test002_test_summary.rs", "TEST002");
 
-    // TEST002 is error-severity, so the run fails.
-    assert_ne!(exit, 0, "TEST002 findings should fail the run");
+    // TEST002 is reminder-severity, so the run exits 0.
+    assert_eq!(exit, 0, "TEST002 reminders must not fail the run");
 
     for name in [
         "missing_summary",
@@ -83,10 +83,7 @@ fn test002_json_record_carries_the_documented_fields() {
     let path = rust_fixture_dir().join("test002_test_summary.rs");
     let output = run_command(&["--include", "TEST002", "--output-mode", "json"], &path);
 
-    assert!(
-        !output.status.success(),
-        "error-severity findings fail the run"
-    );
+    assert!(output.status.success(), "reminder-severity findings exit 0");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let findings: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("stdout must parse as JSON: {e}\n{stdout}"));
@@ -95,7 +92,7 @@ fn test002_json_record_carries_the_documented_fields() {
 
     for rec in array {
         assert_eq!(rec["code"], "TEST002");
-        assert_eq!(rec["severity"], "error");
+        assert_eq!(rec["severity"], "reminder");
         assert_eq!(rec["title"], "test missing its summary comment");
         assert_eq!(rec["item_kind"], "fn");
         assert!(rec["line"].as_u64().is_some_and(|l| l >= 1));

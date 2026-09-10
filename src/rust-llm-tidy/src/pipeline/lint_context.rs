@@ -216,8 +216,12 @@ impl<'a> LintContext<'a> {
                 code if code.starts_with("TEXT") => profile.text_lints != langs::TextLints::None,
                 _ => language.is_some(),
             };
-            let severity = if matches!(*code, lint::CODE_PASSIVE_NARRATION | lint::CODE_DUPLICATION)
-            {
+            // Reminder-severity lint families report on changed lines by
+            // default, so the changed-line filter needs their snapshots.
+            let severity = if matches!(
+                *code,
+                lint::CODE_PASSIVE_NARRATION | lint::CODE_DUPLICATION | lint::CODE_TEST_SUMMARY
+            ) {
                 Severity::Reminder
             } else {
                 Severity::Error

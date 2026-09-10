@@ -30,7 +30,7 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
 
     vec![Diagnostic {
         title: Some("test missing its summary comment".into()),
-        severity: Severity::Error,
+        severity: Severity::Reminder,
         code: CODE_TEST_SUMMARY,
         message: format!(
             "test function `{name}` is missing a short explanatory comment above its attributes.\n\n\
@@ -91,7 +91,7 @@ mod tests {
 
         assert_eq!(diags.len(), 1, "expected one TEST002 finding: {source}");
         assert_eq!(diags[0].code, CODE_TEST_SUMMARY);
-        assert_eq!(diags[0].severity, Severity::Error);
+        assert_eq!(diags[0].severity, Severity::Reminder);
     }
 
     // The diagnostic carries the documented message verbatim.

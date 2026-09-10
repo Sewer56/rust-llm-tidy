@@ -188,14 +188,45 @@ fn snapshots_should_require_an_enabled_supported_scoped_lint(
 ) {
     let config = compile(yaml, &[]);
     let context = LintContext::new(Some(&config), false);
-    // Isolate the existing Reminder families; DUP001 has separate cases.
+    // Isolate the existing Reminder families; DUP001 and TEST002 have
+    // separate cases.
     let disabled = disabled
         .iter()
         .copied()
-        .chain(["DUP001"])
+        .chain(["DUP001", "TEST002"])
         .map(str::to_owned)
         .collect();
     let disabled = super::file_execution::lint_disabled_set(&None, &disabled, Some(&config));
+
+    let actual = context.needs_snapshot(ext, &disabled);
+
+    assert_eq!(actual, needed);
+}
+
+/// TEST002 is reminder-severity, so its supported languages need a snapshot
+/// even when every other lint is disabled.
+#[rstest]
+#[case::rust("rs", false, true)]
+#[case::csharp("cs", false, true)]
+#[case::unsupported_language("md", false, false)]
+#[case::disabled("rs", true, false)]
+fn snapshots_should_track_the_test_summary_reminder(
+    #[case] ext: &str,
+    #[case] test002_disabled: bool,
+    #[case] needed: bool,
+) {
+    let config = compile("perf_hints: []", &[]);
+    let context = LintContext::new(Some(&config), false);
+
+    // Leave only TEST002 selectable; the flag switches it off too.
+    let mut disabled: HashSet<String> = LINT_CODES
+        .iter()
+        .filter(|&&code| code != "TEST002")
+        .map(|code| (*code).to_owned())
+        .collect();
+    if test002_disabled {
+        disabled.insert("TEST002".to_owned());
+    }
 
     let actual = context.needs_snapshot(ext, &disabled);
 

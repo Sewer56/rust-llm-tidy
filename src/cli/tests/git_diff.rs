@@ -375,6 +375,63 @@ fn no_paths_should_report_committed_reminders_against_explicit_baseline(
     cleanup(&repo);
 }
 
+/// TEST002 reports only when a test's declaration line is in the diff.
+///
+/// A body-only edit leaves the declaration line unchanged and stays silent;
+/// an added test produces a finding; `--all-lines` audits unchanged tests too.
+#[rstest]
+#[case::body_only("#[test]\nfn summarised() {\n    assert!(false);\n}\n", false, vec![])]
+#[case::added_test(
+    "#[test]\nfn summarised() {\n    assert!(false);\n}\n\n#[test]\nfn added() {}\n",
+    false,
+    vec![6]
+)]
+#[case::all_lines(
+    "#[test]\nfn summarised() {\n    assert!(false);\n}\n\n#[test]\nfn added() {}\n",
+    true,
+    vec![1, 6]
+)]
+fn test002_should_gate_on_the_declaration_line(
+    #[case] current: &str,
+    #[case] all_lines: bool,
+    #[case] expected_lines: Vec<usize>,
+) {
+    let repo = init_repo().expect("Git is required for TEST002 acceptance");
+    let path = repo.join("input.rs");
+    fs::write(repo.join(".rust-llm-tidy.yml"), "{}").unwrap();
+    fs::write(&path, "#[test]\nfn summarised() {\n    assert!(true);\n}\n").unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "--quiet", "-m", "baseline"]);
+    fs::write(&path, current).unwrap();
+    git(&repo, &["add", "input.rs"]);
+    git(&repo, &["commit", "--quiet", "-m", "change"]);
+
+    let mut args = vec!["--diff-base", "HEAD~1", "--include", "TEST002", "--json"];
+    if all_lines {
+        args.push("--all-lines");
+    }
+    let output = run(&repo, &args);
+    let findings: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let lines: Vec<usize> = findings
+        .iter()
+        .map(|finding| finding["line"].as_u64().unwrap() as usize)
+        .collect();
+    assert_eq!(lines, expected_lines, "{findings:?}");
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding["code"] == "TEST002" && finding["severity"] == "reminder"),
+        "{findings:?}"
+    );
+    cleanup(&repo);
+}
+
 /// Remove a throwaway temp dir created by `temp_dir`/`init_repo`.
 fn cleanup(dir: &Path) {
     let _ = fs::remove_dir_all(dir);

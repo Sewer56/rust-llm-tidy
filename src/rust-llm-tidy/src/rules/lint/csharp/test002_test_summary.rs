@@ -30,7 +30,7 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
     };
 
     vec![decl.diagnostic(
-        Severity::Error,
+        Severity::Reminder,
         CODE_TEST_SUMMARY,
         "test missing its summary comment",
         format!(
@@ -111,7 +111,7 @@ mod tests {
 
         assert_eq!(diags.len(), 1, "expected one TEST002 finding: {source}");
         assert_eq!(diags[0].code, CODE_TEST_SUMMARY);
-        assert_eq!(diags[0].severity, Severity::Error);
+        assert_eq!(diags[0].severity, Severity::Reminder);
     }
 
     // The diagnostic carries the documented message with the C# noun.

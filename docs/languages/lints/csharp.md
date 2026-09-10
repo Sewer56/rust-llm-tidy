@@ -22,7 +22,7 @@ against misread declarations.
 | `TEXT003` | Warning  | A doc sentence whose tag-stripped inner text exceeds 25 words.                                   |
 | `TEXT006` | Hint     | Shorter-wording suggestions for words, phrases, redundancies, and filler in doc text             |
 | `TEST001` | Warning  | A `TestMethod`/`Test`/`Fact`/`Theory` method uses a `test_*`, `case_*`, or `test` + digits name. |
-| `TEST002` | Error    | A `TestMethod`/`Test`/`Fact`/`Theory` method has no comment above its attributes.                |
+| `TEST002` | Reminder | A `TestMethod`/`Test`/`Fact`/`Theory` method has no comment above its attributes.                |
 | `MOD003`  | Hint     | A path includes the full namespace.                                                              |
 | `SYM`     | Reminder | A configured text or symbol hint matches; severity is configurable.                              |
 
@@ -608,8 +608,8 @@ public class LoaderTests
 #### TEST002 CLI output
 
 ```text
-$ rust-llm-tidy --no-config --include TEST002 Loader.cs
-Loader.cs:3: error[TEST002]: test method `Load_returns_the_value_for_a_known_key` is missing a short explanatory comment above its attributes.
+$ rust-llm-tidy --no-config --all-lines --include TEST002 Loader.cs
+Loader.cs:3: reminder[TEST002]: test method `Load_returns_the_value_for_a_known_key` is missing a short explanatory comment above its attributes.
 
 Why: Readers need to understand why this test matters without tracing its body.
 
@@ -619,7 +619,8 @@ Suggestions:
 - Consider Arrange–Act–Assert: setup, action, then assertions, separated by comments. (fn `Load_returns_the_value_for_a_known_key`)
 ```
 
-`TEST002` is error-severity, so the run exits non-zero.
+`TEST002` is reminder-severity, so it reports on changed lines by default and
+the run exits 0.
 
 ### Multiple findings at once
 

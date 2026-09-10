@@ -97,9 +97,8 @@ fn in_place_write_should_match_after_fixture() {
 /// - A `--dry-run` over this repository's root exits 0 and emits zero
 ///   change records.
 /// - The repo config is active.
-/// - TEST002 stays out of this gate until the test-summary backfill lands.
-///   The rule is error-severity and the repository's test functions are not
-///   yet summarised, so the gate would otherwise fail on known findings.
+/// - TEST002 stays out of this gate while the repository's test functions
+///   still lack summaries.
 #[test]
 fn repo_corpus_dry_run_emits_zero_change_records() {
     let root = manifest_dir()
