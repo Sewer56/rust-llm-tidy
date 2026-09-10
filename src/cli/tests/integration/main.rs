@@ -171,7 +171,10 @@ fn temp_file() -> PathBuf {
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
 fn run_command(args: &[&str], path: &Path) -> Output {
     let mut cmd = Command::new(binary());
+    // Keep expected error output stable without disabling panic backtraces.
+    cmd.env("RUST_LIB_BACKTRACE", "0");
     cmd.args(["--no-config"]).args(args).arg(path);
+
     cmd.output()
         .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
 }
