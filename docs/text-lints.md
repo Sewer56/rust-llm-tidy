@@ -39,8 +39,7 @@ Block forms measured per family:
 
 Never measured:
 
-- Rust: plain `/* */` comments and the inner `/*! */` and
-  `#![doc = "..."]` forms.
+- Rust: `#![doc = "..."]` attributes.
 - Python: triple-quoted strings that are not docstrings.
 - The marker families: string content, heredoc payload, and code lines.
 - Block docs: `*` continuations and `@tag` name tokens
@@ -544,50 +543,21 @@ Suggestions:
 
 ## TEXT009 - forbidden characters
 
-Reject selected characters in documentation prose with custom rewrite guidance.
+Reject selected characters in docs and code comments with per-entry guidance.
 
-Em dashes (`U+2014`) are forbidden by default. Findings are errors and never
-rewrite text. Each entry owns its diagnostic title and message.
+Defaults reject en/em dashes (`U+2013`, `U+2014`), curly single quotes and
+apostrophes (`U+2018`, `U+2019`), curly double quotes (`U+201C`, `U+201D`),
+and the ellipsis character (`U+2026`).
 
-```yaml
-forbidden_characters:
-  - characters: ["\u2014"]
-    title: Use natural phrasing without em dashes
-    message: |
-      Write like a person talking to another person, not an AI composing a response.
-      Avoid em dashes. Use direct sentences and a natural, conversational rhythm.
-      Rewrite rather than swapping punctuation mechanically. Preserve meaning
-      and technical precision.
-```
+Findings are errors and never rewrite text.
 
-A configured list replaces the default; `[]` disables matches. Each entry
-requires a nonempty list of single Unicode scalar values and nonblank `title`
-and `message`. Duplicate characters are rejected, including within an entry.
-
-Select `TEXT009` with the normal lint controls. Findings include the offending
-character, its Unicode code point, and its line number. Custom messages
-are preserved without appended generic advice.
-
-### TEXT009 CLI output
-
-With the default policy and a file containing `Read—this`:
-
-```text
-$ cargo run -p rust-llm-tidy-cli -- --checks-only --include TEXT009 example.md
-example.md:1: error[TEXT009]: Use natural phrasing without em dashes: forbidden character '—' (U+2014).
-Why: Direct sentences and a conversational rhythm make writing easier to follow.
-Suggestions:
-- Write like a person talking to another person, not an AI composing a response.
-- Avoid em dashes. Use direct sentences and a natural, conversational rhythm.
-- Rewrite the sentence, using a comma, colon, parentheses, or full stop where it fits the meaning.
-- Do not mechanically replace every dash with the same punctuation. Preserve the meaning and technical precision. (file)
-Error: found 1 error(s)
-```
+See the [example configuration] to customize
+characters, guidance, and docs/comment scope.
 
 ### Remarks
 
-Headings and table prose are checked; code blocks, inline code, and link
-destinations are skipped.
+Checks include headings and table prose, but skip code blocks, inline code,
+and link destinations.
 
 ## Library access
 
@@ -595,3 +565,4 @@ Use `rust_llm_tidy::rules::lint::{run_text_checks, run_region_checks}`.
 For complete processing and project context, see [library entry points].
 
 [library entry points]: architecture.md#library-entry-points
+[example configuration]: ../.rust-llm-tidy.example.yml

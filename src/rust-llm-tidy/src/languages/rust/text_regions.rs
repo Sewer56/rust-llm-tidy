@@ -28,9 +28,9 @@ use crate::reporting::Diagnostic;
 #[cfg(test)]
 use crate::rules::lint::run_region_checks;
 use crate::source::ParseResult;
+use crate::text::forbidden_character_regions::parsed_regions;
 use crate::text::measurement::{Dialect, DocRegion, RegionLine, line_marker_regions};
 use core::iter;
-use std::collections::HashSet;
 
 /// One measured doc node from the tree walk.
 enum DocNode<'a> {
@@ -44,31 +44,21 @@ enum DocNode<'a> {
     },
 }
 
+/// String-based Rust documentation, excluding block comments handled by spans.
+pub(crate) fn attribute_regions(parsed: &ParseResult) -> Vec<DocRegion> {
+    ast_doc_regions(parsed)
+        .into_iter()
+        .filter(|region| region.dialect == Dialect::Markdown)
+        .collect()
+}
+
 /// TEXT009 regions with line comments attributed by the syntax tree.
 /// Other text rules retain their existing extraction behavior.
 pub(crate) fn forbidden_character_regions(parsed: &ParseResult) -> Vec<DocRegion> {
-    let mut rows = HashSet::new();
-    let mut cursor = parsed.syntax_tree().root_node().walk();
-    loop {
-        let node = cursor.node();
-        if node.kind() == "line_comment" {
-            rows.insert(node.start_position().row + 1);
-        }
-
-        if cursor.goto_first_child() {
-            continue;
-        }
-        while !cursor.goto_next_sibling() {
-            if !cursor.goto_parent() {
-                let mut regions = line_marker_regions(&parsed.source, "rs");
-                for region in &mut regions {
-                    region.lines.retain(|line| rows.contains(&line.number));
-                }
-                regions.retain(|region| !region.lines.is_empty());
-                return merge_regions(regions, ast_doc_regions(parsed));
-            }
-        }
-    }
+    let (mut docs, comments) = parsed_regions(parsed, "rs");
+    docs.extend(comments);
+    docs.sort_by_key(first_line);
+    docs
 }
 
 /// Runs the TEXT* text checks over `parsed`'s doc prose: the

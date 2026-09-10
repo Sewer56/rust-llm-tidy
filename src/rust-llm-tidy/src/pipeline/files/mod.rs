@@ -1,14 +1,12 @@
 //! File-level checks and fixes; project-aware visibility lives in [`vis`],
 //! item reordering in [`reorder`].
 
+use crate::config::forbidden_character_rule::defaults;
 use crate::config::{CompiledConfig, CompiledSymbolRule, MethodLengthConfig, ModuleSizeConfig};
 use crate::input as paths;
 use crate::input::file_io as io;
 use crate::languages::backend_for;
-use crate::languages::csharp::text_regions::doc_regions as csharp_doc_regions;
-use crate::languages::python::text_regions::doc_regions as python_doc_regions;
 use crate::languages::registry as langs;
-use crate::languages::rust::text_regions::forbidden_character_regions;
 use crate::project::csharp as csharp_index;
 use crate::reporting::change as changes;
 use crate::reporting::{Diagnostic, RunReport};
@@ -265,10 +263,10 @@ pub(super) fn post_process_inputs(
     processed
 }
 
-/// Custom TEXT009 diagnostics for a parsed backend file.
+/// Resolved TEXT009 diagnostics for a parsed backend file.
 ///
-/// Returns `None` when disabled or no custom rules apply; callers replace
-/// backend defaults with the returned diagnostics for exact regions.
+/// Returns `None` when disabled; callers replace backend defaults so entry
+/// scopes and complete comment extraction use the same path for every policy.
 fn forbidden_diagnostics_parsed(
     disabled: &HashSet<String>,
     config: Option<&CompiledConfig>,
@@ -278,23 +276,17 @@ fn forbidden_diagnostics_parsed(
     if disabled.contains(check::CODE_FORBIDDEN_CHARACTERS) {
         return None;
     }
-    let rules = config.and_then(CompiledConfig::forbidden_characters)?;
-
-    let regions = match ext.to_ascii_lowercase().as_str() {
-        "rs" => forbidden_character_regions(parsed),
-        "cs" => csharp_doc_regions(parsed),
-        "py" | "pyi" => python_doc_regions(parsed),
-        _ => Vec::new(),
-    };
-    Some(check::text::forbidden_characters::diagnostics(
-        &measure(regions),
-        rules,
+    let rules = config
+        .map(CompiledConfig::forbidden_characters)
+        .unwrap_or_else(|| defaults());
+    Some(check::text::forbidden_characters::parsed_diagnostics(
+        parsed, ext, rules,
     ))
 }
 
-/// Custom TEXT009 diagnostics for a backend-less text file.
+/// Resolved TEXT009 diagnostics for a backend-less text file.
 ///
-/// Returns `None` when disabled or no custom rules apply; replaces defaults
+/// Returns `None` when disabled; replaces defaults
 /// like [`forbidden_diagnostics_parsed`].
 fn forbidden_diagnostics_text(
     disabled: &HashSet<String>,
@@ -306,16 +298,19 @@ fn forbidden_diagnostics_text(
     if disabled.contains(check::CODE_FORBIDDEN_CHARACTERS) {
         return None;
     }
-    let rules = config.and_then(CompiledConfig::forbidden_characters)?;
+    let rules = config
+        .map(CompiledConfig::forbidden_characters)
+        .unwrap_or_else(|| defaults());
 
     let regions = match profile.text_lints {
         langs::TextLints::Prose => line_marker_regions(source, ext),
         langs::TextLints::Lexicon => comments::doc_regions(source, ext),
         _ => Vec::new(),
     };
-    Some(check::text::forbidden_characters::diagnostics(
+    Some(check::text::forbidden_characters::scoped_diagnostics(
         &measure(regions),
         rules,
+        profile.text_lints == langs::TextLints::Prose,
     ))
 }
 

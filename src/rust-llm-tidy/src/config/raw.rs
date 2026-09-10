@@ -12,9 +12,12 @@ use std::collections::HashMap;
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)] // Reject hallucinated config keys at parse time.
 pub struct Config {
-    /// TEXT009 entries; absent bans em dashes, while an empty list bans nothing.
+    /// TEXT009 replacement entries; absent uses defaults, empty removes them.
     #[serde(default)]
     pub forbidden_characters: Option<Vec<super::ForbiddenCharacterRule>>,
+    /// TEXT009 entries added to the replacement list or built-in defaults.
+    #[serde(default)]
+    pub extra_forbidden_characters: Vec<super::ForbiddenCharacterRule>,
     /// Whitelist: for matched paths, run ONLY these rules.
     ///
     /// - Mutually exclusive with `exclude` (both present -> config-load error).
@@ -89,6 +92,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             forbidden_characters: None,
+            extra_forbidden_characters: Vec::new(),
             include: Vec::new(),
             exclude: Vec::new(),
             exclude_files: Vec::new(),

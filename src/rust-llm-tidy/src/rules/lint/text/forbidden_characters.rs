@@ -1,15 +1,46 @@
-//! TEXT009 rejects configured characters in documentation prose without edits.
+//! TEXT009 rejects scoped characters in docs and comment prose without edits.
 
 use crate::config::ForbiddenCharacterRule;
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::registry::CODE_FORBIDDEN_CHARACTERS;
-use crate::text::measurement::{Document, is_link_reference_definition};
+use crate::source::ParseResult;
+use crate::text::forbidden_character_regions::parsed_regions;
+use crate::text::measurement::{Document, is_link_reference_definition, measure};
 use std::collections::{HashMap, HashSet};
+
+/// Check both origin categories from a retained parse with one resolved policy.
+pub(crate) fn parsed_diagnostics(
+    parsed: &ParseResult,
+    ext: &str,
+    rules: &[ForbiddenCharacterRule],
+) -> Vec<Diagnostic> {
+    let (docs, comments) = parsed_regions(parsed, ext);
+    let mut diagnostics = scoped_diagnostics(&measure(docs), rules, true);
+    diagnostics.extend(scoped_diagnostics(&measure(comments), rules, false));
+    diagnostics.sort_by_key(|diagnostic| diagnostic.line);
+    diagnostics
+}
 
 /// Check measured prose in source order, skipping code and link destinations.
 pub(crate) fn diagnostics(doc: &Document, rules: &[ForbiddenCharacterRule]) -> Vec<Diagnostic> {
+    scoped_diagnostics(doc, rules, true)
+}
+
+/// Check one origin category using only entries enabled for that category.
+pub(crate) fn scoped_diagnostics(
+    doc: &Document,
+    rules: &[ForbiddenCharacterRule],
+    docs: bool,
+) -> Vec<Diagnostic> {
     let lookup: HashMap<_, _> = rules
         .iter()
+        .filter(|rule| {
+            if docs {
+                rule.scope.docs
+            } else {
+                rule.scope.comments
+            }
+        })
         .flat_map(|rule| {
             rule.characters
                 .iter()
@@ -184,6 +215,7 @@ mod tests {
     fn diagnostics_should_render_custom_title_and_message() {
         let doc = crate::text::measurement::analyze("Clean\nBad!", "md");
         let rules = [ForbiddenCharacterRule {
+            scope: Default::default(),
             characters: vec!['!'],
             title: "Be calm".into(),
             message: "Use a full stop.".into(),

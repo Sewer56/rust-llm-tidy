@@ -2,7 +2,7 @@
 
 use super::symbol_rules::compile_symbol_rules;
 use super::{CompiledConfig, CompiledRuleGroup};
-use crate::config::forbidden_character_rule::validate;
+use crate::config::forbidden_character_rule::{defaults, validate};
 use crate::config::{Config, RuleGroup, known_rules};
 use crate::languages::registry;
 use crate::rules::registry::LINT_CODES;
@@ -50,7 +50,7 @@ static COMPILE_COUNTER: core::sync::atomic::AtomicU64 = core::sync::atomic::Atom
 ///   `duplication.min_occurrences` is below 2.
 /// - `perf_hints` contains anything other than `PERF001` or `PERF002` codes.
 /// - A forbidden-character entry has no characters, a blank title or message,
-///   or a character appears more than once across the entries.
+///   repeated characters within an entry, or overlapping scopes for a character.
 ///
 /// Symbol policy errors:
 ///
@@ -92,9 +92,6 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
     }
 
     validate_thresholds(&config)?;
-    if let Some(rules) = &config.forbidden_characters {
-        validate(rules)?;
-    }
 
     for code in config.lint_scopes.keys() {
         if !LINT_CODES.contains(&code.as_str()) {
@@ -128,8 +125,15 @@ pub fn load_and_compile(path: &Path) -> anyhow::Result<CompiledConfig> {
         }
     }
 
+    let mut forbidden_characters = config
+        .forbidden_characters
+        .unwrap_or_else(|| defaults().to_vec());
+    let base_len = forbidden_characters.len();
+    forbidden_characters.extend(config.extra_forbidden_characters);
+    validate(&forbidden_characters, base_len)?;
+
     Ok(CompiledConfig {
-        forbidden_characters: config.forbidden_characters,
+        forbidden_characters,
         config_dir,
         exclude_files_set,
         exclude_license_documents: config.exclude_license_documents,
