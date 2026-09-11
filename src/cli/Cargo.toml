@@ -19,11 +19,15 @@ name = "rust-llm-tidy"
 path = "src/main.rs"
 doc = false
 
-# Folder-rooted integration test. Cargo auto-discovers only `tests/*.rs` and
-# `tests/*/main.rs`, so the `mod.rs` root is declared explicitly here.
+# Folder-rooted integration tests. Cargo auto-discovers only `tests/*.rs` and
+# `tests/*/main.rs`, so the `mod.rs` roots are declared explicitly here.
 [[test]]
 name = "doc_check"
 path = "tests/doc_check/mod.rs"
+
+[[test]]
+name = "git_diff"
+path = "tests/git_diff/mod.rs"
 
 [dependencies]
 rust-llm-tidy = { path = "../rust-llm-tidy", version = "0.4.3" }

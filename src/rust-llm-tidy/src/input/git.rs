@@ -68,8 +68,10 @@ pub fn changed_files(
 fn changed_lines(root: &Path) -> anyhow::Result<Vec<String>> {
     // Run at the repo root so discovery is repo-wide, not scoped to the
     // invocation directory. `git ls-files --others` is cwd-scoped, while
-    // `git diff` is not. NUL output keeps Git's path names verbatim,
-    // including names requiring quoting.
+    // `git diff` is not.
+    //
+    // NUL output keeps Git's path names verbatim, including names requiring
+    // quoting.
     let mut paths = nul_paths(
         &git_stdout_opt(
             Some(root),

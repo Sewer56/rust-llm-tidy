@@ -7,6 +7,7 @@ use crate::config::{
 };
 use crate::input::changed_lines::{self, ChangedLineCollection, ChangedLines};
 use crate::languages::{backend_for, registry as langs};
+use crate::project::documentation::DocumentationContext;
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::{self, symbols};
 use crate::source::ParseResult;
@@ -21,6 +22,9 @@ pub(super) struct LintContext<'a> {
     pub(super) config: Option<&'a CompiledConfig>,
     all_lines: bool,
     pub(super) snapshots: ChangedLineCollection,
+    /// Documentation signals classified from the selected paths once per run;
+    /// empty for context-free callers such as buffers.
+    documentation: DocumentationContext,
     rust_hints: Vec<CompiledSymbolRule>,
     csharp_hints: Vec<CompiledSymbolRule>,
     /// Explicit CLI source extensions; configuration additions remain borrowed.
@@ -102,10 +106,19 @@ impl<'a> LintContext<'a> {
             config,
             all_lines,
             snapshots: ChangedLineCollection::default(),
+            documentation: DocumentationContext::default(),
             rust_hints: compile(SymbolLanguage::Rust),
             csharp_hints: compile(SymbolLanguage::Csharp),
             extra_source_extensions: Vec::new(),
         }
+    }
+
+    /// Classify documentation signals for the selected inputs.
+    ///
+    /// Call once in the mutation phase, before parallel lint execution; the
+    /// lint phase reads the cached facts and never walks ancestors itself.
+    pub(super) fn classify_documentation(&mut self, paths: &[PathBuf]) {
+        self.documentation = DocumentationContext::build(paths);
     }
 
     /// Admit code profiles or explicitly declared unmapped source extensions only.
@@ -212,6 +225,7 @@ impl<'a> LintContext<'a> {
                             .is_some_and(|config| config.module_size().include_non_code))
                 }
                 lint::CODE_MISSING_MODULE_DOCS => profile.backend,
+                lint::CODE_DOCUMENTATION_CONTEXT => profile.text_lints == langs::TextLints::Prose,
                 lint::CODE_MOD002 | lint::CODE_LEN001 => language == Some(SymbolLanguage::Rust),
                 code if code.starts_with("TEXT") => profile.text_lints != langs::TextLints::None,
                 _ => language.is_some(),
@@ -220,7 +234,10 @@ impl<'a> LintContext<'a> {
             // default, so the changed-line filter needs their snapshots.
             let severity = if matches!(
                 *code,
-                lint::CODE_PASSIVE_NARRATION | lint::CODE_DUPLICATION | lint::CODE_TEST_SUMMARY
+                lint::CODE_PASSIVE_NARRATION
+                    | lint::CODE_DUPLICATION
+                    | lint::CODE_TEST_SUMMARY
+                    | lint::CODE_DOCUMENTATION_CONTEXT
             ) {
                 Severity::Reminder
             } else {
@@ -259,6 +276,12 @@ impl<'a> LintContext<'a> {
                 .is_some_and(|index| excluded[index].overlaps(diagnostic.line, diagnostic.line))
         };
 
+        // File-context reminder: at most one per detected file, anchored to
+        // the first eligible line so ordinary scope filtering cannot hide it.
+        if let Some(reminder) = self.documentation_reminder(path, source, disabled, &changed) {
+            diagnostics.push(reminder);
+        }
+
         diagnostics.retain(|diagnostic| {
             self.scope_for(diagnostic.code, diagnostic.severity, None)
                 .admits(diagnostic, &changed)
@@ -277,6 +300,31 @@ impl<'a> LintContext<'a> {
                 })
                 .map(|hint| hint.diagnostic),
         );
+    }
+
+    /// One documentation-audience reminder for a detected file.
+    ///
+    /// Anchored to the first eligible nonblank line, so a change below the
+    /// opening still reports and an unchanged file stays silent under
+    /// changed-line scope.
+    ///
+    /// Detection only guesses the context; the message asks for a review
+    /// instead of claiming a defect.
+    fn documentation_reminder(
+        &self,
+        path: &Path,
+        source: &str,
+        disabled: &HashSet<String>,
+        changed: &ChangedLines,
+    ) -> Option<Diagnostic> {
+        if disabled.contains(lint::CODE_DOCUMENTATION_CONTEXT) {
+            return None;
+        }
+        let signal = self.documentation.signal(path)?;
+        let all_lines = self.scope_for(lint::CODE_DOCUMENTATION_CONTEXT, Severity::Reminder, None)
+            == ReportingScope::All;
+        let line = first_eligible_line(source, changed, all_lines)?;
+        Some(lint::text::documentation_reminder(line, &signal.reason()))
     }
 
     /// Reuse the lint phase's retained parse for all shared symbol policies.
@@ -358,4 +406,14 @@ fn excluded_lines(
                 }),
         )
     })
+}
+
+/// First nonblank source line admitted by `changed`, or by `all_lines`.
+fn first_eligible_line(source: &str, changed: &ChangedLines, all_lines: bool) -> Option<usize> {
+    for (index, text) in source.lines().enumerate() {
+        if !text.trim().is_empty() && (all_lines || changed.overlaps(index + 1, index + 1)) {
+            return Some(index + 1);
+        }
+    }
+    None
 }

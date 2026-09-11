@@ -1,7 +1,10 @@
-//! The text rules: TEXT001 through TEXT009 over one measured document,
+//! The measured text rules: TEXT001 through TEXT009 over one document,
 //! in source order.
 //!
 //! [`Document`] is the measured input from the plaintext pipeline.
+//!
+//! TEXT010 is not measured: it classifies files by path, so it lives here
+//! only for message ownership; the file pipeline emits it.
 //!
 //! [`Document`]: crate::text::measurement::Document
 
@@ -9,6 +12,7 @@ use crate::config::forbidden_character_rule::defaults;
 use crate::reporting::diagnostic::Diagnostic;
 use crate::text::measurement::Document;
 pub(crate) use text007_passive_narration::is_narration_marker;
+pub(crate) use text010_documentation_context::reminder as documentation_reminder;
 
 pub(crate) mod forbidden_characters;
 mod text001_paragraph_size;
@@ -19,6 +23,7 @@ mod text005_fence_tag;
 mod text006_verbose_synonyms;
 mod text007_passive_narration;
 mod text008_list_density;
+mod text010_documentation_context;
 
 /// TEXT001 through TEXT009 diagnostics for one measured document.
 ///

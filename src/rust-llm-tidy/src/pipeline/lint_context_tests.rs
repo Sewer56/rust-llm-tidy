@@ -8,10 +8,148 @@ use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::LINT_CODES;
 use crate::rules::lint::symbols::SymbolObservations;
 use core::iter::once;
+use core::ops::RangeInclusive;
+use core::slice::from_ref;
 use rstest::rstest;
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Documentation reminders anchor to the first eligible nonblank line, so a
+/// change below the opening still reports and is never duplicated.
+#[rstest]
+#[case::changed_opening(1..=1, 1)]
+#[case::changed_body(3..=3, 3)]
+#[case::changed_tail(5..=5, 5)]
+#[case::blank_changed_line(2..=2, 0)]
+#[case::beyond_the_source(9..=9, 0)]
+fn documentation_reminder_should_anchor_at_the_first_eligible_line(
+    #[case] changed: RangeInclusive<usize>,
+    #[case] expected: usize,
+) {
+    let source = "# Title\n\nIntro.\n\nDetails.\n";
+    let (mut context, path) = documented_context(None, false, "docs/setup.md", source);
+    snapshot(
+        &mut context,
+        &path,
+        source,
+        ChangedLines::new(once(changed)),
+    );
+    let mut diagnostics = Vec::new();
+
+    context.filter(
+        &path,
+        source,
+        SymbolObservations::default(),
+        &mut diagnostics,
+        &HashSet::new(),
+    );
+
+    assert_eq!(
+        diagnostics.len(),
+        usize::from(expected != 0),
+        "{diagnostics:?}"
+    );
+    if expected != 0 {
+        assert_eq!(diagnostics[0].code, "TEXT010");
+        assert_eq!(diagnostics[0].severity, Severity::Reminder);
+        assert_eq!(diagnostics[0].line, expected);
+    }
+}
+
+/// Remapped eligibility drives the anchor: untouched lines keep reporting
+/// after a transformation, while rewritten lines fail closed.
+#[rstest]
+#[case::unchanged_lines_elsewhere(
+    "# Title\n\nBody.\n",
+    1..=1,
+    "# Title\n\nBody.\n\nExtra.\n",
+    1
+)]
+#[case::rewritten_line("# Title\n\nOld body.\n", 3..=3, "# Title\n\nNew body.\n", 0)]
+fn documentation_reminder_should_follow_remapped_eligibility(
+    #[case] snapshot_source: &str,
+    #[case] changed: RangeInclusive<usize>,
+    #[case] transformed: &str,
+    #[case] expected: usize,
+) {
+    let (mut context, path) = documented_context(None, false, "docs/setup.md", snapshot_source);
+    snapshot(
+        &mut context,
+        &path,
+        snapshot_source,
+        ChangedLines::new(once(changed)),
+    );
+    let mut diagnostics = Vec::new();
+
+    context.filter(
+        &path,
+        transformed,
+        SymbolObservations::default(),
+        &mut diagnostics,
+        &HashSet::new(),
+    );
+
+    assert_eq!(
+        diagnostics.len(),
+        usize::from(expected != 0),
+        "{diagnostics:?}"
+    );
+    if expected != 0 {
+        assert_eq!(diagnostics[0].line, expected);
+    }
+}
+
+/// Whole-file scopes report the reminder without any snapshot, and disabling
+/// the rule suppresses it.
+#[rstest]
+#[case::all_lines_entry(None, true, false, 1)]
+#[case::all_lines_config(Some("lint_scopes: {TEXT010: all}"), false, false, 1)]
+#[case::changed_lines_without_snapshot(None, false, false, 0)]
+#[case::disabled(None, true, true, 0)]
+fn documentation_reminder_should_follow_scope_and_selection(
+    #[case] yaml: Option<&str>,
+    #[case] all_lines: bool,
+    #[case] disabled: bool,
+    #[case] expected: usize,
+) {
+    let source = "# Title\n\nIntro.\n";
+    let config = yaml.map(|yaml| compile(yaml, &[]));
+    let (context, path) = documented_context(config.as_ref(), all_lines, "docs/setup.md", source);
+    let disabled: HashSet<String> = disabled.then(|| "TEXT010".to_owned()).into_iter().collect();
+    let mut diagnostics = Vec::new();
+
+    context.filter(
+        &path,
+        source,
+        SymbolObservations::default(),
+        &mut diagnostics,
+        &disabled,
+    );
+
+    assert_eq!(diagnostics.len(), expected, "{diagnostics:?}");
+    if expected != 0 {
+        assert_eq!(diagnostics[0].line, 1);
+    }
+}
+
+/// Undetected files stay silent even in an all-lines audit.
+#[test]
+fn documentation_reminder_should_skip_undetected_files() {
+    let source = "# Notes\n\nInternal notes.\n";
+    let (context, path) = documented_context(None, true, "notes.md", source);
+    let mut diagnostics = Vec::new();
+
+    context.filter(
+        &path,
+        source,
+        SymbolObservations::default(),
+        &mut diagnostics,
+        &HashSet::new(),
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
 
 #[rstest]
 #[case::moved(
@@ -188,15 +326,45 @@ fn snapshots_should_require_an_enabled_supported_scoped_lint(
 ) {
     let config = compile(yaml, &[]);
     let context = LintContext::new(Some(&config), false);
-    // Isolate the existing Reminder families; DUP001 and TEST002 have
-    // separate cases.
+    // Isolate the existing Reminder families; DUP001, TEST002, and TEXT010
+    // have separate cases.
     let disabled = disabled
         .iter()
         .copied()
-        .chain(["DUP001", "TEST002"])
+        .chain(["DUP001", "TEST002", "TEXT010"])
         .map(str::to_owned)
         .collect();
     let disabled = super::file_execution::lint_disabled_set(&None, &disabled, Some(&config));
+
+    let actual = context.needs_snapshot(ext, &disabled);
+
+    assert_eq!(actual, needed);
+}
+
+/// TEXT010 is reminder-severity and prose-only: markdown-family files need a
+/// snapshot even when every other lint is disabled, source files do not.
+#[rstest]
+#[case::markdown("md", false, true)]
+#[case::text("txt", false, true)]
+#[case::source("rs", false, false)]
+#[case::disabled("md", true, false)]
+fn snapshots_should_track_the_documentation_reminder(
+    #[case] ext: &str,
+    #[case] text010_disabled: bool,
+    #[case] needed: bool,
+) {
+    let config = compile("perf_hints: []", &[]);
+    let context = LintContext::new(Some(&config), false);
+
+    // Leave only TEXT010 selectable; the flag switches it off too.
+    let mut disabled: HashSet<String> = LINT_CODES
+        .iter()
+        .filter(|&&code| code != "TEXT010")
+        .map(|code| (*code).to_owned())
+        .collect();
+    if text010_disabled {
+        disabled.insert("TEXT010".to_owned());
+    }
 
     let actual = context.needs_snapshot(ext, &disabled);
 
@@ -240,4 +408,31 @@ fn compile(yaml: &str, _files: &[(&str, &str)]) -> CompiledConfig {
     fs::write(&path, yaml).unwrap();
 
     load_and_compile(&path).unwrap()
+}
+
+/// A lint context with documentation signals for one temp file at `relative`.
+fn documented_context<'a>(
+    config: Option<&'a CompiledConfig>,
+    all_lines: bool,
+    relative: &str,
+    content: &str,
+) -> (LintContext<'a>, PathBuf) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join(relative);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, content).unwrap();
+    let mut context = LintContext::new(config, all_lines);
+    context.classify_documentation(from_ref(&path));
+    (context, path)
+}
+
+/// Store `changed` eligibility for `path` against `source`.
+fn snapshot(context: &mut LintContext<'_>, path: &Path, source: &str, changed: ChangedLines) {
+    context.snapshots.snapshots.insert(
+        path.into(),
+        Some(ChangedLineSnapshot {
+            source: source.into(),
+            changed,
+        }),
+    );
 }

@@ -576,6 +576,60 @@ characters, guidance, and docs/comment scope.
 Checks include headings and table prose, but skip code blocks, inline code,
 and link destinations.
 
+## TEXT010 - documentation context
+
+Markdown-family files that look like user documentation get one reminder
+to review the changed section for its audience.
+
+Signals, in precedence order:
+
+- A `README`, `QUICKSTART`, or `GETTING_STARTED` filename stem.
+- A nearby documentation-tool marker in an ancestor directory, up to the
+  repository boundary.
+- A `docs` directory component.
+
+| Tool          | Marker                                         |
+| ------------- | ---------------------------------------------- |
+| MkDocs        | `mkdocs.yml`, `mkdocs.yaml`                    |
+| Docusaurus    | `docusaurus.config.js` and `.ts`/`.mjs`/`.cjs` |
+| VitePress     | `.vitepress/`                                  |
+| VuePress      | `.vuepress/`                                   |
+| mdBook        | `book.toml`                                    |
+| Antora        | `antora.yml`                                   |
+| Read the Docs | `.readthedocs.yml`, `.readthedocs.yaml`        |
+
+The reminder names the signal and asks for a review. It never claims a
+defect and never edits files. The lint skips `AGENTS.md` and classifies
+only markdown-family files.
+
+### TEXT010 CLI output
+
+```text
+$ rust-llm-tidy --no-config --include TEXT010 --all-lines docs/setup.md
+docs/setup.md:1: reminder[TEXT010]: documentation context detected (file is under docs/).
+Review the changed section for its audience.
+Why: Readers need clear guidance for their task, not a description of every underlying behavior.
+Suggestions:
+  - If this is end-user documentation, explain usage and relevant outcomes. Omit internal steps, implementation inventories, and development history unless they change what the reader must do or decide.
+  - In a README, prioritize purpose and the shortest useful getting-started path. In a user guide, stay focused on the section's task. Do not expand either into a complete feature or configuration reference.
+  - Before retaining a detail, ask: would removing it prevent the reader from completing the task, choosing correctly, or avoiding a meaningful mistake? If not, remove it.
+  - If this is explicitly reference or maintainer documentation, preserve the completeness or internal detail its readers need. Still remove repetition and unrelated explanation.
+  - Lead with the useful answer or action. Use short paragraphs, direct wording, and focused examples. Link to existing detail rather than repeating it.
+  - If a critical prerequisite or warning needs emphasis, use a brief admonition near the section start or before the affected action. Follow supported project syntax; do not repeat the point or add callouts to every section.
+  - Prune before reformatting. Do not keep unnecessary content by splitting it into bullets or moving it elsewhere. Preserve required contracts and consequential caveats. Do not invent behavior or guarantees; leave suitable documentation unchanged. (file)
+```
+
+`TEXT010` is reminder-severity, so the run exits 0.
+
+### Remarks
+
+- One reminder per file per run, anchored to the first eligible nonblank
+  line; reminders default to changed lines.
+- Detection is approximate: it reads no configuration, so unlisted tools
+  and nonstandard layouts are not recognized.
+- Buffer APIs (`tidy_source`, `run_text_checks`, `run_region_checks`)
+  have no file context and never emit it.
+
 ## Library access
 
 Use `rust_llm_tidy::rules::lint::{run_text_checks, run_region_checks}`.
