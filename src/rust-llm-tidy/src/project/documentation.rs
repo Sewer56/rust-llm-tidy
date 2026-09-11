@@ -31,7 +31,7 @@ use crate::languages::registry as langs;
 use ahash::AHashMap;
 use std::env::current_dir;
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// Agent-instruction filename excluded from documentation reminders.
 const AGENT_INSTRUCTION_FILENAME: &str = "AGENTS.md";
@@ -250,19 +250,34 @@ fn directory_facts(dir: &Path, cache: &mut AHashMap<PathBuf, DirectoryFacts>) ->
     facts
 }
 
-/// Absolute location to walk for `path`.
+/// Absolute location to walk for `path`, with `.` and `..` resolved lexically.
 ///
 /// Input discovery keeps the caller's spelling, so a relative path would
-/// otherwise stop its walk at the working directory. Absolute paths stay
-/// unchanged, and the original path remains the signal key.
+/// otherwise stop its walk at the working directory.
+///
+/// A `.` or `..` component would also make the walk read facts for the
+/// directory it names rather than the resolved one. The original path remains
+/// the signal key.
 ///
 /// An unresolvable working directory fails closed for ancestry detection
 /// only.
 fn traversal_path(path: &Path) -> Option<PathBuf> {
-    if path.is_absolute() {
-        return Some(path.to_path_buf());
+    let anchored = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        current_dir().ok()?.join(path)
+    };
+    let mut resolved = PathBuf::new();
+    for component in anchored.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            other => resolved.push(other.as_os_str()),
+        }
     }
-    current_dir().ok().map(|cwd| cwd.join(path))
+    Some(resolved)
 }
 
 #[cfg(test)]
@@ -324,6 +339,46 @@ mod tests {
         #[case] expected: Option<DocumentationSignal>,
     ) {
         assert_eq!(detect(files, target), expected);
+    }
+
+    /// The ancestor walk resolves `.` and `..` first, so the sibling `docs`
+    /// directory in `docs/../guide.md` is not an ancestor.
+    #[rstest]
+    #[case::sibling_docs_is_not_an_ancestor("docs/../guide.md", None)]
+    #[case::resolved_parent_is_still_under_docs(
+        "docs/../docs/guide.md",
+        Some(DocumentationSignal::DocsDirectory)
+    )]
+    fn parent_components_should_resolve_before_ancestry_lookup(
+        #[case] target: &str,
+        #[case] expected: Option<DocumentationSignal>,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        fs::create_dir_all(directory.path().join("docs")).unwrap();
+        fs::write(directory.path().join("guide.md"), "# Guide\n").unwrap();
+        let path = directory.path().join(target);
+
+        let context = DocumentationContext::build(from_ref(&path));
+
+        assert_eq!(context.signal(&path), expected);
+    }
+
+    /// The relative branch normalizes after joining the working directory.
+    ///
+    /// A temp directory cannot cover this branch without changing the process
+    /// working directory, so the test asserts the resolved traversal path
+    /// directly.
+    #[rstest]
+    #[case::cur_dir("./guide.md", "guide.md")]
+    #[case::mid_path_cur_dir("docs/./guide.md", "docs/guide.md")]
+    #[case::parent_dir("docs/../guide.md", "guide.md")]
+    fn relative_traversal_should_resolve_components_against_the_working_directory(
+        #[case] input: &str,
+        #[case] resolved_tail: &str,
+    ) {
+        let expected = Some(current_dir().unwrap().join(resolved_tail));
+
+        assert_eq!(traversal_path(Path::new(input)), expected);
     }
 
     #[rstest]
