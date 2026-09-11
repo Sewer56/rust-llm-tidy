@@ -18,9 +18,9 @@ const TITLE: &str = "documentation audience review";
 
 /// One reminder anchored at `line`, naming the detection `reason`.
 ///
-/// The message asks for an audience review instead of demanding a rewrite:
-/// it states what end-user documentation needs, protects reference material
-/// and required caveats, and lets suitable content stay unchanged.
+/// The message asks for an audience review, not a rewrite. It states what
+/// end-user documentation needs, protects reference material and required
+/// caveats, and lets suitable content stay unchanged.
 pub(crate) fn reminder(line: usize, reason: &str) -> Diagnostic {
     let bullets = [
         "If this is end-user documentation, explain usage and relevant outcomes. Omit internal steps, implementation inventories, and development history unless they change what the reader must do or decide.".to_string(),

@@ -91,9 +91,9 @@ fn reminder_should_cover_new_documentation_files(#[case] staged: bool) {
 
 /// Whole-file audits and rule selection follow the existing conventions.
 ///
-/// The all-lines row asserts line 1: default changed-line scope would anchor
-/// at line 3, so both scopes report one finding and only the anchor proves
-/// the flag took effect.
+/// The all-lines row asserts anchor line 1. Default changed-line scope would
+/// anchor at line 3, so both scopes report one finding and the anchor alone
+/// proves the flag took effect.
 #[rstest]
 #[case::all_lines(&["--include", "TEXT010", "--all-lines", "--json"], 1, Some(1))]
 #[case::excluded(&["--include", "TEXT010", "--exclude", "TEXT010", "--json"], 0, None)]

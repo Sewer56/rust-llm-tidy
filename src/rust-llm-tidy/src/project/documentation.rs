@@ -29,6 +29,7 @@
 
 use crate::languages::registry as langs;
 use ahash::AHashMap;
+use std::env::current_dir;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
@@ -261,7 +262,7 @@ fn traversal_path(path: &Path) -> Option<PathBuf> {
     if path.is_absolute() {
         return Some(path.to_path_buf());
     }
-    std::env::current_dir().ok().map(|cwd| cwd.join(path))
+    current_dir().ok().map(|cwd| cwd.join(path))
 }
 
 #[cfg(test)]
