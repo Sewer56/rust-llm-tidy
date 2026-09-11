@@ -70,8 +70,9 @@ fn changed_lines(root: &Path) -> anyhow::Result<Vec<String>> {
     // invocation directory. `git ls-files --others` is cwd-scoped, while
     // `git diff` is not.
     //
-    // NUL output keeps Git's path names verbatim, including names requiring
-    // quoting.
+    // `-z` separates paths with NUL bytes and avoids Git's quoting or escaping
+    // of path names; the lossy UTF-8 conversion in `git_stdout_opt` still
+    // replaces non-UTF-8 bytes.
     let mut paths = nul_paths(
         &git_stdout_opt(
             Some(root),
