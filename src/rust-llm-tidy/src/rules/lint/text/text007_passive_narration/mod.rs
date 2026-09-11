@@ -7,7 +7,7 @@
 //! - Look for a be-verb (`is`, `are`, `was`) followed by a likely past
 //!   participle (`returned`, `parsed`, `written`), such as `are returned`.
 //! - Otherwise, look for history wording, such as `before this change`.
-//! - Emit at most one reminder per line; passive voice takes priority over history.
+//! - Emit at most one AI reminder per line; passive voice takes priority.
 //!
 //! # Exceptions
 //!
@@ -77,7 +77,7 @@ mod prose;
 /// passive class opens with `passive construction:` instead.
 const NARRATION_MARKER_SUMMARY: &str = "past-behavior narration marker: ";
 
-/// TEXT007 diagnostics for `doc`: at most one Reminder per measured line,
+/// TEXT007 diagnostics for `doc`: at most one per measured line,
 /// in source order.
 ///
 /// Finding classes share the code:
@@ -134,7 +134,7 @@ pub(super) fn one_line(line: &str) -> Vec<crate::reporting::Diagnostic> {
         .collect()
 }
 
-/// One TEXT007 Reminder; `summary` names the finding class and trigger.
+/// One TEXT007 diagnostic; `summary` names the finding class and trigger.
 fn diagnostic(line: &StrippedLine, summary: &str) -> Diagnostic {
     let bullets = [
         "Check the implementation before rewriting; this heuristic can flag valid state descriptions and runtime history."
@@ -154,7 +154,7 @@ fn diagnostic(line: &StrippedLine, summary: &str) -> Diagnostic {
 
     Diagnostic {
         title: Some("passive construction".into()),
-        severity: Severity::Reminder,
+        severity: Severity::AiReminder,
         code: CODE_PASSIVE_NARRATION,
         message: bulleted(
             summary,
@@ -392,7 +392,11 @@ mod tests {
                 let found = codes(&diags, CODE_PASSIVE_NARRATION);
 
                 assert_eq!(found.len(), usize::from(expected), "{ext}: {source:?}");
-                assert!(found.iter().all(|diag| diag.severity == Severity::Reminder));
+                assert!(
+                    found
+                        .iter()
+                        .all(|diag| diag.severity == Severity::AiReminder)
+                );
             }
         }
     }

@@ -1,4 +1,4 @@
-//! TEXT010: documentation-context reminder for likely user documentation.
+//! TEXT010: documentation-context AI reminder for likely user documentation.
 //!
 //! Unlike the measured text rules, this check needs file context: a path,
 //! its ancestors, and the run's changed-line eligibility.
@@ -33,7 +33,7 @@ pub(crate) fn reminder(line: usize, reason: &str) -> Diagnostic {
     ];
     Diagnostic {
         title: Some(TITLE.into()),
-        severity: Severity::Reminder,
+        severity: Severity::AiReminder,
         code: CODE_DOCUMENTATION_CONTEXT,
         message: bulleted(
             &format!(
@@ -58,7 +58,7 @@ mod tests {
         let finding = reminder(7, "nearby mkdocs.yml");
 
         assert_eq!(finding.code, CODE_DOCUMENTATION_CONTEXT);
-        assert_eq!(finding.severity, Severity::Reminder);
+        assert_eq!(finding.severity, Severity::AiReminder);
         assert_eq!(finding.line, 7);
         assert_eq!(finding.title(), TITLE);
         assert_eq!(finding.item_kind, "file");

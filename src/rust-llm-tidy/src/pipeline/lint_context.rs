@@ -232,16 +232,12 @@ impl<'a> LintContext<'a> {
             };
             // Reminder-severity lint families report on changed lines by
             // default, so the changed-line filter needs their snapshots.
-            let severity = if matches!(
-                *code,
-                lint::CODE_PASSIVE_NARRATION
-                    | lint::CODE_DUPLICATION
-                    | lint::CODE_TEST_SUMMARY
-                    | lint::CODE_DOCUMENTATION_CONTEXT
-            ) {
-                Severity::Reminder
-            } else {
-                Severity::Error
+            let severity = match *code {
+                lint::CODE_PASSIVE_NARRATION | lint::CODE_DOCUMENTATION_CONTEXT => {
+                    Severity::AiReminder
+                }
+                lint::CODE_DUPLICATION | lint::CODE_TEST_SUMMARY => Severity::Reminder,
+                _ => Severity::Error,
             };
 
             supported
@@ -321,8 +317,9 @@ impl<'a> LintContext<'a> {
             return None;
         }
         let signal = self.documentation.signal(path)?;
-        let all_lines = self.scope_for(lint::CODE_DOCUMENTATION_CONTEXT, Severity::Reminder, None)
-            == ReportingScope::All;
+        let all_lines =
+            self.scope_for(lint::CODE_DOCUMENTATION_CONTEXT, Severity::AiReminder, None)
+                == ReportingScope::All;
         let line = first_eligible_line(source, changed, all_lines)?;
         Some(lint::text::documentation_reminder(line, &signal.reason()))
     }

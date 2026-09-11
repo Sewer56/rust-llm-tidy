@@ -59,10 +59,10 @@
 #       - Use three dots, preserving the meaning.
 
 # ── Passive narration (TEXT007) ──
-# Enabled by default as a reminder on changed lines.
+# Enabled by default as an AI reminder on changed lines.
 
 # passive_narration:
-#   enable: false                   # disable passive-narration reminders.
+#   enable: false                   # disable passive-narration AI reminders.
 #   suppress_in_release_notes: true # keep narration markers out of
 #                                   # CHANGELOG*/MIGRATION*/releases/**
 #                                   # notes; passive voice still reports.
@@ -96,7 +96,7 @@
 #   max_lines: 100  # hint above this budget; >= 1.
 
 # ── Reporting scope ──
-# Reminders default to changed lines; other severities default to all.
+# `reminder` and `ai_reminder` default to changed lines; other severities default to all.
 # Override per lint below, or use --all-lines for all reporting scopes.
 
 # lint_scopes:
@@ -209,7 +209,7 @@ include:
       # - TEXT004 # header opener shape
       # - TEXT005 # untagged fenced code block
       # - TEXT006 # verbose synonym
-      # - TEXT007 # passive narration reminders
+      # - TEXT007 # passive narration AI reminders
       # - TEXT008 # dense bullet list
       # - TEST001 # non-behavioral test name
       # - MOD001  # oversized code file

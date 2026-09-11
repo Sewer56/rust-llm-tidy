@@ -1,4 +1,4 @@
-//! TEXT010 documentation-context reminders through the no-args Git path.
+//! TEXT010 documentation-context AI reminders through the no-args Git path.
 
 use super::{cleanup, git, init_repo, run};
 use rstest::rstest;
@@ -41,7 +41,7 @@ fn reminder_should_anchor_at_the_first_changed_line(
     );
     assert_eq!(findings.len(), 1, "{findings:?}");
     assert_eq!(findings[0]["code"], "TEXT010");
-    assert_eq!(findings[0]["severity"], "reminder");
+    assert_eq!(findings[0]["severity"], "ai_reminder");
     assert_eq!(findings[0]["line"], line);
     assert_eq!(findings[0]["item_kind"], "file");
     assert!(

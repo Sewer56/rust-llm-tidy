@@ -30,37 +30,38 @@ Text lints for other languages use these sources ([text lints]):
 
 ## Codes
 
-| Code        | Severity | Fires when                                                                        |
-| ----------- | -------- | --------------------------------------------------------------------------------- |
-| [`DOC001`]  | Error    | A non-private item has no doc comment (`///`, `/** ... */`, or `#[doc = "..."]`). |
-| [`DOC002`]  | Error    | A `pub fn` returning `Result` has no `# Errors` section.                          |
-| [`DOC003`]  | Warning  | A `# Errors` section names no concrete error variant.                             |
-| [`DOC004`]  | Warning  | A `pub fn` with parameters has no `# Arguments` section.                          |
-| [`DOC005`]  | Warning  | A `# Arguments` section does not mention every parameter name.                    |
-| [`DOC006`]  | Warning  | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).                   |
-| [`DOC008`]  | Error    | An `# Errors` section lists enum variants out of alphabetical order.              |
-| [`DOC009`]  | Error    | A module file has no top-level module docs (`//!` in Rust, docstring in Python).  |
-| [`TEXT001`] | Error    | A doc paragraph over 240 chars of full text (bullets warn).                       |
-| [`TEXT002`] | Warning  | A doc line over 80 chars (trailing URL, code blocks, tables, link defs exempt).   |
-| [`TEXT003`] | Warning  | A doc sentence over 25 words (words join across wrapped lines).                   |
-| [`TEXT004`] | Warning  | A doc opener with 3+ sentences or over 160 chars (file, item, or heading).        |
-| [`TEXT005`] | Warning  | A fenced code block opens with no tag or bare `ignore` (all markdown prose).      |
-| [`TEXT006`] | Hint     | A doc line has a shorter alternative for a word, phrase, or filler.               |
-| [`TEXT007`] | Reminder | A doc line may hold passive voice or implementation history.                      |
-| [`TEXT008`] | Warning  | A bullet list exceeds 10 source lines.                                            |
-| [`TEXT010`] | Reminder | A likely documentation file; asks to review the changed section's audience.       |
-| [`TEST001`] | Warning  | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
-| [`TEST002`] | Reminder | A test fn carries no comment above its attributes.                                |
-| [`MOD001`]  | Warning  | A code file exceeds `module_size.max_lines` (default 500).                        |
-| [`MOD002`]  | Error    | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
-| [`MOD003`]  | Hint     | A path includes the full namespace.                                               |
-| [`LEN001`]  | Hint     | A Rust fn body exceeds `method_length.max_lines` (default 100).                   |
-| [`SYM`]     | Reminder | A configured text or symbol hint matches; severity is configurable.               |
-| [`DUP001`]  | Reminder | Five meaningful lines repeat at three same-file sites, including a changed copy.  |
+| Code        | Severity   | Fires when                                                                        |
+| ----------- | ---------- | --------------------------------------------------------------------------------- |
+| [`DOC001`]  | Error      | A non-private item has no doc comment (`///`, `/** ... */`, or `#[doc = "..."]`). |
+| [`DOC002`]  | Error      | A `pub fn` returning `Result` has no `# Errors` section.                          |
+| [`DOC003`]  | Warning    | A `# Errors` section names no concrete error variant.                             |
+| [`DOC004`]  | Warning    | A `pub fn` with parameters has no `# Arguments` section.                          |
+| [`DOC005`]  | Warning    | A `# Arguments` section does not mention every parameter name.                    |
+| [`DOC006`]  | Warning    | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).                   |
+| [`DOC008`]  | Error      | An `# Errors` section lists enum variants out of alphabetical order.              |
+| [`DOC009`]  | Error      | A module file has no top-level module docs (`//!` in Rust, docstring in Python).  |
+| [`TEXT001`] | Error      | A doc paragraph over 240 chars of full text (bullets warn).                       |
+| [`TEXT002`] | Warning    | A doc line over 80 chars (trailing URL, code blocks, tables, link defs exempt).   |
+| [`TEXT003`] | Warning    | A doc sentence over 25 words (words join across wrapped lines).                   |
+| [`TEXT004`] | Warning    | A doc opener with 3+ sentences or over 160 chars (file, item, or heading).        |
+| [`TEXT005`] | Warning    | A fenced code block opens with no tag or bare `ignore` (all markdown prose).      |
+| [`TEXT006`] | Hint       | A doc line has a shorter alternative for a word, phrase, or filler.               |
+| [`TEXT007`] | AiReminder | A doc line may hold passive voice or implementation history.                      |
+| [`TEXT008`] | Warning    | A bullet list exceeds 10 source lines.                                            |
+| [`TEXT010`] | AiReminder | A likely documentation file; asks to review the changed section's audience.       |
+| [`TEST001`] | Warning    | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
+| [`TEST002`] | Reminder   | A test fn carries no comment above its attributes.                                |
+| [`MOD001`]  | Warning    | A code file exceeds `module_size.max_lines` (default 500).                        |
+| [`MOD002`]  | Error      | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
+| [`MOD003`]  | Hint       | A path includes the full namespace.                                               |
+| [`LEN001`]  | Hint       | A Rust fn body exceeds `method_length.max_lines` (default 100).                   |
+| [`SYM`]     | Reminder   | A configured text or symbol hint matches; severity is configurable.               |
+| [`DUP001`]  | Reminder   | Five meaningful lines repeat at three same-file sites, including a changed copy.  |
 
 ## Reporting scope
 
-- Reminders default to changed lines; other severities default to whole files.
+- `reminder` and `ai_reminder` default to changed lines; other severities
+  default to whole files.
 - Set `lint_scopes: {DOC001: changed_lines}` to limit a lint to changed lines.
 - Use `--all-lines` to report every severity across whole files.
 - Priority: `--all-lines` > symbol `scope` > `lint_scopes` > severity default.
@@ -915,7 +916,8 @@ in both in-place and `--dry-run` runs.
 
 Fields:
 
-- `severity` - `"error"`, `"warning"`, `"hint"`, or `"reminder"` for findings,
+- `severity` - `"error"`, `"warning"`, `"hint"`, `"reminder"`, or
+  `"ai_reminder"` for findings,
   `"success"` for change records (applied or would-be changes)
 - `line` - 1-based reported line; `null` when the record has no
   specific line (e.g. link/table fixes)
@@ -939,6 +941,13 @@ document, in both in-place and `--dry-run` runs.
 
 Reminders are hints scoped to [changed lines] by default.
 They report as `reminder` in text and JSON output.
+
+`ai_reminder` is guidance for AI language models only, such as steering toward
+an optimal repair. It reports as `ai_reminder`, defaults to changed lines, and
+never fails the run.
+
+Text mode prints it last under `Reminders for AI Language Models`; GitHub
+reports collapse that group.
 
 ## Change reporting
 

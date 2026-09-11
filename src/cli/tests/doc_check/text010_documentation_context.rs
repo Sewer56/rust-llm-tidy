@@ -59,7 +59,7 @@ fn cli_should_report_documentation_context(
 
     assert_eq!(records.len(), 1, "{records:?}");
     assert_eq!(records[0]["code"], "TEXT010");
-    assert_eq!(records[0]["severity"], "reminder");
+    assert_eq!(records[0]["severity"], "ai_reminder");
     assert_eq!(records[0]["title"], "documentation audience review");
     assert_eq!(records[0]["item_kind"], "file");
     assert_eq!(records[0]["item_name"], serde_json::Value::Null);

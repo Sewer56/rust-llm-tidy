@@ -8,6 +8,46 @@ use std::process::Command;
 mod common;
 
 #[rstest]
+#[case::reminder("reminder", "input.rs:1: reminder[SYM]", false)]
+#[case::ai_reminder("ai_reminder", "input.rs:1: ai_reminder[SYM]", true)]
+fn cli_should_group_ai_reminders_under_their_own_heading(
+    #[case] severity: &str,
+    #[case] diagnostic: &str,
+    #[case] ai_heading: bool,
+) {
+    let directory = tempfile::tempdir().unwrap();
+    fs::write(directory.path().join("input.rs"), "fn f() { needle(); }").unwrap();
+    fs::write(
+        directory.path().join("config.yml"),
+        format!(
+            "perf_hints: []\nsymbol_rules: [{{regex: needle, title: Review, message: guidance, severity: {severity}, scope: all}}]"
+        ),
+    )
+    .unwrap();
+
+    let output = Command::new(binary())
+        .current_dir(directory.path())
+        .env_remove("RUST_LLM_TIDY_DIFF_BASE")
+        .args(["--config", "config.yml", "--include", "SYM", "input.rs"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    assert!(output.status.success(), "{output:?}");
+    assert!(stderr.contains(diagnostic), "{stderr}");
+    assert_eq!(
+        stderr.contains("Reminders for AI Language Models"),
+        ai_heading,
+        "{stderr}"
+    );
+    assert_eq!(
+        stderr.contains("AI reminders alone do not fail the check"),
+        ai_heading,
+        "{stderr}"
+    );
+}
+
+#[rstest]
 #[case::default("", false, false)]
 #[case::entry_changed(", scope: changed_lines", false, false)]
 #[case::entry_all(", scope: all", false, true)]
@@ -15,7 +55,7 @@ mod common;
 #[case::override_entry(", scope: changed_lines", true, true)]
 fn cli_should_prioritize_all_lines_over_entry_and_config_scopes(
     #[case] entry: &str,
-    #[values("reminder", "hint", "warning", "error")] severity: &str,
+    #[values("reminder", "ai_reminder", "hint", "warning", "error")] severity: &str,
     #[case] all_lines: bool,
     #[case] reported: bool,
 ) {

@@ -81,9 +81,11 @@ the `lints` group.
 Reporting flags: `--output-mode text|json` (`--json` for short),
 `--all-lines`, and `--diff-base <REF>`.
 
-Reminders default to changed lines; hints, warnings, and errors default to
-all lines. `RUST_LLM_TIDY_DIFF_BASE` supplies a baseline when `--diff-base`
-is absent. See [reporting scope] for baseline comparison and scope precedence.
+`reminder` and `ai_reminder` findings default to changed lines; hints,
+warnings, and errors default to all lines.
+
+`RUST_LLM_TIDY_DIFF_BASE` supplies a baseline when `--diff-base` is absent.
+See [reporting scope] for baseline comparison and scope precedence.
 
 #### Operations
 
@@ -143,7 +145,8 @@ in-place and `--dry-run` runs.
 
 Fields:
 
-- `severity` - `"error"`, `"warning"`, `"hint"`, or `"reminder"` for findings,
+- `severity` - `"error"`, `"warning"`, `"hint"`, `"reminder"`, or
+  `"ai_reminder"` for findings,
   `"success"` for change records (applied or would-be changes)
 - `line` - 1-based reported line; `null` when the record has no specific
   line (e.g. link/table fixes)

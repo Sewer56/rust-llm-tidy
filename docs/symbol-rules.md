@@ -17,7 +17,7 @@ symbol_rules:                                     # Ordered custom hints and dec
     # target: usage                               # Default; declaration matches named declarations.
     # action: hint                                # Default; exclude requires target: declaration.
     # zero_arguments: true                        # false requires arguments; omitted allows either.
-    # severity: reminder                          # Default; also hint, warning, error. Only errors fail.
+    # severity: reminder                          # Default; also hint, warning, error, ai_reminder.
     # scope: changed_lines                        # Or all; --all-lines takes precedence.
 
   # C# array matching
@@ -138,14 +138,15 @@ Hints report a title and message with configurable severity and scope.
 - `title` and `message`: required nonblank text for hints. The title precedes
   the verbatim message in text output. `Why:` and `Suggestions:` headings
   in messages are recommended, not required.
-- `severity`: `reminder` (default), `hint`, `warning`, or `error`.
-  Exclusions ignore it. `action: hint` does not imply `severity: hint`.
+- `severity`: `reminder` (default), `hint`, `warning`, `error`, or
+  `ai_reminder` for AI-only guidance. Exclusions ignore it. `action: hint`
+  does not imply `severity: hint`.
 - `scope`: `all` or `changed_lines`, available for every severity.
   Exclusions do not use a reporting scope.
 
 Scope chooses whole-file or changed-line reporting. Only errors fail the run.
-Reminders default to changed lines; other severities default to whole files.
-See [reporting scope] for overrides.
+`reminder` and `ai_reminder` default to changed lines; other severities default
+to whole files. See [reporting scope] for overrides.
 
 ### Usage constraints
 

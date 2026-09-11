@@ -404,7 +404,7 @@ Say what the code does, directly:
 
 ### Detection details
 
-- Checks each line; reports at most one reminder, preferring passive voice.
+- Checks each line; reports at most one diagnostic, preferring passive voice.
 - Flags be-verbs followed by past participles, but allows state descriptions
   such as `is required` and `is deprecated`.
 - Flags history wording such as `no longer`, `previously`, and `prior to
@@ -412,7 +412,7 @@ Say what the code does, directly:
 
 By default, allows past-behaviour wording in `CHANGELOG*` or `MIGRATION*`
 basenames at any depth and files under a `releases` directory.
-Matching is case-insensitive; passive voice still produces reminders.
+Matching is case-insensitive; passive voice still produces AI reminders.
 
 Before:
 
@@ -430,7 +430,7 @@ pub fn scan() {}
 
 ### Enablement and reporting scope
 
-TEXT007 runs by default at Reminder severity on changed lines.
+TEXT007 runs by default at AI reminder severity on changed lines.
 
 Use `--all-lines` to audit unchanged lines too, or `lint_scopes: {TEXT007: all}`
 to configure that scope. Disable it with:
@@ -444,12 +444,16 @@ passive_narration:
 - `enable: false`: disable TEXT007
 - Explicit `TEXT007` inclusion overrides this opt-out, but not exclusions
 - The `lints` group respects the opt-out; inclusion does not override scope
-- Low-level library text checks return unfiltered reminders
-- `tidy_source` has no diff: set `SourceOptions::all_lines` to report reminders
+- Low-level library text checks return unfiltered AI reminders
+- `tidy_source` has no diff: set `SourceOptions::all_lines` to report them
 
-File library calls require `RunOptions::git_changed` or `diff_base` for
-changed-line reporting. Without an available baseline, reminders stay hidden;
-`--all-lines` overrides scope without enabling disabled rules.
+File library calls need `RunOptions::git_changed` or `diff_base` for
+changed-line reporting. `diff_base` is optional: without it, the library
+compares each repository's `HEAD` with the working-tree bytes.
+
+Ordinary and AI reminders hide only when no baseline is available, such as
+outside Git history. `--all-lines` overrides scope without enabling disabled
+rules.
 
 ### Release-note suppression
 
@@ -470,7 +474,7 @@ passive_narration:
 
 ```text
 $ cargo run -p rust-llm-tidy-cli -- --include TEXT007 --all-lines src/lib.rs
-src/lib.rs:1: reminder[TEXT007]: passive construction: `are returned`.
+src/lib.rs:1: ai_reminder[TEXT007]: passive construction: `are returned`.
 Why: Passive actions can obscure who does what. Readers usually need current behavior, not implementation history.
 Suggestions:
   - Check the implementation before rewriting; this heuristic can flag valid state descriptions and runtime history.
@@ -481,12 +485,12 @@ Suggestions:
   - Keep implementation history out of comments and API docs, including internals, tests, and helpers. Use release or migration notes only for a genuine public-API compatibility concern. (file)
 ```
 
-`TEXT007` emits reminders; reminders alone exit 0.
+`TEXT007` emits AI reminders: guidance for AI agents. They alone exit 0.
 
 ### Remarks
 
 This heuristic has no grammatical context: expect false positives and
-treat every reminder as a review suggestion, never a rewrite.
+treat every finding as a review suggestion, never a rewrite.
 
 Edge-case exceptions are listed in the rule's module documentation:
 [`text007_passive_narration/mod.rs`][module]
@@ -578,7 +582,7 @@ and link destinations.
 
 ## TEXT010 - documentation context
 
-Markdown-family files that look like user documentation get one reminder
+Markdown-family files that look like user documentation get one AI reminder
 to review the changed section for its audience.
 
 Signals, in precedence order:
@@ -598,7 +602,7 @@ Signals, in precedence order:
 | Antora        | `antora.yml`                                   |
 | Read the Docs | `.readthedocs.yml`, `.readthedocs.yaml`        |
 
-The reminder names the signal and asks for a review. It never claims a
+The finding names the signal and asks for a review. It never claims a
 defect and never edits files. The lint skips `AGENTS.md` and classifies
 only markdown-family files.
 
@@ -606,7 +610,7 @@ only markdown-family files.
 
 ```text
 $ rust-llm-tidy --no-config --include TEXT010 --all-lines docs/setup.md
-docs/setup.md:1: reminder[TEXT010]: documentation context detected (file is under docs/).
+docs/setup.md:1: ai_reminder[TEXT010]: documentation context detected (file is under docs/).
 Review the changed section for its audience.
 Why: Readers need clear guidance for their task, not a description of every underlying behavior.
 Suggestions:
@@ -619,12 +623,12 @@ Suggestions:
   - Prune before reformatting. Do not keep unnecessary content by splitting it into bullets or moving it elsewhere. Preserve required contracts and consequential caveats. Do not invent behavior or guarantees; leave suitable documentation unchanged. (file)
 ```
 
-`TEXT010` is reminder-severity, so the run exits 0.
+`TEXT010` is AI-reminder severity, so the run exits 0.
 
 ### Remarks
 
-- One reminder per file per run, anchored to the first eligible nonblank
-  line; reminders default to changed lines.
+- One finding per file per run, anchored to the first eligible nonblank
+  line; AI reminders default to changed lines.
 - Detection is approximate: it reads no configuration, so unlisted tools
   and nonstandard layouts are not recognized.
 - Buffer APIs (`tidy_source`, `run_text_checks`, `run_region_checks`)

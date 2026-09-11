@@ -1,4 +1,4 @@
-//! TEXT007 narration-marker and passive-voice reminders.
+//! TEXT007 narration-marker and passive-voice AI reminders.
 //!
 //! One test audits an ordinary markdown file in both
 //! stderr and JSON modes. The other walks the release-note suppression
@@ -55,12 +55,12 @@ fn narration_should_follow_suppression_setting_when_checking_note_paths() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             assert!(output.status.success(), "{rel}, {yaml:?}: {stderr}");
             assert_eq!(
-                stderr.contains(":1: reminder[TEXT007]"),
+                stderr.contains(":1: ai_reminder[TEXT007]"),
                 !(suppress && is_note),
                 "narration in {rel}, {yaml:?}: {stderr}"
             );
             assert!(
-                stderr.contains(":2: reminder[TEXT007]"),
+                stderr.contains(":2: ai_reminder[TEXT007]"),
                 "passive voice in {rel}, {yaml:?}: {stderr}"
             );
         }
@@ -82,7 +82,7 @@ fn text007_should_render_reminders_when_checking_an_ordinary_file() {
         "TEXT007 reminders must not fail the run: {stderr}"
     );
     assert!(
-        stderr.contains(":1: reminder[TEXT007]") && stderr.contains(":2: reminder[TEXT007]"),
+        stderr.contains(":1: ai_reminder[TEXT007]") && stderr.contains(":2: ai_reminder[TEXT007]"),
         "both finding classes must emit reminders:\n{stderr}"
     );
 
@@ -95,6 +95,6 @@ fn text007_should_render_reminders_when_checking_an_ordinary_file() {
     assert!(
         records
             .iter()
-            .all(|record| record["severity"] == "reminder")
+            .all(|record| record["severity"] == "ai_reminder")
     );
 }

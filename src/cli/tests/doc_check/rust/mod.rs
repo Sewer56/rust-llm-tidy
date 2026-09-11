@@ -72,7 +72,7 @@ fn clean_file_no_diagnostics() {
 /// `#[doc = "..."]` docs.
 ///
 /// rs dispatch adds nothing and drops nothing. All-line reporting includes
-/// TEXT007 reminders, matching the unfiltered backend composition.
+/// TEXT007 AI reminders, matching the unfiltered backend composition.
 #[test]
 fn rs_diagnostics_match_direct_check_composition() {
     for name in [
@@ -125,6 +125,7 @@ fn rs_diagnostics_match_direct_check_composition() {
                     rust_llm_tidy::reporting::Severity::Warning => "warning",
                     rust_llm_tidy::reporting::Severity::Hint => "hint",
                     rust_llm_tidy::reporting::Severity::Reminder => "reminder",
+                    rust_llm_tidy::reporting::Severity::AiReminder => "ai_reminder",
                 };
                 (d.line, sev.to_string(), d.code.to_string())
             })

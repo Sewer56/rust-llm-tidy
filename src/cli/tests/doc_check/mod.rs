@@ -24,9 +24,9 @@
 //! - `text003_sentence_length`: TEXT003 long Python docstring sentences
 //! - `text004_header_opener`: TEXT004 three-sentence markdown openers
 //! - `text006_verbose_synonyms`: TEXT006 wording hints in markdown
-//! - `text007_passive_narration`: TEXT007 narration and passive-voice reminders
+//! - `text007_passive_narration`: TEXT007 narration and passive-voice AI reminders
 //! - `text008_list_density`: TEXT008 list budgets and CLI rule selection
-//! - `text010_documentation_context`: TEXT010 documentation-context reminders
+//! - `text010_documentation_context`: TEXT010 documentation-context AI reminders
 //!
 //! The shared setup (diagnostic assertion, runners, and fixture/temp
 //! helpers) lives at the bottom of this file.

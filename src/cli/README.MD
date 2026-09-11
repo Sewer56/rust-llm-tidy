@@ -86,7 +86,10 @@ for DUP001 settings.
 ### Exit status
 
 Errors fail any run, and `--dry-run` also fails when edits are needed,
-without writing files. Warnings, hints, and reminders alone do not fail it.
+without writing files.
+
+Warnings, hints, and reminders, including `ai_reminder` results, never fail a
+run on their own.
 
 `--checks-only` runs lint checks only, never modifies files, and keeps
 configured rule selections. Configured `post_process` commands never run.
@@ -119,7 +122,8 @@ when there are no findings or changes, even when the run exits non-zero:
 
 Fields:
 
-- `severity` - `"error"`, `"warning"`, `"hint"`, or `"reminder"` for findings,
+- `severity` - `"error"`, `"warning"`, `"hint"`, `"reminder"`, or
+  `"ai_reminder"` for findings,
   `"success"` for change records (applied or would-be changes)
 - `line` - 1-based reported line, `null` when no specific line
   (link/table fixes)
@@ -135,8 +139,9 @@ folded into the same document.
 See [dry-run change reporting] for
 the shared record format.
 
-Hints and reminders never fail a run and print in separate groups in
-text mode; see [hints].
+Hints and reminders never fail a run, including `ai_reminder` results. They
+print in separate groups in text mode, and AI reminders print last, under
+`Reminders for AI Language Models`. See [hints].
 
 ### Operations
 

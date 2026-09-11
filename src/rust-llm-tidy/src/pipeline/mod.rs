@@ -50,11 +50,11 @@ impl FileReport {
 /// Inspect [`RunReport::ensure_success`] after consuming the report.
 /// Configuration discovery is explicit through [`crate::config`].
 ///
-/// TEXT007 defaults to Reminder severity and changed-line reporting.
+/// TEXT007 defaults to AI reminder severity and changed-line reporting.
 /// `passive_narration.enable: false` disables it unless explicitly included.
 /// Changed-line reporting requires Git permission in [`RunOptions`].
 ///
-/// TEXT010 reports one file-context reminder for likely documentation, so it
+/// TEXT010 reports one file-context AI reminder for likely documentation, so it
 /// needs `run` and never fires from [`tidy_source`].
 ///
 /// File previews leave each pass reading the original disk source; see

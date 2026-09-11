@@ -9,7 +9,7 @@ applying them to important source.
 
 ```toml
 [dependencies]
-rust-llm-tidy = "0.4.3"
+rust-llm-tidy = "0.5.0"
 ```
 
 ## Entry points
