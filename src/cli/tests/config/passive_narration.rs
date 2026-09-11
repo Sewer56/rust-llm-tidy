@@ -92,7 +92,7 @@ fn text007_should_report_eligible_lines_against_git_baseline(
     assert!(
         findings
             .iter()
-            .all(|record| record["severity"] == "reminder")
+            .all(|record| record["severity"] == "ai_reminder")
     );
 }
 
@@ -133,5 +133,9 @@ fn text007_should_respect_enablement_and_selection(
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{stderr}");
-    assert_eq!(stderr.contains("reminder[TEXT007]"), expected, "{stderr}");
+    assert_eq!(
+        stderr.contains("ai_reminder[TEXT007]"),
+        expected,
+        "{stderr}"
+    );
 }

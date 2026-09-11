@@ -103,7 +103,7 @@ fn run_should_prioritize_all_lines_then_entry_then_config_then_severity(
     #[case] policy: &str,
     #[case] entry: &str,
     #[values("symbol", "regex")] matcher: &str,
-    #[values(("warning", Severity::Warning), ("hint", Severity::Hint), ("error", Severity::Error), ("reminder", Severity::Reminder))]
+    #[values(("warning", Severity::Warning), ("hint", Severity::Hint), ("error", Severity::Error), ("reminder", Severity::Reminder), ("ai_reminder", Severity::AiReminder))]
     severity: (&str, Severity),
     #[case] all_lines: bool,
     #[case] count: Option<usize>,
@@ -127,7 +127,9 @@ fn run_should_prioritize_all_lines_then_entry_then_config_then_severity(
 
     let report = run(&options, Some(&config)).unwrap();
 
-    let count = count.unwrap_or(usize::from(severity.1 != Severity::Reminder));
+    // Reminder categories default to changed lines; other severities to whole files.
+    let changed_lines_default = matches!(severity.1, Severity::Reminder | Severity::AiReminder);
+    let count = count.unwrap_or(usize::from(!changed_lines_default));
     assert_eq!(report.warnings.is_empty(), count != 0);
     assert_eq!(report.files[0].diagnostics.len(), count);
     if count != 0 {
@@ -216,12 +218,15 @@ fn source_should_report_builtin_non_reminder_severities_on_all_lines(
 #[case::default(false, 0)]
 #[case::audit(true, 1)]
 fn source_should_report_reminders_without_git_when_all_lines_is_enabled(
-    #[values("SYM", "TEXT007")] code: &str,
+    #[values(("SYM", Severity::Reminder), ("TEXT007", Severity::AiReminder))] code: (
+        &str,
+        Severity,
+    ),
     #[case] all_lines: bool,
     #[case] count: usize,
 ) {
     let options = SourceOptions {
-        include: vec![code.into()],
+        include: vec![code.0.into()],
         all_lines,
         ..SourceOptions::default()
     };
@@ -238,6 +243,6 @@ fn source_should_report_reminders_without_git_when_all_lines_is_enabled(
         report
             .diagnostics
             .iter()
-            .all(|diagnostic| diagnostic.severity == Severity::Reminder)
+            .all(|diagnostic| diagnostic.severity == code.1)
     );
 }

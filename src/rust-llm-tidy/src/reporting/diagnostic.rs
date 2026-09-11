@@ -40,8 +40,11 @@ pub struct Diagnostic {
 /// to investigate, such as a possible pre-allocation. They never fail a run
 /// and surface separately from errors and warnings.
 ///
-/// `Reminder` findings are conditional guidance, not proven defects. By default
-/// they report only when their diagnostic line changed in the input diff.
+/// `Reminder` findings are conditional guidance for humans and AI, not proven
+/// defects. `AiReminder` findings are guidance for AI language models only,
+/// such as steering toward an optimal repair.
+///
+/// Both reminder severities report only on changed input lines by default.
 /// Errors, warnings, and hints default to whole-file reporting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -53,8 +56,12 @@ pub enum Severity {
     /// A suggestion for an LLM or human to investigate; see the enum
     /// documentation for gating and compatibility.
     Hint,
-    /// Non-gating guidance reported on changed input lines by default.
+    /// Non-gating guidance for humans and AI, reported on changed input lines
+    /// by default.
     Reminder,
+    /// Non-gating guidance for AI language models only, reported on changed
+    /// input lines by default.
+    AiReminder,
 }
 
 impl Diagnostic {
@@ -71,6 +78,7 @@ impl fmt::Display for Diagnostic {
             Severity::Warning => "warning",
             Severity::Hint => "hint",
             Severity::Reminder => "reminder",
+            Severity::AiReminder => "ai_reminder",
         };
         let title = self
             .title

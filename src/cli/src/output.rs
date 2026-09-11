@@ -1,11 +1,11 @@
-//! Structured (JSON) output for lint diagnostics and dry-run change records.
+//! CLI output for lint diagnostics and dry-run change records.
 //!
 //! The CLI can report its findings either as human-readable plaintext lines
 //! on stderr (the default) or as a single JSON array on stdout.
 //!
-//! This module owns the serializable projection of lint findings and dry-run
-//! change records and the emit routine. It keeps presentation separate from
-//! library execution and its structured results.
+//! This module owns plaintext grouping, the serializable record projection,
+//! and emission. It keeps presentation separate from library execution and
+//! its structured results.
 
 use core::num::NonZeroU32;
 use rust_llm_tidy::reporting::{Change, RunReport};
@@ -15,14 +15,22 @@ use std::borrow::Cow;
 use std::io::{self, Write};
 use std::path::Path;
 
+/// Note printed once above the AI reminder group.
+const AI_REMINDER_NOTE: &str = "Reminders for AI Language Models: guidance for AI agents, not required fixes.\n\
+     AI reminders alone do not fail the check.\n";
+/// Note printed once above the ordinary reminder group.
+const REMINDER_NOTE: &str = "Reminders are prompts to consider, not required fixes. They cannot always\n\
+be resolved and may remain even when the code is appropriate.\n\
+Reminders alone do not fail the check.\n";
+
 /// A serializable record for one lint finding or dry-run change.
 ///
 /// It matches the documented JSON schema (`{ path, line, severity,
 /// code, message, item_kind, item_name, title }`).
 ///
-/// Lint findings use severity `error`, `warning`, `hint`, or `reminder`; change
-/// records use `success`. `item_name` is `null` when the item is unnamed, and
-/// `title` is `null` for change records.
+/// Lint findings use severity `error`, `warning`, `hint`, `reminder`, or
+/// `ai_reminder`; change records use `success`. `item_name` is `null` when the
+/// item is unnamed, and `title` is `null` for change records.
 ///
 /// Text fields borrow from the projected record as [`Cow`], so a JSON run
 /// allocates nothing per record besides the one `path` string.
@@ -33,7 +41,8 @@ pub(crate) struct JsonRecord<'a> {
     /// Optional 1-based line number where the item starts; `null` when the
     /// record has no specific line (e.g. link/table fixes).
     line: Option<NonZeroU32>,
-    /// Lowercase `error`, `warning`, `hint`, `reminder`, or `success`.
+    /// Lowercase `error`, `warning`, `hint`, `reminder`, `ai_reminder`, or
+    /// `success`.
     severity: &'static str,
     /// Stable rule or operation code, e.g. "DOC001", "FIX", "REORDER", "VIS".
     code: &'static str,
@@ -152,6 +161,7 @@ fn project_lint<'a>(path: &Path, d: &'a Diagnostic) -> JsonRecord<'a> {
             Severity::Warning => "warning",
             Severity::Hint => "hint",
             Severity::Reminder => "reminder",
+            Severity::AiReminder => "ai_reminder",
         },
         code: d.code,
         message: Cow::Borrowed(d.message.as_ref()),
@@ -161,7 +171,8 @@ fn project_lint<'a>(path: &Path, d: &'a Diagnostic) -> JsonRecord<'a> {
     }
 }
 
-/// Write changes and findings, followed by separate hint and reminder groups.
+/// Write changes, errors, warnings, and processing failures, followed by
+/// separate hint, reminder, and AI reminder groups.
 fn write_text(output: &mut impl Write, report: &RunReport) -> io::Result<()> {
     for file in &report.files {
         for change in &file.changes {
@@ -177,27 +188,35 @@ fn write_text(output: &mut impl Write, report: &RunReport) -> io::Result<()> {
         }
     }
 
-    for severity in [Severity::Hint, Severity::Reminder] {
-        let mut explanation_written = false;
+    for severity in [Severity::Hint, Severity::Reminder, Severity::AiReminder] {
+        let mut group_note_written = false;
         for file in &report.files {
             for diagnostic in &file.diagnostics {
-                if diagnostic.severity == severity {
-                    if severity == Severity::Reminder && !explanation_written {
-                        writeln!(
-                            output,
-                            "\nReminders are prompts to consider, not required fixes. They cannot always\n\
-                             be resolved and may remain even when the code is appropriate.\n\
-                             Reminders alone do not fail the check.\n"
-                        )?;
-                        explanation_written = true;
-                    }
-
-                    writeln!(output, "{}:{diagnostic}", file.path.display())?;
+                if diagnostic.severity != severity {
+                    continue;
                 }
+                if !group_note_written {
+                    write_group_note(output, severity)?;
+                    group_note_written = true;
+                }
+
+                writeln!(output, "{}:{diagnostic}", file.path.display())?;
             }
         }
     }
     Ok(())
+}
+
+/// Write the note introducing a severity's group, before its first diagnostic.
+///
+/// Hints have no note: the `hint` token in each diagnostic already names the
+/// group.
+fn write_group_note(output: &mut impl Write, severity: Severity) -> io::Result<()> {
+    match severity {
+        Severity::Reminder => write!(output, "\n{REMINDER_NOTE}"),
+        Severity::AiReminder => write!(output, "\n{AI_REMINDER_NOTE}"),
+        _ => Ok(()),
+    }
 }
 
 #[cfg(test)]
@@ -206,6 +225,19 @@ mod tests {
     use rstest::rstest;
     use rust_llm_tidy::reporting::{Diagnostic, FileReport, RunReport, Severity};
     use std::path::Path;
+
+    /// Minimal finding at `line`; rendering reads only its severity and code.
+    fn diagnostic(severity: Severity, line: usize) -> Diagnostic {
+        Diagnostic {
+            title: None,
+            severity,
+            code: "DOC999",
+            message: "finding".into(),
+            line,
+            item_kind: "fn".into(),
+            item_name: None,
+        }
+    }
 
     #[rstest]
     #[case::builtin("DOC001", Some("missing documentation"), "missing documentation", "")]
@@ -258,20 +290,12 @@ mod tests {
     #[case::warning(Severity::Warning, "warning", 0)]
     #[case::hint(Severity::Hint, "hint", 0)]
     #[case::reminder(Severity::Reminder, "reminder", 0)]
+    #[case::ai_reminder(Severity::AiReminder, "ai_reminder", 0)]
     fn report_should_group_reminders_last_and_gate_only_errors(
         #[case] severity: Severity,
         #[case] token: &str,
         #[case] errors: usize,
     ) {
-        let diagnostic = |severity, line| Diagnostic {
-            title: None,
-            severity,
-            code: "DOC999",
-            message: "finding".into(),
-            line,
-            item_kind: "fn".into(),
-            item_name: None,
-        };
         let report = RunReport {
             files: vec![FileReport {
                 path: "input.rs".into(),
@@ -294,10 +318,70 @@ mod tests {
         assert_eq!(report.ensure_success().is_err(), errors > 0);
         assert_eq!(json["severity"], token);
         assert!(text.contains(&format!("2: {token}[DOC999]")));
-        let last = text.lines().last().unwrap();
-        assert!(last.contains("reminder[DOC999]"));
+        // The AI group follows the ordinary reminders, which stay in place.
+        let ordinary = text.find("input.rs:1: reminder[DOC999]").unwrap();
+        // Hints and non-reminder severities print before the reminder groups.
+        if matches!(
+            severity,
+            Severity::Error | Severity::Warning | Severity::Hint
+        ) {
+            let preceding = text.find(&format!("input.rs:2: {token}[DOC999]")).unwrap();
+            assert!(preceding < ordinary, "{text}");
+        }
+        let ai_heading = text.find("Reminders for AI Language Models");
+        assert_eq!(
+            ai_heading.is_some(),
+            severity == Severity::AiReminder,
+            "{text}"
+        );
+        if let Some(ai_heading) = ai_heading {
+            assert!(ordinary < ai_heading, "{text}");
+        }
         assert_eq!(text.matches("Reminders are prompts to consider").count(), 1);
-        assert!(text.find("Reminders are prompts").unwrap() < text.find("reminder[").unwrap());
+        assert!(text.find("Reminders are prompts").unwrap() < ordinary);
+    }
+
+    /// One AI group covers every file, and only AI findings open it.
+    #[test]
+    fn report_should_group_ai_reminders_across_files() {
+        let report = RunReport {
+            files: vec![
+                FileReport {
+                    path: "a.rs".into(),
+                    diagnostics: vec![diagnostic(Severity::AiReminder, 1)],
+                    ..FileReport::default()
+                },
+                FileReport {
+                    path: "b.rs".into(),
+                    diagnostics: vec![
+                        diagnostic(Severity::Reminder, 3),
+                        diagnostic(Severity::AiReminder, 4),
+                    ],
+                    ..FileReport::default()
+                },
+            ],
+            ..RunReport::default()
+        };
+        let mut rendered = Vec::new();
+
+        super::write_text(&mut rendered, &report).unwrap();
+        let text = String::from_utf8(rendered).unwrap();
+
+        // Ordinary reminders first, then the single AI group in file order.
+        let positions = [
+            "b.rs:3: reminder[DOC999]",
+            "Reminders for AI Language Models",
+            "a.rs:1: ai_reminder[DOC999]",
+            "b.rs:4: ai_reminder[DOC999]",
+        ]
+        .map(|needle| {
+            text.find(needle)
+                .unwrap_or_else(|| panic!("missing {needle}: {text}"))
+        });
+
+        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{text}");
+        assert_eq!(text.matches("Reminders for AI Language Models").count(), 1);
+        assert_eq!(text.matches("Reminders are prompts to consider").count(), 1);
     }
 
     /// Rendering groups hints last while error counts remain severity-specific.
@@ -308,15 +392,6 @@ mod tests {
             ("hint_and_warning", Severity::Warning, 0),
             ("hint_and_error", Severity::Error, 1),
         ] {
-            let diagnostic = |severity, line| Diagnostic {
-                title: None,
-                severity,
-                code: "DOC999",
-                message: "finding".into(),
-                line,
-                item_kind: "fn".into(),
-                item_name: None,
-            };
             let report = RunReport {
                 files: vec![
                     FileReport {
@@ -350,6 +425,7 @@ mod tests {
             assert_eq!(report.error_count(), errors, "{name}");
             assert_eq!(report.ensure_success().is_err(), errors > 0, "{name}");
             assert_eq!(lines.len(), 2, "{name}");
+            assert!(!text.contains("Reminders"), "{name}: {text}");
             if name == "hint_only" {
                 assert!(lines[0].starts_with("a.rs:1: hint["));
                 assert!(lines[1].starts_with("b.rs:2: hint["));

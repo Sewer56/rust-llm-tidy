@@ -65,7 +65,7 @@ fn detected_files_should_receive_one_reminder(
 
     assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
     assert_eq!(diagnostics[0].code, "TEXT010");
-    assert_eq!(diagnostics[0].severity, Severity::Reminder);
+    assert_eq!(diagnostics[0].severity, Severity::AiReminder);
     assert_eq!(diagnostics[0].item_kind, "file");
     assert_eq!(diagnostics[0].title(), "documentation audience review");
     // Detection skips the blank opening line: the reminder anchors to line 2.

@@ -7,6 +7,57 @@ use std::process::Command;
 
 mod common;
 
+/// An AI reminder produces identical records and source through both entry
+/// points, and a `scope: all` rule reports it without a diff baseline.
+#[test]
+fn cli_should_match_library_for_ai_reminders() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("input.rs");
+    let source = "fn f() { needle(); }\n";
+    fs::write(&path, source).unwrap();
+    let config_path = directory.path().join("config.yml");
+    fs::write(
+        &config_path,
+        "perf_hints: []\nsymbol_rules:\n  - regex: needle\n    title: Review\n    \
+         message: guidance\n    severity: ai_reminder\n    scope: all\n",
+    )
+    .unwrap();
+    let config = rust_llm_tidy::config::load_and_compile(&config_path).unwrap();
+    let options = RunOptions {
+        paths: vec![path.clone()],
+        include: vec!["SYM".into()],
+        ..RunOptions::default()
+    };
+
+    let report = run(&options, Some(&config)).unwrap();
+    let expected: Vec<Value> = report.files[0]
+        .diagnostics
+        .iter()
+        .map(|d| {
+            json!({
+                "path": path, "line": d.line, "severity": "ai_reminder",
+                "code": d.code, "message": d.message, "item_kind": d.item_kind,
+                "item_name": d.item_name, "title": d.title(),
+            })
+        })
+        .collect();
+
+    let output = Command::new(common::binary())
+        .current_dir(directory.path())
+        .arg("--config")
+        .arg(&config_path)
+        .args(["--json", "--include", "SYM"])
+        .arg(&path)
+        .output()
+        .unwrap();
+    let actual: Vec<Value> = serde_json::from_slice(&output.stdout).unwrap();
+
+    assert_eq!(actual.len(), 1, "{actual:?}");
+    assert_eq!(fs::read_to_string(&path).unwrap(), source);
+    assert_eq!(actual, expected);
+    assert_eq!(output.status.success(), report.ensure_success().is_ok());
+}
+
 /// TEXT010 needs file context, so its equivalence fixture sits under `docs/`
 /// and the explicit config keeps both paths on the same policy.
 #[test]
@@ -41,6 +92,7 @@ fn cli_should_match_library_for_documentation_context() {
                     rust_llm_tidy::reporting::Severity::Warning => "warning",
                     rust_llm_tidy::reporting::Severity::Hint => "hint",
                     rust_llm_tidy::reporting::Severity::Reminder => "reminder",
+                    rust_llm_tidy::reporting::Severity::AiReminder => "ai_reminder",
                 },
                 "code": d.code, "message": d.message, "item_kind": d.item_kind,
                 "item_name": d.item_name, "title": d.title(),
@@ -104,6 +156,7 @@ fn cli_should_match_library_source_and_records() {
                         rust_llm_tidy::reporting::Severity::Warning => "warning",
                         rust_llm_tidy::reporting::Severity::Hint => "hint",
                         rust_llm_tidy::reporting::Severity::Reminder => "reminder",
+                        rust_llm_tidy::reporting::Severity::AiReminder => "ai_reminder",
                     },
                     "code": d.code, "message": d.message, "item_kind": d.item_kind,
                     "item_name": d.item_name, "title": d.title(),

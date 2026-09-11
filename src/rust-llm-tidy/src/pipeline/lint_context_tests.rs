@@ -44,7 +44,7 @@ fn documentation_reminder_should_anchor_at_the_first_eligible_line(
     );
     if expected != 0 {
         assert_eq!(diagnostics[0].code, "TEXT010");
-        assert_eq!(diagnostics[0].severity, Severity::Reminder);
+        assert_eq!(diagnostics[0].severity, Severity::AiReminder);
         assert_eq!(diagnostics[0].line, expected);
     }
 }
@@ -196,6 +196,7 @@ fn filter_should_admit_only_the_reported_api_line(
 #[case::warning(Severity::Warning, true)]
 #[case::hint(Severity::Hint, true)]
 #[case::reminder(Severity::Reminder, false)]
+#[case::ai_reminder(Severity::AiReminder, false)]
 fn filter_should_apply_severity_defaults_without_a_snapshot(
     #[case] severity: Severity,
     #[case] reported: bool,
@@ -302,7 +303,7 @@ fn snapshots_should_require_an_enabled_supported_scoped_lint(
 ) {
     let config = compile(yaml, &[]);
     let context = LintContext::new(Some(&config), false);
-    // Isolate the existing Reminder families; DUP001, TEST002, and TEXT010
+    // Isolate the existing reminder families; DUP001, TEST002, and TEXT010
     // have separate cases.
     let disabled = disabled
         .iter()
@@ -317,8 +318,8 @@ fn snapshots_should_require_an_enabled_supported_scoped_lint(
     assert_eq!(actual, needed);
 }
 
-/// TEXT010 is reminder-severity and prose-only: markdown-family files need a
-/// snapshot even when every other lint is disabled, source files do not.
+/// TEXT010 is AI-reminder-severity and prose-only: markdown-family files need
+/// a snapshot even when every other lint is disabled, source files do not.
 #[rstest]
 #[case::markdown("md", false, true)]
 #[case::text("txt", false, true)]

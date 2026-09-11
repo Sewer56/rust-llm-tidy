@@ -14,7 +14,13 @@ use std::fs;
 #[case::override_entry(Some(ReportingScope::ChangedLines), true, Some(1))]
 fn buffer_should_apply_text_hint_reporting_scope(
     #[case] scope: Option<ReportingScope>,
-    #[values(Severity::Reminder, Severity::Hint, Severity::Warning, Severity::Error)]
+    #[values(
+        Severity::Reminder,
+        Severity::AiReminder,
+        Severity::Hint,
+        Severity::Warning,
+        Severity::Error
+    )]
     severity: Severity,
     #[case] all_lines: bool,
     #[case] count: Option<usize>,
@@ -32,7 +38,9 @@ fn buffer_should_apply_text_hint_reporting_scope(
 
     let report = tidy_source("needle", "md", &options).unwrap();
 
-    let count = count.unwrap_or(usize::from(severity != Severity::Reminder));
+    // Reminder categories default to changed lines; other severities to whole files.
+    let changed_lines_default = matches!(severity, Severity::Reminder | Severity::AiReminder);
+    let count = count.unwrap_or(usize::from(!changed_lines_default));
     assert_eq!(report.diagnostics.len(), count);
     if count != 0 {
         assert_eq!(report.diagnostics[0].severity, severity);

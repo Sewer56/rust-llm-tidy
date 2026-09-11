@@ -18,7 +18,7 @@ impl ReportingScope {
     /// Default reporting boundary for a finding's severity.
     pub(crate) fn for_severity(severity: Severity) -> Self {
         match severity {
-            Severity::Reminder => Self::ChangedLines,
+            Severity::Reminder | Severity::AiReminder => Self::ChangedLines,
             _ => Self::All,
         }
     }

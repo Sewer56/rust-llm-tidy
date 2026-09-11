@@ -207,7 +207,7 @@ mod tests {
         ] {
             let found = one_line(source);
             assert_eq!(found.len(), 1, "{source:?}");
-            assert_eq!(found[0].severity, Severity::Reminder);
+            assert_eq!(found[0].severity, Severity::AiReminder);
             assert_eq!(found[0].line, 1);
             assert!(
                 found[0]

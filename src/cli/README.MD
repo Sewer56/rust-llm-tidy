@@ -119,7 +119,8 @@ when there are no findings or changes, even when the run exits non-zero:
 
 Fields:
 
-- `severity` - `"error"`, `"warning"`, `"hint"`, or `"reminder"` for findings,
+- `severity` - `"error"`, `"warning"`, `"hint"`, `"reminder"`, or
+  `"ai_reminder"` for findings,
   `"success"` for change records (applied or would-be changes)
 - `line` - 1-based reported line, `null` when no specific line
   (link/table fixes)
@@ -136,7 +137,8 @@ See [dry-run change reporting] for
 the shared record format.
 
 Hints and reminders never fail a run and print in separate groups in
-text mode; see [hints].
+text mode; AI reminders print last, under `Reminders for AI Language
+Models`. See [hints].
 
 ### Operations
 
