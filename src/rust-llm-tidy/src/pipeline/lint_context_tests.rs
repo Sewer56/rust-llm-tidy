@@ -35,15 +35,7 @@ fn documentation_reminder_should_anchor_at_the_first_eligible_line(
         source,
         ChangedLines::new(once(changed)),
     );
-    let mut diagnostics = Vec::new();
-
-    context.filter(
-        &path,
-        source,
-        SymbolObservations::default(),
-        &mut diagnostics,
-        &HashSet::new(),
-    );
+    let diagnostics = filtered_diagnostics(&context, &path, source, &HashSet::new());
 
     assert_eq!(
         diagnostics.len(),
@@ -117,15 +109,7 @@ fn documentation_reminder_should_follow_scope_and_selection(
     let config = yaml.map(|yaml| compile(yaml, &[]));
     let (context, path) = documented_context(config.as_ref(), all_lines, "docs/setup.md", source);
     let disabled: HashSet<String> = disabled.then(|| "TEXT010".to_owned()).into_iter().collect();
-    let mut diagnostics = Vec::new();
-
-    context.filter(
-        &path,
-        source,
-        SymbolObservations::default(),
-        &mut diagnostics,
-        &disabled,
-    );
+    let diagnostics = filtered_diagnostics(&context, &path, source, &disabled);
 
     assert_eq!(diagnostics.len(), expected, "{diagnostics:?}");
     if expected != 0 {
@@ -138,15 +122,7 @@ fn documentation_reminder_should_follow_scope_and_selection(
 fn documentation_reminder_should_skip_undetected_files() {
     let source = "# Notes\n\nInternal notes.\n";
     let (context, path) = documented_context(None, true, "notes.md", source);
-    let mut diagnostics = Vec::new();
-
-    context.filter(
-        &path,
-        source,
-        SymbolObservations::default(),
-        &mut diagnostics,
-        &HashSet::new(),
-    );
+    let diagnostics = filtered_diagnostics(&context, &path, source, &HashSet::new());
 
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
 }
@@ -424,6 +400,24 @@ fn documented_context<'a>(
     let mut context = LintContext::new(config, all_lines);
     context.classify_documentation(from_ref(&path));
     (context, path)
+}
+
+/// Diagnostics `context` reports for `source` at `path`, minus `disabled`.
+fn filtered_diagnostics(
+    context: &LintContext<'_>,
+    path: &Path,
+    source: &str,
+    disabled: &HashSet<String>,
+) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    context.filter(
+        path,
+        source,
+        SymbolObservations::default(),
+        &mut diagnostics,
+        disabled,
+    );
+    diagnostics
 }
 
 /// Store `changed` eligibility for `path` against `source`.
