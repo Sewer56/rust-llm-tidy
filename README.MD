@@ -285,7 +285,7 @@ Minimal usage (default `mode: apply`; on a PR commits and pushes fixes):
 
 ```yaml
 - name: Tidy
-  uses: Sewer56/rust-llm-tidy-action@v1
+  uses: Sewer56/rust-llm-tidy-action@v2
   with:
     rust-project-path: '.'
     changed-files: true   # only files this PR changed
