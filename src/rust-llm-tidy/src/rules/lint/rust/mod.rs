@@ -408,7 +408,7 @@ pub fn last() {}
     }
 
     /// Trait-impl methods carry no visibility, so no DOC rule fires on them,
-    /// whether or not they are marked with `#[test]`.
+    /// whether they are marked with `#[test]`.
     #[test]
     fn run_all_should_skip_trait_impl_methods() {
         let source = r#"//! mod docs

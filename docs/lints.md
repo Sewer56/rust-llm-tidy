@@ -570,13 +570,19 @@ Error: found 1 error(s)
 - One finding per item, naming the first out-of-order adjacent pair.
 - Unrecognized headers or tags (`# Ordering`, `<permission>`) never
   participate; repeated headers or tags of the same section pass.
-- Rust headers match case-insensitively on the whole trimmed line.
+
+Rust specifics:
+
+- Headers match case-insensitively on the whole trimmed line.
   Aliases count as their section:
   - `# Parameters` and `# Params` as `# Arguments`
   - `# Return` as `# Returns`
   - `# Example` as `# Examples`
   - `# Notes` as `# Remarks`
-- C# matches an opening tag at the start of a doc line, so inline
+
+C# specifics:
+
+- Matches an opening tag at the start of a doc line, so inline
   markup (`<see>`, `<paramref>`) never counts.
 
 ### TEST001 - non-behavioral test name
