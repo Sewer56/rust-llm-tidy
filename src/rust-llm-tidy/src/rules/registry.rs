@@ -17,6 +17,7 @@ pub const LINT_CODES: &[&str] = &[
     CODE_UNDOCUMENTED_PARAM,
     CODE_DOC_PLACEHOLDER,
     CODE_SECTION_ORDER,
+    CODE_MISSING_RETURNS,
     CODE_PARAGRAPH_SIZE,
     CODE_LINE_LENGTH,
     CODE_SENTENCE_LENGTH,
@@ -63,6 +64,8 @@ pub const CODE_MISSING_DOCS: &str = "DOC001";
 pub const CODE_MISSING_ERRORS: &str = "DOC002";
 /// Rule code for a module file without top-level docs.
 pub const CODE_MISSING_MODULE_DOCS: &str = "DOC009";
+/// Rule code for a missing `# Returns` section or `<returns>` tag.
+pub const CODE_MISSING_RETURNS: &str = "DOC011";
 /// Rule code for a `use` inside a function body without its own
 /// `#[cfg]` attribute.
 pub const CODE_MOD002: &str = "MOD002";
@@ -111,6 +114,7 @@ mod tests {
             CODE_UNDOCUMENTED_PARAM,
             CODE_DOC_PLACEHOLDER,
             CODE_SECTION_ORDER,
+            CODE_MISSING_RETURNS,
             CODE_PARAGRAPH_SIZE,
             CODE_LINE_LENGTH,
             CODE_SENTENCE_LENGTH,

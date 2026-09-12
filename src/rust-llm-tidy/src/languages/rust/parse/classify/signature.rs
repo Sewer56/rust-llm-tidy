@@ -6,7 +6,7 @@
 //! error-argument predicates.
 
 use super::{child_of_kind, first_segment, named_child_exists, text_of};
-use crate::source::VisibilityTier;
+use crate::source::{ReturnKind, VisibilityTier};
 use tree_sitter::Node;
 
 /// Classify a visibility modifier child of an item node into a tier.
@@ -133,6 +133,38 @@ pub(in super::super) fn result_error_type(body: Node<'_>, source: &str) -> Optio
     last_type_segment(error, source).map(str::to_string)
 }
 
+/// Classify a `function_item`'s declared return type by documentation value.
+///
+/// Reads the `return_type` field node and reduces it to a [`ReturnKind`]:
+///
+/// - No declared type, `()`, or `!` -> [`ReturnKind::NoValue`].
+/// - `bool` (after stripping references/lifetimes) -> [`ReturnKind::Bool`].
+/// - `Self` (likewise stripped) -> [`ReturnKind::SelfValue`].
+/// - `Result<(), E>` of any path, and argument-less unit aliases
+///   qualified like `core::fmt::Result` -> [`ReturnKind::ResultUnit`].
+///   A bare unqualified `Result` may name a user alias returning a
+///   value, so it falls through to [`ReturnKind::Value`].
+/// - Everything else -> [`ReturnKind::Value`].
+pub(super) fn return_kind(body: Node<'_>, source: &str) -> ReturnKind {
+    let Some(rt) = body.child_by_field_name("return_type") else {
+        return ReturnKind::NoValue;
+    };
+    match normalized_type_text(rt, source) {
+        "()" | "!" => ReturnKind::NoValue,
+        "bool" => ReturnKind::Bool,
+        "Self" => ReturnKind::SelfValue,
+        _ => {
+            if last_type_segment(rt, source) == Some("Result")
+                && result_ok_payload_is_unit(rt, source)
+            {
+                ReturnKind::ResultUnit
+            } else {
+                ReturnKind::Value
+            }
+        }
+    }
+}
+
 /// True when `sig` (a `function_item`) declares a `-> Result<...>` return type.
 ///
 /// Matches by the final path segment name so any `Result` (std, io, a custom
@@ -164,11 +196,6 @@ fn is_direct_crate_root(node: Node<'_>, source: &str) -> bool {
     )
 }
 
-/// True for path-qualified type nodes (`std::io::Error`).
-fn is_scoped_type(node: Node<'_>) -> bool {
-    matches!(node.kind(), "scoped_type_identifier" | "scoped_identifier")
-}
-
 /// Last path-segment identifier of a type node, or `None` for non-path types
 /// (`&T`, `[T; n]`, etc.) - mirroring syn, which only matched `Type::Path`.
 fn last_type_segment<'a>(node: Node<'a>, source: &'a str) -> Option<&'a str> {
@@ -184,6 +211,44 @@ fn last_type_segment<'a>(node: Node<'a>, source: &'a str) -> Option<&'a str> {
     }
 }
 
+/// Text of a type node with leading references, `mut`, and lifetimes
+/// stripped (`&'a mut Self` -> `Self`).
+fn normalized_type_text<'a>(node: Node<'a>, source: &'a str) -> &'a str {
+    let text = node.utf8_text(source.as_bytes()).unwrap_or_default().trim();
+    let mut rest = text;
+    loop {
+        if let Some(t) = rest.strip_prefix("&mut ") {
+            rest = t.trim_start();
+        } else if let Some(t) = rest.strip_prefix('&') {
+            rest = t.trim_start();
+        } else if rest.starts_with('\'')
+            && let Some(idx) = rest.find(char::is_whitespace)
+        {
+            rest = rest[idx..].trim_start();
+        } else if let Some(t) = rest.strip_prefix("mut ") {
+            rest = t.trim_start();
+        } else {
+            return rest;
+        }
+    }
+}
+
+/// True when a `Result` return type's Ok payload is unit: the first
+/// generic argument is `()`, or the type declares no arguments while
+/// its path qualifies a known unit alias (`core::fmt::Result` hiding
+/// `Result<(), E>`).
+///
+/// A bare unqualified `Result` carries no visible payload and may be
+/// a user alias returning a value, so it reads as carrying one.
+fn result_ok_payload_is_unit(rt: Node<'_>, source: &str) -> bool {
+    let Some(args) = rt.child_by_field_name("type_arguments") else {
+        return is_scoped_type(rt);
+    };
+    args.named_child(0).is_some_and(|arg| {
+        arg.kind() == "unit_type" || arg.utf8_text(source.as_bytes()) == Ok("()")
+    })
+}
+
 /// Root path node of a type node, unwrapping generic wrappers
 /// (`Vec<T>` -> `T`) so qualification can be inspected.
 fn type_path_root<'a>(node: Node<'a>) -> Node<'a> {
@@ -192,5 +257,54 @@ fn type_path_root<'a>(node: Node<'a>) -> Node<'a> {
             .child_by_field_name("type")
             .map_or(node, type_path_root),
         _ => node,
+    }
+}
+
+/// True for path-qualified type nodes (`std::io::Error`).
+fn is_scoped_type(node: Node<'_>) -> bool {
+    matches!(node.kind(), "scoped_type_identifier" | "scoped_identifier")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::return_kind;
+    use crate::source::ReturnKind;
+    use rstest::rstest;
+
+    /// Parse `fn f() -> <ret>` and return the classified [`ReturnKind`].
+    fn kind_of(ret: &str) -> ReturnKind {
+        let source = format!("fn f() -> {ret} {{}}");
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(&source, None).unwrap();
+        let body = tree.root_node().named_child(0).expect("one top-level item");
+        return_kind(body, &source)
+    }
+
+    // ── return_kind: declared return types ──
+
+    #[rstest]
+    #[case::no_return_type("", ReturnKind::NoValue)]
+    #[case::unit("()", ReturnKind::NoValue)]
+    #[case::never("!", ReturnKind::NoValue)]
+    #[case::bool("bool", ReturnKind::Bool)]
+    #[case::lifetime_bool("&'a mut bool", ReturnKind::Bool)]
+    #[case::self_value("Self", ReturnKind::SelfValue)]
+    #[case::mut_self("&mut Self", ReturnKind::SelfValue)]
+    #[case::ref_self("&Self", ReturnKind::SelfValue)]
+    #[case::lifetime_mut_self("&'a mut Self", ReturnKind::SelfValue)]
+    #[case::static_mut_self("&'static mut Self", ReturnKind::SelfValue)]
+    #[case::lifetime_self("&'a Self", ReturnKind::SelfValue)]
+    #[case::result_unit("Result<(), String>", ReturnKind::ResultUnit)]
+    #[case::scoped_result_unit("std::io::Result<()>", ReturnKind::ResultUnit)]
+    #[case::aliased_result_unit("core::fmt::Result", ReturnKind::ResultUnit)]
+    #[case::bare_user_result_alias("Result", ReturnKind::Value)]
+    #[case::result_value("Result<u32, String>", ReturnKind::Value)]
+    #[case::u32("u32", ReturnKind::Value)]
+    #[case::option("Option<u8>", ReturnKind::Value)]
+    fn return_kind_should_classify_declared_type(#[case] ret: &str, #[case] expected: ReturnKind) {
+        assert_eq!(kind_of(ret), expected);
     }
 }

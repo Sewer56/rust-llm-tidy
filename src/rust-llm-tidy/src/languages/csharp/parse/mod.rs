@@ -86,6 +86,25 @@ pub(crate) fn declaration_name(node: tree_sitter::Node<'_>, source: &str) -> Opt
     node.child_by_field_name("name").map(text)
 }
 
+/// The declared return-type text of a `method_declaration` node.
+///
+/// Methods only: constructors, properties, operators, and local
+/// functions carry no return-type field, so they yield `None` by
+/// construction. `void` methods still report `"void"`.
+///
+/// tree-sitter-c-sharp exposes the return type under the `returns`
+/// field name (not `type`).
+pub(crate) fn declared_return_type<'a>(
+    node: tree_sitter::Node<'a>,
+    source: &'a str,
+) -> Option<&'a str> {
+    if node.kind() != "method_declaration" {
+        return None;
+    }
+    node.child_by_field_name("returns")
+        .and_then(|ty| ty.utf8_text(source.as_bytes()).ok())
+}
+
 /// The `///` doc-comment lines directly above `node`, in source order.
 ///
 /// A doc run is the longest chain of `///` comment siblings. Each

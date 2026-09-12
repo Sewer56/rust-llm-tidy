@@ -30,34 +30,35 @@ Text lints for other languages use these sources ([text lints]):
 
 ## Codes
 
-| Code        | Severity   | Fires when                                                                        |
-| ----------- | ---------- | --------------------------------------------------------------------------------- |
-| [`DOC001`]  | Error      | A non-private item has no doc comment (`///`, `/** ... */`, or `#[doc = "..."]`). |
-| [`DOC002`]  | Error      | A `pub fn` returning `Result` has no `# Errors` section.                          |
-| [`DOC003`]  | Warning    | A `# Errors` section names no concrete error variant.                             |
-| [`DOC004`]  | Warning    | A `pub fn` with parameters has no `# Arguments` section.                          |
-| [`DOC005`]  | Warning    | A `# Arguments` section does not mention every parameter name.                    |
-| [`DOC006`]  | Warning    | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).                   |
-| [`DOC008`]  | Error      | An `# Errors` section lists enum variants out of alphabetical order.              |
-| [`DOC009`]  | Error      | A module file has no top-level module docs (`//!` in Rust, docstring in Python).  |
-| [`DOC010`]  | Error      | Doc sections (Rust) or XML tags (C#) appear out of canonical order.               |
-| [`TEXT001`] | Error      | A doc paragraph over 240 chars of full text (bullets warn).                       |
-| [`TEXT002`] | Warning    | A doc line over 80 chars (trailing URL, code blocks, tables, link defs exempt).   |
-| [`TEXT003`] | Warning    | A doc sentence over 25 words (words join across wrapped lines).                   |
-| [`TEXT004`] | Warning    | A doc opener with 3+ sentences or over 160 chars (file, item, or heading).        |
-| [`TEXT005`] | Warning    | A fenced code block opens with no tag or bare `ignore` (all markdown prose).      |
-| [`TEXT006`] | Hint       | A doc line has a shorter alternative for a word, phrase, or filler.               |
-| [`TEXT007`] | AiReminder | A doc line may hold passive voice or implementation history.                      |
-| [`TEXT008`] | Warning    | A bullet list exceeds 10 source lines.                                            |
-| [`TEXT010`] | AiReminder | A likely documentation file; asks to review the changed section's audience.       |
-| [`TEST001`] | Warning    | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
-| [`TEST002`] | Reminder   | A test fn carries no comment above its attributes.                                |
-| [`MOD001`]  | Warning    | A code file exceeds `module_size.max_lines` (default 500).                        |
-| [`MOD002`]  | Error      | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
-| [`MOD003`]  | Hint       | A path includes the full namespace.                                               |
-| [`LEN001`]  | Hint       | A Rust fn body exceeds `method_length.max_lines` (default 100).                   |
-| [`SYM`]     | Reminder   | A configured text or symbol hint matches; severity is configurable.               |
-| [`DUP001`]  | Reminder   | Five meaningful lines repeat at three same-file sites, including a changed copy.  |
+| Code        | Severity           | Fires when                                                                        |
+| ----------- | ------------------ | --------------------------------------------------------------------------------- |
+| [`DOC001`]  | Error              | A non-private item has no doc comment (`///`, `/** ... */`, or `#[doc = "..."]`). |
+| [`DOC002`]  | Error              | A `pub fn` returning `Result` has no `# Errors` section.                          |
+| [`DOC003`]  | Warning            | A `# Errors` section names no concrete error variant.                             |
+| [`DOC004`]  | Warning            | A `pub fn` with parameters has no `# Arguments` section.                          |
+| [`DOC005`]  | Warning            | A `# Arguments` section does not mention every parameter name.                    |
+| [`DOC006`]  | Warning            | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).                   |
+| [`DOC008`]  | Error              | An `# Errors` section lists enum variants out of alphabetical order.              |
+| [`DOC009`]  | Error              | A module file has no top-level module docs (`//!` in Rust, docstring in Python).  |
+| [`DOC010`]  | Error              | Doc sections (Rust) or XML tags (C#) appear out of canonical order.               |
+| [`DOC011`]  | Warning / Reminder | A value-returning public function has no Returns docs; `bool` only reminds.       |
+| [`TEXT001`] | Error              | A doc paragraph over 240 chars of full text (bullets warn).                       |
+| [`TEXT002`] | Warning            | A doc line over 80 chars (trailing URL, code blocks, tables, link defs exempt).   |
+| [`TEXT003`] | Warning            | A doc sentence over 25 words (words join across wrapped lines).                   |
+| [`TEXT004`] | Warning            | A doc opener with 3+ sentences or over 160 chars (file, item, or heading).        |
+| [`TEXT005`] | Warning            | A fenced code block opens with no tag or bare `ignore` (all markdown prose).      |
+| [`TEXT006`] | Hint               | A doc line has a shorter alternative for a word, phrase, or filler.               |
+| [`TEXT007`] | AiReminder         | A doc line may hold passive voice or implementation history.                      |
+| [`TEXT008`] | Warning            | A bullet list exceeds 10 source lines.                                            |
+| [`TEXT010`] | AiReminder         | A likely documentation file; asks to review the changed section's audience.       |
+| [`TEST001`] | Warning            | A test fn uses `test`, `test_*`, `case_*`, or `test1`-style names.                |
+| [`TEST002`] | Reminder           | A test fn carries no comment above its attributes.                                |
+| [`MOD001`]  | Warning            | A code file exceeds `module_size.max_lines` (default 500).                        |
+| [`MOD002`]  | Error              | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
+| [`MOD003`]  | Hint               | A path includes the full namespace.                                               |
+| [`LEN001`]  | Hint               | A Rust fn body exceeds `method_length.max_lines` (default 100).                   |
+| [`SYM`]     | Reminder           | A configured text or symbol hint matches; severity is configurable.               |
+| [`DUP001`]  | Reminder           | Five meaningful lines repeat at three same-file sites, including a changed copy.  |
 
 ## Reporting scope
 
@@ -585,6 +586,82 @@ C# specifics:
 - Matches an opening tag at the start of a doc line, so inline
   markup (`<see>`, `<paramref>`) never counts.
 
+### DOC011 - missing `# Returns` section or `<returns>` tag
+
+Value-returning public functions must explain the returned value.
+
+- Rust: a `pub fn` needs a `# Returns` section (alias `# Return`,
+  case-insensitive).
+- C#: a non-private method needs a `<returns>` tag. Unmodified
+  bodyless interface methods count as non-private; unmodified default
+  implementations (methods with bodies) do not. Constructors,
+  properties, and operators stay out of scope.
+
+Before:
+
+```rust
+/// Returns the width of the viewport.
+pub fn width() -> u32 {
+    640
+}
+```
+
+After:
+
+```rust
+/// Returns the width of the viewport.
+///
+/// # Returns
+///
+/// The viewport width in CSS pixels.
+pub fn width() -> u32 {
+    640
+}
+```
+
+#### DOC011 CLI output (Rust)
+
+```text
+$ rust-llm-tidy --no-config --include DOC011 src/lib.rs
+src/lib.rs:1: warning[DOC011]: Function returns a value but has no `# Returns` section.
+
+Why: Readers need to understand what the returned value represents, not just its type.
+
+Suggestions:
+- Add a `# Returns` section explaining what the value represents and any special cases callers need to handle.
+- Describe only existing behavior. Do not invent guarantees or change the implementation to satisfy this lint. (fn `width`)
+```
+
+#### DOC011 CLI output (Rust, `bool` reminder)
+
+Reminders report on changed lines by default, so the example passes
+`--all-lines` to show one without Git eligibility.
+
+```text
+$ rust-llm-tidy --no-config --all-lines --include DOC011 src/lib.rs
+src/lib.rs:1: reminder[DOC011]: Function returns `bool` but has no `# Returns` section.
+
+Why: Readers should not have to inspect the implementation to understand what `true` and `false` mean.
+
+Suggestions:
+- No change is needed if the function name or summary already makes both outcomes clear.
+- Otherwise, consider a short `# Returns` section explaining when the function returns `true` and when it returns `false`. (fn `has_data`)
+```
+
+#### Remarks
+
+Trivial return kinds never fire:
+
+- No declared return type, `()`, `!`, and C# `void`.
+- `Self`, `&Self`, and `&mut Self` builder chaining.
+- `Result<(), _>` of any path, and qualified unit aliases like
+  `core::fmt::Result`: the `# Errors` contract already covers it
+  (see [`DOC002`]). A bare unqualified `Result` fires as a value: it
+  may name a user alias returning one.
+
+`bool` returns only remind instead of warning: a good summary often
+covers both outcomes.
+
 ### TEST001 - non-behavioral test name
 
 Test-attributed functions should describe behavior, not use `test`, `test_*`,
@@ -1109,6 +1186,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`DOC008`]: #doc008---error-variants-out-of-alphabetical-order
 [`DOC009`]: #doc009---module-file-without-top-level-docs
 [`DOC010`]: #doc010---doc-sections-out-of-canonical-order
+[`DOC011`]: #doc011---missing-returns-section-or-returns-tag
 [`TEXT001`]: ./text-lints.md#text001---oversized-paragraph
 [`TEXT002`]: ./text-lints.md#text002---long-line
 [`TEXT003`]: ./text-lints.md#text003---long-sentence

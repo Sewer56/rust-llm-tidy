@@ -48,6 +48,7 @@ impl CanThrowIndex {
                 parsed.syntax_tree().root_node(),
                 &parsed.source,
                 None,
+                false,
                 &mut declarations,
             );
             merged.merge(Self::from_declarations(&declarations));
@@ -76,6 +77,7 @@ impl CanThrowIndex {
             parsed.syntax_tree().root_node(),
             &parsed.source,
             None,
+            false,
             &mut declarations,
         );
         let local = Self::from_declarations(&declarations);
@@ -310,6 +312,7 @@ mod tests {
                 parsed.syntax_tree().root_node(),
                 &parsed.source,
                 None,
+                false,
                 &mut declarations,
             );
 

@@ -35,6 +35,8 @@
 //! - DOC006: placeholder markers (`TODO`/`FIXME`/`TBD`) in doc comments.
 //! - DOC010: recognized doc tags must follow the canonical order
 //!   (`inheritdoc` through `seealso`).
+//! - DOC011: non-private methods with non-void return values need a
+//!   `<returns>` tag; `bool` returns only remind.
 //!
 //! Naming and prose checks:
 //!
@@ -68,6 +70,7 @@ mod doc004_missing_param_tags;
 mod doc005_undocumented_param;
 mod doc006_placeholder;
 mod doc010_tag_order;
+mod doc011_missing_returns;
 mod mod003_qualified_path;
 mod test001_test_naming;
 mod test002_test_summary;
@@ -138,6 +141,7 @@ pub(crate) fn run_indexed(parsed: &ParseResult, shared: Option<&CanThrowIndex>) 
         parsed.syntax_tree().root_node(),
         source,
         None,
+        false,
         &mut declarations,
     );
 
@@ -179,6 +183,7 @@ fn check_declaration(decl: &Declaration<'_>, diagnostics: &mut Vec<Diagnostic>) 
     diagnostics.extend(doc005_undocumented_param::check(decl));
     diagnostics.extend(doc006_placeholder::check(decl));
     diagnostics.extend(doc010_tag_order::check(decl));
+    diagnostics.extend(doc011_missing_returns::check(decl));
     diagnostics.extend(test001_test_naming::check(decl));
     diagnostics.extend(test002_test_summary::check(decl));
 }
@@ -213,6 +218,7 @@ pub(crate) mod tests {
                 parsed.syntax_tree().root_node(),
                 source,
                 None,
+                false,
                 &mut declarations,
             );
             let flags = name_keyed_throw_closure(&declarations);

@@ -101,6 +101,8 @@ pub struct SourceItem {
     /// Named parameter idents of a fn, excluding `self`/`&self`/`&mut self`.
     /// Empty for non-fn items.
     params: Vec<String>,
+    /// The fn's [`ReturnKind`]; [`ReturnKind::NoValue`] for non-fn items.
+    return_kind: ReturnKind,
     /// True for fn items carrying a test marker: `#[test]`, `#[...::test]`,
     /// `#[rstest]`, `#[...::rstest]`, `#[test_case]`, or `#[...::test_case]`.
     is_test_fn: bool,
@@ -121,6 +123,26 @@ pub struct SourceItem {
     /// In-type members of this item, for member reordering. Empty unless a
     /// language backend's parse produced them; the Rust parse emits none.
     members: Vec<TypeMember>,
+}
+
+/// Classification of a fn's declared return type by documentation
+/// value, precomputed at parse time for DOC011.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReturnKind {
+    /// No declared return type, `()`, or `!`: nothing to document.
+    NoValue,
+    /// Exactly `bool` (references stripped): obvious from a good summary,
+    /// so DOC011 only reminds.
+    Bool,
+    /// `Self`, `&Self`, or `&mut Self` (builder-style chaining): the
+    /// receiver's meaning is self-evident, so DOC011 stays silent.
+    SelfValue,
+    /// `Result<(), E>` of any path, plus qualified unit aliases like
+    /// `core::fmt::Result`: DOC002's `# Errors` section already covers
+    /// the contract, so DOC011 stays silent.
+    ResultUnit,
+    /// Any other declared return type: a value readers may need described.
+    Value,
 }
 
 /// Visibility classification for ordering items.
@@ -262,6 +284,12 @@ impl SourceItem {
         &self.params
     }
 
+    /// The declared return type's [`ReturnKind`].
+    #[inline]
+    pub fn return_kind(&self) -> ReturnKind {
+        self.return_kind
+    }
+
     /// True for fn items carrying a test marker: `#[test]`, `#[...::test]`,
     /// `#[rstest]`, `#[...::rstest]`, `#[test_case]`, or `#[...::test_case]`.
     #[inline]
@@ -322,6 +350,17 @@ impl SourceItem {
     ///   ones.
     pub fn with_members(mut self, members: Vec<TypeMember>) -> Self {
         self.members = members;
+        self
+    }
+
+    /// Set the fn's return-type classification
+    /// (see [`SourceItem::return_kind`]).
+    ///
+    /// # Arguments
+    ///
+    /// - `kind` - the return-type classification to assign.
+    pub fn with_return_kind(mut self, kind: ReturnKind) -> Self {
+        self.return_kind = kind;
         self
     }
 
@@ -396,6 +435,7 @@ impl SourceItem {
             returns_result,
             result_error_type: None,
             params,
+            return_kind: ReturnKind::NoValue,
             is_test_fn,
             has_summary_comment: false,
             region: 0,

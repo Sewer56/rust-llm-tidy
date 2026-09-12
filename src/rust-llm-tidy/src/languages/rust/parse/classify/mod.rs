@@ -24,12 +24,12 @@
 pub(super) use self::signature::result_error_type;
 use self::signature::{
     classify_visibility, extract_param_names, field_ident_text, find_macro_invocation,
-    first_ident_of_type, last_path_segment, returns_result,
+    first_ident_of_type, last_path_segment, return_kind, returns_result,
 };
 pub(super) use self::trivia::{PendingTrivia, is_attachable, is_transparent_comment};
 use self::trivia::{collect_attributes, extract_doc_comments, is_test_fn, is_test_module};
 pub(in crate::languages::rust) use self::trivia::{doc_attribute_content, is_outer_doc};
-use crate::source::{ItemKind, VisibilityTier};
+use crate::source::{ItemKind, ReturnKind, VisibilityTier};
 use tree_sitter::Node;
 
 mod signature;
@@ -46,6 +46,9 @@ pub(super) struct Classification {
     pub(super) visibility: Option<VisibilityTier>,
     pub(super) doc_comments: Vec<String>,
     pub(super) returns_result: bool,
+    /// Classification of a fn's declared return type
+    /// (see [`ReturnKind`]). [`ReturnKind::NoValue`] for non-fn items.
+    pub(super) return_kind: ReturnKind,
     /// Named parameter idents of a fn, excluding `self`/`&self`/`&mut self`.
     /// Empty for non-fn items.
     pub(super) params: Vec<String>,
@@ -72,6 +75,7 @@ pub(super) fn classify_item<'a>(
             name: field_ident_text(body, "name", source),
             visibility: classify_visibility(body),
             returns_result: returns_result(body, source),
+            return_kind: return_kind(body, source),
             params: extract_param_names(body, source),
             is_test_fn: is_test_fn(&attrs, source),
             ..base(ItemKind::Fn, doc_comments)
@@ -171,6 +175,7 @@ fn base(kind: ItemKind, doc_comments: Vec<String>) -> Classification {
         is_trait_impl: false,
         visibility: None,
         returns_result: false,
+        return_kind: ReturnKind::NoValue,
         params: Vec::new(),
         is_test_fn: false,
     }

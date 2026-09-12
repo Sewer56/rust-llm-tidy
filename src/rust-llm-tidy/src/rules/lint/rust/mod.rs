@@ -38,6 +38,7 @@ mod doc006_placeholder;
 mod doc008_error_variant_order;
 mod doc009_missing_module_docs;
 mod doc010_section_order;
+mod doc011_missing_returns;
 pub(crate) mod len001_method_length;
 pub(crate) mod mod001_module_size;
 mod mod002_fn_local_use;
@@ -57,6 +58,14 @@ const ARGUMENTS_HEADERS: &[&str] = &[
     "# Params",
     "# Param",
 ];
+/// Accepted rustdoc headers for documenting return values.
+///
+/// All variants match case-insensitively, so `# Returns`, `# returns`,
+/// and `# RETURNS` are equivalent.
+///
+/// Used by DOC011 ([`doc011_missing_returns`]); DOC010 ranks the same
+/// vocabulary in its canonical order.
+const RETURNS_HEADERS: &[&str] = &["# Returns", "# Return"];
 
 /// Run Rust item checks, tree checks, and text checks over one parse.
 pub(crate) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
@@ -213,6 +222,7 @@ fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
         diags.extend(doc006_placeholder::check(item));
         diags.extend(doc008_error_variant_order::check(item, &enums));
         diags.extend(doc010_section_order::check(item));
+        diags.extend(doc011_missing_returns::check(item));
         diags.extend(test001_test_naming::check(item));
         diags.extend(test002_test_summary::check(item));
     }

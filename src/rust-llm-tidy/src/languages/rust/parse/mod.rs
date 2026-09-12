@@ -399,6 +399,7 @@ fn item_from_class(
         class.params,
         class.is_test_fn,
     )
+    .with_return_kind(class.return_kind)
     .with_result_error_type(result_error_type(body, source))
     .with_summary_comment(pending.has_summary_comment(body, source))
 }
