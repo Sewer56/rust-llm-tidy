@@ -61,12 +61,18 @@ pub struct ReexportSet(AHashSet<String>);
 impl ParsedFile {
     /// Parse `source` (from the file at `path`) into a [`ParsedFile`].
     ///
+    /// # Arguments
+    ///
+    /// - `path` - the canonical path of the file `source` was read from.
+    /// - `source` - the verbatim Rust source text to parse.
+    ///
     /// # Errors
     ///
-    /// tree-sitter performs error recovery, so syntactically invalid Rust still
-    /// yields a tree (possibly with `ERROR` nodes) rather than a parse error;
-    /// the `Result` is only `Err` when the parser cannot be allocated or the
-    /// language is not set.
+    /// Returns [`anyhow::Error`] only when the tree-sitter parser cannot be
+    /// allocated or the language is not set.
+    ///
+    /// tree-sitter performs error recovery: syntactically invalid Rust still
+    /// yields a tree (possibly with `ERROR` nodes) rather than a parse error.
     pub fn new(path: PathBuf, source: String) -> anyhow::Result<Self> {
         let tree = parse(&source)?;
         Ok(Self { path, source, tree })
@@ -81,6 +87,10 @@ impl ReexportSet {
 
     /// True if `name` is re-exported anywhere in the crate, or if a glob was
     /// seen (the `"*"` sentinel disables narrowing for every named child).
+    ///
+    /// # Arguments
+    ///
+    /// - `name` - the simple name to test for a blocking re-export.
     pub fn blocks(&self, name: &str) -> bool {
         self.0.contains(name) || self.0.contains("*")
     }

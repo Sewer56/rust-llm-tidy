@@ -32,6 +32,11 @@ impl CanThrowIndex {
     /// Build a shared graph from C# `parses`, ignoring trees with syntax errors.
     ///
     /// Returns cycle-safe throw answers across the supplied files.
+    ///
+    /// # Arguments
+    ///
+    /// - `parses` - the C# parse results to index; parses with syntax errors
+    ///   are skipped.
     pub fn from_parses<'a>(parses: impl IntoIterator<Item = &'a ParseResult>) -> Self {
         let mut merged = Self::default();
         for parsed in parses {

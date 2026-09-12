@@ -14,6 +14,11 @@ pub struct ChangedLines {
 
 impl ChangedLines {
     /// Normalize ranges, discarding reversed ranges and ranges starting at zero.
+    ///
+    /// # Arguments
+    ///
+    /// - `ranges` - the 1-based inclusive spans to normalize; overlaps and
+    ///   adjacent spans are merged.
     pub fn new(ranges: impl IntoIterator<Item = RangeInclusive<usize>>) -> Self {
         let mut ranges: Vec<_> = ranges
             .into_iter()
@@ -41,6 +46,10 @@ impl ChangedLines {
     }
 
     /// Include every source line; an empty source has no lines.
+    ///
+    /// # Arguments
+    ///
+    /// - `source` - the source whose line count bounds the single range.
     pub fn all(source: &str) -> Self {
         Self::new(once(1..=source.lines().count()))
     }
@@ -56,6 +65,11 @@ impl ChangedLines {
     }
 
     /// Test intersection with a 1-based inclusive span; invalid spans never overlap.
+    ///
+    /// # Arguments
+    ///
+    /// - `start` - 1-based first line of the span to test.
+    /// - `end` - 1-based last line of the span to test.
     pub fn overlaps(&self, start: usize, end: usize) -> bool {
         if start == 0 || start > end {
             return false;

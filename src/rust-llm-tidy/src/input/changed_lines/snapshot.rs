@@ -35,6 +35,11 @@ impl ChangedLineSnapshot {
     /// Sources or output exceeding [`MAX_SOURCE_BYTES`] or [`MAX_SOURCE_LINES`]
     /// return empty eligibility. Work is bounded text scans, line lookups, and
     /// range sorting; this is not a syntax-aware provenance map.
+    ///
+    /// # Arguments
+    ///
+    /// - `transformed` - the source text after the tool's mutation, whose
+    ///   lines are matched by exact text.
     pub fn remap(&self, transformed: &str) -> ChangedLines {
         if self.source.len() > MAX_SOURCE_BYTES
             || transformed.len() > MAX_SOURCE_BYTES

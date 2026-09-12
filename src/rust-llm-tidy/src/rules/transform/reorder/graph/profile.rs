@@ -192,6 +192,10 @@ pub trait ReorderProfile: Sync {
 impl ReferencePosition {
     /// A bare identifier kind: the node itself both holds and names the
     /// reference.
+    ///
+    /// # Arguments
+    ///
+    /// - `kind` - the node kind that holds and names the reference.
     pub const fn bare(kind: &'static str) -> Self {
         Self {
             kind,
@@ -205,6 +209,11 @@ impl ReferencePosition {
     /// names the reference, so the walk stops.
     ///
     /// The remaining segments never reference a top-level item.
+    ///
+    /// # Arguments
+    ///
+    /// - `kind` - the path-shaped node kind that holds the reference.
+    /// - `segment_field` - the field holding the node's leftmost segment.
     pub const fn path(kind: &'static str, segment_field: &'static str) -> Self {
         Self {
             kind,
@@ -218,6 +227,11 @@ impl ReferencePosition {
     ///
     /// The node's children hold further references (a generic type's
     /// type arguments), so the walk records, then recurses.
+    ///
+    /// # Arguments
+    ///
+    /// - `kind` - the wrapped node kind that holds the reference.
+    /// - `path_field` - the field whose child names the reference.
     pub const fn wrapping(kind: &'static str, path_field: &'static str) -> Self {
         Self {
             kind,
@@ -229,6 +243,11 @@ impl ReferencePosition {
 
     /// A call shape: the child in `path_field` names the called macro,
     /// and the call's arguments are never walked.
+    ///
+    /// # Arguments
+    ///
+    /// - `kind` - the call-shaped node kind that holds the reference.
+    /// - `path_field` - the field whose child names the called macro.
     pub const fn call(kind: &'static str, path_field: &'static str) -> Self {
         Self {
             kind,

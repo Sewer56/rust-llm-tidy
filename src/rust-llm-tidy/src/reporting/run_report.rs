@@ -44,11 +44,11 @@ impl RunReport {
     ///
     /// # Errors
     ///
-    /// - Configured subprocess failure: at least one post-processing command
-    ///   failed
-    /// - File processing failure: at least one file could not complete its
-    ///   enabled phases
-    /// - Lint failure: at least one error-severity diagnostic was emitted
+    /// Returns an `anyhow::Error` when:
+    ///
+    /// - at least one configured post-processing subprocess failed,
+    /// - at least one file could not complete its enabled phases,
+    /// - at least one error-severity diagnostic was emitted.
     pub fn ensure_success(&self) -> anyhow::Result<()> {
         if !self.post_process_failures.is_empty() {
             bail!(

@@ -53,15 +53,17 @@ pub struct ReorderMove {
 impl Permutation {
     /// Create a new permutation.
     ///
-    /// `n` is the total number of items.
-    /// `order` must contain every index in `0..n` exactly once.
+    /// # Arguments
+    ///
+    /// - `n` - the total number of items.
+    /// - `order` - the item indices in output order (a permutation of `0..n`).
     ///
     /// # Errors
     ///
-    /// Returns an error if:
+    /// Returns [`anyhow::Error`] if:
     /// - `order.len() != n` (length mismatch).
-    /// - any index in `order` is `>= n` (out of range).
-    /// - any index appears more than once in `order` (duplicate).
+    /// - any index in `order` is `>= n` (out of range) or appears more than
+    ///   once (duplicate).
     pub fn new(n: usize, order: Vec<usize>) -> Result<Self> {
         ensure!(
             order.len() == n,
@@ -86,17 +88,21 @@ impl Permutation {
 
     /// Attach the member permutation for the type item at `item_idx`.
     ///
-    /// `member_order` must be a permutation of `0..member_count`, where
-    /// `member_count` is that item's member count; [`emit`] splices the
-    /// item's members in this order.
+    /// [`emit`] splices the item's members in this order.
+    ///
+    /// # Arguments
+    ///
+    /// - `item_idx` - index of the type item whose members reorder.
+    /// - `member_count` - that item's member count.
+    /// - `member_order` - the member indices in emit order, a permutation of
+    ///   `0..member_count`.
     ///
     /// # Errors
     ///
-    /// Returns an error if `member_order` is not a permutation of
+    /// Returns [`anyhow::Error`] if `member_order` is not a permutation of
     /// `0..member_count`:
     /// - `member_order.len() != member_count` (length mismatch).
-    /// - any index `>= member_count` (out of range).
-    /// - any index appearing more than once (duplicate).
+    /// - any index `>= member_count` (out of range) or repeated (duplicate).
     ///
     /// [`emit`]: fn@emit
     pub fn set_member_order(
@@ -201,6 +207,10 @@ impl Permutation {
     ///
     /// The slice indexes into the item's members; an identity permutation
     /// means the item emits its original bytes.
+    ///
+    /// # Arguments
+    ///
+    /// - `item_idx` - index of the type item to look up.
     pub fn member_order(&self, item_idx: usize) -> Option<&[usize]> {
         self.member_orders.get(&item_idx).map(Vec::as_slice)
     }

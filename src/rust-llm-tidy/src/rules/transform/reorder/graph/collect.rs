@@ -76,6 +76,13 @@ impl<'names> ReferenceCollector<'names> {
     ///
     /// The map and set borrow `&str` slices that must outlive the collector
     /// (typically the name fields of the parsed items).
+    ///
+    /// # Arguments
+    ///
+    /// - `name_to_idx` - top-level item name to item index, borrowed from the
+    ///   parsed items.
+    /// - `macro_names` - names of top-level macros; edges to them are reversed.
+    /// - `walk` - the grammar's node-kind reference-walk data.
     pub fn new(
         name_to_idx: AHashMap<&'names str, usize>,
         macro_names: AHashSet<&'names str>,
@@ -95,6 +102,12 @@ impl<'names> ReferenceCollector<'names> {
     /// `source` is the full source text, used to extract identifier text.
     ///
     /// [`into_edges`]: ReferenceCollector::into_edges
+    ///
+    /// # Arguments
+    ///
+    /// - `tree` - the parsed syntax tree to walk.
+    /// - `source` - the full source text the tree was parsed from, used to
+    ///   extract identifier text.
     pub fn collect(&mut self, tree: &Tree, source: &[u8]) {
         self.walk(tree.root_node(), source);
     }

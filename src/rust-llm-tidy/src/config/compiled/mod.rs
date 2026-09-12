@@ -134,6 +134,11 @@ impl CompiledConfig {
     ///
     /// Lookup order: `by_extension[ext]`, else the global `min_occurrences`,
     /// else 1. `ext` is matched exactly against the config's extension keys.
+    ///
+    /// # Arguments
+    ///
+    /// - `ext` - the file extension to look up, without a leading dot (e.g.
+    ///   `rs`).
     pub fn links_min_occurrences_for(&self, ext: &str) -> usize {
         match &self.links {
             None => 1,
@@ -175,6 +180,11 @@ impl CompiledConfig {
     /// `file` is canonicalized, the `config_dir` prefix is stripped, and the
     /// relative path is tested against every compiled glob set. A file outside
     /// `config_dir` (prefix strip fails) returns an empty policy.
+    ///
+    /// # Arguments
+    ///
+    /// - `file` - the file path to resolve a policy for; canonicalized before
+    ///   the `config_dir` prefix is stripped.
     pub fn policy_for(&self, file: &Path) -> FilePolicy {
         let Ok(canon) = file.canonicalize() else {
             return FilePolicy::default();

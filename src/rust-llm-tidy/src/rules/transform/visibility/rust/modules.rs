@@ -44,11 +44,19 @@ pub struct ModuleTree {
 impl ModuleTree {
     /// Effective floor visibility text for `file`, or `None` at the crate root.
     /// `None` for files outside the tree (caller narrows standalone with no floor).
+    ///
+    /// # Arguments
+    ///
+    /// - `file` - the canonical path of the source file to look up.
     pub fn floor_for(&self, file: &Path) -> Option<&str> {
         self.floors.get(file).and_then(|f| f.as_deref())
     }
 
     /// True if `file` is a known node in this tree.
+    ///
+    /// # Arguments
+    ///
+    /// - `file` - the canonical path of the source file to test.
     pub fn contains(&self, file: &Path) -> bool {
         self.floors.contains_key(file)
     }

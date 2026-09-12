@@ -87,6 +87,10 @@ impl Regions {
     /// Ambiguity covers unbalanced conditionals, interpolated raw
     /// strings, or the file ending inside an unterminated block comment,
     /// verbatim string, or raw string.
+    ///
+    /// # Arguments
+    ///
+    /// - `source` - the raw source text to scan, directive line by line.
     pub fn scan(source: &str) -> Option<Self> {
         let mut ids: Vec<u32> = Vec::with_capacity(source.lines().count());
         let mut state = LexState::Code;
@@ -135,6 +139,10 @@ impl Regions {
     /// [`SourceItem::start_line`]: crate::source::SourceItem::start_line
     ///
     /// Lines outside the source map to region `0`.
+    ///
+    /// # Arguments
+    ///
+    /// - `line` - the 1-based line number to look up.
     pub fn id_of_line(&self, line: usize) -> u32 {
         self.ids.get(line.saturating_sub(1)).copied().unwrap_or(0)
     }

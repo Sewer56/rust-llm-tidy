@@ -305,12 +305,21 @@ impl SourceItem {
     }
 
     /// Set the preprocessor region id (see [`SourceItem::region`]).
+    ///
+    /// # Arguments
+    ///
+    /// - `region` - the preprocessor region id to assign to this item.
     pub fn with_region(mut self, region: u32) -> Self {
         self.region = region;
         self
     }
 
     /// Attach in-type members (see [`SourceItem::members`]).
+    ///
+    /// # Arguments
+    ///
+    /// - `members` - the in-type members to attach, replacing any existing
+    ///   ones.
     pub fn with_members(mut self, members: Vec<TypeMember>) -> Self {
         self.members = members;
         self
@@ -318,6 +327,11 @@ impl SourceItem {
 
     /// Set the `Result` error type's final path segment
     /// (see [`SourceItem::result_error_type`]).
+    ///
+    /// # Arguments
+    ///
+    /// - `error_type` - the error type's final path segment to set; `None`
+    ///   clears it.
     pub fn with_result_error_type(mut self, error_type: Option<String>) -> Self {
         self.result_error_type = error_type;
         self
@@ -325,6 +339,10 @@ impl SourceItem {
 
     /// Set whether a comment sits above the item's attributes
     /// (see [`SourceItem::has_summary_comment`]).
+    ///
+    /// # Arguments
+    ///
+    /// - `value` - whether a comment sits above the item's attributes.
     pub fn with_summary_comment(mut self, value: bool) -> Self {
         self.has_summary_comment = value;
         self
@@ -333,11 +351,20 @@ impl SourceItem {
     #[allow(clippy::too_many_arguments)]
     /// Creates a new `SourceItem`.
     ///
-    /// See the [`SourceItem`] struct field docs for parameter descriptions:
+    /// See the [`SourceItem`] struct field docs for further parameter detail.
     ///
-    /// - `start`, `end`, `start_line`, `kind`, `name`, `impl_target`
-    /// - `is_test_module`, `is_inline`, `is_trait_impl`, `visibility`
-    /// - `doc_comments`, `returns_result`, `params`, and `is_test_fn`.
+    /// # Arguments
+    ///
+    /// - `start`/`end`/`start_line` - item byte offsets (start including
+    ///   prefix comments) and its 1-based start line.
+    /// - `kind`/`name`/`impl_target` - the item's kind and name (name absent
+    ///   if none), and for impl blocks the target type name.
+    /// - `is_test_module`/`is_inline`/`is_trait_impl` - the item's test-module,
+    ///   inline-`mod`, and trait-impl markers.
+    /// - `visibility` - the item's visibility tier, when its kind has one.
+    /// - `doc_comments`/`returns_result` - doc lines in order; `Result` return.
+    /// - `params`/`is_test_fn` - named parameter idents (no `self`), and
+    ///   whether the fn carries a test marker.
     pub fn new(
         start: usize,
         end: usize,
