@@ -29,6 +29,11 @@ use std::process::Command;
 /// - `exclude_license_documents`: skip conventional license documents when true
 /// - A changed path is returned only when its extension matches an entry in `exts`.
 ///
+/// # Returns
+///
+/// Existing, non-deleted changed paths matching `exts`, sorted and
+/// deduped; empty when nothing changed.
+///
 /// # Errors
 ///
 /// Returns an error if a `git` invocation fails.

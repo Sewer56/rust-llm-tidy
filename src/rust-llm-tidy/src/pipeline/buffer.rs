@@ -44,6 +44,11 @@ use std::path::Path;
 /// - `ext`: language extension without a leading dot
 /// - `options`: standalone rule selection and link threshold
 ///
+/// # Returns
+///
+/// The final source (borrowed when unchanged), the changes applied, and
+/// diagnostics describing the final source.
+///
 /// # Example
 ///
 /// ```rust

@@ -77,7 +77,7 @@ pub const CODE_PARAGRAPH_SIZE: &str = "TEXT001";
 pub const CODE_PASSIVE_NARRATION: &str = "TEXT007";
 /// Rule code for full namespace qualification in code.
 pub const CODE_QUALIFIED_PATH: &str = "MOD003";
-/// Rule code for doc sections or tags listed out of canonical order.
+/// Rule code for doc sections or tags listed out of standard order.
 pub const CODE_SECTION_ORDER: &str = "DOC010";
 /// Rule code for an over-limit sentence of measured prose.
 pub const CODE_SENTENCE_LENGTH: &str = "TEXT003";

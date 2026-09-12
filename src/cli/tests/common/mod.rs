@@ -16,6 +16,10 @@ use std::path::PathBuf;
 /// 3. Walk up from the test executable to the `target/<profile>` dir that
 ///    holds the peer binary.
 ///
+/// # Returns
+///
+/// The resolved path to the `rust-llm-tidy` binary for spawning.
+///
 /// Panics when none resolve.
 pub fn binary() -> PathBuf {
     for var in ["CARGO_BIN_EXE_rust-llm-tidy", "CARGO_BIN_EXE_rust_llm_tidy"] {

@@ -55,6 +55,11 @@ impl ChangedLines {
     }
 
     /// Borrow the normalized 1-based inclusive ranges.
+    ///
+    /// # Returns
+    ///
+    /// The merged, sorted ranges as a borrowed slice; empty when no lines
+    /// are eligible.
     pub fn ranges(&self) -> &[RangeInclusive<usize>] {
         &self.ranges
     }

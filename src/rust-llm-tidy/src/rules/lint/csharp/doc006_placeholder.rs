@@ -37,7 +37,7 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
 
 /// Case-insensitive whole-word match for `needle` in `haystack`.
 ///
-/// A word boundary is any non-alphanumeric, non-underscore character (or
+/// A word boundary is any non-alphanumeric character other than `_` (or
 /// the start/end of the text). This mirrors the Rust rules' matcher: the
 /// needle matches when framed by punctuation but never inside a longer
 /// word.

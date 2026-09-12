@@ -17,6 +17,11 @@ use ahash::AHashMap;
 ///
 /// - `source`: the text whose non-blank lines are counted. The returned map's
 ///   keys borrow from `source`, so `source` must outlive the map.
+///
+/// # Returns
+///
+/// The multiset of non-blank lines: each distinct line text mapped to its
+/// occurrence count. Empty when every line is blank.
 pub fn count_lines(source: &str) -> AHashMap<&str, usize> {
     // Capacity heuristic: one entry per ~24 bytes covers typical line
     // lengths without a second full pass over the source.

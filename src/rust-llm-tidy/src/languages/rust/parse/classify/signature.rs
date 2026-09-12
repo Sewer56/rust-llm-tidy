@@ -233,10 +233,11 @@ fn normalized_type_text<'a>(node: Node<'a>, source: &'a str) -> &'a str {
     }
 }
 
-/// True when a `Result` return type's Ok payload is unit: the first
-/// generic argument is `()`, or the type declares no arguments while
-/// its path qualifies a known unit alias (`core::fmt::Result` hiding
-/// `Result<(), E>`).
+/// True when a `Result` return type's Ok payload is unit.
+///
+/// The first generic argument is `()`, or the type declares no
+/// arguments while its path qualifies a known unit alias
+/// (`core::fmt::Result` hiding `Result<(), E>`).
 ///
 /// A bare unqualified `Result` carries no visible payload and may be
 /// a user alias returning a value, so it reads as carrying one.

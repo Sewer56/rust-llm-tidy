@@ -126,7 +126,7 @@ pub(crate) fn parse_source(source: &str) -> anyhow::Result<ParseResult> {
 /// `end` (`preamble_end` for the first), and each `end` is the byte after the
 /// item's trailing newline.
 ///
-/// Consecutive spans thus touch with no overlap, and the gap between two
+/// Consecutive spans touch with no overlap, so the gap between two
 /// items' bodies falls inside the second item's span. For:
 ///
 /// ```text

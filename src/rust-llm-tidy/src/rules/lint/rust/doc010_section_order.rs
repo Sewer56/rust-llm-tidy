@@ -1,7 +1,7 @@
-//! `DOC010` - doc sections listed out of canonical order.
+//! `DOC010` - doc sections listed out of standard order.
 //!
 //! [`check`] fires when a public item's doc comments contain at least two
-//! recognized section headers whose canonical rank decreases anywhere.
+//! recognized section headers whose standard rank decreases anywhere.
 //! Unknown headers never participate, and repeated headers of the same
 //! section are allowed.
 
@@ -10,12 +10,12 @@ use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::CODE_SECTION_ORDER;
 use crate::source::{SourceItem, VisibilityTier};
 
-/// Canonical section order: `# Arguments`, `# Returns`, `# Examples`,
+/// Standard section order: `# Arguments`, `# Returns`, `# Examples`,
 /// `# Errors`, `# Panics`, `# Safety`, `# Remarks`.
 const CANONICAL_ORDER: &str = "`# Arguments`, `# Returns`, `# Examples`, \
      `# Errors`, `# Panics`, `# Safety`, `# Remarks`";
 /// Recognized section headers (beyond the argument aliases) with their
-/// canonical ranks.
+/// standard ranks.
 const SECTION_HEADERS: &[(&str, u8)] = &[
     ("# returns", 2),
     ("# return", 2),
@@ -29,7 +29,7 @@ const SECTION_HEADERS: &[(&str, u8)] = &[
     ("# note", 7),
 ];
 
-/// `DOC010` - public items' doc sections must follow canonical order.
+/// `DOC010` - public items' doc sections must follow standard order.
 ///
 /// Fires on public items of any kind when the doc comments list
 /// recognized section headers and a later header ranks below an
@@ -37,7 +37,7 @@ const SECTION_HEADERS: &[(&str, u8)] = &[
 ///
 /// Headers match case-insensitively on the whole trimmed line, aliases
 /// included. Exactly one diagnostic is reported per violating item,
-/// naming the first offending adjacent pair by canonical header names.
+/// naming the first offending adjacent pair by standard header names.
 ///
 /// Unrecognized headers are transparent, and equal-rank neighbors pass.
 ///
@@ -82,7 +82,7 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     Vec::new()
 }
 
-/// The canonical header name for a section rank.
+/// The standard header name for a section rank.
 fn canonical_header(rank: u8) -> &'static str {
     match rank {
         1 => "# Arguments",
@@ -95,7 +95,7 @@ fn canonical_header(rank: u8) -> &'static str {
     }
 }
 
-/// Canonical rank of a doc-comment section header line, or `None` when
+/// Standard rank of a doc-comment section header line, or `None` when
 /// the line is not a recognized header.
 ///
 /// The whole trimmed line must equal a known header string, matched
@@ -152,7 +152,7 @@ mod tests {
         );
     }
 
-    // Canonical order (full run) is silent.
+    // Standard order (full run) is silent.
     #[test]
     fn check_should_stay_silent_when_sections_in_canonical_order() {
         let source = documented_fn(
@@ -181,7 +181,7 @@ mod tests {
             documented_fn("/// # Params\n///\n/// - none\n///\n/// # Errors\n///\n/// Fails.");
         assert!(lint(&source).is_empty());
 
-        // `# Errors` before `# Params`: fires, reporting the canonical name.
+        // `# Errors` before `# Params`: fires, reporting the standard name.
         let source =
             documented_fn("/// # Errors\n///\n/// Fails.\n///\n/// # Params\n///\n/// - none");
         let diags = lint(&source);

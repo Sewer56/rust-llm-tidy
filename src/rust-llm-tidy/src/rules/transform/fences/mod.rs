@@ -40,9 +40,8 @@ struct OpenFence {
 /// Rewrite nested markdown fences to alternate markers for one line-comment
 /// prefix family.
 ///
-/// Comment lines are recognized by the markers in `prefixes`. The matched
-/// marker, its indent, and one separating space (when present) are preserved
-/// on every rewritten delimiter line.
+/// Comment lines are recognized by the markers in `prefixes`; every rewritten
+/// delimiter line keeps its matched marker, indent, and separating space.
 ///
 /// Only fences nested inside another fence are rewritten; the outer
 /// (depth-0) fence keeps its original marker.
@@ -59,6 +58,12 @@ struct OpenFence {
 /// - `prefixes`: the language's line-comment markers, longest first (e.g.
 ///   `["///", "//"]`) so a longer marker wins over a shorter one it starts
 ///   with. An empty slice disables comment-prefix handling (plain markdown).
+///
+/// # Returns
+///
+/// A [`FixOutcome`] with the rewritten document and one [`FixAnchor`] per
+/// rewritten delimiter line. When nothing changed, it borrows `input` with
+/// no anchors.
 ///
 /// # Example
 ///
@@ -82,7 +87,7 @@ pub fn fix_fences<'a>(input: &'a str, prefixes: &[&str]) -> FixOutcome<'a> {
     // Output is allocated lazily: only once the first segment that needs to
     // change is found. Until then the input is borrowed verbatim.
     //
-    // The overwhelmingly common case (already-canonical input, or an
+    // The overwhelmingly common case (input already in standard form, or an
     // idempotent re-run) pays zero output-buffer allocation and zero copying.
     //
     // The two costs that remain are the marker presence check above and a
@@ -437,7 +442,7 @@ inner
 
     #[test]
     fn already_canonical_borrowed() {
-        // Outer backtick / inner tilde is canonical -> borrowed unchanged.
+        // Outer backtick / inner tilde is the standard form -> borrowed unchanged.
         let input = "\
 ```text
 text
@@ -611,7 +616,7 @@ deep
             "",
             "no markers here at all\n",
             "single line, no trailing newline",
-            // canonical / dirty plain fences
+            // standard / dirty plain fences
             "```text\ntext\n~~~rust\ninner\n~~~\n```\n",
             "```text\ntext\n```rust\ninner\n```\n```\n",
             // ASCII indentation before fences

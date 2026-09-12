@@ -54,7 +54,7 @@ impl CSharpIndex {
             if !paths::ext_in(path.extension().and_then(|e| e.to_str()), &["cs"]) {
                 continue;
             }
-            // Deleted sources keep their canonical cache key so the stale parse is removed.
+            // Deleted sources keep their resolved cache key so refresh drops the stale parse.
             let key = path
                 .canonicalize()
                 .unwrap_or_else(|_| missing_source_key(path));
@@ -77,16 +77,16 @@ impl CSharpIndex {
         }
     }
 
-    /// Return the cached parse for the canonical identity of `path`.
+    /// Return the cached parse for the resolved absolute identity of `path`.
     pub(crate) fn parsed(&self, path: &Path) -> Option<&ParseResult> {
         self.parses.get(&path.canonicalize().ok()?)
     }
 }
 
-/// Reproduce the canonical cache key a now-deleted `path` received from
+/// Reproduce the resolved cache key a since-deleted `path` received from
 /// [`project_scope`], so refresh still invalidates its cached parse.
 ///
-/// Canonicalizes the surviving parent directory and rejoins the file name;
+/// Resolves the surviving parent directory and rejoins the file name;
 /// bare file names anchor at the current directory instead.
 fn missing_source_key(path: &Path) -> PathBuf {
     let Some(name) = path.file_name() else {

@@ -14,6 +14,11 @@
 /// # Arguments
 ///
 /// - `source`: the text whose line endings are examined.
+///
+/// # Returns
+///
+/// `"\r\n"` when CRLF breaks are at least as common as bare LF and at least
+/// one exists; `"\n"` otherwise.
 pub fn dominant_line_ending(source: &str) -> &'static str {
     let crlf = source.matches("\r\n").count();
     let lf = source.matches('\n').count().saturating_sub(crlf);

@@ -5,7 +5,7 @@
 //!
 //! - `fixtures/lint/`: named `<size>_<clean|dirty>` by lint outcome.
 //! - `fixtures/reorder/`: named `<size>_<stable|dirty>` by reorder outcome
-//!   (`stable` = already in canonical order, so reorder is a no-op).
+//!   (`stable` = already in standard order, so reorder is a no-op).
 //! - `fixtures/vis/`: `crate_small_lib`, `crate_small_foo`,
 //!   `crate_medium_lib`, `crate_medium_foo`, `crate_medium_bar` - multi-file
 //!   crate fixtures for the crate-aware vis bench.
@@ -188,10 +188,10 @@ pub const LINT_FIXTURES: &[(&str, &str)] = &[
 ];
 /// Reorder benchmark fixtures: `(name, source)` pairs, named by reorder state.
 ///
-/// `stable` fixtures are already in canonical order (reorder is a no-op);
+/// `stable` fixtures are already in standard order (reorder is a no-op);
 /// `dirty` fixtures move many items. The `medium/stable` and `large/stable`
 /// fixtures are the reorder output of their clean counterparts, so they are
-/// genuine, already-canonical Rust source.
+/// genuine Rust source already in standard order.
 #[allow(dead_code)] // each bench compiles `common` separately, using one set
 pub const REORDER_FIXTURES: &[(&str, &str)] = &[
     (

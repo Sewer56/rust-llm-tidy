@@ -38,6 +38,10 @@ static COMPILE_COUNTER: core::sync::atomic::AtomicU64 = core::sync::atomic::Atom
 /// - `path`: the path to the `.rust-llm-tidy.yml` config file to load and
 ///   compile.
 ///
+/// # Returns
+///
+/// The parsed, validated, and compiled [`CompiledConfig`] for `path`.
+///
 /// # Errors
 ///
 /// Returns `anyhow::Error` if:

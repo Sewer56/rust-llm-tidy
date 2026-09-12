@@ -49,6 +49,11 @@ mod toposort;
 /// - `edges` - reference dependency edges as member positions
 ///   (`(referencer, referenced)`), for caller-first ordering.
 /// - `profile` - the language's ordering policy.
+///
+/// # Returns
+///
+/// A permutation of `0..members.len()`; the identity permutation when
+/// nothing moves.
 pub fn compute_member_order(
     members: &[TypeMember],
     edges: &[(usize, usize)],
@@ -116,6 +121,11 @@ pub fn compute_member_order(
 ///
 /// - `parsed` - the parsed source whose top-level items are ordered.
 /// - `profile` - the language's ordering policy.
+///
+/// # Returns
+///
+/// `Ok` with the `Permutation` order vector: element `i` is the index
+/// into `parsed.items` of the item at output position `i`.
 ///
 /// # Errors
 ///

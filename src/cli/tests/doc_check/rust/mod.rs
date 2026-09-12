@@ -14,7 +14,7 @@
 //! - `doc006_placeholder`: DOC006 doc-comment placeholder markers
 //! - `doc008_error_variant_order`: DOC008 out-of-order error variants
 //! - `doc009_missing_module_docs`: missing module documentation
-//! - `doc010_section_order`: DOC010 out-of-canonical-order doc sections
+//! - `doc010_section_order`: DOC010 out-of-standard-order doc sections
 //! - `doc011_missing_returns`: DOC011 value/bool fns without `# Returns`
 //!
 //! Size, naming, text, and perf modules:

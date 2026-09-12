@@ -50,6 +50,13 @@ pub struct ChangedLineCollection {
 /// - `paths`: explicit file paths, not directories, relative to cwd or absolute.
 /// - `baseline`: local commit reference, or `None` to use each repository's HEAD.
 ///
+/// # Returns
+///
+/// Snapshots keyed by the original caller paths: `Some` per input with a
+/// baseline, `None` per input without one.
+///
+/// One warning per unavailable repository or standalone input directory.
+///
 /// # Errors
 /// Returns [`anyhow::Error`] for these conditions:
 ///

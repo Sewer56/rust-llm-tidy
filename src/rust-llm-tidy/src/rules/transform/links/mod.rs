@@ -41,7 +41,7 @@
 //!   from a trailing paragraph by a blank line.
 //!
 //!   CommonMark forbids a link reference definition from interrupting a
-//!   paragraph, hence the required separator.
+//!   paragraph, so a separator is required.
 //!
 //! Definitions use the source's dominant line ending.
 //!
@@ -99,9 +99,7 @@ mod scan;
 /// the end of the document.
 ///
 /// `min_occurrences = 1` hoists every eligible link, single-use and
-/// intra-doc included. Returns the rewritten text plus one `(before,
-/// after)` substitution per hoisted link, borrowing `input` back with no
-/// pairs when nothing is eligible.
+/// intra-doc included.
 ///
 /// # Arguments
 ///
@@ -110,6 +108,11 @@ mod scan;
 ///   `["///", "//"]`); an empty slice handles plain markdown.
 /// - `min_occurrences` - how often a `(text, url)` pair must occur to hoist;
 ///   values below 1 are treated as 1.
+///
+/// # Returns
+///
+/// The rewritten text plus one `(before, after)` pair per hoisted link, in
+/// document order. Nothing eligible borrows `input` back with no pairs.
 pub fn fix_links<'a>(
     input: &'a str,
     prefixes: &[&str],
@@ -230,7 +233,7 @@ fn rewrite_doc_context<'a>(
         // Close the previous block the moment the line leaves it.
         //
         // Leaving means a new block, a non-comment line, or a fence carries
-        // a different key. Thus each using comment gets exactly one
+        // a different key. So each using comment gets exactly one
         // in-comment definition copy.
         if block_key != cur_block {
             flush_block_defs(&mut out, cur_block, &mut cur_defs, &mut cur_defs_seen, le);

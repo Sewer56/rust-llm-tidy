@@ -41,6 +41,11 @@ pub enum TieBreak {
 ///   phase.
 /// - `tie_break` - controls ordering of zero-in-degree nodes and cycle nodes.
 ///
+/// # Returns
+///
+/// The permutation: `order[i]` is the `fns` index of the item at output
+/// position `i`.
+///
 /// # Ordering guarantees
 ///
 /// 1. **Entry points first.** `main` sorts before all other functions

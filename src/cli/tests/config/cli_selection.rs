@@ -16,8 +16,8 @@ fn all_excludes_reorder_rule() {
     let dir = temp_dir();
     fs::create_dir_all(&dir).unwrap();
     let tmp = dir.join("lib.rs");
-    // Two top-level fns in NON-canonical order: callee precedes caller, so a
-    // normal run would reorder them. Canonical is caller before callee, per
+    // Two top-level fns in non-standard order: callee precedes caller, so a
+    // normal run would reorder them. Standard is caller before callee, per
     // the reorder phase.
     fs::write(&tmp, "fn callee() {}\nfn caller() { callee(); }\n").unwrap();
     let cfg = dir.join(".rust-llm-tidy.yml");
@@ -40,7 +40,7 @@ fn all_excludes_reorder_rule() {
     );
     // Default pipeline runs fix/reorder/vis/lints.
     //
-    // With `reorder` disabled, the non-canonical input order (callee before caller)
+    // With `reorder` disabled, the non-standard input order (callee before caller)
     // must be preserved.
     // Without the disable, it would reorder to caller-before-callee.
     let actual = fs::read_to_string(&tmp).unwrap();

@@ -63,18 +63,30 @@ impl TypeMember {
     }
 
     /// The kind of this member.
+    ///
+    /// # Returns
+    ///
+    /// The member's [`ItemKind`], borrowed.
     #[inline]
     pub fn kind(&self) -> &ItemKind {
         &self.kind
     }
 
     /// The name of this member, if any.
+    ///
+    /// # Returns
+    ///
+    /// The member's name, or `None` when it has none.
     #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
 
     /// The preprocessor region id of this member.
+    ///
+    /// # Returns
+    ///
+    /// The region id the member's first line belongs to.
     #[inline]
     pub fn region(&self) -> u32 {
         self.region

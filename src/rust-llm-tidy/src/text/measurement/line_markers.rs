@@ -23,6 +23,11 @@ use super::region::{Dialect, DocRegion, RegionLine};
 ///
 /// - `source` - the raw file text.
 /// - `ext` - the file extension, selecting the comment marker table.
+///
+/// # Returns
+///
+/// One region per contiguous comment-line run, in source order; a
+/// single whole-file region for marker-less extensions.
 pub fn doc_regions(source: &str, ext: &str) -> Vec<DocRegion> {
     let markers = markers_for(ext);
     let mut regions: Vec<DocRegion> = Vec::new();

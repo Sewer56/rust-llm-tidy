@@ -60,6 +60,11 @@ use tree_sitter::Node;
 /// - `crate_reexports` - the crate-wide re-export guard consulted for every
 ///   candidate (named match OR glob sentinel).
 ///
+/// # Returns
+///
+/// `Ok` with the narrowed source; [`Cow::Borrowed`] borrowing `source` back
+/// when no child needs narrowing, [`Cow::Owned`] otherwise.
+///
 /// # Errors
 ///
 /// tree-sitter performs error recovery, so syntactically invalid Rust still

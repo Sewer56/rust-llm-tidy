@@ -183,6 +183,11 @@ impl ItemKind {
     ///
     /// This lets records hold the kind without an owned allocation.
     ///
+    /// # Returns
+    ///
+    /// The stable kind name (e.g. `"fn"`), same string [`Display`]
+    /// renders.
+    ///
     /// [`Display`]: std::fmt::Display
     pub fn as_str(&self) -> &'static str {
         match self {

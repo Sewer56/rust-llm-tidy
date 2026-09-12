@@ -19,7 +19,8 @@
 //! Identifiers are probed against the name map through a single reused
 //! scratch [`String`] (via its `fmt::Write` impl).
 //!
-//! The hot reference paths thus perform zero per-ident heap allocation.
+//! The hot reference paths perform zero per-ident heap allocation as a
+//! result.
 //!
 //! Edges are stored as item indices, not owned strings.
 //!
@@ -114,6 +115,11 @@ impl<'names> ReferenceCollector<'names> {
 
     /// Consume the collector and return discovered reference edges as
     /// `(referencer_index, referenced_index)` pairs.
+    ///
+    /// # Returns
+    ///
+    /// All recorded edges in walk order; an empty vector when no references
+    /// matched a top-level item name.
     pub fn into_edges(self) -> Vec<(usize, usize)> {
         self.edges
     }

@@ -56,8 +56,10 @@ fn doc011_checks_returns_tags_against_return_types() {
 }
 
 /// DOC011 treats an unmodified bodyless interface method as
-/// implicitly public, while an unmodified default implementation (a
-/// body) stays interface-private and stays quiet.
+/// implicitly public.
+///
+/// An unmodified default implementation (a body) stays
+/// interface-private and stays quiet.
 #[test]
 fn doc011_should_warn_when_interface_method_is_bodyless() {
     let source = concat!(

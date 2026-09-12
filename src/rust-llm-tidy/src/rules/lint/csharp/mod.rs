@@ -33,7 +33,7 @@
 //!   parameters need `<param name="...">` tags.
 //! - DOC005: `<param>` tags must name every declared parameter.
 //! - DOC006: placeholder markers (`TODO`/`FIXME`/`TBD`) in doc comments.
-//! - DOC010: recognized doc tags must follow the canonical order
+//! - DOC010: recognized doc tags must follow the standard order
 //!   (`inheritdoc` through `seealso`).
 //! - DOC011: non-private methods with non-void return values need a
 //!   `<returns>` tag; `bool` returns only remind.

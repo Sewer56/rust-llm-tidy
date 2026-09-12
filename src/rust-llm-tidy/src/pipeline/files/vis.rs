@@ -52,7 +52,7 @@ pub(crate) fn resolve_vis_context(
             // `/private/tmp`, or any symlinked `TMPDIR`):
             //
             // - the BFS root lookup in `build_module_tree` (`parsed.get(&path)`)
-            //   would miss (root key is non-canonical, `parsed` keys are canonical)
+            //   would miss (root key unresolved, `parsed` keys resolved)
             // - the tree ends up with only the root node: no children resolved,
             //   no warnings emitted
             // - every file silently degrades to standalone narrowing
@@ -136,7 +136,7 @@ pub(crate) fn vis_file(
 
     let output = match ctx {
         Some(VisContext { tree, reexports }) => {
-            // Canonicalize the lookup key to match the tree's canonical keys.
+            // Resolve the lookup key to match the tree's resolved keys.
             let canon = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
             if tree.contains(&canon) {
                 // Apply the tree floor + crate-wide re-export guard.

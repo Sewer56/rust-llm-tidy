@@ -68,7 +68,7 @@ enum Alignment {
 /// allocations regardless of row count - not one `Vec` per row.
 ///
 /// An already-aligned table is then rejected with **zero** per-row `String`
-/// allocation: each canonical row is written into one reused buffer
+/// allocation: each aligned row is written into one reused buffer
 /// ([`build_row_into`] / [`build_delimiter_into`]). The row is compared
 /// in place.
 ///
@@ -109,7 +109,7 @@ pub(crate) fn realign_table(lines: &[&str]) -> Option<Vec<String>> {
     // Now figure out the required widths for each column.
     let widths = compute_widths(&header, &body, ncols);
 
-    // Phase 1 - change detection: render each line's canonical form into one
+    // Phase 1 - change detection: render each line's aligned form into one
     // reused buffer and compare it against the original.
     //
     // The first mismatch drops to Phase 2 ([`emit_all`]); if every line
@@ -141,7 +141,7 @@ pub(crate) fn realign_table(lines: &[&str]) -> Option<Vec<String>> {
         }
     }
 
-    // All lines already canonical - nothing to realign.
+    // All lines already aligned - nothing to realign.
     None
 }
 
@@ -546,7 +546,7 @@ mod tests {
 
     #[test]
     fn none_for_ragged_delimiter_column_count() {
-        // header has 2 cols, delimiter claims 1 -> not a (canonical) table.
+        // header has 2 cols, delimiter claims 1 -> not a (well-formed) table.
         let lines = ["| a | b |", "| --- |", "| c | d |"];
         assert!(realign_table(&lines).is_none());
     }

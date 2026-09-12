@@ -79,6 +79,11 @@ pub enum ChangeKind {
 
 impl ChangeKind {
     /// The stable string form used by plaintext and JSON output.
+    ///
+    /// # Returns
+    ///
+    /// The kind name: an [`ItemKind`] name, or `"fence"`, `"link"`,
+    /// `"table"`, or `"extern crate"`.
     pub fn as_str(self) -> &'static str {
         match self {
             ChangeKind::Item(kind) => kind.as_str(),

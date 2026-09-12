@@ -216,8 +216,10 @@ fn collect_declaration<'a>(
 }
 
 /// True when `node` is a bodyless method without a visibility
-/// modifier inside an interface: implicitly public in C#, unlike an
-/// unmodified default implementation, whose body keeps it private.
+/// modifier inside an interface.
+///
+/// Such methods are implicitly public in C#. An unmodified default
+/// implementation has a body, so it is private instead.
 fn implicitly_public_interface_method(node: tree_sitter::Node<'_>, source: &str) -> bool {
     node.child_by_field_name("body").is_none() && {
         // Any visibility modifier (`public`, `private`, the

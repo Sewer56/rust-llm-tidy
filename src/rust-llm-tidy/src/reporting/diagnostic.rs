@@ -66,6 +66,10 @@ pub enum Severity {
 
 impl Diagnostic {
     /// Producer-owned title, or the raw code when no title was supplied.
+    ///
+    /// # Returns
+    ///
+    /// The producer's title when present, otherwise the diagnostic code.
     pub fn title(&self) -> &str {
         self.title.as_deref().unwrap_or(self.code)
     }

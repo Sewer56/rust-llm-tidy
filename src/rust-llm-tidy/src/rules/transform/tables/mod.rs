@@ -64,6 +64,11 @@ mod realign;
 ///   `["///", "//"]`) so a longer marker wins over a shorter one it starts
 ///   with. An empty slice strips nothing (plain markdown mode).
 ///
+/// # Returns
+///
+/// The realigned text; [`Cow::Borrowed`] borrowing `input` back when no
+/// table changes.
+///
 /// # Allocation strategy
 ///
 /// The output buffer is allocated lazily: a single read-only scan runs
@@ -331,7 +336,7 @@ no tables here
         // Single-line `\n` escapes (not a multi-line `\`-continuation string).
         //
         // The pre-commit hook runs `fix_tables` on `.rs` source, and would
-        // realign any multi-line pipe input back to canonical form, silently
+        // realign any multi-line pipe input back to aligned form, silently
         // re-breaking this test. One physical line is not seen as a table.
         let input = "| a | bb |\n| --- | --- |\n| ccc | d |\n";
         let text = fix_tables(input, DOC_PREFIXES);
@@ -396,7 +401,7 @@ pub fn f() {}
         //
         // Written with single-line `\n` escapes so the repo's own
         // `fix_tables` pre-commit hook cannot re-align the literal back to
-        // canonical first.
+        // aligned form first.
         let input = "/// | name | value |\n/// | ---- | ----- |\n/// | a | 1 |\npub fn f() {}\n";
         let text = fix_tables(input, DOC_PREFIXES);
         assert!(
@@ -457,7 +462,7 @@ pub fn f() {}
     #[test]
     fn multiple_tables_and_text_roundtrip() {
         // Two tables separated by prose: the first is misaligned (realigns),
-        // the second is already canonical (borrowed).
+        // the second is already aligned (borrowed).
         //
         // Exercises the lazy output buffer: unchanged text before, between,
         // and after the changed run must be copied through verbatim.
@@ -476,7 +481,7 @@ trailer
         assert!(text.contains("| a  | b |"), "{text}");
         assert!(text.contains("| -- | - |"), "{text}");
         assert!(text.contains("| cc | d |"), "{text}");
-        // second table was already canonical and is carried through unchanged.
+        // second table was already aligned and is carried through unchanged.
         assert!(text.contains("| x  | y |"), "{text}");
         assert!(text.contains("| zz | w |"), "{text}");
         assert!(
@@ -495,7 +500,7 @@ trailer
         //
         // Written with single-line `\n` escapes (see
         // `realigns_plain_markdown_table`) so the repo's own `fix_tables`
-        // pre-commit/lint hook cannot re-align the literals back to canonical.
+        // pre-commit/lint hook cannot re-align the literals back to aligned form.
         let input = "| a | bb |\n| -- | -- |\n| c | d |\n\n| x | yy |\n| -- | -- |\n| z | w |\n";
         let text = fix_tables(input, DOC_PREFIXES).into_owned();
         assert_ne!(text, input, "both misaligned tables should realign");
@@ -529,7 +534,7 @@ trailer
     //
     // Inputs are built with `format!` from single-line `\n`-escaped templates
     // so the repo's own `fix_tables` pre-commit hook cannot realign the
-    // literals back to canonical form. This is the same trick as the tests
+    // literals back to aligned form. This is the same trick as the tests
     // above.
 
     /// One line-comment family per entry: the marker family and a label for

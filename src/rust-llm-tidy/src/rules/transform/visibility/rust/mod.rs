@@ -36,7 +36,8 @@ mod narrow;
 /// The [`Tree`] stores byte offsets (not references), so it stays valid for
 /// `source`'s bytes as long as they are not mutated.
 pub struct ParsedFile {
-    /// Canonical file path (matches [`ModuleTree`] keys when crate-aware).
+    /// Resolved absolute file path (matches [`ModuleTree`] keys when
+    /// crate-aware).
     pub path: PathBuf,
     /// The verbatim source text the tree was parsed from.
     pub source: String,
@@ -63,8 +64,14 @@ impl ParsedFile {
     ///
     /// # Arguments
     ///
-    /// - `path` - the canonical path of the file `source` was read from.
+    /// - `path` - the resolved absolute path of the file `source` was read
+    ///   from.
     /// - `source` - the verbatim Rust source text to parse.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Self)` with the parsed tree, even when the Rust is syntactically
+    /// invalid (tree-sitter performs error recovery).
     ///
     /// # Errors
     ///
@@ -96,11 +103,20 @@ impl ReexportSet {
     }
 
     /// True if a `pub use ... ::*` glob was seen in any file.
+    ///
+    /// # Returns
+    ///
+    /// `true` when the `"*"` glob sentinel is present.
     pub fn has_glob(&self) -> bool {
         self.0.contains("*")
     }
 
     /// Read-only access for callers that walk the set directly.
+    ///
+    /// # Returns
+    ///
+    /// The set of re-exported simple names plus the `"*"` glob sentinel
+    /// when a glob was seen.
     pub fn names(&self) -> &AHashSet<String> {
         &self.0
     }
@@ -120,6 +136,10 @@ impl ReexportSet {
 ///
 /// - `files` - iterated over every parsed file; each file's `pub use` items
 ///   (top-level and nested in inline modules) are scanned and unioned.
+///
+/// # Returns
+///
+/// The unioned [`ReexportSet`]; an empty set when no `pub use` items exist.
 pub fn collect_crate_reexports<'a>(files: impl IntoIterator<Item = &'a ParsedFile>) -> ReexportSet {
     let mut out = ReexportSet::new();
     for pf in files {

@@ -104,6 +104,11 @@ mod symbol_rule;
 ///   auto-discovery.
 /// - `no_config`: when `true`, disables discovery and loading entirely and
 ///   returns `None`.
+///
+/// # Returns
+///
+/// `Some` for the explicit `arg` or the first discovered config path;
+/// `None` when `no_config` is set or discovery finds no config file.
 pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathBuf> {
     if no_config {
         return None;
@@ -131,6 +136,11 @@ pub fn discover_config_path(arg: Option<&Path>, no_config: bool) -> Option<PathB
 ///
 /// The list holds lint codes followed by fix/operation names; the CLI
 /// validates rule names against it.
+///
+/// # Returns
+///
+/// Every accepted rule name: all registered lint codes, then the fix and
+/// operation names.
 pub fn known_rules() -> Vec<&'static str> {
     let mut rules: Vec<&'static str> = LINT_CODES.to_vec();
     rules.extend_from_slice(KNOWN_FIX_OPS);

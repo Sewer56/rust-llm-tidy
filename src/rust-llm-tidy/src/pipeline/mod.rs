@@ -68,6 +68,11 @@ impl FileReport {
 /// - `config`: previously loaded configuration, or language defaults when
 ///   absent
 ///
+/// # Returns
+///
+/// A [`RunReport`] with per-file reports, warnings, and subprocess
+/// failures; partial when individual files or subprocesses fail.
+///
 /// # Example
 ///
 /// ```rust
@@ -561,7 +566,7 @@ mod tests {
         let dir = temp_dir();
         fs::write(dir.join("a.rs"), "fn a() {}\n").unwrap();
         std::os::unix::fs::symlink(dir.join("a.rs"), dir.join("link.rs")).unwrap();
-        // Hardlink: distinct canonical path, same (dev, ino) - a symlink-only
+        // Hardlink: distinct resolved path, same (dev, ino) - a symlink-only
         // dedup would miss it.
         fs::hard_link(dir.join("a.rs"), dir.join("hard.rs")).unwrap();
 

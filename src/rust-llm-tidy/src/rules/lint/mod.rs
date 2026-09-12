@@ -19,6 +19,10 @@ pub(crate) mod text;
 /// # Arguments
 ///
 /// - `regions`: documentation regions with original source line numbers
+///
+/// # Returns
+///
+/// Diagnostics grouped by rule, in source order within each group.
 pub fn run_region_checks(regions: Vec<DocRegion>) -> Vec<Diagnostic> {
     text::diagnostics(&measurement::measure(regions))
 }
@@ -29,6 +33,10 @@ pub fn run_region_checks(regions: Vec<DocRegion>) -> Vec<Diagnostic> {
 ///
 /// - `source`: raw prose or commented source
 /// - `ext`: extension selecting the line-marker family
+///
+/// # Returns
+///
+/// Diagnostics grouped by rule, in source order within each group.
 pub fn run_text_checks(source: &str, ext: &str) -> Vec<Diagnostic> {
     text::diagnostics(&measurement::analyze(source, ext))
 }

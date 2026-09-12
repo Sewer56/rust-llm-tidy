@@ -31,6 +31,11 @@ pub struct PostProcessFailure {
 impl RunReport {
     /// Count error-severity findings without treating warnings or hints as
     /// failures.
+    ///
+    /// # Returns
+    ///
+    /// The number of `Severity::Error` diagnostics across all files;
+    /// `0` when there are none.
     pub fn error_count(&self) -> usize {
         self.files
             .iter()

@@ -33,7 +33,7 @@ enum ModChild {
 /// It also exposes per-file lookup used by
 /// `narrow_vis_in_tree`.
 pub struct ModuleTree {
-    /// Canonicalized file path -> effective floor visibility text
+    /// Resolved absolute file path -> effective floor visibility text
     /// (e.g. `"pub(crate)"`), or `None` at the crate root.
     floors: AHashMap<PathBuf, Option<String>>,
     /// Non-fatal resolution warnings (unresolved `mod foo;`, missing `#[path]`
@@ -47,7 +47,12 @@ impl ModuleTree {
     ///
     /// # Arguments
     ///
-    /// - `file` - the canonical path of the source file to look up.
+    /// - `file` - the resolved absolute path of the source file to look up.
+    ///
+    /// # Returns
+    ///
+    /// The effective floor visibility text, or `None` at the crate root and
+    /// for files outside the tree.
     pub fn floor_for(&self, file: &Path) -> Option<&str> {
         self.floors.get(file).and_then(|f| f.as_deref())
     }
@@ -56,12 +61,21 @@ impl ModuleTree {
     ///
     /// # Arguments
     ///
-    /// - `file` - the canonical path of the source file to test.
+    /// - `file` - the resolved absolute path of the source file to test.
+    ///
+    /// # Returns
+    ///
+    /// `true` when `file` has an entry in the tree.
     pub fn contains(&self, file: &Path) -> bool {
         self.floors.contains_key(file)
     }
 
     /// Non-fatal resolution warnings (unresolved `mod`, missing `#[path]`).
+    ///
+    /// # Returns
+    ///
+    /// The collected warnings in discovery order; empty when every `mod`
+    /// resolved.
     pub fn warnings(&self) -> &[String] {
         &self.warnings
     }
@@ -80,8 +94,12 @@ impl ModuleTree {
 /// # Arguments
 ///
 /// - `root` - the source file to treat as the crate root (its floor is `None`).
-/// - `files` - every parsed file in the crate, indexed by canonical path for
-///   resolving `mod foo;` edges and slicing visibility spans.
+/// - `files` - every parsed file in the crate, indexed by resolved absolute
+///   path for resolving `mod foo;` edges and slicing visibility spans.
+///
+/// # Returns
+///
+/// `Ok` with the built [`ModuleTree`]; never `Err` (see `# Errors`).
 ///
 /// # Errors
 ///
@@ -91,7 +109,7 @@ impl ModuleTree {
 /// from invalid Rust with `ERROR` nodes), so this does not fail on a bad
 /// source. The `Result` is retained for API continuity.
 pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<ModuleTree> {
-    // 1. Index files by canonical path. Keep trees + sources for byte-exact
+    // 1. Index files by resolved path. Keep trees + sources for byte-exact
     //    visibility span slicing (mirrors walk()).
     let by_path: AHashMap<PathBuf, &ParsedFile> =
         files.iter().map(|f| (f.path.clone(), f)).collect();
@@ -155,6 +173,10 @@ pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<Mo
 ///
 /// - `start` - the file or directory to walk up from; the nearest enclosing
 ///   `Cargo.toml` owns the crate whose root is returned.
+///
+/// # Returns
+///
+/// `Ok` with the owning crate's root source file path.
 ///
 /// # Errors
 ///

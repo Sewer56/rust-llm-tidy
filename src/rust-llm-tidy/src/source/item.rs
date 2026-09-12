@@ -138,8 +138,8 @@ pub enum ReturnKind {
     /// receiver's meaning is self-evident, so DOC011 stays silent.
     SelfValue,
     /// `Result<(), E>` of any path, plus qualified unit aliases like
-    /// `core::fmt::Result`: DOC002's `# Errors` section already covers
-    /// the contract, so DOC011 stays silent.
+    /// `core::fmt::Result`. DOC002's `# Errors` section covers the
+    /// contract, so DOC011 stays silent.
     ResultUnit,
     /// Any other declared return type: a value readers may need described.
     Value,
@@ -159,6 +159,10 @@ pub enum VisibilityTier {
 impl ParseResult {
     /// The parsed [`tree_sitter::Tree`], reused from parsing so downstream
     /// passes avoid a second parse of [`ParseResult::source`].
+    ///
+    /// # Returns
+    ///
+    /// The tree parsed from [`ParseResult::source`], borrowed.
     pub fn syntax_tree(&self) -> &tree_sitter::Tree {
         &self.tree
     }
@@ -196,12 +200,20 @@ impl ParseResult {
 
 impl SourceItem {
     /// The kind of this item.
+    ///
+    /// # Returns
+    ///
+    /// This item's [`ItemKind`], borrowed.
     #[inline]
     pub fn kind(&self) -> &ItemKind {
         &self.kind
     }
 
     /// The name of this item, if any.
+    ///
+    /// # Returns
+    ///
+    /// The item's name, or `None` when the item has none.
     #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
@@ -214,6 +226,10 @@ impl SourceItem {
     }
 
     /// The target type name for an impl block, if any.
+    ///
+    /// # Returns
+    ///
+    /// The impl target's type name, or `None` for non-impl items.
     #[inline]
     pub fn impl_target_name(&self) -> Option<&str> {
         self.impl_target.as_deref()
@@ -244,6 +260,11 @@ impl SourceItem {
     /// (fn, struct, enum, union, type, const, static, mod, trait, use, extern
     /// crate). Returns `None` for kinds without one (impl, macro, macro
     /// invocation, other).
+    ///
+    /// # Returns
+    ///
+    /// `Some` tier when the item's kind carries a visibility modifier, else
+    /// `None`.
     #[inline]
     pub fn visibility(&self) -> Option<VisibilityTier> {
         self.visibility
@@ -254,6 +275,10 @@ impl SourceItem {
     /// Each entry is the raw value of a `#[doc = "..."]` attribute (so a
     /// `/// foo` line yields `" foo"`). Empty when the item has no doc
     /// comment.
+    ///
+    /// # Returns
+    ///
+    /// The doc-comment lines as a borrowed slice; empty when there are none.
     pub fn doc_comments(&self) -> &[String] {
         &self.doc_comments
     }
@@ -270,6 +295,10 @@ impl SourceItem {
     /// `None` for non-fn items, fns not returning `Result`, and non-path
     /// error types. This is a name only: resolving it to a type is the
     /// caller's job (DOC008 matches it against same-file top-level enums).
+    ///
+    /// # Returns
+    ///
+    /// The final path segment as a borrowed name, or `None` when absent.
     #[inline]
     pub fn result_error_type(&self) -> Option<&str> {
         self.result_error_type.as_deref()
@@ -279,12 +308,21 @@ impl SourceItem {
     ///
     /// Empty for non-fn items. For fns with destructuring parameter patterns,
     /// only simple `Pat::Ident` names are reported.
+    ///
+    /// # Returns
+    ///
+    /// The parameter names as a borrowed slice; empty for non-fn items.
     #[inline]
     pub fn params(&self) -> &[String] {
         &self.params
     }
 
     /// The declared return type's [`ReturnKind`].
+    ///
+    /// # Returns
+    ///
+    /// The classification recorded at parse time, or set later via
+    /// [`SourceItem::with_return_kind`].
     #[inline]
     pub fn return_kind(&self) -> ReturnKind {
         self.return_kind
@@ -309,6 +347,10 @@ impl SourceItem {
 
     /// 1-based source line where this item starts (including prefix
     /// comments/attrs).
+    ///
+    /// # Returns
+    ///
+    /// The 1-based line number recorded at parse time.
     #[inline]
     pub fn start_line(&self) -> usize {
         self.start_line
@@ -319,6 +361,10 @@ impl SourceItem {
     /// Reordering permutes items only within one region, so no item
     /// crosses a preprocessor conditional boundary. `0` for languages
     /// without preprocessor conditionals (Rust).
+    ///
+    /// # Returns
+    ///
+    /// The region id this item belongs to.
     #[inline]
     pub fn region(&self) -> u32 {
         self.region
@@ -328,6 +374,10 @@ impl SourceItem {
     ///
     /// Empty unless a language backend's parse produced them; the Rust
     /// parse emits none (Rust reorders top-level items only).
+    ///
+    /// # Returns
+    ///
+    /// The attached members as a borrowed slice; empty when there are none.
     pub fn members(&self) -> &[TypeMember] {
         &self.members
     }

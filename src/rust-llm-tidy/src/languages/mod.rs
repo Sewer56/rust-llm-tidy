@@ -114,6 +114,10 @@ pub trait LanguageBackend: Sync {
 ///
 /// - `ext`: a path extension without the leading dot; an empty string
 ///   resolves to `None`.
+///
+/// # Returns
+///
+/// The registered backend, or `None` when no backend claims `ext`.
 #[inline]
 pub fn backend_for(ext: &str) -> Option<&'static dyn LanguageBackend> {
     BACKED_EXTENSIONS

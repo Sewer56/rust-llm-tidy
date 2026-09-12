@@ -91,6 +91,11 @@ impl Regions {
     /// # Arguments
     ///
     /// - `source` - the raw source text to scan, directive line by line.
+    ///
+    /// # Returns
+    ///
+    /// `Some` region ids, one per line, or `None` when the source is
+    /// ambiguous (see above).
     pub fn scan(source: &str) -> Option<Self> {
         let mut ids: Vec<u32> = Vec::with_capacity(source.lines().count());
         let mut state = LexState::Code;
@@ -138,11 +143,16 @@ impl Regions {
     ///
     /// [`SourceItem::start_line`]: crate::source::SourceItem::start_line
     ///
-    /// Lines outside the source map to region `0`.
+    /// Lines past the end of the source map to region `0`.
     ///
     /// # Arguments
     ///
     /// - `line` - the 1-based line number to look up.
+    ///
+    /// # Returns
+    ///
+    /// The region id of the line, or `0` when `line` is past the end of
+    /// the source.
     pub fn id_of_line(&self, line: usize) -> u32 {
         self.ids.get(line.saturating_sub(1)).copied().unwrap_or(0)
     }

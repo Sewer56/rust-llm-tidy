@@ -113,18 +113,30 @@ impl CompiledConfig {
 
     /// Borrow the post-processing steps so the pipeline can run them after the
     /// per-file loop.
+    ///
+    /// # Returns
+    ///
+    /// The compiled steps in run order; empty when none are configured.
     pub fn post_process_steps(&self) -> &[PostProcessStep] {
         &self.post_process
     }
 
     /// The replacement extension list from the `extensions:` key; empty =
     /// keep the defaults.
+    ///
+    /// # Returns
+    ///
+    /// The configured `extensions:` list.
     pub fn extension_override(&self) -> &[String] {
         &self.extensions
     }
 
     /// The user-added extensions from the `extra_extensions:` key, allowed
     /// in addition to the effective base list.
+    ///
+    /// # Returns
+    ///
+    /// The user-added extension list; empty when the key is absent.
     pub fn extra_extensions(&self) -> &[String] {
         &self.extra_extensions
     }
@@ -139,6 +151,11 @@ impl CompiledConfig {
     ///
     /// - `ext` - the file extension to look up, without a leading dot (e.g.
     ///   `rs`).
+    ///
+    /// # Returns
+    ///
+    /// The effective threshold for `ext`: the per-extension override, else
+    /// the global `min_occurrences`, else 1.
     pub fn links_min_occurrences_for(&self, ext: &str) -> usize {
         match &self.links {
             None => 1,
@@ -153,6 +170,10 @@ impl CompiledConfig {
     /// Effective MOD001 line budget.
     ///
     /// Lookup order: `module_size.max_lines`, else the default 500.
+    ///
+    /// # Returns
+    ///
+    /// The effective MOD001 line budget for a file.
     pub fn module_size_max_lines(&self) -> usize {
         self.module_size().max_lines
     }
@@ -169,7 +190,11 @@ impl CompiledConfig {
     }
 
     /// Test-only accessor for the canonicalized config directory. Used by the
-    /// unit tests to reconstruct canonical paths matching `policy_for`.
+    /// unit tests to reconstruct resolved paths matching `policy_for`.
+    ///
+    /// # Returns
+    ///
+    /// The resolved absolute config directory the patterns resolve against.
     #[cfg(test)]
     pub fn config_dir_canonical_for_test(&self) -> &Path {
         &self.config_dir
@@ -185,6 +210,11 @@ impl CompiledConfig {
     ///
     /// - `file` - the file path to resolve a policy for; canonicalized before
     ///   the `config_dir` prefix is stripped.
+    ///
+    /// # Returns
+    ///
+    /// The matched policy; an empty policy when `file` cannot be resolved or
+    /// lies outside `config_dir`.
     pub fn policy_for(&self, file: &Path) -> FilePolicy {
         let Ok(canon) = file.canonicalize() else {
             return FilePolicy::default();

@@ -30,6 +30,11 @@ impl ChangedLineSnapshot {
     /// - `transformed` - the source text after the tool's mutation, whose
     ///   lines are matched by exact text.
     ///
+    /// # Returns
+    ///
+    /// Eligible lines in `transformed` coordinates; empty when either text
+    /// exceeds the size limits.
+    ///
     /// # Remarks
     /// This deliberately permits false negatives: edited lines, mixed-eligibility
     /// duplicates, and increased duplicate counts are excluded.

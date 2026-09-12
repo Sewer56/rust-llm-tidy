@@ -33,12 +33,16 @@ pub const RS_FIXTURES: &[(&str, &str)] = &[
 /// Non-table lines and doc-comment prefixes are left untouched.
 ///
 /// Used only in benchmark setup (never inside the measured `iter` closure) to
-/// exercise the realignment path against an otherwise-canonical fixture.
+/// exercise the realignment path against an otherwise-aligned fixture.
 ///
 /// # Arguments
 ///
-/// - `input`: the canonical fixture whose table cells are collapsed so columns
+/// - `input`: the aligned fixture whose table cells are collapsed so columns
 ///   no longer line up.
+///
+/// # Returns
+///
+/// The misaligned copy of `input`, line by line.
 pub fn misalign(input: &str) -> String {
     input.split_inclusive('\n').map(misalign_line).collect()
 }

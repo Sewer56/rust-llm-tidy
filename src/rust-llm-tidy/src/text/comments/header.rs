@@ -45,6 +45,11 @@ struct HeaderSyntax {
 /// - `source`: the file's raw text; `\r\n` endings are handled.
 /// - `ext`: the file extension without the leading dot, matched
 ///   ASCII case-insensitively.
+///
+/// # Returns
+///
+/// The number of leading header lines; `0` for unsupported extensions
+/// or files whose first line is code.
 pub fn header_lines(source: &str, ext: &str) -> usize {
     let Some(syntax) = syntax_for(ext) else {
         return 0;

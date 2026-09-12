@@ -64,7 +64,7 @@ const ARGUMENTS_HEADERS: &[&str] = &[
 /// and `# RETURNS` are equivalent.
 ///
 /// Used by DOC011 ([`doc011_missing_returns`]); DOC010 ranks the same
-/// vocabulary in its canonical order.
+/// vocabulary in its standard order.
 const RETURNS_HEADERS: &[&str] = &["# Returns", "# Return"];
 
 /// Run Rust item checks, tree checks, and text checks over one parse.
@@ -82,8 +82,8 @@ pub(crate) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
 
 /// Case-insensitive whole-word match for `needle` in `haystack`.
 ///
-/// A word boundary is any non-alphanumeric, non-underscore character (or
-/// the start/end of the text). Hence the needle matches when framed by
+/// A word boundary is any non-alphanumeric character other than `_` (or
+/// the start/end of the text). So the needle matches when framed by
 /// punctuation but never inside a longer word, and `name` matches in
 /// `` `name` `` but not in `filename`.
 ///

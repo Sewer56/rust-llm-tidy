@@ -3,11 +3,11 @@
 //! Partially vendored from rust-reorder (MIT); modified based on
 //! <https://github.com/umwelt-ai/rust-reorder>.
 
+use super::reorder_move::ReorderMove;
 use crate::source::line_endings::dominant_line_ending;
 use crate::source::{ItemKind, ParseResult, SourceItem};
 use ahash::AHashMap;
 use anyhow::{Result, ensure};
-use core::fmt;
 use core::ops::Range;
 
 /// A validated permutation of items.
@@ -26,30 +26,6 @@ pub struct Permutation {
     preserve_spacing: bool,
 }
 
-/// A single reorder move: one item whose output position differs from its
-/// input position.
-///
-/// Positions are 1-based item sequence positions, matching the user-visible
-/// `from pos A to pos B` reporting. This type is deliberately serde-free; the
-/// CLI layer is responsible for its own serialization.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ReorderMove {
-    /// 1-based output position of the moved item.
-    to: usize,
-    /// 1-based input position of the moved item.
-    from: usize,
-    /// Description of the item that directly follows this one in the reordered
-    /// output (the item it lands before), if any.
-    before: Option<Box<str>>,
-    /// Kind of the moved item (e.g. `fn`, `impl`).
-    kind: ItemKind,
-    /// Name of the moved item, when it has one.
-    name: Option<Box<str>>,
-    /// 1-based source line where the moved item starts, used to describe
-    /// unnamed items (e.g. impl blocks).
-    line: usize,
-}
-
 impl Permutation {
     /// Create a new permutation.
     ///
@@ -57,6 +33,10 @@ impl Permutation {
     ///
     /// - `n` - the total number of items.
     /// - `order` - the item indices in output order (a permutation of `0..n`).
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Self)` when `order` is a valid permutation of `0..n`.
     ///
     /// # Errors
     ///
@@ -197,6 +177,10 @@ impl Permutation {
     }
 
     /// Return the underlying order vector.
+    ///
+    /// # Returns
+    ///
+    /// The stored `order`, consuming `self`.
     pub fn into_inner(self) -> Vec<usize> {
         self.order
     }
@@ -211,62 +195,12 @@ impl Permutation {
     /// # Arguments
     ///
     /// - `item_idx` - index of the type item to look up.
+    ///
+    /// # Returns
+    ///
+    /// The member permutation slice when one was set, otherwise `None`.
     pub fn member_order(&self, item_idx: usize) -> Option<&[usize]> {
         self.member_orders.get(&item_idx).map(Vec::as_slice)
-    }
-}
-
-impl ReorderMove {
-    /// 1-based output position of the moved item.
-    pub fn to(&self) -> usize {
-        self.to
-    }
-
-    /// 1-based input position of the moved item.
-    pub fn from(&self) -> usize {
-        self.from
-    }
-
-    /// Description of the item this one lands before, when it is not the last
-    /// item in the reordered output.
-    pub fn before(&self) -> Option<&str> {
-        self.before.as_deref()
-    }
-
-    /// Kind of the moved item.
-    pub fn kind(&self) -> &ItemKind {
-        &self.kind
-    }
-
-    /// Name of the moved item, when it has one.
-    pub fn name(&self) -> Option<&str> {
-        self.name.as_deref()
-    }
-
-    /// Human-readable rendering of this move, e.g.
-    /// `rearrange fn a_main from pos 2 to pos 1 (before b_helper)`.
-    ///
-    /// The trailing `(before C)` clause is omitted when the item is the last
-    /// in the reordered output.
-    pub fn message(&self) -> String {
-        let subject = match &self.name {
-            Some(name) => format!("{} {name}", self.kind),
-            None => format!("{} at line {}", self.kind, self.line),
-        };
-        let mut out = format!(
-            "rearrange {subject} from pos {} to pos {}",
-            self.from, self.to
-        );
-        if let Some(before) = &self.before {
-            out.push_str(&format!(" (before {before})"));
-        }
-        out
-    }
-}
-
-impl fmt::Display for ReorderMove {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message())
     }
 }
 
@@ -285,6 +219,11 @@ impl fmt::Display for ReorderMove {
 /// - `items` - the parsed items in their original (input) order.
 /// - `perm` - the validated [`Permutation`] mapping output position to input
 ///   item index.
+///
+/// # Returns
+///
+/// The moves in reordered-output order; an empty vector when the input is
+/// already ordered.
 pub fn compute_moves(items: &[SourceItem], perm: &Permutation) -> Vec<ReorderMove> {
     let mut moves = Vec::new();
     for (to_idx, &item_idx) in perm.order.iter().enumerate() {
@@ -300,14 +239,14 @@ pub fn compute_moves(items: &[SourceItem], perm: &Permutation) -> Vec<ReorderMov
                 .map(Box::from)
                 .unwrap_or_else(|| describe(next).into_boxed_str())
         });
-        moves.push(ReorderMove {
+        moves.push(ReorderMove::new(
             to,
             from,
             before,
-            kind: *item.kind(),
-            name: item.name().map(Box::from),
-            line: item.start_line(),
-        });
+            *item.kind(),
+            item.name().map(Box::from),
+            item.start_line(),
+        ));
     }
     moves
 }
@@ -342,6 +281,10 @@ pub fn compute_moves(items: &[SourceItem], perm: &Permutation) -> Vec<ReorderMov
 /// - `perm` - the validated [`Permutation`] mapping output position to input
 ///   item index.
 ///
+/// # Returns
+///
+/// `Ok` with the reordered source text.
+///
 /// # Errors
 ///
 /// Returns an [`anyhow::Error`] if the permutation is malformed for the
@@ -370,7 +313,7 @@ pub fn emit(parsed: &ParseResult, perm: &Permutation) -> Result<String> {
     // Preamble: everything before the first item's start.
     output.push_str(&source[..parsed.preamble_end]);
 
-    // Emit items in permutation order with canonical spacing:
+    // Emit items in permutation order with standard spacing:
     // - no blank line between consecutive `use` items
     // - no blank line between consecutive `mod` items
     // - no blank line between consecutive `const`/`static`/`extern` items

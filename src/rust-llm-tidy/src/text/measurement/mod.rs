@@ -825,7 +825,7 @@ mod tests {
     // A same-marker inner fence with a shorter run or an info string
     // never closes the outer block.
     //
-    // Built by concatenation so this source file keeps the canonical
+    // Built by concatenation so this source file keeps the standard
     // outer-backtick/inner-tilde alternation.
     #[test]
     fn analyze_keeps_fence_open_across_shorter_and_info_bearing_closers() {

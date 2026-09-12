@@ -1,18 +1,18 @@
-//! `DOC010` - XML doc tags out of canonical order.
+//! `DOC010` - XML doc tags out of standard order.
 
 use super::Declaration;
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::CODE_SECTION_ORDER;
 
-/// Canonical tag order: `inheritdoc`, `summary`, `typeparam`, `param`,
+/// Standard tag order: `inheritdoc`, `summary`, `typeparam`, `param`,
 /// `returns`, `value`, `exception`, `remarks`, `example`, `seealso`.
 const CANONICAL_ORDER: &str = "`inheritdoc`, `summary`, `typeparam`, `param`, `returns`, \
      `value`, `exception`, `remarks`, `example`, `seealso`";
 
-/// `DOC010` - doc tags must follow the canonical reading order.
+/// `DOC010` - doc tags must follow the standard reading order.
 ///
 /// Fires once on any non-private declaration whose recognized doc tags
-/// decrease in canonical rank anywhere: `inheritdoc`, `summary`,
+/// decrease in standard rank anywhere: `inheritdoc`, `summary`,
 /// `typeparam`, `param`, `returns`, `value`, `exception`, `remarks`,
 /// `example`, `seealso`.
 ///
@@ -54,7 +54,7 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
     Vec::new()
 }
 
-/// The canonical tag name for a rank.
+/// The standard tag name for a rank.
 fn canonical_tag(rank: u8) -> &'static str {
     match rank {
         1 => "inheritdoc",
@@ -70,7 +70,7 @@ fn canonical_tag(rank: u8) -> &'static str {
     }
 }
 
-/// The canonical rank of the opening XML doc tag starting `line`, or
+/// The standard rank of the opening XML doc tag starting `line`, or
 /// `None` when the line starts with no recognized tag.
 ///
 /// A tag counts only when `<name` starts the trimmed line and the
@@ -233,7 +233,7 @@ class C {\
     }
 
     // A self-closing tag counts; a bare `<param` at line end does not,
-    // and the first canonical row (`inheritdoc`) participates.
+    // and the first standard-rank row (`inheritdoc`) participates.
     #[test]
     fn tag_rank_should_count_self_closing_tags_and_reject_bare_names() {
         assert_eq!(tag_rank("<inheritdoc/>"), Some(1));

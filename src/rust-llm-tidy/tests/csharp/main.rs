@@ -4,10 +4,12 @@
 //! Everything drives the public backend API ([`backend_for`]) the way the
 //! CLI pipeline does, with fixture sources under `tests/fixtures/csharp/`.
 //!
-//! Child map:
+//! Child map, parse and reorder:
 //! - `parsing`: parse-tree shape, item spans, preamble, error no-ops.
 //! - `reorder`: reorder compositions that succeed end to end.
 //! - `reorder_boundaries`: constructs that freeze or decline a reorder.
+//!
+//! Child map, lint rules:
 //! - `doc001_missing_docs`: DOC001 undocumented non-private members.
 //! - `doc002_missing_exception_tag`: same-file DOC002 call resolution.
 //! - `doc002_cross_file`: DOC002/DOC003 through the lint index.

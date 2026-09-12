@@ -1,7 +1,7 @@
 //! Benchmarks for the `fix_tables` pass.
 //!
 //! Measures realigning GFM tables over each fixture in two regimes:
-//! - `aligned`: the verbatim fixture canonicalised by `fix_tables` (already
+//! - `aligned`: the verbatim fixture realigned by `fix_tables` (already
 //!   aligned, so the idempotent borrowed fast path applies).
 //! - `misaligned`: the fixture with table padding collapsed (exercises the
 //!   realignment work path).
@@ -24,7 +24,7 @@ const DOC_PREFIXES: &[&str] = &["///", "//!"];
 fn fix_pass(c: &mut Criterion) {
     let mut group = c.benchmark_group("fix");
     for (name, source) in tables::MD_FIXTURES.iter().chain(tables::RS_FIXTURES.iter()) {
-        // The canonical (already-aligned) form: realigning it is a no-op, so
+        // The standard (already-aligned) form: realigning it is a no-op, so
         // `fix_tables` borrows the input back unchanged.
         let canonical = fix_tables(source, DOC_PREFIXES).into_owned();
         // A deliberately misaligned copy: realigning it rebuilds every table.

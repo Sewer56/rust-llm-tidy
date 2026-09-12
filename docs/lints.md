@@ -40,7 +40,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`DOC006`]  | Warning            | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).                   |
 | [`DOC008`]  | Error              | An `# Errors` section lists enum variants out of alphabetical order.              |
 | [`DOC009`]  | Error              | A module file has no top-level module docs (`//!` in Rust, docstring in Python).  |
-| [`DOC010`]  | Error              | Doc sections (Rust) or XML tags (C#) appear out of canonical order.               |
+| [`DOC010`]  | Error              | Doc sections (Rust) or XML tags (C#) appear out of standard order.                |
 | [`DOC011`]  | Warning / Reminder | A value-returning public function has no Returns docs; `bool` only reminds.       |
 | [`TEXT001`] | Error              | A doc paragraph over 240 chars of full text (bullets warn).                       |
 | [`TEXT002`] | Warning            | A doc line over 80 chars (trailing URL, code blocks, tables, link defs exempt).   |
@@ -480,7 +480,7 @@ Error: found 1 error(s)
 
 `DOC009` is error-severity, so the run exits non-zero.
 
-### DOC010 - doc sections out of canonical order
+### DOC010 - doc sections out of standard order
 
 Recognized doc sections must appear in one fixed order. Sections are
 optional; only their relative order is checked.
@@ -1185,7 +1185,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`DOC006`]: #doc006---placeholder-text
 [`DOC008`]: #doc008---error-variants-out-of-alphabetical-order
 [`DOC009`]: #doc009---module-file-without-top-level-docs
-[`DOC010`]: #doc010---doc-sections-out-of-canonical-order
+[`DOC010`]: #doc010---doc-sections-out-of-standard-order
 [`DOC011`]: #doc011---missing-returns-section-or-returns-tag
 [`TEXT001`]: ./text-lints.md#text001---oversized-paragraph
 [`TEXT002`]: ./text-lints.md#text002---long-line

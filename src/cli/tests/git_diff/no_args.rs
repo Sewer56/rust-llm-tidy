@@ -103,12 +103,12 @@ fn no_args_processes_git_diff() {
     let Some(repo) = init_repo() else {
         return;
     };
-    // Commit the canonical (caller-first) state.
+    // Commit the standard (caller-first) state.
     let file = "a file 'quoted'.rs";
     fs::write(repo.join(file), "fn b() { a(); }\nfn a() {}\n").unwrap();
     git(&repo, &["add", file]);
     git(&repo, &["commit", "--quiet", "-m", "init"]);
-    // Stage an unsorted change: callee-first is non-canonical.
+    // Stage an unsorted change: callee-first is non-standard.
     fs::write(repo.join(file), "fn a() {}\nfn b() { a(); }\n").unwrap();
     git(&repo, &["add", file]);
     let out = run(&repo, &["--no-config", "--include", "reorder"]);
@@ -188,7 +188,7 @@ fn no_args_selects_uppercase_extension_variants() {
     .unwrap();
     git(&repo, &["add", "."]);
     git(&repo, &["commit", "--quiet", "-m", "init"]);
-    // Stage an unsorted change on `.RS` (caller-before-callee is canonical).
+    // Stage an unsorted change on `.RS` (caller-before-callee is standard).
     fs::write(repo.join("lib.RS"), "fn a() {}\nfn b() { a(); }\n").unwrap();
     git(&repo, &["add", "lib.RS"]);
     // Stage an unaligned table change on `.MD`.
