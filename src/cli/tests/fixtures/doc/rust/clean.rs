@@ -27,7 +27,7 @@ pub enum Status {
 ///
 /// # Returns
 ///
-/// A [Config] with the default port when the string is valid.
+/// A [Config] with the default port, whatever `input` holds.
 ///
 /// # Errors
 ///

@@ -11,6 +11,10 @@ use crate::source::ReturnKind;
 /// Fires on non-private methods whose declared return type is not
 /// `void` and whose docs carry no `<returns>` tag. `bool` returns only
 /// remind: a good summary often already covers both outcomes.
+///
+/// Unmodified bodyless interface methods count as non-private: C#
+/// makes them implicitly public. Unmodified default implementations
+/// (methods with bodies) stay interface-private and do not fire.
 pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
     let Some((kind, has_tag)) = decl.returns else {
         return Vec::new();

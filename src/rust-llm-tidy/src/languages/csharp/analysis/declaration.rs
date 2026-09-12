@@ -54,6 +54,9 @@ pub(crate) struct Declaration<'a> {
     /// the docs.
     ///
     /// `None` for private members and anything that is not a method.
+    /// Unmodified bodyless interface methods count as non-private
+    /// here: implicitly public in C#, unlike unmodified default
+    /// implementations (with bodies), which stay private.
     pub(crate) returns: Option<(ReturnKind, bool)>,
 }
 
@@ -61,10 +64,13 @@ pub(crate) struct Declaration<'a> {
 ///
 /// `list` is a `compilation_unit` or `declaration_list`; collection
 /// recurses into nested bodies and preprocessor branches.
+/// `in_interface` reports whether `list` is an interface body, which
+/// the `<returns>` visibility fact reads.
 pub(crate) fn collect_children<'a>(
     list: tree_sitter::Node<'a>,
     source: &'a str,
     type_name: Option<&str>,
+    in_interface: bool,
     declarations: &mut Vec<Declaration<'a>>,
 ) {
     let mut cursor = list.walk();
@@ -77,28 +83,31 @@ pub(crate) fn collect_children<'a>(
             .child_by_field_name("body")
             .filter(|b| b.kind() == "declaration_list")
         {
-            collect_declaration(child, source, type_name, declarations);
+            let member = member_kind(kind);
             let nested_type = matches!(
-                member_kind(kind),
+                member,
                 ItemKind::Class
                     | ItemKind::Struct
                     | ItemKind::Interface
                     | ItemKind::Record
                     | ItemKind::Enum
-            )
-            .then(|| declaration_name(child, source))
-            .flatten();
+            );
+            collect_declaration(child, source, type_name, in_interface, declarations);
+            let nested_name = nested_type
+                .then(|| declaration_name(child, source))
+                .flatten();
             collect_children(
                 body,
                 source,
-                nested_type.as_deref().or(type_name),
+                nested_name.as_deref().or(type_name),
+                nested_type && member == ItemKind::Interface,
                 declarations,
             );
         } else if kind == "preproc_if" || kind == "preproc_else" || kind == "preproc_elif" {
             // Conditional branches hold real declarations; collect them.
-            collect_children(child, source, type_name, declarations);
+            collect_children(child, source, type_name, in_interface, declarations);
         } else {
-            collect_declaration(child, source, type_name, declarations);
+            collect_declaration(child, source, type_name, in_interface, declarations);
         }
     }
 }
@@ -152,6 +161,7 @@ fn collect_declaration<'a>(
     node: tree_sitter::Node<'a>,
     source: &'a str,
     type_name: Option<&str>,
+    in_interface: bool,
     declarations: &mut Vec<Declaration<'a>>,
 ) {
     let kind = member_kind(node.kind());
@@ -171,7 +181,13 @@ fn collect_declaration<'a>(
     } else {
         None
     };
-    let returns = (non_private && kind == ItemKind::Fn).then(|| {
+
+    // DOC011 reads implicit interface publicity: an unmodified
+    // bodyless method is public, while an unmodified default
+    // implementation (a body) is interface-private.
+    let returns_visible =
+        non_private || (in_interface && implicitly_public_interface_method(node, source));
+    let returns = (returns_visible && kind == ItemKind::Fn).then(|| {
         let kind = match declared_return_type(node, source) {
             Some("bool") => ReturnKind::Bool,
             Some("void") | None => ReturnKind::NoValue,
@@ -197,6 +213,25 @@ fn collect_declaration<'a>(
         param_scan,
         returns,
     });
+}
+
+/// True when `node` is a bodyless method without a visibility
+/// modifier inside an interface: implicitly public in C#, unlike an
+/// unmodified default implementation, whose body keeps it private.
+fn implicitly_public_interface_method(node: tree_sitter::Node<'_>, source: &str) -> bool {
+    node.child_by_field_name("body").is_none() && {
+        // Any visibility modifier (`public`, `private`, the
+        // `protected` family, `internal`) restores modifier-based
+        // visibility.
+        let mut cursor = node.walk();
+        !node.children(&mut cursor).any(|child| {
+            child.kind() == "modifier"
+                && matches!(
+                    child.utf8_text(source.as_bytes()).unwrap_or(""),
+                    "public" | "private" | "protected" | "internal"
+                )
+        })
+    }
 }
 
 /// The `name` attribute values of every `<param>` tag in `docs`.

@@ -137,8 +137,9 @@ pub enum ReturnKind {
     /// `Self`, `&Self`, or `&mut Self` (builder-style chaining): the
     /// receiver's meaning is self-evident, so DOC011 stays silent.
     SelfValue,
-    /// `Result<(), _>` of any path: DOC002's `# Errors` section already
-    /// covers the contract, so DOC011 stays silent.
+    /// `Result<(), E>` of any path, plus qualified unit aliases like
+    /// `core::fmt::Result`: DOC002's `# Errors` section already covers
+    /// the contract, so DOC011 stays silent.
     ResultUnit,
     /// Any other declared return type: a value readers may need described.
     Value,

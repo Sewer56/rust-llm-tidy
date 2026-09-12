@@ -140,8 +140,10 @@ pub(in super::super) fn result_error_type(body: Node<'_>, source: &str) -> Optio
 /// - No declared type, `()`, or `!` -> [`ReturnKind::NoValue`].
 /// - `bool` (after stripping references/lifetimes) -> [`ReturnKind::Bool`].
 /// - `Self` (likewise stripped) -> [`ReturnKind::SelfValue`].
-/// - `Result<(), E>` (any path, any error, including argument-less
-///   aliases like `core::fmt::Result`) -> [`ReturnKind::ResultUnit`].
+/// - `Result<(), E>` of any path, and argument-less unit aliases
+///   qualified like `core::fmt::Result` -> [`ReturnKind::ResultUnit`].
+///   A bare unqualified `Result` may name a user alias returning a
+///   value, so it falls through to [`ReturnKind::Value`].
 /// - Everything else -> [`ReturnKind::Value`].
 pub(super) fn return_kind(body: Node<'_>, source: &str) -> ReturnKind {
     let Some(rt) = body.child_by_field_name("return_type") else {
@@ -194,11 +196,6 @@ fn is_direct_crate_root(node: Node<'_>, source: &str) -> bool {
     )
 }
 
-/// True for path-qualified type nodes (`std::io::Error`).
-fn is_scoped_type(node: Node<'_>) -> bool {
-    matches!(node.kind(), "scoped_type_identifier" | "scoped_identifier")
-}
-
 /// Last path-segment identifier of a type node, or `None` for non-path types
 /// (`&T`, `[T; n]`, etc.) - mirroring syn, which only matched `Type::Path`.
 fn last_type_segment<'a>(node: Node<'a>, source: &'a str) -> Option<&'a str> {
@@ -237,11 +234,15 @@ fn normalized_type_text<'a>(node: Node<'a>, source: &'a str) -> &'a str {
 }
 
 /// True when a `Result` return type's Ok payload is unit: the first
-/// generic argument is `()`, or the type declares no arguments (an
-/// alias such as `core::fmt::Result` hiding `Result<(), E>`).
+/// generic argument is `()`, or the type declares no arguments while
+/// its path qualifies a known unit alias (`core::fmt::Result` hiding
+/// `Result<(), E>`).
+///
+/// A bare unqualified `Result` carries no visible payload and may be
+/// a user alias returning a value, so it reads as carrying one.
 fn result_ok_payload_is_unit(rt: Node<'_>, source: &str) -> bool {
     let Some(args) = rt.child_by_field_name("type_arguments") else {
-        return true;
+        return is_scoped_type(rt);
     };
     args.named_child(0).is_some_and(|arg| {
         arg.kind() == "unit_type" || arg.utf8_text(source.as_bytes()) == Ok("()")
@@ -257,6 +258,11 @@ fn type_path_root<'a>(node: Node<'a>) -> Node<'a> {
             .map_or(node, type_path_root),
         _ => node,
     }
+}
+
+/// True for path-qualified type nodes (`std::io::Error`).
+fn is_scoped_type(node: Node<'_>) -> bool {
+    matches!(node.kind(), "scoped_type_identifier" | "scoped_identifier")
 }
 
 #[cfg(test)]
@@ -294,6 +300,7 @@ mod tests {
     #[case::result_unit("Result<(), String>", ReturnKind::ResultUnit)]
     #[case::scoped_result_unit("std::io::Result<()>", ReturnKind::ResultUnit)]
     #[case::aliased_result_unit("core::fmt::Result", ReturnKind::ResultUnit)]
+    #[case::bare_user_result_alias("Result", ReturnKind::Value)]
     #[case::result_value("Result<u32, String>", ReturnKind::Value)]
     #[case::u32("u32", ReturnKind::Value)]
     #[case::option("Option<u8>", ReturnKind::Value)]

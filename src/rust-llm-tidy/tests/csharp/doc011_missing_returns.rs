@@ -54,3 +54,32 @@ fn doc011_checks_returns_tags_against_return_types() {
         "value returns warn, bool returns remind: {severities:?}"
     );
 }
+
+/// DOC011 treats an unmodified bodyless interface method as
+/// implicitly public, while an unmodified default implementation (a
+/// body) stays interface-private and stays quiet.
+#[test]
+fn doc011_should_warn_when_interface_method_is_bodyless() {
+    let source = concat!(
+        "/// <summary>Behavior.</summary>\n",
+        "public interface I\n",
+        "{\n",
+        "    /// <summary>Gets a value.</summary>\n",
+        "    int Get();\n",
+        "\n",
+        "    /// <summary>Default implementation.</summary>\n",
+        "    int GetDefault() { return 0; }\n",
+        "}\n",
+    );
+
+    // Act.
+    let parsed = parse(source);
+    let doc011 = codes(&parsed, "DOC011");
+
+    // Assert.
+    assert_eq!(
+        doc011,
+        vec!["4:Get"],
+        "only the bodyless method fires: {doc011:?}"
+    );
+}

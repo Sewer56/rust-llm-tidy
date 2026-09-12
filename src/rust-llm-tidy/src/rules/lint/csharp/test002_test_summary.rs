@@ -61,6 +61,7 @@ mod tests {
             parsed.syntax_tree().root_node(),
             source,
             None,
+            false,
             &mut declarations,
         );
 

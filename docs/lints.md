@@ -592,7 +592,9 @@ Value-returning public functions must explain the returned value.
 
 - Rust: a `pub fn` needs a `# Returns` section (alias `# Return`,
   case-insensitive).
-- C#: a non-private method needs a `<returns>` tag. Constructors,
+- C#: a non-private method needs a `<returns>` tag. Unmodified
+  bodyless interface methods count as non-private; unmodified default
+  implementations (methods with bodies) do not. Constructors,
   properties, and operators stay out of scope.
 
 Before:
@@ -652,8 +654,10 @@ Trivial return kinds never fire:
 
 - No declared return type, `()`, `!`, and C# `void`.
 - `Self`, `&Self`, and `&mut Self` builder chaining.
-- `Result<(), _>` of any path or alias (`core::fmt::Result`): the
-  `# Errors` contract already covers it (see [`DOC002`]).
+- `Result<(), _>` of any path, and qualified unit aliases like
+  `core::fmt::Result`: the `# Errors` contract already covers it
+  (see [`DOC002`]). A bare unqualified `Result` fires as a value: it
+  may name a user alias returning one.
 
 `bool` returns only remind instead of warning: a good summary often
 covers both outcomes.

@@ -141,6 +141,7 @@ pub(crate) fn run_indexed(parsed: &ParseResult, shared: Option<&CanThrowIndex>) 
         parsed.syntax_tree().root_node(),
         source,
         None,
+        false,
         &mut declarations,
     );
 
@@ -217,6 +218,7 @@ pub(crate) mod tests {
                 parsed.syntax_tree().root_node(),
                 source,
                 None,
+                false,
                 &mut declarations,
             );
             let flags = name_keyed_throw_closure(&declarations);
