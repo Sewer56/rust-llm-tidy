@@ -45,6 +45,7 @@ public class Loader
     public void Sample() { }
 
     /// <summary>Returns the message template.</summary>
+    /// <returns>The interpolated and verbatim message text.</returns>
     public string Template()
     {
         var id = $@"Interpolated header.

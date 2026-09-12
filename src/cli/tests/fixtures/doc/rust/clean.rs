@@ -25,6 +25,10 @@ pub enum Status {
 ///
 /// `input` - the configuration text to parse.
 ///
+/// # Returns
+///
+/// A [Config] with the default port when the string is valid.
+///
 /// # Errors
 ///
 /// Returns [ParseError::Invalid] if the string is not valid.

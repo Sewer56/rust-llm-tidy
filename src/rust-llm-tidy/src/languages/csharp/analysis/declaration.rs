@@ -1,10 +1,10 @@
 //! C# declaration facts shared by documentation rules and throw analysis.
 
 use crate::languages::csharp::parse::{
-    declaration_name, doc_comment_texts, doc_run_start_line, member_kind, parameter_names,
-    visibility_of,
+    declaration_name, declared_return_type, doc_comment_texts, doc_run_start_line, member_kind,
+    parameter_names, visibility_of,
 };
-use crate::source::{ItemKind, VisibilityTier};
+use crate::source::{ItemKind, ReturnKind, VisibilityTier};
 
 /// Kinds checked for parameter documentation (DOC004/DOC005); properties
 /// cover indexers, whose parameter lists hold real parameters.
@@ -46,6 +46,15 @@ pub(crate) struct Declaration<'a> {
     ///
     /// `None` otherwise, so DOC004 and DOC005 share one parameter walk.
     pub(crate) param_scan: Option<(Vec<String>, Vec<String>)>,
+    /// For a non-private method: the [`ReturnKind`] of its declared
+    /// return type, and whether its docs already carry a `<returns>`
+    /// tag.
+    ///
+    /// DOC011 reads both from this one answer instead of rescanning
+    /// the docs.
+    ///
+    /// `None` for private members and anything that is not a method.
+    pub(crate) returns: Option<(ReturnKind, bool)>,
 }
 
 /// Collect the facts of every declaration under `list` in document order.
@@ -162,6 +171,14 @@ fn collect_declaration<'a>(
     } else {
         None
     };
+    let returns = (non_private && kind == ItemKind::Fn).then(|| {
+        let kind = match declared_return_type(node, source) {
+            Some("bool") => ReturnKind::Bool,
+            Some("void") | None => ReturnKind::NoValue,
+            Some(_) => ReturnKind::Value,
+        };
+        (kind, tag_slices(&docs, "returns").next().is_some())
+    });
     declarations.push(Declaration {
         node,
         source,
@@ -178,6 +195,7 @@ fn collect_declaration<'a>(
         non_private,
         exception_scan: None,
         param_scan,
+        returns,
     });
 }
 

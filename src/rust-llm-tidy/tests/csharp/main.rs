@@ -14,6 +14,7 @@
 //! - `doc003_vague_exception`: DOC003 tags without concrete crefs.
 //! - `doc004_missing_param_tags`: DOC004/DOC005 `<param>` tag coverage.
 //! - `doc006_placeholder`: DOC006 whole-word placeholder terms.
+//! - `doc011_missing_returns`: DOC011 missing `<returns>` tags.
 //! - `test001_test_naming`: TEST001 discouraged test names.
 
 use rust_llm_tidy::languages::LanguageBackend;
@@ -25,6 +26,7 @@ mod doc002_missing_exception_tag;
 mod doc003_vague_exception;
 mod doc004_missing_param_tags;
 mod doc006_placeholder;
+mod doc011_missing_returns;
 mod parsing;
 mod reorder;
 mod reorder_boundaries;
