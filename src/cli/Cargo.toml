@@ -1,6 +1,6 @@
 [package]
 name = "rust-llm-tidy-cli"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2024"
 description = "CLI for linting and tidying Rust, C#, and documentation source."
 repository = "https://github.com/Sewer56/rust-llm-tidy"
@@ -30,7 +30,7 @@ name = "git_diff"
 path = "tests/git_diff/mod.rs"
 
 [dependencies]
-rust-llm-tidy = { path = "../rust-llm-tidy", version = "0.5.0" }
+rust-llm-tidy = { path = "../rust-llm-tidy", version = "0.6.0" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

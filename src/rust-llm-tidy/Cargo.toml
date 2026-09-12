@@ -1,6 +1,6 @@
 [package]
 name = "rust-llm-tidy"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 autobenches = false
 description = "Library for linting and tidying Rust, C#, and documentation source."
