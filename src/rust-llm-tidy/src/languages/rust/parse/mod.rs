@@ -233,7 +233,11 @@ fn collect_impl_members(
         } else {
             match child.kind() {
                 "impl_item" => {
-                    if let Some(body) = child.child_by_field_name("body") {
+                    // Trait-impl methods carry no visibility of their own;
+                    // skip them so test-marked members are never collected.
+                    if !classify_item(child, source, &pending).is_trait_impl
+                        && let Some(body) = child.child_by_field_name("body")
+                    {
                         collect_impl_members(body, true, source, line_starts, out);
                     }
                 }

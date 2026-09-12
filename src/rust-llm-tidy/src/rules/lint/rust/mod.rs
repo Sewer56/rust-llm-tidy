@@ -405,7 +405,8 @@ pub fn last() {}
         assert!(lines.windows(2).all(|w| w[0] <= w[1]));
     }
 
-    /// Trait-impl methods carry no visibility, so no DOC rule fires on them.
+    /// Trait-impl methods carry no visibility, so no DOC rule fires on them,
+    /// whether or not they are marked with `#[test]`.
     #[test]
     fn run_all_should_skip_trait_impl_methods() {
         let source = r#"//! mod docs
@@ -413,6 +414,9 @@ pub fn last() {}
 pub trait Tr {
     /// docs
     fn m(&self);
+
+    /// docs
+    fn t(&self);
 }
 
 /// docs
@@ -420,12 +424,17 @@ pub struct S;
 
 impl Tr for S {
     fn m(&self) {}
+
+    #[test]
+    fn t(&self) {}
 }
 "#;
         let parsed = parse::parse_source(source).unwrap();
 
         let diags = run_all(&parsed);
 
-        assert!(diags.iter().all(|d| d.item_name.as_deref() != Some("m")));
+        assert!(diags
+            .iter()
+            .all(|d| d.item_name.as_deref() != Some("m") && d.item_name.as_deref() != Some("t")));
     }
 }
