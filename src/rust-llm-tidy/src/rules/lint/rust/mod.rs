@@ -22,6 +22,7 @@
 
 use super::run_region_checks;
 use crate::config::forbidden_character_rule::defaults;
+use crate::languages::rust::parse;
 use crate::languages::rust::text_regions::{doc_regions, forbidden_character_regions};
 use crate::reporting::Diagnostic;
 use crate::rules::registry::CODE_FORBIDDEN_CHARACTERS;
@@ -168,7 +169,8 @@ fn is_pub_result_fn(item: &SourceItem) -> bool {
 /// Run every Rust rule over `parsed` and return all diagnostics.
 ///
 /// File-level diagnostics precede item diagnostics, which follow source
-/// order and then rule code order: DOC*, then TEST*.
+/// order and then rule code order: DOC*, then TEST*. Items include
+/// impl-block members merged in source order with the top-level items.
 ///
 /// The returned `Vec` is empty only when the file and every item pass
 /// every rule.
@@ -187,7 +189,21 @@ fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
     // declarations, so it needs the sibling enums, not just the item under
     // check.
     let enums = doc008_error_variant_order::top_level_enums(parsed);
-    for item in &parsed.items {
+
+    // Impl members (methods, associated consts/types) are not top-level
+    // items; collect them separately and merge them in source order.
+    //
+    // The collector excludes test-module members. A test-marked method
+    // outside a test module still classifies as a test fn, so the TEST
+    // rules check it like a free test fn.
+    let members = parse::impl_member_items(&parsed.source, parsed.syntax_tree());
+    let mut entries: Vec<&SourceItem> = parsed.items.iter().collect();
+    entries.extend(members.iter());
+    // Sort by byte start so diagnostics follow source order; the stable
+    // sort keeps the merge deterministic.
+    entries.sort_by_key(|item| item.start);
+
+    for item in entries {
         diags.extend(doc001_missing_docs::check(item));
         diags.extend(doc002_missing_errors_section::check(item));
         diags.extend(doc003_vague_errors::check(item));
@@ -218,7 +234,12 @@ fn section_body(docs: &[String], start: usize) -> Vec<&str> {
 
 #[cfg(test)]
 mod tests {
+    use super::run_all;
     use crate::languages::rust::parse;
+    use crate::rules::lint::{
+        CODE_MISSING_ARGUMENTS, CODE_MISSING_DOCS, CODE_MISSING_ERRORS, CODE_TEST_NAMING,
+        CODE_TEST_SUMMARY,
+    };
     use crate::source::SourceItem;
 
     /// Parse `source` and return its first [`SourceItem`].
@@ -232,5 +253,188 @@ mod tests {
             .into_iter()
             .next()
             .expect("expected at least one item")
+    }
+
+    // ── impl members: the DOC rules over impl blocks ──
+
+    const IMPL_MEMBER_SRC: &str = r#"//! mod docs
+/// docs
+pub struct S;
+
+impl S {
+    /// docs for a
+    pub fn a(&self, x: u32) -> u32 {
+        x
+    }
+
+    pub fn b(&self) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn c(&self) {}
+}
+"#;
+
+    /// An undocumented `pub fn` impl method is a DOC001 candidate, like a
+    /// free function.
+    #[test]
+    fn run_all_should_flag_missing_docs_when_pub_impl_method_is_undocumented() {
+        let parsed = parse::parse_source(IMPL_MEMBER_SRC).unwrap();
+
+        let diags = run_all(&parsed);
+
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.code == CODE_MISSING_DOCS && d.item_name.as_deref() == Some("b"))
+        );
+    }
+
+    /// A `pub fn` impl method returning `Result` needs an `# Errors` section.
+    #[test]
+    fn run_all_should_flag_missing_errors_section_when_impl_method_returns_result() {
+        let source =
+            IMPL_MEMBER_SRC.replace("pub fn b(&self)", "/// docs for b\n    pub fn b(&self)");
+        let parsed = parse::parse_source(&source).unwrap();
+
+        let diags = run_all(&parsed);
+
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.code == CODE_MISSING_ERRORS && d.item_name.as_deref() == Some("b"))
+        );
+    }
+
+    /// A `pub fn` impl method with parameters needs an `# Arguments` section.
+    #[test]
+    fn run_all_should_flag_missing_arguments_section_when_pub_impl_method_takes_params() {
+        let source = IMPL_MEMBER_SRC.replace(
+            "pub fn a(&self, x: u32) -> u32 {",
+            "/// docs for a.\n    pub fn a(&self, x: u32) -> u32 {",
+        );
+        let parsed = parse::parse_source(&source).unwrap();
+
+        let diags = run_all(&parsed);
+
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.code == CODE_MISSING_ARGUMENTS && d.item_name.as_deref() == Some("a"))
+        );
+    }
+
+    /// Private methods and impl members inside test modules stay exempt.
+    #[test]
+    fn run_all_should_skip_private_and_test_module_impl_members() {
+        let source = r#"//! mod docs
+/// docs
+pub struct S;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    impl S {
+        pub fn helper(&self) {}
+    }
+}
+"#;
+        let parsed = parse::parse_source(source).unwrap();
+
+        let diags = run_all(&parsed);
+
+        assert!(diags.is_empty());
+    }
+
+    /// A `#[test]` impl method with a summary comment passes TEST002, like
+    /// a documented free test fn; a discouraged name still gets TEST001.
+    #[test]
+    fn run_all_should_check_test_rules_when_test_method_has_summary_comment() {
+        let source = r#"//! mod docs
+pub struct S;
+
+impl S {
+    // Verifies parsing end to end.
+    #[test]
+    fn parses() {}
+
+    // Verifies naming checks reach methods.
+    #[test]
+    fn test_renamed() {}
+}
+"#;
+        let parsed = parse::parse_source(source).unwrap();
+
+        let diags = run_all(&parsed);
+
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.code == CODE_TEST_NAMING
+                    && d.item_name.as_deref() == Some("test_renamed"))
+        );
+        assert!(!diags.iter().any(|d| d.code == CODE_TEST_SUMMARY));
+    }
+
+    /// Member diagnostics interleave with top-level diagnostics in source
+    /// order.
+    #[test]
+    fn run_all_should_merge_member_diagnostics_in_source_order() {
+        let source = r#"//! mod docs
+pub fn first() {}
+
+/// docs
+pub struct S;
+
+impl S {
+    pub fn mid(&self) {}
+}
+
+pub fn last() {}
+"#;
+        let parsed = parse::parse_source(source).unwrap();
+
+        let diags = run_all(&parsed);
+
+        let flagged: Vec<&str> = diags
+            .iter()
+            .map(|d| d.item_name.as_deref().unwrap_or_default())
+            .collect();
+        assert_eq!(flagged, ["first", "mid", "last"]);
+        let lines: Vec<usize> = diags.iter().map(|d| d.line).collect();
+        assert!(lines.windows(2).all(|w| w[0] <= w[1]));
+    }
+
+    /// Trait-impl methods carry no visibility, so no DOC rule fires on them,
+    /// whether or not they are marked with `#[test]`.
+    #[test]
+    fn run_all_should_skip_trait_impl_methods() {
+        let source = r#"//! mod docs
+/// docs
+pub trait Tr {
+    /// docs
+    fn m(&self);
+
+    /// docs
+    fn t(&self);
+}
+
+/// docs
+pub struct S;
+
+impl Tr for S {
+    fn m(&self) {}
+
+    #[test]
+    fn t(&self) {}
+}
+"#;
+        let parsed = parse::parse_source(source).unwrap();
+
+        let diags = run_all(&parsed);
+
+        assert!(diags
+            .iter()
+            .all(|d| d.item_name.as_deref() != Some("m") && d.item_name.as_deref() != Some("t")));
     }
 }

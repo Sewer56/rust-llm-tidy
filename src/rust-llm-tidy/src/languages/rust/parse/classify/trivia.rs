@@ -36,6 +36,7 @@ pub(in super::super) struct PendingTrivia<'a> {
 }
 
 impl<'a> PendingTrivia<'a> {
+    /// Creates an empty run: no pending trivia.
     pub(in super::super) fn new() -> Self {
         Self {
             nodes: Vec::new(),
@@ -45,6 +46,10 @@ impl<'a> PendingTrivia<'a> {
         }
     }
 
+    /// Appends one attachable node to the run.
+    ///
+    /// Attribute nodes freeze the summary-comment candidate at the first
+    /// attribute; comment nodes update the most-recent-comment tracking.
     pub(in super::super) fn push(&mut self, node: Node<'a>) {
         // Freeze the summary candidate at the first attribute: later comments
         // sit below the attribute block and cannot qualify.

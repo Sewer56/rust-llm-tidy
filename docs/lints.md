@@ -91,8 +91,10 @@ identifiers.
 Non-private documentable items need a doc comment.
 
 - Accepted forms: `///`, `/** ... */`, or `#[doc = "..."]`.
-- Private items, modules, imports, impls, macros, macro invocations,
-  uncategorized items, and `extern crate` items are not checked.
+- Private items, modules, imports, impl blocks themselves, macros, macro
+  invocations, uncategorized items, and `extern crate` items: not checked.
+- Impl-block members (`pub fn` methods, associated consts and types): the
+  linter checks these like free items.
 
 Before:
 
@@ -560,8 +562,11 @@ lines by default. C# reports the same rule; see [lints for C#].
 
 #### Remarks
 
-Rust checks top-level test functions only; functions inside inline modules,
-including `#[cfg(test)] mod tests`, are not inspected.
+Rust checks top-level test functions and test-marked `impl` methods,
+including in `impl` blocks nested in plain inline modules.
+
+Rust does not inspect free functions inside inline modules or anything in
+`#[cfg(test)] mod tests`.
 
 ### MOD001 - oversized module
 
