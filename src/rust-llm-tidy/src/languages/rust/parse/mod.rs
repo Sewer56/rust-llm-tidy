@@ -28,6 +28,12 @@ use core::mem;
 
 mod classify;
 
+/// Kinds of `impl` members the DOC rules can check: methods, associated
+/// consts, and associated types.
+///
+/// Other members, such as `use` inside an impl, are not documentable items.
+const IMPL_MEMBER_KINDS: [&str; 3] = ["function_item", "const_item", "type_item"];
+
 /// A raw top-level item entry: body node plus pending attachable trivia.
 ///
 /// Details:
@@ -40,6 +46,27 @@ struct RawEntry<'a> {
     body: tree_sitter::Node<'a>,
     /// Attachable trivia immediately preceding the item.
     pending: PendingTrivia<'a>,
+}
+
+/// The items declared inside `impl` blocks: methods, associated consts,
+/// and types.
+///
+/// Returns them as [`SourceItem`]s in source order, complementing the
+/// top-level items in [`ParseResult`], which cover each `impl` as one
+/// unit.
+///
+/// Each item's `start`/`end` byte offsets run from the member's leading
+/// docs to its body end. They exist for diagnostics, not reordering.
+/// Recomputes line starts from `source`; [`ParseResult`] retains none.
+///
+/// Skips function bodies and test modules. `#[cfg(test)]` impl members
+/// stay checked, like `#[cfg(test)]` free fns; visibility-less members
+/// (trait impls) come out private, which the rules skip.
+pub(crate) fn impl_member_items(source: &str, tree: &tree_sitter::Tree) -> Vec<SourceItem> {
+    let line_starts = line_start_offsets(source);
+    let mut out = Vec::new();
+    collect_impl_members(tree.root_node(), false, source, &line_starts, &mut out);
+    out
 }
 
 /// Parse a Rust source file and extract items with spans.
@@ -146,36 +173,92 @@ fn build_items(raw: &[RawEntry<'_>], source: &str, line_starts: &[usize]) -> Vec
         // the first line-start strictly greater than body_end.
         let end = next_line_start(line_starts, body_end).unwrap_or(source_len);
 
-        let start_line = line_of(line_starts, attached_start);
-
-        let has_summary_comment = entry.pending.has_summary_comment(body, source);
-        let class = classify_item(body, source, &entry.pending);
-        out.push(
-            SourceItem::new(
-                start,
-                end,
-                start_line,
-                class.kind,
-                class.name,
-                class.impl_target,
-                class.is_test_module,
-                class.is_inline,
-                class.is_trait_impl,
-                class.visibility,
-                class.doc_comments,
-                class.returns_result,
-                class.params,
-                class.is_test_fn,
-            )
-            .with_result_error_type(result_error_type(body, source))
-            .with_summary_comment(has_summary_comment),
-        );
+        out.push(item_from_class(
+            body,
+            &entry.pending,
+            start,
+            end,
+            attached_start,
+            line_starts,
+            source,
+        ));
         prev_end = end;
     }
     out
 }
 
-/// Walk the `source_file` children in byte order, collecting one
+/// Descend `impl` bodies and non-test modules, collecting members into
+/// `out`.
+///
+/// Only `impl` bodies contribute members (`in_impl_body`); elsewhere the
+/// same kinds are top-level items the lint pass already checks, so
+/// collecting them would duplicate diagnostics.
+///
+/// Trivia attachment mirrors [`collect_item_entries`]: attrs/outer docs
+/// attach to the following member, and unrecognized nodes (e.g. `ERROR`
+/// recovery) stay transparent.
+fn collect_impl_members(
+    container: tree_sitter::Node<'_>,
+    in_impl_body: bool,
+    source: &str,
+    line_starts: &[usize],
+    out: &mut Vec<SourceItem>,
+) {
+    let mut pending = PendingTrivia::new();
+    let mut cursor = container.walk();
+    for child in container.named_children(&mut cursor) {
+        if is_attachable(child) {
+            pending.push(child);
+            continue;
+        }
+        if is_transparent_comment(child) {
+            pending.note_comment(child);
+            continue;
+        }
+        let is_member = in_impl_body && impl_member_entry_for(child).is_some();
+        if is_member {
+            // `start` is the first attached doc/attr so diagnostics point at
+            // the real leading docs; `end` is the member body end.
+            let body = child;
+            let attached_start = pending.attached_start().unwrap_or(body.start_byte());
+            out.push(item_from_class(
+                body,
+                &pending,
+                attached_start,
+                body.end_byte(),
+                attached_start,
+                line_starts,
+                source,
+            ));
+        } else {
+            match child.kind() {
+                "impl_item" => {
+                    if let Some(body) = child.child_by_field_name("body") {
+                        collect_impl_members(body, true, source, line_starts, out);
+                    }
+                }
+                "mod_item" => {
+                    // Skip test modules entirely; their helpers are exempt.
+                    if !classify_item(child, source, &pending).is_test_module
+                        && let Some(body) = child.child_by_field_name("body")
+                    {
+                        collect_impl_members(body, false, source, line_starts, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        // Only recognized items consume the pending run, exactly like
+        // `collect_item_entries`; unrecognized nodes stay transparent.
+        //
+        // `item_entry_for` covers the member kinds as well, so the gate is
+        // the same at file and impl-body level.
+        if item_entry_for(child).is_some() {
+            pending = PendingTrivia::new();
+        }
+    }
+}
+
 /// [`RawEntry`] per recognized top-level item.
 ///
 /// Each entry carries the contiguous run of preceding attributes and outer
@@ -238,6 +321,12 @@ fn line_start_offsets(source: &str) -> Vec<usize> {
     starts
 }
 
+/// If `node` is an impl member the DOC rules check, return the body node to
+/// classify.
+fn impl_member_entry_for(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
+    IMPL_MEMBER_KINDS.contains(&node.kind()).then_some(node)
+}
+
 /// If `node` is a recognized top-level item, return the body node to classify.
 ///
 /// Top-level macro invocations are wrapped in `expression_statement`. The
@@ -267,9 +356,47 @@ fn item_entry_for(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
     }
 }
 
-/// 1-based line number of `byte` (count of line-starts at or before `byte`).
-fn line_of(line_starts: &[usize], byte: usize) -> usize {
-    line_starts.partition_point(|&s| s <= byte)
+/// Classify `body` (reading `pending`) and build one [`SourceItem`] from
+/// the result and its span facts.
+///
+/// Shared by the two walkers (`build_items` for top-level items,
+/// `collect_impl_members` for impl members) so their construction cannot
+/// drift apart.
+///
+/// `start`/`end` are the item span and differ per walker: gap-anchored
+/// reorder spans at top level, diagnostic-only member spans inside impls.
+///
+/// `attached_start` (the first preceding attr/outer doc) anchors
+/// `start_line`, and `pending` supplies the docs, the attributes behind
+/// test-fn/test-module classification, and the summary-comment flag.
+fn item_from_class(
+    body: tree_sitter::Node<'_>,
+    pending: &PendingTrivia<'_>,
+    start: usize,
+    end: usize,
+    attached_start: usize,
+    line_starts: &[usize],
+    source: &str,
+) -> SourceItem {
+    let class = classify_item(body, source, pending);
+    SourceItem::new(
+        start,
+        end,
+        line_of(line_starts, attached_start),
+        class.kind,
+        class.name,
+        class.impl_target,
+        class.is_test_module,
+        class.is_inline,
+        class.is_trait_impl,
+        class.visibility,
+        class.doc_comments,
+        class.returns_result,
+        class.params,
+        class.is_test_fn,
+    )
+    .with_result_error_type(result_error_type(body, source))
+    .with_summary_comment(pending.has_summary_comment(body, source))
 }
 
 /// The first line-start strictly greater than `byte`, or `None` if none.
@@ -289,8 +416,14 @@ fn is_macro_invocation_stmt(stmt: tree_sitter::Node) -> bool {
             .is_some_and(|c| c.kind() == "macro_invocation")
 }
 
+/// 1-based line number of `byte` (count of line-starts at or before `byte`).
+fn line_of(line_starts: &[usize], byte: usize) -> usize {
+    line_starts.partition_point(|&s| s <= byte)
+}
+
 #[cfg(test)]
 mod tests {
+    use super::impl_member_items;
     use super::parse_source;
     use crate::source::ItemKind;
     use rstest::rstest;
@@ -497,5 +630,66 @@ fn a() {}\n";
         let parsed = parse_source(source).unwrap();
 
         assert_eq!(parsed.items[0].has_summary_comment(), expected, "{source}");
+    }
+
+    // ── impl_member_items: impl-block members for the DOC rules ──
+
+    /// Member collection covers pub methods, attaches their `///` docs, and
+    /// reports the doc line as the diagnostic start line.
+    #[test]
+    fn impl_member_items_collects_documented_pub_methods() {
+        let source = "//! doc\npub struct S;\nimpl S {\n    /// Docs.\n    pub fn a(&self, x: u32) -> u32 { x }\n    fn b(&self) {}\n}\n";
+        let parsed = parse_source(source).unwrap();
+
+        let members = impl_member_items(source, parsed.syntax_tree());
+
+        // The private method classifies too; the rules skip it downstream.
+        assert_eq!(members.len(), 2);
+        assert_eq!(members[0].name().as_deref(), Some("a"));
+        assert_eq!(members[0].doc_comments(), &[" Docs."]);
+        assert_eq!(members[0].start_line(), 4);
+        assert_eq!(members[0].params(), &["x"]);
+        assert_eq!(members[1].name().as_deref(), Some("b"));
+    }
+
+    /// Collection recurses into non-test modules but skips test modules.
+    #[test]
+    fn impl_member_items_skips_test_modules_only() {
+        let source = "//! doc\nmod inner {\n    pub struct S;\n    impl S { pub fn a(&self) {} }\n}\n\
+            #[cfg(test)]\nmod tests {\n    pub struct T;\n    impl T { pub fn b(&self) {} }\n}\n";
+        let parsed = parse_source(source).unwrap();
+
+        let members = impl_member_items(source, parsed.syntax_tree());
+
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].name().as_deref(), Some("a"));
+    }
+
+    /// Associated consts and types are members too; `use` inside an impl is
+    /// not a documentable member.
+    #[test]
+    fn impl_member_items_covers_associated_consts_and_types() {
+        let source = "//! doc\npub struct S;\nimpl S {\n    const C: u32 = 1;\n    type T = u32;\n    use std::io;\n}\n";
+        let parsed = parse_source(source).unwrap();
+
+        let members = impl_member_items(source, parsed.syntax_tree());
+
+        assert_eq!(members.len(), 2);
+        assert!(members.iter().any(|m| m.name().as_deref() == Some("C")));
+        assert!(members.iter().any(|m| m.name().as_deref() == Some("T")));
+    }
+
+    /// A doc run survives an error-recovery node between it and the member:
+    /// unrecognized nodes are transparent, as at top level.
+    #[test]
+    fn impl_member_items_keeps_docs_across_error_nodes() {
+        let source = "//! doc\npub struct S;\nimpl S {\n    /// Docs.\n    @@@ junk tokens\n    pub fn a(&self) {}\n}\n";
+        let parsed = parse_source(source).unwrap();
+
+        let members = impl_member_items(source, parsed.syntax_tree());
+
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].name().as_deref(), Some("a"));
+        assert_eq!(members[0].doc_comments(), &[" Docs."]);
     }
 }
