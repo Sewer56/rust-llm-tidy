@@ -348,7 +348,9 @@ A measured doc line can receive a shorter-wording hint.
 - Redundancies: `each and every` → `each`, `absolutely essential` → `essential`
 - Framing: `it is worth noting that` → omit the opener and state the point
 - Context-sensitive terms: alternatives explain when technical wording
-  may be needed
+  may be needed, such as `canonical` or `robust`
+- Vague descriptions: `robust` → `strong` or `reliable`, depending on meaning,
+  or name the conditions it handles
 
 The [wording dictionary] contains the full list and each entry's guidance.
 
@@ -388,6 +390,24 @@ Suggestions:
 ```
 
 `TEXT006` has hint severity, so its findings do not fail the run.
+
+For a file containing `Use the canonical form.`, the hint offers several
+alternatives and explains when to keep the technical term:
+
+```text
+$ rust-llm-tidy --no-config --include TEXT006 guide.md
+guide.md:1: hint[TEXT006]: wording has a simpler alternative: `canonical`.
+Why: Unnecessary formal wording and framing can make the point harder to understand.
+Suggestions:
+  - Before: `canonical`
+  - After: `standard` or `usual`, depending on meaning; keep and explain precise technical uses such as `canonical form`
+  - Preserve meaning and adjust grammar to fit.
+  - Use the alternative only if it preserves technical meaning, uncertainty, and required wording. (file)
+```
+
+Here, keep `canonical form` if it means a representation chosen by fixed rules
+so equivalent values have the same form. Explain those rules if needed.
+The hint cannot determine the intended meaning from context.
 
 [wording dictionary]: ../src/rust-llm-tidy/src/rules/lint/text/text006_verbose_synonyms/suggestions.rs
 [module]: ../src/rust-llm-tidy/src/rules/lint/text/text007_passive_narration/mod.rs

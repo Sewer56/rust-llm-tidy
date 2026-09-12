@@ -110,6 +110,10 @@ exclude:
       - "src/rust-llm-tidy/src/rules/lint/text/text001_paragraph_size.rs"
       - "src/rust-llm-tidy/src/rules/lint/text/text004_header_opener.rs"
     rules: [TEXT004]
+  # The wording dictionary is one flat sorted table; a split makes no sense.
+  - paths:
+      - "src/rust-llm-tidy/src/rules/lint/text/text006_verbose_synonyms/suggestions.rs"
+    rules: [MOD001]
   # .github holds plain markdown (workflows/templates) outside any Rust crate;
   # `vis` can't (and needn't) do crate-aware narrowing there.
   - paths:
