@@ -40,6 +40,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`DOC006`]  | Warning    | A doc comment contains placeholder text (`TODO`/`FIXME`/`TBD`).                   |
 | [`DOC008`]  | Error      | An `# Errors` section lists enum variants out of alphabetical order.              |
 | [`DOC009`]  | Error      | A module file has no top-level module docs (`//!` in Rust, docstring in Python).  |
+| [`DOC010`]  | Error      | Doc sections (Rust) or XML tags (C#) appear out of canonical order.               |
 | [`TEXT001`] | Error      | A doc paragraph over 240 chars of full text (bullets warn).                       |
 | [`TEXT002`] | Warning    | A doc line over 80 chars (trailing URL, code blocks, tables, link defs exempt).   |
 | [`TEXT003`] | Warning    | A doc sentence over 25 words (words join across wrapped lines).                   |
@@ -477,6 +478,112 @@ Error: found 1 error(s)
 ```
 
 `DOC009` is error-severity, so the run exits non-zero.
+
+### DOC010 - doc sections out of canonical order
+
+Recognized doc sections must appear in one fixed order. Sections are
+optional; only their relative order is checked.
+
+- Rust `# ` headers: `# Arguments`, `# Returns`, `# Examples`,
+  `# Errors`, `# Panics`, `# Safety`, `# Remarks`.
+- C# XML tags: `inheritdoc`, `summary`, `typeparam`, `param`,
+  `returns`, `value`, `exception`, `remarks`, `example`, `seealso`.
+
+Before:
+
+```rust
+/// Loads the file's lines into a buffer.
+///
+/// # Errors
+///
+/// Returns [Error::Io] when the file cannot be read.
+///
+/// # Arguments
+///
+/// - `path` - source file path to read.
+pub fn load(path: &str) -> Result<(), Error> {
+    Ok(())
+}
+
+/// An error type.
+pub enum Error {
+    /// An I/O failure.
+    Io,
+}
+```
+
+After:
+
+```rust
+/// Loads the file's lines into a buffer.
+///
+/// # Arguments
+///
+/// - `path` - source file path to read.
+///
+/// # Errors
+///
+/// Returns [Error::Io] when the file cannot be read.
+pub fn load(path: &str) -> Result<(), Error> {
+    Ok(())
+}
+
+/// An error type.
+pub enum Error {
+    /// An I/O failure.
+    Io,
+}
+```
+
+#### DOC010 CLI output (Rust)
+
+```text
+$ rust-llm-tidy --no-config --include DOC010 src/lib.rs
+src/lib.rs:1: error[DOC010]: sections out of canonical order: found `# Errors` before `# Arguments`.
+
+Why: A consistent section order is easier for the reader to review.
+
+Suggestions:
+- Move the sections into canonical order: `# Arguments`, `# Returns`, `# Examples`, `# Errors`, `# Panics`, `# Safety`, `# Remarks`. (fn `load`)
+Error: found 1 error(s)
+```
+
+#### DOC010 CLI output (C#)
+
+```text
+$ rust-llm-tidy --no-config --include DOC010 src/Store.cs
+src/Store.cs:6: error[DOC010]: XML doc tags out of canonical order: found `<exception>` before `<param>`.
+
+Why: A consistent tag order is easier for the reader to review.
+
+Suggestions:
+- Move the tags into canonical order: `inheritdoc`, `summary`, `typeparam`, `param`, `returns`, `value`, `exception`, `remarks`, `example`, `seealso`. (fn `Save`)
+Error: found 1 error(s)
+```
+
+`DOC010` is error-severity, so the run exits non-zero.
+
+#### Remarks
+
+- Fires only on public items: Rust `pub` items, C# non-private
+  declarations.
+- One finding per item, naming the first out-of-order adjacent pair.
+- Unrecognized headers or tags (`# Ordering`, `<permission>`) never
+  participate; repeated headers or tags of the same section pass.
+
+Rust specifics:
+
+- Headers match case-insensitively on the whole trimmed line.
+  Aliases count as their section:
+  - `# Parameters` and `# Params` as `# Arguments`
+  - `# Return` as `# Returns`
+  - `# Example` as `# Examples`
+  - `# Notes` as `# Remarks`
+
+C# specifics:
+
+- Matches an opening tag at the start of a doc line, so inline
+  markup (`<see>`, `<paramref>`) never counts.
 
 ### TEST001 - non-behavioral test name
 
@@ -1001,6 +1108,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`DOC006`]: #doc006---placeholder-text
 [`DOC008`]: #doc008---error-variants-out-of-alphabetical-order
 [`DOC009`]: #doc009---module-file-without-top-level-docs
+[`DOC010`]: #doc010---doc-sections-out-of-canonical-order
 [`TEXT001`]: ./text-lints.md#text001---oversized-paragraph
 [`TEXT002`]: ./text-lints.md#text002---long-line
 [`TEXT003`]: ./text-lints.md#text003---long-sentence
