@@ -16,6 +16,7 @@ pub const LINT_CODES: &[&str] = &[
     CODE_MISSING_ARGUMENTS,
     CODE_UNDOCUMENTED_PARAM,
     CODE_DOC_PLACEHOLDER,
+    CODE_SECTION_ORDER,
     CODE_PARAGRAPH_SIZE,
     CODE_LINE_LENGTH,
     CODE_SENTENCE_LENGTH,
@@ -73,6 +74,8 @@ pub const CODE_PARAGRAPH_SIZE: &str = "TEXT001";
 pub const CODE_PASSIVE_NARRATION: &str = "TEXT007";
 /// Rule code for full namespace qualification in code.
 pub const CODE_QUALIFIED_PATH: &str = "MOD003";
+/// Rule code for doc sections or tags listed out of canonical order.
+pub const CODE_SECTION_ORDER: &str = "DOC010";
 /// Rule code for an over-limit sentence of measured prose.
 pub const CODE_SENTENCE_LENGTH: &str = "TEXT003";
 /// Rule code for a configured usage or declaration hint.
@@ -107,6 +110,7 @@ mod tests {
             CODE_MISSING_ARGUMENTS,
             CODE_UNDOCUMENTED_PARAM,
             CODE_DOC_PLACEHOLDER,
+            CODE_SECTION_ORDER,
             CODE_PARAGRAPH_SIZE,
             CODE_LINE_LENGTH,
             CODE_SENTENCE_LENGTH,

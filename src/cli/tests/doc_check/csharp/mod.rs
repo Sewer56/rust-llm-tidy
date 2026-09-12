@@ -13,6 +13,7 @@
 //! - `doc005_undocumented_param`: DOC005 omitted parameter names
 //! - `doc006_placeholder`: DOC006 doc-comment placeholder markers
 //! - `doc009_missing_module_docs`: module-header rule silence
+//! - `doc010_tag_order`: DOC010 doc tags out of canonical order
 //! - `mod003_qualified_path`: MOD003 fully-qualified path hints
 //! - `perf001_allocation_hints`: built-in PERF001 capacity reminders via SYM
 //! - `test001_test_naming`: TEST001 discouraged test-method names
@@ -28,6 +29,7 @@ mod doc004_missing_param_tags;
 mod doc005_undocumented_param;
 mod doc006_placeholder;
 mod doc009_missing_module_docs;
+mod doc010_tag_order;
 mod mod003_qualified_path;
 mod perf001_allocation_hints;
 mod test001_test_naming;

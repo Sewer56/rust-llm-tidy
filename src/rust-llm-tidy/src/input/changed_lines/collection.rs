@@ -50,13 +50,6 @@ pub struct ChangedLineCollection {
 /// - `paths`: explicit file paths, not directories, relative to cwd or absolute.
 /// - `baseline`: local commit reference, or `None` to use each repository's HEAD.
 ///
-/// # Remarks
-/// Limits are [`MAX_INPUT_PATHS`], [`MAX_SOURCE_BYTES`], [`MAX_SOURCE_LINES`], and
-/// [`MAX_COLLECTION_BYTES`]. Rename similarity search is capped at 1,000 paths;
-/// Git may classify larger or dissimilar moves as new files. Runtime has not been
-/// measured. Git subprocesses have bounded captured output, not a wall-clock
-/// timeout. A non-UTF-8 Git path is preserved on Unix and rejected elsewhere.
-///
 /// # Errors
 /// Returns [`anyhow::Error`] for these conditions:
 ///
@@ -69,6 +62,16 @@ pub struct ChangedLineCollection {
 ///   protocol: check local Git installation and repository integrity.
 /// - Temporary snapshot or batch files cannot be created, written, or rewound:
 ///   provide a writable temporary directory with enough space.
+///
+/// # Remarks
+/// - Limits are [`MAX_INPUT_PATHS`], [`MAX_SOURCE_BYTES`],
+///   [`MAX_SOURCE_LINES`], and [`MAX_COLLECTION_BYTES`].
+/// - Rename similarity search is capped at 1,000 paths; Git may
+///   classify larger or dissimilar moves as new files.
+/// - Runtime has not been measured.
+/// - Git subprocesses have bounded captured output, not a wall-clock
+///   timeout.
+/// - A non-UTF-8 Git path is preserved on Unix and rejected elsewhere.
 pub fn collect(paths: &[PathBuf], baseline: Option<&str>) -> Result<ChangedLineCollection> {
     if paths.len() > MAX_INPUT_PATHS {
         bail!("input list exceeds {MAX_INPUT_PATHS} paths; narrow the input list");

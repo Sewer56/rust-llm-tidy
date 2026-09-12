@@ -14,6 +14,7 @@
 //! - `doc006_placeholder`: DOC006 doc-comment placeholder markers
 //! - `doc008_error_variant_order`: DOC008 out-of-order error variants
 //! - `doc009_missing_module_docs`: missing module documentation
+//! - `doc010_section_order`: DOC010 out-of-canonical-order doc sections
 //!
 //! Size, naming, text, and perf modules:
 //!
@@ -40,6 +41,7 @@ mod doc005_undocumented_param;
 mod doc006_placeholder;
 mod doc008_error_variant_order;
 mod doc009_missing_module_docs;
+mod doc010_section_order;
 mod len001_method_length;
 mod mod001_module_size;
 mod mod003_qualified_path;

@@ -37,6 +37,7 @@ mod doc005_undocumented_param;
 mod doc006_placeholder;
 mod doc008_error_variant_order;
 mod doc009_missing_module_docs;
+mod doc010_section_order;
 pub(crate) mod len001_method_length;
 pub(crate) mod mod001_module_size;
 mod mod002_fn_local_use;
@@ -211,6 +212,7 @@ fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
         diags.extend(doc005_undocumented_param::check(item));
         diags.extend(doc006_placeholder::check(item));
         diags.extend(doc008_error_variant_order::check(item, &enums));
+        diags.extend(doc010_section_order::check(item));
         diags.extend(test001_test_naming::check(item));
         diags.extend(test002_test_summary::check(item));
     }

@@ -8,10 +8,10 @@ public class Loader
 {
     /// <summary>Loads a value for the key.</summary>
     /// <param name="key">The key to look up.</param>
+    /// <returns>The loaded value.</returns>
     /// <exception cref="System.InvalidOperationException">
     /// Thrown when the key is empty.
     /// </exception>
-    /// <returns>The loaded value.</returns>
     /// <remarks>
     /// The lookup walks the source once and retries transient failures.
     /// </remarks>
