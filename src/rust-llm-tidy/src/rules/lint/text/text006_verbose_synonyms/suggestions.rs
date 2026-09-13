@@ -393,6 +393,10 @@ pub(super) const SUGGESTIONS: &[(&str, &str)] = &[
     ("preplan", "`plan`"),
     ("presently", "`now` or `soon`, depending on meaning"),
     ("prior to", "`before`"),
+    (
+        "prose",
+        "`text` or `writing`; use `explanation` when referring to content that explains something",
+    ),
     ("provided that", "`if`"),
     ("purchase", "`buy` when used as a verb"),
     ("refer back to", "`refer to`"),

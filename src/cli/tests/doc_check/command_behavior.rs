@@ -55,7 +55,7 @@ fn all_md_in_place_fixes_tables() {
 /// A clean markdown file passes lint dispatch with no diagnostics.
 #[test]
 fn md_clean_file_no_diagnostics() {
-    let path = temp_md("# Title\n\nShort prose paragraph.\n");
+    let path = temp_md("# Title\n\nShort text paragraph.\n");
     let output = run_command(&["--include", "lints"], &path);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
