@@ -50,7 +50,8 @@ fn discovery_probe() {
             report
                 .warnings
                 .iter()
-                .any(|warning| warning.contains("crate-aware vis unavailable"))
+                .any(|warning| warning.contains("crate-aware vis unavailable")
+                    || warning.contains("rust crate index unavailable"))
         );
     }
 }
@@ -72,12 +73,15 @@ fn discovery_should_require_permission_and_enabled_visibility() {
     .unwrap();
     let sentinel = directory.path().join("cargo-sentinel");
 
+    // MOD004's crate lookup also runs `cargo metadata` under the same
+    // permission, so a permitted run invokes the sentinel even with the
+    // vis op excluded.
     for (mode, invoked) in [
         ("default", false),
         ("excluded", false),
         ("allowed", true),
-        ("allowed_excluded", false),
-        ("config_excluded", false),
+        ("allowed_excluded", true),
+        ("config_excluded", true),
     ] {
         let output = Command::new(env::current_exe().unwrap())
             .env("TIDY_DISCOVERY_PROBE", mode)

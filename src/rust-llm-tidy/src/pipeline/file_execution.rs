@@ -6,6 +6,7 @@ use crate::config::{CompiledConfig, FilePolicy, MethodLengthConfig, ModuleSizeCo
 use crate::languages::{backend_for, registry as langs};
 use crate::project::csharp::CSharpIndex;
 use crate::reporting::FileReport;
+use crate::rules::lint::sole_caller::SoleCallerFindings;
 use crate::rules::registry as check;
 use std::collections::HashSet;
 use std::path::Path;
@@ -42,7 +43,8 @@ pub(super) fn lints_enabled(
 /// Process one mutation or lint phase, retaining changes and findings.
 ///
 /// - `dry_run`: preview without writing source
-/// - `phase`: prior mutation output and optional refreshed C# index
+/// - `phase`: `(prior mutation output, C# index, Rust MOD004 findings,
+///   C# MOD004 findings)`, every element optional
 ///
 /// An absent prior output selects mutations. A present output selects linting.
 /// Refresh shared facts after all mutations and before dispatching lint phases.
@@ -58,11 +60,16 @@ pub(super) fn process_one(
     cli_disabled: &HashSet<String>,
     ctx: Option<&VisContext>,
     dry_run: bool,
-    phase: (Option<FileReport>, Option<&CSharpIndex>),
+    phase: (
+        Option<FileReport>,
+        Option<&CSharpIndex>,
+        Option<&SoleCallerFindings>,
+        Option<&SoleCallerFindings>,
+    ),
     lint_context: &super::lint_context::LintContext<'_>,
 ) -> FileReport {
     let config = lint_context.config;
-    let (prior, index) = phase;
+    let (prior, index, sole_caller, csharp_sole_caller) = phase;
     let lint_phase = prior.is_some();
     let mut out = prior.unwrap_or_else(|| FileReport {
         path: path.to_path_buf(),
@@ -155,6 +162,8 @@ pub(super) fn process_one(
             gate.method_length,
             lint_context,
             index,
+            sole_caller,
+            csharp_sole_caller,
         ) {
             Ok((found, warnings)) => {
                 out.diagnostics.extend(found);

@@ -1,0 +1,127 @@
+//! Build MOD004's whole-crate and cross-project sole-caller facts for
+//! the lint phase.
+
+use super::{RunOptions, effective_policy};
+use crate::config::CompiledConfig;
+use crate::input as paths;
+use crate::languages::csharp::analysis::namespace_refs::NamespaceRefIndex;
+use crate::project::csharp::CSharpIndex;
+use crate::project::rust_crate::RustCrateIndex;
+use crate::rules::lint::csharp::mod004_sole_caller as csharp_mod004;
+use crate::rules::lint::rust::mod004_sole_caller;
+use crate::rules::lint::sole_caller::SoleCallerFindings;
+use crate::rules::registry as check;
+use crate::source::ParseResult;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+
+/// Build MOD004's sole-caller findings from the shared C# parses.
+///
+/// Gates mirror the Rust facts minus the Cargo permission: linting
+/// may run, and at least one `.cs` input must select MOD004 under its
+/// resolved per-file policy.
+///
+/// The parses come from the already-refreshed [`CSharpIndex`]; the
+/// project closure is never parsed twice.
+///
+/// # Arguments
+///
+/// - `index` - the run's refreshed C# parse cache, when one exists
+/// - `paths` - the run's resolved input paths
+/// - `config` - previously loaded configuration, or language defaults
+/// - `included` - explicit CLI include set, when present
+/// - `disabled` - explicit CLI exclude set
+///
+/// # Returns
+///
+/// The grouped findings when the gates pass and a C# index exists;
+/// `None` otherwise.
+pub(super) fn csharp_sole_caller_findings(
+    index: Option<&CSharpIndex>,
+    paths: &[PathBuf],
+    config: Option<&CompiledConfig>,
+    included: Option<&HashSet<String>>,
+    disabled: &HashSet<String>,
+) -> Option<SoleCallerFindings> {
+    if !lints_may_run(included, disabled)
+        || !selects_mod004(paths, "cs", config, included, disabled)
+    {
+        return None;
+    }
+    let index = index?;
+
+    // Sort by path for a deterministic edge order; the index itself
+    // iterates its cache unordered.
+    let mut parses: Vec<(&Path, &ParseResult)> = index.parses().collect();
+    parses.sort_unstable_by_key(|(path, _)| *path);
+    Some(csharp_mod004::analyze(&NamespaceRefIndex::from_parses(
+        parses,
+    )))
+}
+
+/// Build MOD004's sole-caller findings from one whole-crate parse.
+///
+/// Gates mirror the vis context: linting may run and Cargo discovery
+/// is permitted (the crate lookup also runs `cargo metadata`).
+///
+/// At least one `.rs` input must both lint and select MOD004 under
+/// its resolved per-file policy; otherwise nothing is built.
+///
+/// # Arguments
+///
+/// - `paths` - the run's resolved input paths
+/// - `options` - the run options, supplying the Cargo permission
+/// - `config` - previously loaded configuration, or language defaults
+/// - `included` - explicit CLI include set, when present
+/// - `disabled` - explicit CLI exclude set
+/// - `warnings` - sink for the one discovery-failure warning
+///
+/// # Returns
+///
+/// The grouped findings when the gates pass and crate discovery
+/// succeeds; `None` otherwise.
+pub(super) fn sole_caller_findings(
+    paths: &[PathBuf],
+    options: &RunOptions,
+    config: Option<&CompiledConfig>,
+    included: Option<&HashSet<String>>,
+    disabled: &HashSet<String>,
+    warnings: &mut Vec<String>,
+) -> Option<SoleCallerFindings> {
+    if !lints_may_run(included, disabled) || !options.cargo_discovery {
+        return None;
+    }
+    if !selects_mod004(paths, "rs", config, included, disabled) {
+        return None;
+    }
+    RustCrateIndex::build(paths, warnings).map(|index| mod004_sole_caller::analyze(&index))
+}
+
+/// Whether the explicit selection still permits any lint phase.
+fn lints_may_run(included: Option<&HashSet<String>>, disabled: &HashSet<String>) -> bool {
+    !disabled.contains("lints")
+        && included.is_none_or(|set| {
+            set.contains("lints") || check::LINT_CODES.iter().any(|code| set.contains(*code))
+        })
+}
+
+/// Whether one `ext` input lints and selects MOD004 under its
+/// resolved per-file policy.
+fn selects_mod004(
+    paths: &[PathBuf],
+    ext: &str,
+    config: Option<&CompiledConfig>,
+    included: Option<&HashSet<String>>,
+    disabled: &HashSet<String>,
+) -> bool {
+    paths.iter().any(|path| {
+        let policy = effective_policy(path, config, included, disabled);
+        !policy.skip
+            && paths::ext_in(path.extension().and_then(|e| e.to_str()), &[ext])
+            && !policy.disabled.contains(check::CODE_MOD004)
+            && match &policy.enabled {
+                Some(set) => set.contains("lints") || set.contains(check::CODE_MOD004),
+                None => true,
+            }
+    })
+}

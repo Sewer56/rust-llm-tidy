@@ -11,6 +11,7 @@ pub(crate) mod doc009_missing_module_docs;
 pub(crate) mod dup001_duplication;
 pub(crate) mod mod001_module_size;
 pub(crate) mod rust;
+pub(crate) mod sole_caller;
 pub(crate) mod symbols;
 pub(crate) mod text;
 

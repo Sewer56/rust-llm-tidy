@@ -56,6 +56,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`MOD001`]  | Warning            | A code file exceeds `module_size.max_lines` (default 500).                        |
 | [`MOD002`]  | Error              | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
 | [`MOD003`]  | Hint               | A path includes the full namespace.                                               |
+| [`MOD004`]  | Hint               | File layout may not follow call flow.                                             |
 | [`LEN001`]  | Hint               | A Rust fn body exceeds `method_length.max_lines` (default 100).                   |
 | [`SYM`]     | Reminder           | A configured text or symbol hint matches; severity is configurable.               |
 | [`DUP001`]  | Reminder           | Five meaningful lines repeat at three same-file sites, including a changed copy.  |
@@ -940,6 +941,77 @@ MOD003 skips:
 
 See [C# MOD003] for C# import advice.
 
+### MOD004 - sole-caller module nesting
+
+Arrange files so readers can follow call flow from callers to helpers.
+
+MOD004 suggests nesting a module under its only production caller when
+it is not already there.
+
+Before (`src/`):
+
+```text
+src/lib.rs       mod load; mod xbe;
+src/load/mod.rs  pub fn go() {
+                  crate::xbe::parse_xbe_header(); }
+src/xbe.rs       pub fn parse_xbe_header() {}
+```
+
+After, if you accept the hint:
+
+```text
+src/lib.rs        mod load;
+src/load/mod.rs   mod xbe; pub fn go() { xbe::parse_xbe_header(); }
+src/load/xbe.rs   pub fn parse_xbe_header() {}
+```
+
+#### MOD004 CLI output
+
+With a `config.yml` containing `{}`, the local CLI renders:
+
+```text
+$ cargo run -p rust-llm-tidy-cli -- --config config.yml --include MOD004 src/load/mod.rs
+src/load/mod.rs:2: hint[MOD004]: module `crate::xbe` is referenced only by `crate::load` (1 reference).
+Why:
+- Nesting helpers under their callers lets readers follow call flow
+through the file layout.
+Suggestions:
+- Consider moving `xbe` under `crate::load` as `crate::load::xbe`.
+Update references and preserve behavior and any public API.
+- Keep the current layout if reuse or readability favors it. (mod `xbe`)
+```
+
+#### Remarks
+
+- Hints do not fail the run. Findings appear at the caller's first
+  reference; include that file or its directory in the inputs.
+- Rust checks the crate owning the first `.rs` input. If crate discovery
+  fails, MOD004 warns once and skips the check.
+- Callers count by module subtree, not file. Nested helpers count with
+  their caller; files spanning different depths can count separately.
+- Skips the root, parent-to-child and internal references, multiple
+  callers, mutual sole-caller pairs, and `#[cfg(test)]` code.
+  An outer finding covers nested modules.
+
+Resolution follows the `mod` tree. Re-exports, trait/dynamic dispatch,
+and macro bodies can hide references. Single-segment imports such as
+`use xbe::{..}` are not resolved; qualified imports such as
+`use crate::xbe::{..}` are.
+
+#### MOD004 in C#
+
+The same heuristic applies to namespaces across the nearest `.csproj`
+and its project references. Callers count by namespace, not file;
+folder layout is not checked.
+
+- Skips the root, parent-to-child and internal references, multiple
+  callers, and mutual sole-caller pairs.
+- Ignores references inside members marked `[Test]`, `[TestMethod]`,
+  `[Fact]`, or `[Theory]`. Other test code may count as production use.
+- Blind spots: aliases other than `using static`, `global using`,
+  reflection, string-built names, `nameof`, `dynamic`, implicit extension
+  imports, and source generators.
+
 ### LEN001 - oversized function or method
 
 Suggests reviewing Rust functions that exceed `method_length.max_lines`
@@ -1201,6 +1273,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`MOD001`]: #mod001---oversized-module
 [`MOD002`]: #mod002---function-local-use-without-cfg
 [`MOD003`]: #mod003---full-namespace-qualification-in-code
+[`MOD004`]: #mod004---sole-caller-module-nesting
 [C# MOD003]: languages/lints/csharp.md#mod003---full-namespace-qualification-in-code
 [`LEN001`]: #len001---oversized-function-or-method
 [`SYM`]: #sym---configured-symbol-policies
