@@ -18,7 +18,7 @@
 //!
 //! Regions never merge across sources: each block or attribute doc is
 //! its own region. The line-comment output stays unchanged, and the
-//! additions carry findings only for their own prose.
+//! additions carry findings only for their own text.
 //!
 //! [`DocRegion`]: crate::text::measurement::DocRegion
 
@@ -61,7 +61,7 @@ pub(crate) fn forbidden_character_regions(parsed: &ParseResult) -> Vec<DocRegion
     docs
 }
 
-/// Runs the TEXT* text checks over `parsed`'s doc prose: the
+/// Runs the TEXT* text checks over `parsed`'s doc text: the
 /// line-comment regions plus the parse tree's block and attribute doc
 /// regions, in source order.
 ///
@@ -201,7 +201,7 @@ fn attribute_lines(content: tree_sitter::Node<'_>, source: &str) -> Vec<RegionLi
 /// One outer block doc comment as a block-doc region.
 ///
 /// The `doc` child's text splits into lines with original numbers,
-/// each trimmed to its prose. The block doc dialect then strips the
+/// each trimmed to its text. The block doc dialect then strips the
 /// `*` continuations and exempts tagged and indented lines.
 fn block_doc_region(content: tree_sitter::Node<'_>, source: &str) -> DocRegion {
     DocRegion {
@@ -320,7 +320,7 @@ mod tests {
         diags.iter().filter(|d| d.code == code).collect()
     }
 
-    /// A 69-char prose line: four of them join past the 240 paragraph
+    /// A 69-char text line: four of them join past the 240 paragraph
     /// budget while each stays under the 80 line budget.
     fn prose_line() -> String {
         "word ".repeat(14).trim().to_string()
@@ -386,8 +386,8 @@ mod tests {
 
     // ── Block docs ──
 
-    /// Over-budget `/** */` prose errors with TEXT001 at the block's
-    /// first prose line, `*` continuations stripped from the count.
+    /// Over-budget `/** */` text errors with TEXT001 at the block's
+    /// first text line, `*` continuations stripped from the count.
     #[test]
     fn outer_block_doc_prose_errors_at_its_first_line() {
         let line = prose_line();
@@ -420,7 +420,7 @@ mod tests {
     }
 
     /// Inner `/*! */` docs, plain `/* */` comments, and `#![doc = "..."]`
-    /// inner attributes stay unmeasured: over-budget prose in them
+    /// inner attributes stay unmeasured: over-budget text in them
     /// yields nothing.
     #[test]
     fn inner_and_plain_block_comments_stay_quiet() {
@@ -436,7 +436,7 @@ mod tests {
     // ── Attribute docs ──
 
     /// Consecutive `#[doc = "..."]` attributes form one paragraph:
-    /// over-budget joined prose errors with TEXT001 at the first
+    /// over-budget joined text errors with TEXT001 at the first
     /// attribute line.
     #[test]
     fn doc_attribute_prose_errors_at_the_first_attribute_line() {
@@ -471,7 +471,7 @@ mod tests {
         );
     }
 
-    /// A 4-space-prefixed attribute value is prose, not indented code:
+    /// A 4-space-prefixed attribute value is text, not indented code:
     /// the one-space strip leaves a 3-space lead, so an over-long value
     /// still fires TEXT002.
     #[test]
@@ -503,7 +503,7 @@ mod tests {
         );
     }
 
-    /// Same-row doc attributes of one item join: their prose measures
+    /// Same-row doc attributes of one item join: their text measures
     /// as one paragraph.
     #[test]
     fn same_row_doc_attributes_join_into_one_paragraph() {

@@ -407,7 +407,7 @@ mod tests {
     }
 
     // A non-opener paragraph over the char limit stays silent: the budget
-    // shapes headers, not body prose (TEXT001 owns that).
+    // shapes headers, not body text (TEXT001 owns that).
     #[test]
     fn text_checks_skip_char_budget_on_non_opener_paragraph() {
         let source = formatdoc! {"

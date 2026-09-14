@@ -113,8 +113,8 @@ pub fn fix_fences<'a>(input: &'a str, prefixes: &[&str]) -> FixOutcome<'a> {
         // begin with a marker run or a family comment prefix after
         // [`strip_comment_prefix`] + trim.
         //
-        // The vast majority of lines (code, prose) fail this and are emitted
-        // verbatim with no further work.
+        // The vast majority of lines (code, text) fail this and pass
+        // through verbatim with no further work.
         //
         // See [`is_fence_candidate`] for the exactness argument.
         if !is_fence_candidate(segment, prefixes) {

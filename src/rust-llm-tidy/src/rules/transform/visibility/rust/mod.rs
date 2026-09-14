@@ -18,14 +18,14 @@
 use crate::languages::LanguageBackend;
 use crate::languages::RustBackend;
 use ahash::AHashSet;
-pub use modules::{
-    ModulePaths, ModuleTree, build_module_paths, build_module_tree, discover_crate_root,
-};
+pub use module_paths::{ModulePaths, build_module_paths};
+pub use modules::{ModuleTree, build_module_tree, discover_crate_root};
 pub use narrow::narrow_vis_in_tree;
 pub(crate) use narrow::narrow_vis_in_tree_protected;
 use std::path::PathBuf;
 use tree_sitter::{Node, Tree};
 
+mod module_paths;
 mod modules;
 mod narrow;
 

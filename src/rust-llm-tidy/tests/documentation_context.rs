@@ -5,7 +5,7 @@ use rust_llm_tidy::reporting::{Diagnostic, Severity};
 use rust_llm_tidy::{RunOptions, SourceOptions, run, tidy_source};
 use std::fs;
 
-/// Markdown used by most cases: a blank first line, then prose.
+/// Markdown used by most cases: a blank first line, then text.
 const BLANK_OPENER: &str = "\n# Guide\n\nBody text.\n";
 
 // ── Context-free entry points ──

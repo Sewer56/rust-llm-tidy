@@ -1,4 +1,4 @@
-//! TEXT006: suggest shorter wording without rewriting measured prose.
+//! TEXT006: suggest shorter wording without rewriting measured text.
 //!
 //! # Layout
 //!
@@ -192,7 +192,7 @@ mod tests {
         }
     }
 
-    // Raw prose and explicit XML regions expose the same rendered hint messages.
+    // Raw text and explicit XML regions expose the same rendered hint messages.
     #[test]
     fn hints_should_match_across_text_and_region_entry_points() {
         let source = "We utilize this.\nDue to the fact that it failed, retry.\n";
@@ -326,7 +326,7 @@ mod tests {
         }
     }
 
-    // Closing a span resumes prose matching without exposing span contents.
+    // Closing a span resumes text matching without exposing span contents.
     #[test]
     fn hints_should_resume_when_a_code_span_closes() {
         for source in [
@@ -352,7 +352,7 @@ mod tests {
         assert!(codes(&diags, CODE_VERBOSE_SYNONYMS).is_empty());
     }
 
-    // A span closed on a later line resumes prose matching on that line.
+    // A span closed on a later line resumes text matching on that line.
     #[test]
     fn hints_should_resume_when_a_span_closes_on_a_later_line() {
         let source = "code `span stays\nopen` prior to this";

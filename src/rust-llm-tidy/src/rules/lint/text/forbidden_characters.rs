@@ -1,4 +1,4 @@
-//! TEXT009 rejects scoped characters in docs and comment prose without edits.
+//! TEXT009 rejects scoped characters in docs and comment text without edits.
 
 use crate::config::ForbiddenCharacterRule;
 use crate::reporting::{Diagnostic, Severity};
@@ -21,7 +21,7 @@ pub(crate) fn parsed_diagnostics(
     diagnostics
 }
 
-/// Check measured prose in source order, skipping code and link destinations.
+/// Check measured text in source order, skipping code and link destinations.
 pub(crate) fn diagnostics(doc: &Document, rules: &[ForbiddenCharacterRule]) -> Vec<Diagnostic> {
     scoped_diagnostics(doc, rules, true)
 }
@@ -186,7 +186,7 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    /// Prose is checked while examples and destinations remain untouched.
+    /// The rule checks text but leaves examples and destinations untouched.
     #[rstest]
     #[case::prose("Read\u{2014}this", 1)]
     #[case::heading("# Read\u{2014}this", 1)]

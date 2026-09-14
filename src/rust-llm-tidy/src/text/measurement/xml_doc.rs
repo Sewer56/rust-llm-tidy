@@ -5,7 +5,7 @@
 //! values (including `cref` and `name`) never count. `<code>` and
 //! `<example>` subtrees are exempt like code fences.
 //!
-//! A paragraph is a contiguous text run within one tag, so prose never
+//! A paragraph is a contiguous text run within one tag, so text never
 //! joins across a tag boundary. A whitespace-only text node splits like
 //! a blank line.
 
@@ -88,7 +88,7 @@ fn scan_line(
         } else {
             measure_segment(segment, number, scan, pending, doc, &mut measured);
         }
-        // A tag boundary is a paragraph boundary: prose never joins
+        // A tag boundary is a paragraph boundary: text never joins
         // across it.
         flush(pending, doc);
         scan.run_open = false;
@@ -255,7 +255,7 @@ mod tests {
 
     // ── Paragraph segmentation ──
 
-    // Prose never joins across a tag boundary: two texts that would
+    // Text never joins across a tag boundary: two texts that would
     // overflow the budget when joined stay silent inside their own tags.
     #[test]
     fn xml_paragraphs_never_join_across_tags() {
@@ -304,7 +304,7 @@ mod tests {
         assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
     }
 
-    // Text outside any tag is plain doc prose and is measured.
+    // Text outside any tag is plain doc text, and the dialect measures it.
     #[test]
     fn xml_measures_untagged_prose() {
         let filler = "z".repeat(241);
@@ -353,7 +353,7 @@ mod tests {
     }
 
     // A self-closing `<code/>` opens no subtree: the text after it is
-    // measured prose.
+    // measured text.
     #[test]
     fn xml_self_closing_code_opens_no_subtree() {
         let long = "p".repeat(81);

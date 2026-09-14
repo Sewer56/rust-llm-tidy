@@ -206,7 +206,7 @@ mod tests {
     fn text_checks_exclude_bullets_from_paragraph_budget() {
         let prose = "sentence ".repeat(20);
         let bullet = "- ".to_string() + &"word ".repeat(20);
-        // Prose alone stays under 240; adding the bullet words would cross it.
+        // Text alone stays under 240; adding the bullet words would cross it.
         let source = format!("{prose}\n{bullet}\n");
         assert!(prose.trim().len() < 240);
         let diags = run_text_checks(&source, "md");

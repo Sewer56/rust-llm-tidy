@@ -1,4 +1,4 @@
-//! Classify TEXT009 prose as documentation or ordinary comments.
+//! Classify TEXT009 text as documentation or ordinary comments.
 
 use crate::languages::{python, rust};
 use crate::source::ParseResult;

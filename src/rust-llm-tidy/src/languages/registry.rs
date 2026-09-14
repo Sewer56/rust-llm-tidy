@@ -47,7 +47,7 @@
 //! checks are sourced:
 //!
 //! - [`TextLints::Prose`]: the markdown family measures the whole file
-//!   as prose, no parser needed.
+//!   as text, no parser needed.
 //! - [`TextLints::Ast`]: the language's backend parses the file. Its
 //!   lint composition emits the text checks (`rs` from line-comment
 //!   regions, `cs` from XML doc regions, `py`/`pyi` from docstring and
@@ -258,7 +258,7 @@ const RUST: Profile = Profile {
     text_lints: TextLints::Ast,
     module_size: ModuleSize::RustNonTest,
 };
-/// Backendless languages: lint comment prose and whole-file size.
+/// Backendless languages: lint comment text and whole-file size.
 const COMMENT_LINTS: Profile = Profile {
     ops: &["lints"],
     prefixes: &[],
@@ -281,7 +281,7 @@ pub(crate) struct Profile {
     /// Line-comment markers stripped and re-applied around tables and
     /// fences, longest first.
     ///
-    /// A `///` marker must precede `//`; the list is empty for prose and
+    /// A `///` marker must precede `//`; the list is empty for text and
     /// profiles without transformations. TEXT scanners do not use this list.
     pub prefixes: &'static [&'static str],
     /// Ops that run when no explicit include list narrows the run; always a
@@ -307,7 +307,7 @@ pub(crate) struct Profile {
 pub(crate) enum ModuleSize {
     /// Unsupported extensions do not measure, even with the non-code opt-in.
     None,
-    /// Supported configuration, data, or prose; measure only with the opt-in.
+    /// Supported configuration, data, or text; measure only with the opt-in.
     NonCode,
     /// Count every physical line, including test files and inline tests.
     WholeFile,
@@ -318,7 +318,7 @@ pub(crate) enum ModuleSize {
 /// How a profile's TEXT* text checks are sourced.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TextLints {
-    /// Whole-file prose measurement over the raw source: the markdown
+    /// Whole-file text measurement over the raw source: the markdown
     /// family's producer, no parser needed.
     Prose,
     /// Text regions from the language's AST backend: the backend's parse
@@ -805,7 +805,7 @@ mod tests {
 
     /// Every registry extension resolves to exactly one text-lint tier.
     ///
-    /// Markdown prose covers the markdown family only. `rs`/`cs`/`py`/`pyi`
+    /// Markdown text covers the markdown family only. `rs`/`cs`/`py`/`pyi`
     /// use AST regions, and every comment-marker code family uses the
     /// lexicon tier.
     ///

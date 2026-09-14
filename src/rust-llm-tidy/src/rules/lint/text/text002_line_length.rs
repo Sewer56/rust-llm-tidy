@@ -156,7 +156,7 @@ mod tests {
     }
 
     // The same span-bearing text stays silent inside a code block but warns
-    // as prose, where its code span counts.
+    // as text, where its code span counts.
     #[test]
     fn text_checks_exempt_code_block_but_count_prose_spans() {
         let inner = format!("say `{}` out loud", "b".repeat(80));
@@ -234,7 +234,7 @@ mod tests {
         assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
     }
 
-    // Prose glued to a closed markdown URL is not trailing: it counts in
+    // Text glued to a closed markdown URL is not trailing: it counts in
     // full and warns.
     #[rstest]
     #[case::autolink("See <https://a.test>")]
@@ -263,7 +263,7 @@ mod tests {
     #[case::mailto("mailto:", 83)]
     #[case::reloaded_2("r2:", 82)]
     fn text_checks_count_empty_destination_scheme(#[case] tail: &str, #[case] len: usize) {
-        // `len` counts the prose, the separating space, and the scheme.
+        // `len` counts the text, the separating space, and the scheme.
         let prose = "x".repeat(len - tail.chars().count() - 1);
         let source = format!("{prose} {tail}\n");
         let diags = run_text_checks(&source, "md");
@@ -280,7 +280,7 @@ mod tests {
     }
 
     // The trailing URL is excluded from the count, so the limit applies to
-    // the prose before it. The separating space is prose, not URL.
+    // the text before it. The separating space is text, not URL.
     #[rstest]
     #[case::at_limit(79, None)]
     #[case::over_limit(80, Some(LINE_LIMIT + 1))]

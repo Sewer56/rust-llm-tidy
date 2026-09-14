@@ -29,7 +29,7 @@ mod text010_documentation_context;
 ///
 /// Called by the `run_text_checks` and `run_region_checks` entry points
 /// in [`crate::rules::registry`]. TEXT005 reads the recorded fence
-/// facts, so every markdown-prose tier can emit it.
+/// facts, so every markdown-text tier can emit it.
 pub(crate) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     let mut diags = text001_paragraph_size::diagnostics(doc);
     diags.extend(text002_line_length::diagnostics(doc));

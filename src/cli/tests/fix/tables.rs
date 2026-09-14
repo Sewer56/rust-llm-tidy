@@ -44,7 +44,7 @@ fn non_table_pipe_lines_stay_byte_unchanged() {
 
 // ── Per-language table fixtures ────────────────────────────────────
 
-/// Tables realign in verified comments and prose; unsupported sources stay exact.
+/// Tables realign in verified comments and text; unsupported sources stay exact.
 ///
 /// Changed tables retain their marker and indentation and report one fix.
 /// A second dry run leaves the consumed bytes intact and reports no fixes.

@@ -1,12 +1,12 @@
-//! Recognize URL tokens in measured prose.
+//! Recognize URL tokens in measured text.
 //!
 //! Scheme matching is an explicit allowlist, not a generic `scheme:` scan,
-//! so ordinary prose is never mistaken for a URL. A scheme must sit on a
+//! so ordinary text is never mistaken for a URL. A scheme must sit on a
 //! token boundary and carry a nonempty destination.
 
 use core::ops::Range;
 
-/// URL schemes recognized in prose, matched case-insensitively as a prefix.
+/// URL schemes recognized in text, matched case-insensitively as a prefix.
 const SCHEME_PREFIXES: &[&str] = &[
     "http://", "https://", "ftp://", "ftps://", "ssh://", "git://", "ws://", "wss://", "file://",
     "mailto:", "nxm://", "r2:",
@@ -115,7 +115,7 @@ fn url_body_end(line: &str, body_start: usize) -> usize {
     line.len()
 }
 
-/// Trailing sentence punctuation that belongs to the surrounding prose, not
+/// Trailing sentence punctuation that belongs to the surrounding text, not
 /// the URL.
 fn is_sentence_punctuation(ch: char) -> bool {
     matches!(ch, '.' | ',' | ';' | ':' | '!' | '?' | '\'' | '"')

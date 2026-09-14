@@ -28,7 +28,7 @@ fn cli_should_add_entries_to_effective_policy(
     assert_eq!(records.len(), count, "{stderr}");
 }
 
-/// Full comment bodies retain original lines and prose exclusions.
+/// Full comment bodies retain original lines and text exclusions.
 #[rstest]
 #[case::rust_block("rs", "/*\n * Prose!\n * `Code!`\n */\nfn main() {}", &[2])]
 #[case::rust_same_line("rs", "/* First! */ fn example() {} /* Second! */", &[1, 1])]

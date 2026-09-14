@@ -2,7 +2,7 @@
 //!
 //! # How it works
 //!
-//! - Read prose line by line; skip code blocks, tables, and link definitions.
+//! - Read text line by line; skip code blocks, tables, and link definitions.
 //! - Collect words outside inline code and link targets, keeping their positions.
 //! - Look for a be-verb (`is`, `are`, `was`) followed by a likely past
 //!   participle (`returned`, `parsed`, `written`), such as `are returned`.
@@ -45,7 +45,7 @@
 //! - Punctuation interrupts phrases; matches are case-insensitive, and
 //!   digits and underscores extend a word.
 //! - Inline code, link targets, reference labels, autolinks, and HTTP URLs
-//!   stay opaque; backtick code spans carry across consecutive prose lines.
+//!   stay opaque; backtick code spans carry across consecutive text lines.
 //! - File processing enables this rule by default, reporting changed lines.
 //!   `passive_narration.enable: false` opts out; explicit inclusion overrides it.
 //! - `--all-lines` overrides reporting scope, not rule selection.
@@ -124,7 +124,7 @@ pub(crate) fn is_narration_marker(diag: &Diagnostic) -> bool {
     diag.code == CODE_PASSIVE_NARRATION && diag.message.starts_with(NARRATION_MARKER_SUMMARY)
 }
 
-/// TEXT007 findings for one measured markdown prose line.
+/// TEXT007 findings for one measured markdown text line.
 #[cfg(test)]
 pub(super) fn one_line(line: &str) -> Vec<crate::reporting::Diagnostic> {
     let diags = run_text_checks(&format!("{line}\n"), "md");
@@ -290,7 +290,7 @@ mod tests {
             "Return true if the previous request was successful.",
             "Apply this patch to the input buffer.",
             "Track the bytes used to compute the checksum.",
-            // Ambiguous markers are deliberately omitted even in historical prose.
+            // Ambiguous markers are deliberately omitted even in historical text.
             "This flag used to default on.",
             "The value was large.",
         ] {
@@ -300,7 +300,7 @@ mod tests {
         }
     }
 
-    // Code and links interrupt phrases without hiding the prose that follows.
+    // Code and links interrupt phrases without hiding the text that follows.
     #[test]
     fn hints_should_ignore_nonprose_and_boundaries_when_scanning_comments_and_markdown() {
         for (source, expected) in [

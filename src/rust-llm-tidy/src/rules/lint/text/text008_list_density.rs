@@ -10,7 +10,7 @@ const LIST_LINE_LIMIT: usize = 10;
 
 /// Warn once per over-budget run of bullet paragraphs, at its first line.
 ///
-/// Prose, numbered lists, headings, and code blocks end a run.
+/// Text, numbered lists, headings, and code blocks end a run.
 /// Headings follow the measuring core's `#`-prefix convention. Blank lines
 /// do not count; nested bullets contribute their own member lines.
 pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {

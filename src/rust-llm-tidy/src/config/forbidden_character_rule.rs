@@ -9,7 +9,7 @@ use std::sync::LazyLock;
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ForbiddenCharacterRule {
-    /// Unicode scalar values to reject in prose, not strings or sequences.
+    /// Unicode scalar values to reject in text, not strings or sequences.
     pub characters: Vec<char>,
     /// Nonblank diagnostic title.
     pub title: Box<str>,

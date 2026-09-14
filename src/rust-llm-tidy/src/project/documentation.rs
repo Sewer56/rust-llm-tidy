@@ -10,7 +10,7 @@
 //! # Signals, in precedence order
 //!
 //! 1. A conventional filename stem - `README`, `QUICKSTART`, or
-//!    `GETTING_STARTED` - with a prose extension.
+//!    `GETTING_STARTED` - with a text extension.
 //! 2. The nearest documentation-tool marker in an ancestor directory, up to
 //!    the repository boundary.
 //! 3. A `docs` directory component below that boundary.
@@ -19,7 +19,7 @@
 //! audience rather than claiming a defect.
 //!
 //! The lint excludes `AGENTS.md` because it instructs agents rather than
-//! users. It classifies only prose profiles (the markdown family), so
+//! users. It classifies only text profiles (the markdown family), so
 //! `docs/example.rs` never matches.
 //!
 //! # Bounds

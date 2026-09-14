@@ -320,7 +320,7 @@ Suggestions:
 ### TEXT001 - oversized paragraph
 
 An XML doc text paragraph over 240 chars of inner text. A paragraph is
-one contiguous text run inside a tag: prose never joins across a tag
+one contiguous text run inside a tag: text never joins across a tag
 boundary.
 
 Before:

@@ -46,7 +46,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`TEXT002`] | Warning            | A doc line over 80 chars (trailing URL, code blocks, tables, link defs exempt).   |
 | [`TEXT003`] | Warning            | A doc sentence over 25 words (words join across wrapped lines).                   |
 | [`TEXT004`] | Warning            | A doc opener with 3+ sentences or over 160 chars (file, item, or heading).        |
-| [`TEXT005`] | Warning            | A fenced code block opens with no tag or bare `ignore` (all markdown prose).      |
+| [`TEXT005`] | Warning            | A fenced code block opens with no tag or bare `ignore` (all markdown text).       |
 | [`TEXT006`] | Hint               | A doc line has a shorter alternative for a word, phrase, or filler.               |
 | [`TEXT007`] | AiReminder         | A doc line may hold passive voice or implementation history.                      |
 | [`TEXT008`] | Warning            | A bullet list exceeds 10 source lines.                                            |
@@ -983,27 +983,25 @@ Update references; preserve behavior and public APIs.
 #### Remarks
 
 - Include the caller's first-reference file or directory to see the finding.
-- Checks the first `.rs` input's crate; warns once and skips if not found.
-- Groups callers by module subtree at the target's depth, not by file.
-- Skips the root, parent-to-child and internal references, multiple callers,
-  mutual sole-caller pairs, and `#[cfg(test)]` code.
-  Outer findings cover nested modules.
-
-Resolution follows the `mod` tree. Re-exports, trait/dynamic dispatch,
-and macros may hide uses. Imports like `use xbe::{..}` are not resolved;
-qualified imports like `use crate::xbe::{..}` are.
+- A caller spread across several files or nested modules counts as one
+  caller.
+- Uses resolve through the `mod` tree, so re-exports, trait/dynamic
+  dispatch, macros, and unqualified imports like `use xbe::{..}` can hide a
+  caller and suppress the suggestion.
+- `#[cfg(test)]` code never counts as a caller.
+- The check warns once and skips if it cannot find the crate of the first
+  `.rs` input.
 
 #### MOD004 in C#
 
-Checks namespaces in the nearest `.csproj` and its project references.
-Groups callers by namespace at the target's depth; ignores folder layout.
+For C#, callers are namespaces in the nearest `.csproj` and its project
+references; folder layout does not matter.
 
-- Uses the same root and reference exclusions as Rust.
-- Ignores uses inside `[Test]`, `[TestMethod]`, `[Fact]`, or `[Theory]`
-  members. Other test code may count.
-- Blind spots: aliases except `using static`, `global using`,
-  reflection, string-built names, `nameof`, `dynamic`, implicit extension
-  imports, and source generators.
+- Uses inside `[Test]`, `[TestMethod]`, `[Fact]`, or `[Theory]` members
+  never count as callers; other test code may.
+- Hidden uses: aliases except `using static`, `global using`, reflection,
+  string-built names, `nameof`, `dynamic`, implicit extension imports, and
+  source generators.
 
 ### LEN001 - oversized function or method
 

@@ -1,7 +1,7 @@
 //! Comment-family text budgets across the lexicon languages.
 //!
 //! Every test runs `--include lints` on a fixture under
-//! `tests/fixtures/doc/`. Prose inside comments measures against the
+//! `tests/fixtures/doc/`. Text inside comments measures against the
 //! text budgets; string payloads and other quiet regions never do.
 
 use crate::csharp::run_csharp_fixture;
@@ -11,7 +11,7 @@ use std::fs;
 
 /// C# text budgets fire with original file lines.
 ///
-/// - TEXT001 errors on an over-budget summary paragraph at its first prose line.
+/// - TEXT001 errors on an over-budget summary paragraph at its first text line.
 /// - TEXT002 warns on a line whose tag-stripped inner text exceeds 80 chars.
 #[test]
 fn csharp_text_budgets_fire_with_original_lines() {
@@ -109,7 +109,7 @@ fn default_run_lints_comment_prose_in_every_comment_family() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Lisp `;` and `#| |#` comment prose fires the text budgets at
+/// Lisp `;` and `#| |#` comment text fires the text budgets at
 /// original file lines while `"..."` string content stays quiet.
 #[test]
 fn el_lexicon_measures_comments_not_strings() {
@@ -140,7 +140,7 @@ fn el_lexicon_measures_comments_not_strings() {
     );
 }
 
-/// Erlang `%` comment prose fires the text budgets while `<<"...">>`
+/// Erlang `%` comment text fires the text budgets while `<<"...">>`
 /// binary content stays quiet.
 #[test]
 fn erl_lexicon_measures_comments_not_strings() {
@@ -183,7 +183,7 @@ fn js_lexicon_string_probes_stay_quiet() {
 /// Explicit `--include lints` on a `.js` file fires the text budgets.
 ///
 /// Details:
-/// - TEXT001 fires for over-budget `//` and `/** */` prose.
+/// - TEXT001 fires for over-budget `//` and `/** */` text.
 /// - TEXT002 fires for an over-long comment line.
 /// - Both report at original file lines.
 #[test]
@@ -216,13 +216,13 @@ fn js_lexicon_text_budgets_fire_with_original_lines() {
 }
 
 /// Each lexicon-family fixture fires exactly one comment paragraph,
-/// at its first prose line, and no line crosses the line budget.
+/// at its first text line, and no line crosses the line budget.
 ///
 /// The fixtures' quiet payloads (strings, heredocs, block strings,
 /// code) never measure.
 ///
 /// Block-marker cases (`<# #>`, `(* *)`, `{- -}`) report at their
-/// first prose line, which follows the line-marker opening. Only
+/// first text line, which follows the line-marker opening. Only
 /// `sh` differs: its `#!` shebang is itself a comment line, so the
 /// paragraph starts at line 1 like the rest.
 #[rstest]
@@ -264,7 +264,7 @@ fn lexicon_comment_prose_fires_once_at_its_first_line(#[case] name: &str, #[case
     );
 }
 
-/// Python `#` comment prose fires TEXT001 while triple-quoted string
+/// Python `#` comment text fires TEXT001 while triple-quoted string
 /// content and `<<` operators stay quiet.
 #[test]
 fn py_text_checks_measure_comments_not_strings() {
@@ -287,7 +287,7 @@ fn py_text_checks_measure_comments_not_strings() {
     );
 }
 
-/// SQL `--` and `/* */` comment prose fires the text budgets at
+/// SQL `--` and `/* */` comment text fires the text budgets at
 /// original file lines while `'...'` string content stays quiet.
 #[test]
 fn sql_lexicon_measures_comments_not_strings() {

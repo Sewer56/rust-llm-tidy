@@ -28,11 +28,12 @@ pub fn run_region_checks(regions: Vec<DocRegion>) -> Vec<Diagnostic> {
     text::diagnostics(&measurement::measure(regions))
 }
 
-/// Check raw prose or line-marker documentation selected by extension.
+/// Check plain-text documentation or line-marker documentation selected
+/// by extension.
 ///
 /// # Arguments
 ///
-/// - `source`: raw prose or commented source
+/// - `source`: plain text or commented source
 /// - `ext`: extension selecting the line-marker family
 ///
 /// # Returns

@@ -10,7 +10,7 @@
 //! - a triple-quoted string that is the first statement of a module,
 //!   class, or function becomes a [`Docstring`]-dialect region, with the
 //!   quotes stripped and the docstring's common indentation removed;
-//! - `#` comments become markdown-prose regions exactly as the comment
+//! - `#` comments become markdown-text regions exactly as the comment
 //!   lexicon measured them. Contiguous standalone runs join one region,
 //!   the marker run and one space strip, and a trailing comment is its
 //!   own region.
@@ -22,7 +22,7 @@
 //!
 //! A parse tree carrying error nodes produces no findings: a mis-scoped
 //! string in a broken tree would risk measuring string content as
-//! prose.
+//! text.
 //!
 //! A half-read module could equally report its docstring as missing.
 //! Invalid sources stay silent instead of guessed.
@@ -351,7 +351,7 @@ mod tests {
         diags.iter().filter(|d| d.code == code).collect()
     }
 
-    /// Five prose lines whose joined size crosses the 240 budget while
+    /// Five text lines whose joined size crosses the 240 budget while
     /// each line stays under 80.
     const PROSE: &[&str] = &[
         "filler words pad the paragraph past the two hundred forty limit",
@@ -361,9 +361,9 @@ mod tests {
         "filler words pad the paragraph past the two hundred forty limit",
     ];
 
-    /// Wraps the prose lines in an indented triple-quoted block: the
+    /// Wraps the text lines in an indented triple-quoted block: the
     /// opening quotes on their own line, the closing quotes on the last
-    /// prose line.
+    /// text line.
     fn docstring(indent: &str) -> String {
         let mut out = format!("{indent}\"\"\"\n");
         for (i, line) in PROSE.iter().enumerate() {
@@ -380,7 +380,7 @@ mod tests {
     // ── Docstring true positives ──
 
     // Module, class, and function docstrings measure with original file
-    // lines, each paragraph erroring at its first prose line.
+    // lines, each paragraph erroring at its first text line.
     //
     // The class and function cases carry the body indent that the
     // producer must dedent: unstripped, every line would count as
@@ -423,7 +423,7 @@ mod tests {
         }
     }
 
-    // A `>>>` doctest example inside a docstring stays exempt, prose
+    // A `>>>` doctest example inside a docstring stays exempt, text
     // around it measures.
     #[test]
     fn doctest_lines_are_exempt() {
@@ -445,7 +445,7 @@ mod tests {
     //
     // The real module docstring and comment run do.
     //
-    // The in-string payloads are plain prose that crosses the paragraph
+    // The in-string payloads are plain text that crosses the paragraph
     // budget - `#`-led filler would read as headings and stay exempt if
     // measured. A loosened first-statement or body gate therefore fires
     // and fails the count.

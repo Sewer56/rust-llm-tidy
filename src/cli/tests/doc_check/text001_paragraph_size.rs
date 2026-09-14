@@ -41,7 +41,7 @@ fn md_text001_suppressed_by_exclude() {
     );
 }
 
-/// Python docstring prose fires the text budgets with original file lines.
+/// Python docstring text fires the text budgets with original file lines.
 ///
 /// TEXT001 errors on the module docstring's over-budget paragraph, and
 /// TEXT002 warns on a function docstring's over-long line.

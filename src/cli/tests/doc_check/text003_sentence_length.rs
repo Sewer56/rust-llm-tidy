@@ -8,7 +8,7 @@ use crate::run_python_fixture;
 
 /// Python docstring sentences over the word budget warn with TEXT003.
 ///
-/// The long sentence reports at the module docstring's first prose line, the
+/// The long sentence reports at the module docstring's first text line, the
 /// function docstring stays quiet, and warnings leave the exit code at 0.
 #[test]
 fn py_docstring_long_sentence_warns_text003() {

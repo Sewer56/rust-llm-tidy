@@ -7,8 +7,9 @@ use crate::text::measurement::{Document, Fence};
 /// TEXT005 diagnostics for `doc`: one Warning per opening fence whose
 /// info string is empty or exactly `ignore`, in source order.
 ///
-/// Fires wherever markdown prose is measured: whole-file sources and
-/// doc/comment regions. XML doc regions have no fences and never fire it.
+/// Fires wherever the pipeline measures markdown text: whole-file
+/// sources and doc/comment regions. XML doc regions have no fences and
+/// never fire it.
 pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     doc.fences
         .iter()

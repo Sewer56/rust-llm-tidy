@@ -8,7 +8,7 @@
 //!
 //! - Names: `LICENSE`, `LICENCE`, or `COPYING`, ASCII case-insensitive
 //! - Suffix boundary: end of name, `.`, `-`, `_`, or space
-//! - Exception: recognized non-prose source extensions, including `license.rs`
+//! - Exception: recognized non-text source extensions, including `license.rs`
 
 use crate::languages::registry::{DEFAULT_EXTENSIONS, TextLints, profile_for};
 use anyhow::{Context, bail};

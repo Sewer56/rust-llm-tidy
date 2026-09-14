@@ -21,7 +21,7 @@ pub struct DocRegion {
 /// The dialect a [`DocRegion`] is measured with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
-    /// Markdown prose: fences, indented code, exempt content, and bullet
+    /// Markdown text: fences, indented code, exempt content, and bullet
     /// segmentation over the stripped text.
     Markdown,
     /// XML doc comments: only the inner text of text nodes is measured.
@@ -30,13 +30,13 @@ pub enum Dialect {
     /// subtrees are exempt, and paragraphs never join across tags.
     XmlDoc,
     /// Block doc comments (`/** ... */` style): leading `*` continuation
-    /// markers vanish, `@tag` lines cost only their remaining prose.
+    /// markers vanish, `@tag` lines cost only their remaining text.
     ///
     /// Blank lines split paragraphs, and fenced or indented example
     /// blocks are exempt.
     BlockDoc,
     /// Python docstrings: `>>>` doctest examples are exempt, and the
-    /// remaining prose measures with the markdown rules.
+    /// remaining text measures with the markdown rules.
     ///
     /// A doctest example spans its source line, `...` continuations, and
     /// expected output, until the blank line that ends the example.

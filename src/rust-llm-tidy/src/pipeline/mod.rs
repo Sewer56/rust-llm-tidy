@@ -3,15 +3,13 @@
 //!
 //! # Module map
 //!
-//! - `run`/`should_parallelize`/`validate_selection`/`dedup_inputs` (this
-//!   file): orchestration, input collapsing, and selection validation
+//! - this file: `run`, `should_parallelize`, `validate_selection`, `dedup_inputs`
 //! - `buffer`: standalone source-buffer processing shared by entry points
 //! - `comment_fixes`: comment-run text fixes shared by buffer and file paths
 //! - `file_execution`: per-file mutation and lint phase execution
 //! - `files`: file I/O operations and the crate-aware visibility context
 //! - `run_options`: explicit permissions and rule selection for `run`
-//! - `sole_caller`: MOD004 crate-level and C# cross-project facts for
-//!   the lint phase
+//! - `sole_caller`: MOD004 crate-level and C# cross-project lint facts
 //! - `source_options`: options for standalone buffer processing
 //!
 //! `run` folds per-file warnings through [`collect_file_warnings`].
@@ -21,6 +19,7 @@ use crate::input as paths;
 use crate::languages::registry as langs;
 use crate::project::csharp::CSharpIndex;
 use crate::reporting::{FileReport, PostProcessFailure, RunReport};
+use crate::rules::lint::sole_caller::SoleCallerFindings;
 use crate::rules::registry as check;
 pub use buffer::tidy_source;
 use rayon::prelude::*;
@@ -51,13 +50,12 @@ impl FileReport {
 /// Process selected files using explicit write and subprocess permissions.
 ///
 /// Returns partial results when individual files or configured subprocesses
-/// fail.
-/// Inspect [`RunReport::ensure_success`] after consuming the report.
+/// fail; inspect [`RunReport::ensure_success`] after consuming the report.
 /// Configuration discovery is explicit through [`crate::config`].
 ///
-/// TEXT007 defaults to AI reminder severity and changed-line reporting.
+/// TEXT007 defaults to AI reminder severity and changed-line reporting,
+/// which requires Git permission in [`RunOptions`].
 /// `passive_narration.enable: false` disables it unless explicitly included.
-/// Changed-line reporting requires Git permission in [`RunOptions`].
 ///
 /// TEXT010 reports one file-context AI reminder for likely documentation, so it
 /// needs `run` and never fires from [`tidy_source`].
@@ -71,8 +69,7 @@ impl FileReport {
 /// # Arguments
 ///
 /// - `options`: inputs, selections, and explicit execution permissions
-/// - `config`: previously loaded configuration, or language defaults when
-///   absent
+/// - `config`: loaded configuration, or language defaults when absent
 ///
 /// # Returns
 ///
@@ -106,8 +103,7 @@ impl FileReport {
 /// - Malformed extension: an extra extension cannot match a file suffix
 /// - Input discovery failure: a selected path is missing, unreadable, or Git
 ///   lookup fails
-/// - Project discovery failure: a C# project source directory cannot be
-///   traversed
+/// - Project discovery failure: traversing a C# source directory fails
 ///
 /// Changed-line reporting failures:
 ///
@@ -143,8 +139,7 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
         (!options.include.is_empty()).then(|| options.include.iter().cloned().collect());
     let disabled: HashSet<String> = options.exclude.iter().cloned().collect();
     let mut lint_context = lint_context::LintContext::new(config, options.all_lines);
-    // Classify documentation locations once per run: the lint phase reuses
-    // these facts and never resolves ancestors itself.
+    // Classify doc locations once per run; the lint phase reuses them.
     lint_context.classify_documentation(&paths);
     report.warnings = lint_context.capture(&paths, options, included.as_ref(), &disabled)?;
     if paths.is_empty() {
@@ -168,45 +163,24 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
         .then(|| CSharpIndex::build(&paths))
         .transpose()?;
 
-    let mutate = |path: &PathBuf| {
-        file_execution::process_one(
-            path,
-            included.as_ref(),
-            &disabled,
-            context.as_ref(),
-            !options.apply,
-            (None, None, None, None),
-            &lint_context,
-        )
-    };
-    let results: Vec<_> = if parallel {
-        paths.par_iter().map(mutate).collect()
-    } else {
-        paths.iter().map(mutate).collect()
-    };
+    let results = mutate_inputs(
+        &paths,
+        parallel,
+        options,
+        included.as_ref(),
+        &disabled,
+        context.as_ref(),
+        &lint_context,
+    );
 
-    // Cross-file lint facts must reflect all completed writes, not a partial batch.
-    if let Some(index) = &mut csharp {
-        index.refresh(&paths);
-    }
-    // MOD004 is crate-level: its findings are built once, after all
-    // mutations and before the lint phases.
-    let sole_caller = sole_caller::sole_caller_findings(
+    let (sole_caller, csharp_sole_caller) = cross_file_facts(
+        &mut csharp,
         &paths,
         options,
         config,
         included.as_ref(),
         &disabled,
         &mut report.warnings,
-    );
-    // The C# findings reuse the refreshed parses: same timing, no
-    // second parse of the project closure.
-    let csharp_sole_caller = sole_caller::csharp_sole_caller_findings(
-        csharp.as_ref(),
-        &paths,
-        config,
-        included.as_ref(),
-        &disabled,
     );
     let lint = |(path, out): (&PathBuf, FileReport)| {
         if out.failure.is_some() {
@@ -353,6 +327,30 @@ fn collect_file_warnings(report: &mut RunReport) {
     }
 }
 
+/// Build the MOD004 Rust and C# facts once, post-mutation and pre-lint.
+fn cross_file_facts(
+    csharp: &mut Option<CSharpIndex>,
+    paths: &[PathBuf],
+    options: &RunOptions,
+    config: Option<&CompiledConfig>,
+    included: Option<&HashSet<String>>,
+    disabled: &HashSet<String>,
+    warnings: &mut Vec<String>,
+) -> (Option<SoleCallerFindings>, Option<SoleCallerFindings>) {
+    csharp.iter_mut().for_each(|index| index.refresh(paths));
+    let sole_caller =
+        sole_caller::sole_caller_findings(paths, options, config, included, disabled, warnings);
+    // The C# findings reuse the refreshed parses; no second closure parse.
+    let csharp_sole_caller = sole_caller::csharp_sole_caller_findings(
+        csharp.as_ref(),
+        paths,
+        config,
+        included,
+        disabled,
+    );
+    (sole_caller, csharp_sole_caller)
+}
+
 /// Collapse path aliases before dispatch.
 ///
 /// The input resolver dedups literal paths only, so one inode reachable under
@@ -395,6 +393,34 @@ fn dedup_inputs(paths: Vec<PathBuf>) -> Vec<PathBuf> {
             }
         })
         .collect()
+}
+
+/// Run the mutation phase; rayon or sequential, no cross-file facts yet.
+fn mutate_inputs(
+    paths: &[PathBuf],
+    parallel: bool,
+    options: &RunOptions,
+    included: Option<&HashSet<String>>,
+    disabled: &HashSet<String>,
+    context: Option<&files::VisContext>,
+    lint_context: &lint_context::LintContext<'_>,
+) -> Vec<FileReport> {
+    let mutate = |path: &PathBuf| {
+        file_execution::process_one(
+            path,
+            included,
+            disabled,
+            context,
+            !options.apply,
+            (None, None, None, None),
+            lint_context,
+        )
+    };
+    if parallel {
+        paths.par_iter().map(mutate).collect()
+    } else {
+        paths.iter().map(mutate).collect()
+    }
 }
 
 /// Resolve the crate-aware visibility context from the eligible Rust inputs.
@@ -572,6 +598,7 @@ mod tests {
             &inputs,
             None,
             None,
+            // Expected count is unknown here, so zero capacity is fine.
             &HashSet::new(),
         )
         .expect("gates pass for a .cs input");

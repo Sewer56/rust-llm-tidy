@@ -83,7 +83,7 @@ mod tests {
         assert_eq!(check(&item).len(), 1);
     }
 
-    // `...` is unambiguous (ellipsis) and idiomatic in prose, so it is NOT
+    // `...` is unambiguous (ellipsis) and idiomatic in text, so it is NOT
     // treated as a placeholder marker. Rust shorthand like `Result<...>` is
     // unaffected.
     #[test]

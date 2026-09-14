@@ -9,8 +9,8 @@
 //! without recording anything; `using static` directives record one
 //! reference edge.
 //!
-//! References inside members marked `[Test]`, `[TestMethod]`,
-//! `[Fact]`, or `[Theory]` are dropped.
+//! The index drops references inside members marked `[Test]`,
+//! `[TestMethod]`, `[Fact]`, or `[Theory]`.
 
 use crate::languages::csharp::parse::has_test_marker;
 use crate::source::ParseResult;
@@ -70,7 +70,7 @@ impl NamespaceRefIndex {
     /// # Arguments
     ///
     /// - `parses` - each C# parse result paired with its file path;
-    ///   parses with syntax errors are skipped.
+    ///   this constructor skips parses with syntax errors.
     ///
     /// # Returns
     ///
@@ -88,8 +88,8 @@ impl NamespaceRefIndex {
             let mut namespaces = Vec::new();
             index.collect_declarations(root, "", source.as_bytes(), &mut namespaces);
 
-            // Usings apply file-wide for bare-name resolution, so they are
-            // collected before any reference is resolved.
+            // Usings apply file-wide for bare-name resolution, so this
+            // loop collects them before resolving any reference.
             let usings = collect_usings(root, source.as_bytes());
             files.push((path, parsed, namespaces, usings));
         }
@@ -489,6 +489,18 @@ mod tests {
     /// The declaring fixture most reference tests resolve against.
     const CORE_WIDGET: &str = "namespace App.Core\n{\n    class Widget { }\n}\n";
 
+    /// A `run.cs` fixture referencing `Widget` from `App.Run` through
+    /// `using App.Core;`: as a bare `Runner` field, or inside a
+    /// `Check` method gated by `attribute`.
+    fn widget_runner(attribute: Option<&str>) -> String {
+        match attribute {
+            None => "namespace App.Run\n{\n    using App.Core;\n\n    class Runner\n    {\n        Widget value;\n    }\n}\n".into(),
+            Some(attribute) => format!(
+                "namespace App.Run\n{{\n    using App.Core;\n\n    class Runner\n    {{\n        [{attribute}]\n        void Check()\n        {{\n            Widget value;\n        }}\n    }}\n}}\n"
+            ),
+        }
+    }
+
     /// One expected edge for assertions.
     fn edge(from: &str, target: &str, file: &str, line: usize) -> NamespaceEdge {
         NamespaceEdge {
@@ -527,22 +539,8 @@ mod tests {
     /// A bare sibling-namespace type name resolves through `using`.
     #[test]
     fn index_should_record_edge_when_bare_name_resolves_through_using() {
-        let index = index_from(&[
-            ("lib.cs", CORE_WIDGET),
-            (
-                "run.cs",
-                r#"namespace App.Run
-{
-    using App.Core;
-
-    class Runner
-    {
-        Widget value;
-    }
-}
-"#,
-            ),
-        ]);
+        let run = widget_runner(None);
+        let index = index_from(&[("lib.cs", CORE_WIDGET), ("run.cs", &run)]);
 
         assert_eq!(index.edges(), [edge("App.Run", "App.Core", "run.cs", 7)]);
     }
@@ -602,26 +600,8 @@ mod tests {
     /// Test-framework members are not production callers.
     #[test]
     fn index_should_drop_reference_when_inside_fact_method() {
-        let index = index_from(&[
-            ("lib.cs", CORE_WIDGET),
-            (
-                "run.cs",
-                r#"namespace App.Run
-{
-    using App.Core;
-
-    class Runner
-    {
-        [Fact]
-        void Check()
-        {
-            Widget value;
-        }
-    }
-}
-"#,
-            ),
-        ]);
+        let run = widget_runner(Some("Fact"));
+        let index = index_from(&[("lib.cs", CORE_WIDGET), ("run.cs", &run)]);
 
         assert!(index.edges().is_empty());
     }
@@ -629,26 +609,8 @@ mod tests {
     /// Qualified attribute spellings gate the same as bare ones.
     #[test]
     fn index_should_drop_reference_when_attribute_is_qualified() {
-        let index = index_from(&[
-            ("lib.cs", CORE_WIDGET),
-            (
-                "run.cs",
-                r#"namespace App.Run
-{
-    using App.Core;
-
-    class Runner
-    {
-        [Xunit.Fact]
-        void Check()
-        {
-            Widget value;
-        }
-    }
-}
-"#,
-            ),
-        ]);
+        let run = widget_runner(Some("Xunit.Fact"));
+        let index = index_from(&[("lib.cs", CORE_WIDGET), ("run.cs", &run)]);
 
         assert!(index.edges().is_empty());
     }
@@ -835,7 +797,7 @@ class Runner
         assert!(index.edges().is_empty());
     }
 
-    /// Parses with syntax errors are skipped whole.
+    /// The constructor skips whole parses with syntax errors.
     #[test]
     fn index_should_stay_silent_when_parse_has_syntax_error() {
         let index = index_from(&[

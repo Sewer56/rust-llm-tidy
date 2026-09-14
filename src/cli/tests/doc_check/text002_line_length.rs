@@ -22,7 +22,7 @@ fn md_long_line_warns_text002_without_failing() {
     );
 }
 
-/// Prose over the limit still warns when a URL ends the line; the reported
+/// Text over the limit still warns when a URL ends the line; the reported
 /// length excludes only the URL.
 #[test]
 fn md_long_prose_before_trailing_url_warns_text002() {
@@ -56,7 +56,7 @@ fn md_mid_line_url_warns_text002() {
     );
 }
 
-/// Prose glued to a closed markdown URL is not trailing, so it counts and
+/// Text glued to a closed markdown URL is not trailing, so it counts and
 /// the line warns.
 #[test]
 fn md_prose_after_closed_url_warns_text002() {

@@ -179,7 +179,7 @@ pub fn tidy_source<'a>(
     })
 }
 
-/// Apply text fixes to prose documents or verified standalone comment runs.
+/// Apply text fixes to text documents or verified standalone comment runs.
 ///
 /// Unverified source remains borrowed, regardless of explicit rule selection.
 #[cfg(test)]
@@ -230,10 +230,10 @@ pub(super) fn reorder_source<'a>(
     Ok((output, changes))
 }
 
-/// Fix prose or standalone comments, skipping runs overlapping protected bytes.
+/// Fix text or standalone comments, skipping runs overlapping protected bytes.
 ///
 /// Ranges must refer to the current source. Protection applies only to parser-
-/// owned comment runs; prose documents retain the ordinary whole-document path.
+/// owned comment runs; text documents retain the ordinary whole-document path.
 pub(super) fn fix_source_protected<'a>(
     source: &'a str,
     ext: &str,

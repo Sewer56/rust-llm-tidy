@@ -252,8 +252,8 @@ mod tests {
         assert_eq!(found[0].line, 2);
     }
 
-    // Bullet prose is measured at the same threshold, anchored at the
-    // bullet's own line.
+    // The check measures bullet text at the same threshold, anchored at
+    // the bullet's own line.
     #[test]
     fn text_checks_warn_on_over_limit_bullet_sentence() {
         let source = format!("- {}\n", sentence(SENTENCE_LIMIT + 1, '.'));
@@ -313,7 +313,7 @@ mod tests {
         );
     }
 
-    // Headings and signature lines stay unmeasured upstream: their prose
+    // Headings and signature lines stay unmeasured upstream: their text
     // never reaches a paragraph, as for TEXT001.
     #[test]
     fn text_checks_skip_headings_and_signature_lines() {

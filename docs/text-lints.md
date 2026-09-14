@@ -12,7 +12,7 @@ keeps its own paragraphs.
 
 | Tier                    | Measured doc text                                                                                       |
 | ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| Markdown family         | the whole file's prose                                                                                  |
+| Markdown family         | the whole file's text                                                                                   |
 | Rust                    | `//`, `///`, `//!` line comments, outer `/** */` block docs, `#[doc = "..."]` values (like `///` lines) |
 | C#                      | `///` XML doc comments: text-node inner text                                                            |
 | Python                  | module, class, and function docstrings; `#` comments                                                    |
@@ -110,7 +110,7 @@ Suggestions:
 Error: found 1 error(s)
 ```
 
-`TEXT001` is error-severity for prose, so the run exits non-zero; bullets
+`TEXT001` is error-severity for paragraphs, so the run exits non-zero; bullets
 exit 0.
 
 ## TEXT002 - long line
@@ -168,7 +168,7 @@ Boundary rules:
 
 ## TEXT003 - long sentence
 
-A sentence over 25 words in measured doc prose is a warning.
+A sentence over 25 words in measured doc text is a warning.
 
 Sentences split at `.`, `!`, and `?`; a word is a whitespace-separated
 token.
@@ -521,7 +521,7 @@ An unordered list exceeding 10 source lines warns once at its first line.
 
 - Count unordered bullets, including nested bullets and wrapped lines.
 - Ignore blank lines and tables without resetting the count.
-- Reset at prose, `#` headings, code blocks, or numbered lists.
+- Reset at plain text, `#` headings, code blocks, or numbered lists.
 - Exempt numbered lists.
 
 Before:
@@ -597,7 +597,7 @@ characters, guidance, and docs/comment scope.
 
 ### Remarks
 
-Checks include headings and table prose, but skip code blocks, inline code,
+Checks include headings and table text, but skip code blocks, inline code,
 and link destinations.
 
 ## TEXT010 - documentation context

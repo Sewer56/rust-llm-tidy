@@ -55,7 +55,7 @@ fn cli_should_follow_rule_selection(#[case] args: &[&str], #[case] warnings: usi
     );
 }
 
-/// Structural boundaries split list budgets without intervening prose.
+/// Structural boundaries split list budgets without intervening text.
 #[rstest]
 #[case::heading("## Section", ACCEPTANCE_LIST_LINE_BUDGET, 0)]
 #[case::heading_between_dense_lists("## Section", ACCEPTANCE_LIST_LINE_BUDGET + 1, 2)]

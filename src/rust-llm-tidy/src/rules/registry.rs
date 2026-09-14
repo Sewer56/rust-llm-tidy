@@ -49,7 +49,7 @@ pub const CODE_DUPLICATION: &str = "DUP001";
 pub const CODE_ERROR_VARIANT_ORDER: &str = "DOC008";
 /// Rule code for an untagged fenced code block.
 pub const CODE_FENCE_TAG: &str = "TEXT005";
-/// Rule code for configured forbidden characters in prose.
+/// Rule code for configured forbidden characters in measured text.
 pub const CODE_FORBIDDEN_CHARACTERS: &str = "TEXT009";
 /// Rule code for a misshapen header opener paragraph.
 pub const CODE_HEADER_OPENER: &str = "TEXT004";
@@ -83,7 +83,7 @@ pub const CODE_PASSIVE_NARRATION: &str = "TEXT007";
 pub const CODE_QUALIFIED_PATH: &str = "MOD003";
 /// Rule code for doc sections or tags listed out of standard order.
 pub const CODE_SECTION_ORDER: &str = "DOC010";
-/// Rule code for an over-limit sentence of measured prose.
+/// Rule code for an over-limit sentence of measured doc text.
 pub const CODE_SENTENCE_LENGTH: &str = "TEXT003";
 /// Rule code for a configured usage or declaration hint.
 pub const CODE_SYM: &str = "SYM";

@@ -461,8 +461,8 @@ pub fn f() {}
 
     #[test]
     fn multiple_tables_and_text_roundtrip() {
-        // Two tables separated by prose: the first is misaligned (realigns),
-        // the second is already aligned (borrowed).
+        // Two tables separated by text: the first starts misaligned
+        // (realigns), the second is already aligned (borrowed).
         //
         // Exercises the lazy output buffer: unchanged text before, between,
         // and after the changed run must be copied through verbatim.

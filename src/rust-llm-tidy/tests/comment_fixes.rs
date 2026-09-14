@@ -293,7 +293,7 @@ fn assert_equivalent(
     buffer.changes
 }
 
-/// Render fixture prose as comment lines without changing its payload bytes.
+/// Render fixture text as comment lines without changing its payload bytes.
 fn comment(prose: &str, prefix: &str) -> String {
     prose
         .split_inclusive('\n')

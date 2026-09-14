@@ -7,7 +7,7 @@
 //! measuring core:
 //!
 //! - contiguous runs of standalone line comments, measured as markdown
-//!   prose with the full marker run (`///`, `##`, `;;;`) and one space
+//!   text with the full marker run (`///`, `##`, `;;;`) and one space
 //!   stripped;
 //! - every block comment (`/* */`, `--[[ ]]`, `{- -}`, `#| |#`, and
 //!   MATLAB's line-alone `%{ %}`). It measures with the block doc
@@ -184,14 +184,14 @@ mod tests {
         diags.iter().filter(|d| d.code == code).collect()
     }
 
-    /// Five `marker`-prefixed lines whose joined prose exceeds the 240
+    /// Five `marker`-prefixed lines whose joined text exceeds the 240
     /// budget while each line stays under 80.
     fn long_comment(marker: &str) -> String {
         let line = "filler words pad the paragraph past the two hundred forty limit";
         (0..5).map(|_| format!("{marker} {line}\n")).collect()
     }
 
-    /// Block-doc lines whose joined prose (stars stripped) exceeds the
+    /// Block-doc lines whose joined text (stars stripped) exceeds the
     /// 240 budget while each raw line stays under 80.
     fn long_block(open: &str, close: &str) -> String {
         let line = "* filler words pad the paragraph past the two hundred forty limit";
@@ -207,7 +207,7 @@ mod tests {
 
     // ── True positives ──
 
-    /// Standalone line-comment prose measures as one paragraph at the
+    /// Standalone line-comment text measures as one paragraph at the
     /// paragraph's first line, per lexicon table extension with its
     /// row's own family marker.
     ///
@@ -259,7 +259,7 @@ mod tests {
         }
     }
 
-    /// Marker runs (`----`, `;;`, `%%`) open one comment whose prose
+    /// Marker runs (`----`, `;;`, `%%`) open one comment whose text
     /// measures, not a nested or escaped form.
     #[test]
     fn doubled_markers_stay_one_comment() {

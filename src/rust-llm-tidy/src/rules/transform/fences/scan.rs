@@ -17,7 +17,7 @@
 ///
 /// The common case short-circuits with a raw byte scan. That case is an ASCII
 /// line whose first non-whitespace byte is not a marker run or one of the
-/// family's comment markers. Typical code and prose cost almost nothing.
+/// family's comment markers. Typical code and text cost almost nothing.
 ///
 /// Whitespace handled in two tiers to stay both exact and fast:
 /// - ASCII whitespace (`0x09..=0x0d` plus space `0x20` - the ASCII members of

@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use tree_sitter::Node;
 
 /// One resolved `mod` child of a parent file.
-enum ModChild {
+pub(super) enum ModChild {
     /// `mod foo {}` - inline, no file (already narrowed by `walk()`).
     Inline,
     /// `mod foo;` -> resolved file path, declared name (`foo`), and verbatim
@@ -25,22 +25,6 @@ enum ModChild {
         name: Box<str>,
         vis_text: Option<String>,
     },
-}
-
-/// Each resolved file's module path: the declared `mod` name segments from
-/// the crate root to that file.
-///
-/// The crate root itself maps to an empty sequence.
-///
-/// Built by [`build_module_paths`] with the same resolution rules as
-/// [`build_module_tree`].
-pub struct ModulePaths {
-    /// Resolved absolute file path -> module-path segments from the
-    /// crate root.
-    paths: AHashMap<PathBuf, Vec<Box<str>>>,
-    /// Non-fatal resolution warnings, same content as
-    /// [`ModuleTree::warnings`].
-    warnings: Vec<String>,
 }
 
 /// A resolved cross-file module tree.
@@ -56,57 +40,6 @@ pub struct ModuleTree {
     /// Non-fatal resolution warnings (unresolved `mod foo;`, missing `#[path]`
     /// target). Surfaced to the CLI as diagnostics.
     warnings: Vec<String>,
-}
-
-impl ModulePaths {
-    /// Module-path segments for `file`, root first.
-    ///
-    /// # Arguments
-    ///
-    /// - `file` - the resolved absolute path of the source file to look up.
-    ///
-    /// # Returns
-    ///
-    /// The declared `mod` name segments from the crate root to `file`; empty
-    /// for the crate root. `None` for files outside the resolved tree.
-    pub fn segments_for(&self, file: &Path) -> Option<&[Box<str>]> {
-        self.paths.get(file).map(Vec::as_slice)
-    }
-
-    /// True if `file` is a known node in this map.
-    ///
-    /// # Arguments
-    ///
-    /// - `file` - the resolved absolute path of the source file to test.
-    ///
-    /// # Returns
-    ///
-    /// `true` when `file` has an entry in the map.
-    pub fn contains(&self, file: &Path) -> bool {
-        self.paths.contains_key(file)
-    }
-
-    /// Iterate every resolved `(file, segments)` pair.
-    ///
-    /// # Returns
-    ///
-    /// An iterator over resolved absolute file paths and their module-path
-    /// segments, in unspecified order.
-    pub fn iter(&self) -> impl Iterator<Item = (&Path, &[Box<str>])> {
-        self.paths
-            .iter()
-            .map(|(path, segs)| (path.as_path(), segs.as_slice()))
-    }
-
-    /// Non-fatal resolution warnings (unresolved `mod`, missing `#[path]`).
-    ///
-    /// # Returns
-    ///
-    /// The collected warnings in discovery order; empty when every `mod`
-    /// resolved.
-    pub fn warnings(&self) -> &[String] {
-        &self.warnings
-    }
 }
 
 impl ModuleTree {
@@ -147,78 +80,6 @@ impl ModuleTree {
     pub fn warnings(&self) -> &[String] {
         &self.warnings
     }
-}
-
-/// Build the module path of each reachable file, root -> leaf.
-///
-/// Reuses the exact resolution rules of [`build_module_tree`] (edition
-/// `foo.rs` preference, `foo/mod.rs` fallback, `#[path]` overrides), so both
-/// walks resolve a file the same way.
-///
-/// Children enqueue with the parent's segments plus the declared module
-/// name. On duplicate `mod` edges to one file the first path inserted
-/// wins (the LIFO stack records the last-declared edge first).
-///
-/// # Arguments
-///
-/// - `root` - the source file to treat as the crate root (it maps to an
-///   empty segment sequence).
-/// - `files` - every parsed file in the crate, indexed by resolved absolute
-///   path for resolving `mod foo;` edges.
-///
-/// # Returns
-///
-/// `Ok` with the built [`ModulePaths`]; never `Err` (see `# Errors`).
-///
-/// # Errors
-///
-/// Always `Ok(ModulePaths)`; the `anyhow::Result` return exists only to
-/// mirror [`build_module_tree`] for API continuity.
-pub fn build_module_paths(root: &Path, files: &[ParsedFile]) -> anyhow::Result<ModulePaths> {
-    // 1. Index files by resolved path, mirroring build_module_tree.
-    let by_path: AHashMap<PathBuf, &ParsedFile> =
-        files.iter().map(|f| (f.path.clone(), f)).collect();
-    let known_files: HashSet<PathBuf> = files.iter().map(|f| f.path.clone()).collect();
-
-    // 2. Same Vec-based stack walk as build_module_tree, but each entry also
-    //    carries its accumulated name segments. First recorded path wins on
-    //    duplicate edges (contains_key guard).
-    let mut paths: AHashMap<PathBuf, Vec<Box<str>>> = AHashMap::new();
-    let mut warnings = Vec::new();
-    let mut queue: Vec<(PathBuf, Vec<Box<str>>)> = vec![(root.to_path_buf(), Vec::new())];
-    while let Some((path, segments)) = queue.pop() {
-        if paths.contains_key(&path) {
-            continue;
-        }
-        paths.insert(path.clone(), segments.clone());
-        let Some(pf) = by_path.get(&path) else {
-            continue;
-        };
-        let parent_dir = path.parent().unwrap_or_else(|| Path::new("."));
-        for child in resolve_mod_children(
-            pf.tree.root_node(),
-            parent_dir,
-            &path,
-            &pf.source,
-            &mut warnings,
-            &known_files,
-        ) {
-            match child {
-                ModChild::Inline => {}
-                ModChild::File {
-                    path: cpath,
-                    name,
-                    vis_text: _,
-                } => {
-                    // child segments: parent's plus the declared mod name.
-                    let mut child_segs = segments.clone();
-                    child_segs.push(name);
-                    queue.push((cpath, child_segs));
-                }
-            }
-        }
-    }
-    Ok(ModulePaths { paths, warnings })
 }
 
 /// Build a module tree from pre-parsed files. The root is the file whose path
@@ -367,23 +228,6 @@ pub fn discover_crate_root(start: &Path) -> anyhow::Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("no lib/main target in {}", manifest.display()))
 }
 
-/// Walk up from `start` to the nearest `Cargo.toml`.
-fn find_cargo_toml(start: &Path) -> anyhow::Result<PathBuf> {
-    let dir = if start.is_file() {
-        start.parent()
-    } else {
-        Some(start)
-    }
-    .ok_or_else(|| anyhow::anyhow!("no parent dir for {}", start.display()))?;
-    for ancestor in dir.ancestors() {
-        let m = ancestor.join("Cargo.toml");
-        if m.is_file() {
-            return Ok(m);
-        }
-    }
-    anyhow::bail!("no Cargo.toml found walking up from {}", start.display())
-}
-
 /// Resolve top-level `mod` items of one file into children.
 ///
 /// Edition path rules: both editions prefer `foo.rs` over `foo/mod.rs`
@@ -400,7 +244,7 @@ fn find_cargo_toml(start: &Path) -> anyhow::Result<PathBuf> {
 /// `mod_item` (mirroring the sibling source module's `PendingTrivia`).
 ///
 /// Comments are trivia and do not break the run.
-fn resolve_mod_children(
+pub(super) fn resolve_mod_children(
     root: Node,
     parent_dir: &Path,
     parent: &Path,
@@ -482,6 +326,23 @@ fn resolve_mod_children(
     out
 }
 
+/// Walk up from `start` to the nearest `Cargo.toml`.
+fn find_cargo_toml(start: &Path) -> anyhow::Result<PathBuf> {
+    let dir = if start.is_file() {
+        start.parent()
+    } else {
+        Some(start)
+    }
+    .ok_or_else(|| anyhow::anyhow!("no parent dir for {}", start.display()))?;
+    for ancestor in dir.ancestors() {
+        let m = ancestor.join("Cargo.toml");
+        if m.is_file() {
+            return Ok(m);
+        }
+    }
+    anyhow::bail!("no Cargo.toml found walking up from {}", start.display())
+}
+
 /// Extract the string value of a `#[path = "..."]` attribute from a run of
 /// preceding `attribute_item` nodes. Returns the verbatim content (no quotes).
 fn find_path_attr(attrs: &[Node], source: &str) -> Option<String> {
@@ -559,7 +420,7 @@ fn vis_text_of(vis: Option<Node>, source: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ParsedFile, build_module_paths, build_module_tree, discover_crate_root};
+    use super::{ParsedFile, build_module_tree, discover_crate_root};
     use std::path::PathBuf;
 
     fn src(path: &str) -> PathBuf {
@@ -740,129 +601,6 @@ mod tests {
             w.iter()
                 .any(|s| s.contains("`mod missing;`") && s.contains("missing.rs")),
             "generic warning names the missing module: {w:?}"
-        );
-    }
-
-    // ModulePaths: each resolved file's segments from the crate root.
-
-    fn segs(files: &[ParsedFile], path: &str) -> Vec<String> {
-        let paths = build_module_paths(&src("src/lib.rs"), files).unwrap();
-        paths
-            .segments_for(&src(path))
-            .unwrap_or(&[])
-            .iter()
-            .map(|s| s.to_string())
-            .collect()
-    }
-
-    #[test]
-    fn module_paths_root_maps_to_empty_segments() {
-        let files = parse_files(vec![(src("src/lib.rs"), "pub fn f() {}\n".into())]);
-        let paths = build_module_paths(&src("src/lib.rs"), &files).unwrap();
-        assert_eq!(
-            paths.segments_for(&src("src/lib.rs")),
-            Some([].as_slice()),
-            "crate root has no segments"
-        );
-        assert!(paths.contains(&src("src/lib.rs")));
-        assert!(paths.warnings().is_empty());
-    }
-
-    #[test]
-    fn module_paths_resolves_plain_foo_rs() {
-        let files = parse_files(vec![
-            (src("src/lib.rs"), "mod foo;\n".into()),
-            (src("src/foo.rs"), "pub fn f() {}\n".into()),
-        ]);
-        assert_eq!(segs(&files, "src/foo.rs"), vec!["foo"]);
-    }
-
-    #[test]
-    fn module_paths_falls_back_to_mod_rs_when_foo_rs_absent() {
-        let files = parse_files(vec![
-            (src("src/lib.rs"), "mod foo;\n".into()),
-            (src("src/foo/mod.rs"), "pub fn f() {}\n".into()),
-        ]);
-        assert_eq!(segs(&files, "src/foo/mod.rs"), vec!["foo"]);
-    }
-
-    #[test]
-    fn module_paths_honors_path_attr_override() {
-        let files = parse_files(vec![
-            (
-                src("src/lib.rs"),
-                "#[path = \"nested/real.rs\"]\nmod foo;\n".into(),
-            ),
-            (src("src/nested/real.rs"), "pub fn f() {}\n".into()),
-        ]);
-        // The declared name wins even when the file path differs.
-        assert_eq!(segs(&files, "src/nested/real.rs"), vec!["foo"]);
-    }
-
-    #[test]
-    fn module_paths_nests_two_levels() {
-        let files = parse_files(vec![
-            (src("src/lib.rs"), "mod a;\n".into()),
-            (src("src/a/mod.rs"), "mod b;\n".into()),
-            (src("src/a/b.rs"), "pub fn f() {}\n".into()),
-        ]);
-        assert_eq!(segs(&files, "src/a/mod.rs"), vec!["a"]);
-        assert_eq!(segs(&files, "src/a/b.rs"), vec!["a", "b"]);
-    }
-
-    #[test]
-    fn module_paths_first_recorded_path_wins_on_duplicate_edges() {
-        // Two `#[path]` edges reach one file; the LIFO stack records the
-        // last-declared edge first, and the contains_key guard keeps it.
-        let files = parse_files(vec![
-            (
-                src("src/lib.rs"),
-                "#[path = \"foo.rs\"]\nmod first;\n#[path = \"foo.rs\"]\nmod second;\n".into(),
-            ),
-            (src("src/foo.rs"), "pub fn f() {}\n".into()),
-        ]);
-        assert_eq!(segs(&files, "src/foo.rs"), vec!["second"]);
-    }
-
-    #[test]
-    fn module_paths_unresolved_mod_records_warning() {
-        let files = parse_files(vec![(
-            src("src/lib.rs"),
-            "mod missing;\n#[path = \"nope.rs\"]\nmod gone;\n".into(),
-        )]);
-        let paths = build_module_paths(&src("src/lib.rs"), &files).unwrap();
-        assert!(
-            paths
-                .warnings()
-                .iter()
-                .any(|s| s.contains("mod missing") && s.contains("resolves to no")),
-            "unresolved mod warning: {:?}",
-            paths.warnings()
-        );
-    }
-
-    #[test]
-    fn module_paths_iter_yields_every_resolved_file() {
-        let files = parse_files(vec![
-            (src("src/lib.rs"), "mod a;\n".into()),
-            (src("src/a/mod.rs"), "mod b;\n".into()),
-            (src("src/a/b.rs"), "pub fn f() {}\n".into()),
-        ]);
-        let paths = build_module_paths(&src("src/lib.rs"), &files).unwrap();
-        // Compare paths, not strings: on Windows the resolver joins children
-        // with `\` separators, and `Path` equality ignores that difference.
-        let mut got: Vec<(PathBuf, usize)> = paths
-            .iter()
-            .map(|(p, s)| (p.to_path_buf(), s.len()))
-            .collect();
-        got.sort();
-        assert_eq!(
-            got,
-            vec![
-                (src("src/a/b.rs"), 2),
-                (src("src/a/mod.rs"), 1),
-                (src("src/lib.rs"), 0),
-            ],
         );
     }
 

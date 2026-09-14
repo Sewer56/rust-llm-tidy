@@ -231,7 +231,7 @@ Last line.\";
         assert!(codes(&diags, CODE_LINE_LENGTH).is_empty());
     }
 
-    /// Prose never joins across tags: two texts that overflow the budget
+    /// Text never joins across tags: two texts that overflow the budget
     /// when joined stay silent inside their own tags.
     #[test]
     fn paragraphs_never_join_across_tags() {
@@ -262,7 +262,7 @@ Last line.\";
         assert!(codes(&checks(&source), CODE_PARAGRAPH_SIZE).is_empty());
     }
 
-    /// A code gap between two `///` runs ends each run: the prose
+    /// A code gap between two `///` runs ends each run: the text
     /// paragraphs never join across the member between them.
     #[test]
     fn code_gaps_end_doc_runs() {
@@ -281,7 +281,7 @@ Last line.\";
 
     // ── True positives ──
 
-    /// Over-budget summary prose errors with TEXT001 at the paragraph's
+    /// Over-budget summary text errors with TEXT001 at the paragraph's
     /// first line, keeping original file line numbers.
     #[test]
     fn oversized_summary_prose_errors_at_its_first_line() {

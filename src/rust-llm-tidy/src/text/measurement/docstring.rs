@@ -5,7 +5,7 @@
 //! module, class, or function. The producer strips the quotes and the
 //! docstring's common indentation.
 //!
-//! This dialect then exempts doctest examples and feeds the remaining prose
+//! This dialect then exempts doctest examples and feeds the remaining text
 //! to the shared markdown classifier, so blank lines split paragraphs.
 //!
 //! Fenced and indented example blocks are exempt through that
@@ -19,7 +19,7 @@ use super::{Document, OpenFence, PendingParagraph, StrippedLine, flush, measure_
 /// Measures one docstring region into `doc`'s lines and paragraphs.
 ///
 /// Paragraph and fence state flow exactly as for the markdown dialect, so
-/// prose never outlives the region: the measuring core flushes at every
+/// text never outlives the region: the measuring core flushes at every
 /// region boundary.
 pub(super) fn measure_region(
     region: DocRegion,
@@ -31,7 +31,7 @@ pub(super) fn measure_region(
     // line until the blank line ending the example.
     //
     // The source, `...` continuations, and expected output are literal
-    // text, never prose.
+    // text, exempt from measurement.
     let mut in_doctest = false;
     for line in region.lines {
         let trimmed = line.text.trim();
@@ -39,7 +39,7 @@ pub(super) fn measure_region(
         // classifier, which closes the fence.
         //
         // Swallowing it as doctest output would leave the fence open and
-        // exempt the docstring's remaining prose.
+        // exempt the docstring's remaining text.
         if in_doctest && !trimmed.is_empty() && !is_fence_delimiter(trimmed) {
             doc.lines.push(StrippedLine {
                 number: line.number,
@@ -124,7 +124,7 @@ mod tests {
         run_region_checks(vec![docstring_region(lines)])
     }
 
-    // ── Prose measurement ──
+    // ── Text measurement ──
 
     // Docstring lines join into one paragraph measured at the
     // paragraph's first line; a single over-80 line warns on its own.
@@ -162,7 +162,7 @@ mod tests {
 
     // A doctest example - source, `...` continuation, and expected
     // output lines - measures as code: long lines stay quiet and no
-    // prose pools across the example.
+    // text pools across the example.
     #[test]
     fn doctest_examples_are_exempt() {
         let example = "c".repeat(90);
@@ -180,7 +180,7 @@ mod tests {
         assert!(codes(&diags, CODE_PARAGRAPH_SIZE).is_empty());
     }
 
-    // Prose before and after a doctest never joins: two over-half-budget
+    // Text before and after a doctest never joins: two over-half-budget
     // halves around an example stay separate paragraphs.
     #[test]
     fn doctests_split_paragraphs() {
@@ -199,8 +199,8 @@ mod tests {
         );
     }
 
-    // A doctest example ends at its blank line: prose after the blank
-    // measures again, and a new example after prose reopens the
+    // A doctest example ends at its blank line: text after the blank
+    // measures again, and a new example after text reopens the
     // exemption.
     #[test]
     fn doctests_end_at_blank_lines() {
@@ -239,7 +239,7 @@ mod tests {
 
     // A `>>>` line inside a fenced example is fenced content.
     //
-    // The closing delimiter closes the fence: prose after the block
+    // The closing delimiter closes the fence: text after the block
     // measures, never silently exempt for the rest of the docstring.
     #[test]
     fn fenced_doctests_do_not_swallow_the_closing_fence() {

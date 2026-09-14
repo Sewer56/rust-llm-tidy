@@ -6,7 +6,7 @@
 //! tag token (plus the name argument of name-taking tags like `@param`)
 //! from measurement.
 //!
-//! The remaining prose feeds the shared markdown classifier, so blank
+//! The remaining text feeds the shared markdown classifier, so blank
 //! lines split paragraphs and fenced or indented example blocks are
 //! exempt.
 
@@ -28,7 +28,7 @@ const NAME_TAGS: &[&str] = &[
 /// Measures one block doc region into `doc`'s lines and paragraphs.
 ///
 /// Paragraph and fence state flow exactly as for the markdown dialect, so
-/// prose never outlives the region: the measuring core flushes at every
+/// text never outlives the region: the measuring core flushes at every
 /// region boundary.
 pub(super) fn measure_region(
     region: DocRegion,
@@ -54,7 +54,7 @@ pub(super) fn measure_region(
     }
 }
 
-/// Whether the measured prose counts as indented code: a tab or 4-space
+/// Whether the measured text counts as indented code: a tab or 4-space
 /// lead after the `*` continuation marker.
 fn prose_is_indented(text: &str) -> bool {
     text.starts_with('\t') || text.starts_with("    ")
@@ -159,7 +159,7 @@ mod tests {
 
     // ── `*` continuation stripping ──
 
-    // Prose joins across `*`-continued lines into one paragraph measured
+    // Text joins across `*`-continued lines into one paragraph measured
     // without the markers; TEXT002 counts the stripped text only.
     #[test]
     fn star_continuations_strip_and_join_prose() {
@@ -182,7 +182,7 @@ mod tests {
         assert_eq!(lines[0].line, 7);
     }
 
-    // Heavy `***` opener and closer lines carry no prose: they measure as
+    // Heavy `***` opener and closer lines carry no text: they measure as
     // blanks instead of stray marker text.
     #[test]
     fn heavy_star_marker_lines_measure_blank() {
@@ -203,7 +203,7 @@ mod tests {
     // ── `@tag` lines ──
 
     // The tag token and the name argument are exempt. A tag line whose
-    // prose is short stays quiet even when the raw line is over budget.
+    // text is short stays quiet even when the raw line is over budget.
     #[test]
     fn name_tags_exempt_tag_and_name_tokens() {
         let name = "n".repeat(40);
@@ -238,7 +238,7 @@ mod tests {
         assert_eq!(codes(&diags, CODE_LINE_LENGTH).len(), 1);
     }
 
-    // Block tags never join prose or each other: two 150-char param
+    // Block tags never join text or each other: two 150-char param
     // descriptions stay silent where a joined paragraph would overflow.
     #[test]
     fn tag_lines_start_their_own_paragraphs() {

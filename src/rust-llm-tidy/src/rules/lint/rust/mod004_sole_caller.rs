@@ -82,6 +82,7 @@ pub(crate) fn analyze(index: &RustCrateIndex) -> SoleCallerFindings {
     //
     // Sort ancestors before descendants so the subtree filter below
     // only needs prefixes seen so far.
+    // Vec::new(): the prefix count depends on the edges; no known bound.
     let mut modules: Vec<&[Box<str>]> = Vec::new();
     for edge in edges {
         if let Some(target) = segments.get(edge.target.as_path()) {
@@ -95,7 +96,7 @@ pub(crate) fn analyze(index: &RustCrateIndex) -> SoleCallerFindings {
 
     let mut by_file: AHashMap<PathBuf, Vec<Diagnostic>> = AHashMap::new();
     // Emitted module paths: a module nested inside an emitted subtree is
-    // covered by that finding and stays silent.
+    // covered by that finding and stays silent. No known emitted-count bound.
     let mut emitted: Vec<&[Box<str>]> = Vec::new();
     for module in modules {
         let Some((caller, first, count)) = sole_caller(module, &segments, edges) else {

@@ -6,7 +6,7 @@
 
 use super::run_rust_fixture;
 
-/// Rust block and attribute doc prose fires the text budgets with
+/// Rust block and attribute doc text fires the text budgets with
 /// original file lines.
 ///
 /// - TEXT001 errors on the over-budget `/** */` and `#[doc = "..."]`

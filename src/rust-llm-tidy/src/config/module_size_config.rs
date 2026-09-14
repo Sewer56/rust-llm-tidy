@@ -16,7 +16,7 @@ pub struct ModuleSizeConfig {
     /// Maximum counted physical lines per eligible file before MOD001 warns.
     #[serde(default = "default_module_size_max_lines")]
     pub max_lines: usize,
-    /// Include supported configuration, data, and prose files selected for the run.
+    /// Include supported configuration, data, and text files selected for the run.
     ///
     /// Defaults to false: only code files are checked. Does not broaden discovery
     /// or enable other operations for otherwise op-less formats.

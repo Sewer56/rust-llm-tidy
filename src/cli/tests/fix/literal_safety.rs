@@ -10,7 +10,7 @@ use rstest::rstest;
 use std::fs;
 use std::process::Command;
 
-/// Markdown that would need all three fixes if it were prose, not literal data.
+/// Markdown that would need all three fixes if it were text, not literal data.
 const LITERAL_MARKDOWN: &str = "\
   | a | b |\n  |---|---|\n  | long value | c |\n\n\
   \x20 [A](https://example.invalid)\n\n\

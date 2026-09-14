@@ -29,12 +29,12 @@ pub(super) struct InlineLink<'a> {
 /// definition-shaped but malformed line never registers an existing
 /// definition.
 ///
-/// The leading-`[` gate keeps the common `[`-bearing prose line out of the
+/// The leading-`[` gate keeps the common `[`-bearing text line out of the
 /// (too large to inline) full parser.
 #[inline]
 pub(super) fn definition_text(body: &str) -> Option<&str> {
     // Leading-`[` gate on the trimmed line keeps the common `[`-bearing
-    // prose line out of the (too large to inline) full parser.
+    // text line out of the (too large to inline) full parser.
     let s = body.trim_start();
     if !s.starts_with('[') {
         return None;
@@ -141,7 +141,7 @@ pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
     //
     // Non-ASCII-leading lines defer to the full Unicode `trim_start` (sound
     // superset gate, identical to `fix_fences`'s `is_fence_candidate`), so
-    // typical code/prose lines skip the pipeline.
+    // typical code/text lines skip the pipeline.
     if !is_fence_candidate_body(body) {
         return false;
     }

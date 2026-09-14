@@ -84,8 +84,8 @@ impl CSharpIndex {
 
     /// Iterate every cached parse with its resolved cache key.
     ///
-    /// Order is unspecified; callers needing deterministic reference
-    /// edge order sort by path.
+    /// Iteration order follows the hash map's internal layout; callers
+    /// needing deterministic reference edge order sort by path.
     ///
     /// # Returns
     ///

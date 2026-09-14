@@ -28,7 +28,8 @@ use std::path::{Path, PathBuf};
 ///
 /// - `index` - the run's refreshed C# parse cache, when one exists
 /// - `paths` - the run's resolved input paths
-/// - `config` - previously loaded configuration, or language defaults
+/// - `config` - the configuration the run loads before the lint phase,
+///   or language defaults
 /// - `included` - explicit CLI include set, when present
 /// - `disabled` - explicit CLI exclude set
 ///
@@ -61,17 +62,19 @@ pub(super) fn csharp_sole_caller_findings(
 
 /// Build MOD004's sole-caller findings from one whole-crate parse.
 ///
-/// Gates mirror the vis context: linting may run and Cargo discovery
-/// is permitted (the crate lookup also runs `cargo metadata`).
+/// Gates mirror the vis context: linting may run and the run options
+/// permit Cargo discovery (the crate lookup also runs
+/// `cargo metadata`).
 ///
 /// At least one `.rs` input must both lint and select MOD004 under
-/// its resolved per-file policy; otherwise nothing is built.
+/// its resolved per-file policy; otherwise this pass returns `None`.
 ///
 /// # Arguments
 ///
 /// - `paths` - the run's resolved input paths
 /// - `options` - the run options, supplying the Cargo permission
-/// - `config` - previously loaded configuration, or language defaults
+/// - `config` - the configuration the run loads before the lint phase,
+///   or language defaults
 /// - `included` - explicit CLI include set, when present
 /// - `disabled` - explicit CLI exclude set
 /// - `warnings` - sink for the one discovery-failure warning

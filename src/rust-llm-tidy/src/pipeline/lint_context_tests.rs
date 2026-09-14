@@ -318,7 +318,7 @@ fn snapshots_should_require_an_enabled_supported_scoped_lint(
     assert_eq!(actual, needed);
 }
 
-/// TEXT010 is AI-reminder-severity and prose-only: markdown-family files need
+/// TEXT010 is AI-reminder-severity and text-only: markdown-family files need
 /// a snapshot even when every other lint is disabled, source files do not.
 #[rstest]
 #[case::markdown("md", false, true)]

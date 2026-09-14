@@ -208,7 +208,7 @@ fn push_block_line(seg: &str, opener: bool, number: usize, lines: &mut Vec<Regio
     });
 }
 
-/// Share lexical decisions between prose measurement and byte-span consumers.
+/// Share lexical decisions between text measurement and byte-span consumers.
 fn scan_source<'a>(source: &str, lex: &'a Lexicon, strict: bool) -> Option<Scanner<'a>> {
     let mut scanner = Scanner {
         comment_spans: strict.then(Vec::new),

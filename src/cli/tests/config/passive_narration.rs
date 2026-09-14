@@ -5,7 +5,7 @@ use rstest::rstest;
 use std::fs;
 use std::process::Command;
 
-/// A controlled baseline separates unchanged prose from the edited line.
+/// A controlled baseline separates unchanged text from the edited line.
 #[rstest]
 #[case::default(None, &[], &[3])]
 #[case::empty_config(Some("{}"), &[], &[3])]

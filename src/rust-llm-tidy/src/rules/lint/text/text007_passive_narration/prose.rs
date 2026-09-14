@@ -1,4 +1,4 @@
-//! Collect prose words without matching code or link targets.
+//! Collect text words without matching code or link targets.
 
 /// A word and its original byte offset, for checking intervening punctuation.
 pub(super) struct Word<'a> {
@@ -15,7 +15,7 @@ pub(super) fn contiguous(line: &str, words: &[Word<'_>]) -> bool {
     })
 }
 
-/// Collect prose words without joining across punctuation or excluded content.
+/// Collect text words without joining across punctuation or excluded content.
 ///
 /// Backtick runs of equal length delimit code; an unmatched opener carries to
 /// the next measured line. Link destinations and reference labels stay opaque.
@@ -65,7 +65,7 @@ pub(super) fn words<'a>(line: &'a str, code_delimiter: &mut usize) -> Vec<Word<'
             continue;
         }
 
-        // Autolinks and HTML tags are not prose; bare URLs end at whitespace.
+        // Autolinks and HTML tags are not text; bare URLs end at whitespace.
         if ch == '<' {
             for (_, next) in chars.by_ref() {
                 if next == '>' {

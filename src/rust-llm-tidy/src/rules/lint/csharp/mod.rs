@@ -49,12 +49,11 @@
 //!   per run (see [`mod004_sole_caller`]) and reaching `.cs` files
 //!   through the pipeline's per-file seam, not this per-file pass.
 //!
-//! Prose checks:
+//! Text checks:
 //!
-//! - TEXT*: `///` doc-comment prose measured with the XML doc
-//!   dialect; findings carry original file lines. The dialect rules live
-//!   with the lint module's measuring core; see [`text_regions`]
-//!   producer.
+//! - TEXT*: `///` doc-comment text measured with the XML doc dialect;
+//!   findings carry original file lines. The dialect rules live with
+//!   the lint module's measuring core; see [`text_regions`] producer.
 //!
 //! [`text_regions`]: crate::languages::csharp::text_regions
 

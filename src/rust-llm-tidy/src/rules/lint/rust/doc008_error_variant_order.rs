@@ -30,7 +30,7 @@ pub(super) struct DeclaredEnum<'a> {
 ///   enum's declared variants in an order that decreases under Rust `str`
 ///   ordering.
 ///
-/// Links to other enums, prose, unresolved variant names, and non-enum
+/// Links to other enums, text, unresolved variant names, and non-enum
 /// error types never participate.
 ///
 /// # Arguments
@@ -343,7 +343,7 @@ pub fn load() -> Result<(), Wrapper> { Ok(()) }\n";
         assert_eq!(lint(&source).len(), 1);
     }
 
-    // Interleaved prose and links to other enums never participate.
+    // Interleaved text and links to other enums never participate.
     #[test]
     fn ignores_prose_and_other_enum_links() {
         let source = documented_fn(

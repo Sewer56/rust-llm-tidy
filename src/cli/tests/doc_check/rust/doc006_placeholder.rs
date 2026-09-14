@@ -28,7 +28,7 @@ fn doc006_placeholders() {
     assert_has_diagnostic(&stderr, "DOC006", Some("todo_task"));
     assert_has_diagnostic(&stderr, "DOC006", Some("fixme_task"));
     assert_has_diagnostic(&stderr, "DOC006", Some("tbd_task"));
-    // A literal `...` is idiomatic prose, not a placeholder marker.
+    // A literal `...` is idiomatic text, not a placeholder marker.
     assert!(
         !stderr.contains("(struct `Placeholder`)"),
         "ellipsis-only docs should not be flagged:\n{stderr}"

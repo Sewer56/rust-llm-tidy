@@ -3,7 +3,7 @@
 use super::text_checks;
 use rstest::rstest;
 
-/// A natural prose line that triggers TEXT002 when measured as a comment.
+/// A natural text line that triggers TEXT002 when measured as a comment.
 const PROSE: &str = "This payload is intentionally long enough to exceed the configured line budget without being a source comment.";
 
 #[rstest]

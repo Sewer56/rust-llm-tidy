@@ -72,7 +72,7 @@ mod tests {
             severity: Severity::Hint,
             code: CODE_MOD004,
             title: None,
-            message: String::new(),
+            message: String::new(), // unused by assertions; no capacity needed
             line: 1,
             item_kind: "mod".to_string(),
             item_name: Some(name.to_string()),
@@ -128,14 +128,14 @@ mod tests {
         assert!(findings.for_file(&PathBuf::from("other.rs")).is_empty());
     }
 
-    /// `for_file` falls back to the canonicalized spelling: real runs
-    /// key findings by canonical paths while inputs may arrive
-    /// unresolved.
+    /// `for_file` falls back to the `fs::canonicalize` result: real
+    /// runs key findings by resolved absolute paths while inputs may
+    /// arrive unresolved.
     #[cfg(unix)]
     #[test]
     fn for_file_should_fall_back_to_canonicalized_spelling_when_alias_passed() {
         // Arrange: one anchor file holding two findings, keyed by its
-        // canonical path.
+        // resolved absolute path.
         let dir = std::env::temp_dir().join(format!(
             "rust-llm-tidy-sole-caller-lookup-{}",
             std::process::id()

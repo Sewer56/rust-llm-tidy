@@ -105,45 +105,23 @@ pub(crate) fn check_file(
             observations.hints.extend(text.hints);
             warnings.extend(text.warnings);
         }
-        // MOD001 is file-level: it needs the path and the threshold, which
-        // never reach `LanguageBackend::lint`, so it runs at this seam.
-        if profile.module_size == langs::ModuleSize::RustNonTest
-            && !disabled.contains(check::CODE_MODULE_SIZE)
-        {
-            diagnostics.extend(check::rust::mod001_module_size::check_with_options(
-                parsed,
-                path,
-                module_size.max_lines,
-                module_size.include_in_file_tests,
-                module_size.include_test_files,
-                module_size.exclude_module_headers,
-            ));
-        }
-        // LEN001 walks the retained Rust tree and consumes a config
-        // threshold, so it runs at this seam like MOD001. Rust only.
-        if paths::ext_in(Some(ext), &["rs"]) && !disabled.contains(check::CODE_LEN001) {
-            diagnostics.extend(check::rust::len001_method_length::check(
-                parsed,
-                method_length.max_lines,
-            ));
-        }
-        // MOD004 is crate-level: its findings were precomputed from a
-        // whole-crate parse and anchor at the caller's file. This seam
-        // only emits that file's share behind the disabled gate.
-        if paths::ext_in(Some(ext), &["rs"])
-            && !disabled.contains(check::CODE_MOD004)
-            && let Some(findings) = sole_caller
-        {
-            diagnostics.extend(findings.for_file(path).iter().cloned());
-        }
-        // MOD004's C# findings are equally precomputed, over the
-        // project closure's namespace references.
-        if paths::ext_in(Some(ext), &["cs"])
-            && !disabled.contains(check::CODE_MOD004)
-            && let Some(findings) = csharp_sole_caller
-        {
-            diagnostics.extend(findings.for_file(path).iter().cloned());
-        }
+        mod001_len001_seam_checks(
+            &mut diagnostics,
+            parsed,
+            path,
+            profile,
+            module_size,
+            method_length,
+            disabled,
+        );
+        emit_mod004(
+            &mut diagnostics,
+            ext,
+            path,
+            disabled,
+            sole_caller,
+            csharp_sole_caller,
+        );
     }
 
     if !profile.backend && !disabled.contains(check::CODE_SYM) {
@@ -288,6 +266,31 @@ pub(super) fn post_process_inputs(
     processed
 }
 
+/// Emit this file's share of the precomputed MOD004 findings.
+///
+/// The pipeline precomputes the crate-level Rust findings and the C#
+/// project-closure findings once per run. They anchor at the caller's
+/// file; this seam emits that share behind the disabled gate.
+fn emit_mod004(
+    diagnostics: &mut Vec<Diagnostic>,
+    ext: &str,
+    path: &Path,
+    disabled: &HashSet<String>,
+    sole_caller: Option<&check::sole_caller::SoleCallerFindings>,
+    csharp_sole_caller: Option<&check::sole_caller::SoleCallerFindings>,
+) {
+    let gates: &[(&str, Option<&check::sole_caller::SoleCallerFindings>)] =
+        &[("rs", sole_caller), ("cs", csharp_sole_caller)];
+    for &(extension, findings) in gates {
+        if paths::ext_in(Some(ext), &[extension])
+            && !disabled.contains(check::CODE_MOD004)
+            && let Some(findings) = findings
+        {
+            diagnostics.extend(findings.for_file(path).iter().cloned());
+        }
+    }
+}
+
 /// Resolved TEXT009 diagnostics for a parsed backend file.
 ///
 /// Returns `None` when disabled; callers replace backend defaults so entry
@@ -355,4 +358,39 @@ fn is_release_or_migration_note(path: &Path) -> bool {
         || path
             .components()
             .any(|c| lower(c.as_os_str()) == "releases")
+}
+
+/// Run the parser-seam checks MOD001 and LEN001 for one file.
+///
+/// Both need the path or a config threshold that never reach
+/// `LanguageBackend::lint`, so they run at this seam. LEN001 walks the
+/// retained Rust tree only.
+fn mod001_len001_seam_checks(
+    diagnostics: &mut Vec<Diagnostic>,
+    parsed: &ParseResult,
+    path: &Path,
+    profile: &langs::Profile,
+    module_size: ModuleSizeConfig,
+    method_length: MethodLengthConfig,
+    disabled: &HashSet<String>,
+) {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if profile.module_size == langs::ModuleSize::RustNonTest
+        && !disabled.contains(check::CODE_MODULE_SIZE)
+    {
+        diagnostics.extend(check::rust::mod001_module_size::check_with_options(
+            parsed,
+            path,
+            module_size.max_lines,
+            module_size.include_in_file_tests,
+            module_size.include_test_files,
+            module_size.exclude_module_headers,
+        ));
+    }
+    if paths::ext_in(Some(ext), &["rs"]) && !disabled.contains(check::CODE_LEN001) {
+        diagnostics.extend(check::rust::len001_method_length::check(
+            parsed,
+            method_length.max_lines,
+        ));
+    }
 }

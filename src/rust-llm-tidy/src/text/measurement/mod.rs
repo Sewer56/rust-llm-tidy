@@ -6,8 +6,8 @@
 //! stripped doc lines, paragraphs, and exemption classifications in one
 //! linear pass.
 //!
-//! Each region is measured with its dialect's rules, so markdown prose
-//! and XML doc comments feed the same measurement.
+//! The pass measures each region with its dialect's rules, so markdown
+//! text and XML doc comments feed the same measurement.
 //!
 //! The measured budgets count the full line text, code spans, URLs, and
 //! link targets included. Decorative borders, table rows, code blocks,
@@ -27,7 +27,7 @@
 //!   tag-carrying doc lines.
 //! - [`block_doc`] - the block doc dialect: `*`-continuation stripping and
 //!   `@tag` exemption over `/** */`-style doc lines.
-//! - [`docstring`] - the docstring dialect: markdown prose over Python
+//! - [`docstring`] - the docstring dialect: markdown text over Python
 //!   docstring lines with `>>>` doctest examples exempt.
 //!
 //! Measurement and output:
@@ -193,7 +193,7 @@ pub(crate) fn is_link_reference_definition(trimmed: &str) -> bool {
 /// Folds `regions` into one [`Document`] in a single linear pass.
 ///
 /// Each region is measured with its dialect's rules. The gap between two
-/// regions ends any open paragraph and closes any open fence, so prose and
+/// regions ends any open paragraph and closes any open fence, so text and
 /// code blocks never span regions.
 ///
 /// Each markdown-measured opening fence lands in [`Document::fences`],
@@ -231,8 +231,8 @@ pub(crate) fn measure(regions: Vec<DocRegion>) -> Document {
     doc
 }
 
-/// Measures one markdown-prose region: the producer already stripped the
-/// comment markers, so each line goes through the shared prose classifier.
+/// Measures one markdown-text region: the producer already stripped the
+/// comment markers, so each line goes through the shared text classifier.
 ///
 /// `open_fence` carries the open-fence state in and out: a fence opened here
 /// stays open until a matching closing fence line or the region's end.
@@ -254,7 +254,7 @@ fn measure_markdown_region(
     }
 }
 
-/// Classifies and measures one prose line under the markdown rules: fence
+/// Classifies and measures one text line under the markdown rules: fence
 /// tracking, indented-code and exempt-content classification, and bullet
 /// segmentation.
 ///
@@ -423,7 +423,7 @@ fn flush(pending: &mut Option<PendingParagraph>, doc: &mut Document) {
     }
 }
 
-/// Excludes non-prose lines from paragraph budgets and ends open paragraphs.
+/// Excludes non-text lines from paragraph budgets and ends open paragraphs.
 ///
 /// Exempt lines:
 /// - Headings and table rows
@@ -454,7 +454,7 @@ fn fence_info(trimmed: &str) -> &str {
 /// True for lines that look like code signatures rather than plain text.
 ///
 /// Signature keywords must start the line, after any Rust visibility
-/// modifier; keyword mentions inside prose stay measured.
+/// modifier; keyword mentions inside text stay measured.
 fn is_signature_line(trimmed: &str) -> bool {
     for keyword in ["fn ", "struct ", "enum ", "trait ", "impl "] {
         if starts_with_signature_keyword(trimmed, keyword) {
@@ -615,7 +615,7 @@ mod tests {
         assert_eq!(paragraph_at(&doc, 4).unwrap().size, "four".len());
     }
 
-    // A non-doc source line between doc lines ends the open paragraph: prose
+    // A non-doc source line between doc lines ends the open paragraph: text
     // never joins across the code gap.
     #[test]
     fn analyze_splits_paragraphs_at_non_doc_lines() {
@@ -818,7 +818,7 @@ mod tests {
             let line = doc.lines.iter().find(|l| l.number == number).unwrap();
             assert!(line.in_code_block, "line {number} must be fenced content");
         }
-        // Prose after the block still measures.
+        // Text after the block still measures.
         assert_eq!(paragraph_at(&doc, 8).unwrap().size, "after".len());
     }
 
@@ -891,7 +891,7 @@ mod tests {
     }
 
     // A non-doc source line closes an open fence: doc lines after it are
-    // measured as prose, not swallowed as code-block content.
+    // measured as text, not swallowed as code-block content.
     #[test]
     fn analyze_closes_fence_at_non_doc_line() {
         let source = indoc! {"
@@ -928,7 +928,7 @@ mod tests {
     }
 
     // An indented backtick line is indented code, never a fence opener:
-    // prose after it still measures and no fence is recorded.
+    // text after it still measures and the pass records no fence.
     #[test]
     fn analyze_measures_prose_after_an_indented_fence_lookalike() {
         let doc = analyze("    ```\nsurplus prose beyond any fence\n", "md");
@@ -967,7 +967,7 @@ mod tests {
         assert_eq!(paragraph_at(&doc, 1).unwrap().size, "prose".len());
     }
 
-    // A backtick-wrapped signature mention is prose, not a signature line:
+    // A backtick-wrapped signature mention is text, not a signature line:
     // it counts toward the paragraph budget in full.
     #[test]
     fn analyze_counts_backtick_wrapped_signature() {
@@ -992,7 +992,7 @@ mod tests {
         assert!(doc.paragraphs.is_empty());
     }
 
-    // Inline keyword mentions in prose are measured, not exempted.
+    // The pass measures inline keyword mentions in text; it exempts none.
     #[test]
     fn analyze_measures_prose_with_inline_signature_keywords() {
         let source = indoc! {"
