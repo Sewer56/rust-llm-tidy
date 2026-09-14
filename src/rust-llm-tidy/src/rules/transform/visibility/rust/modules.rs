@@ -849,14 +849,20 @@ mod tests {
             (src("src/a/b.rs"), "pub fn f() {}\n".into()),
         ]);
         let paths = build_module_paths(&src("src/lib.rs"), &files).unwrap();
-        let mut got: Vec<(&str, usize)> = paths
+        // Compare paths, not strings: on Windows the resolver joins children
+        // with `\` separators, and `Path` equality ignores that difference.
+        let mut got: Vec<(PathBuf, usize)> = paths
             .iter()
-            .map(|(p, s)| (p.to_str().unwrap(), s.len()))
+            .map(|(p, s)| (p.to_path_buf(), s.len()))
             .collect();
         got.sort();
         assert_eq!(
             got,
-            vec![("src/a/b.rs", 2), ("src/a/mod.rs", 1), ("src/lib.rs", 0)],
+            vec![
+                (src("src/a/b.rs"), 2),
+                (src("src/a/mod.rs"), 1),
+                (src("src/lib.rs"), 0),
+            ],
         );
     }
 
