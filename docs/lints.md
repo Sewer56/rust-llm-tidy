@@ -943,7 +943,7 @@ See [C# MOD003] for C# import advice.
 
 ### MOD004 - sole-caller module nesting
 
-Arrange files so readers can follow call flow from callers to helpers.
+Nest code under its only caller so the layout follows call flow.
 
 MOD004 suggests nesting a module under its only production caller when
 it is not already there.
@@ -973,42 +973,35 @@ With a `config.yml` containing `{}`, the local CLI renders:
 $ cargo run -p rust-llm-tidy-cli -- --config config.yml --include MOD004 src/load/mod.rs
 src/load/mod.rs:2: hint[MOD004]: module `crate::xbe` is referenced only by `crate::load` (1 reference).
 Why:
-- Nesting helpers under their callers lets readers follow call flow
-through the file layout.
+- Nesting code under its caller makes call flow easier to follow.
 Suggestions:
-- Consider moving `xbe` under `crate::load` as `crate::load::xbe`.
-Update references and preserve behavior and any public API.
-- Keep the current layout if reuse or readability favors it. (mod `xbe`)
+- Consider moving `xbe` to `crate::load::xbe`.
+Update references; preserve behavior and public APIs.
+- Keep the current layout if it better supports reuse or readability. (mod `xbe`)
 ```
 
 #### Remarks
 
-- Hints do not fail the run. Findings appear at the caller's first
-  reference; include that file or its directory in the inputs.
-- Rust checks the crate owning the first `.rs` input. If crate discovery
-  fails, MOD004 warns once and skips the check.
-- Callers count by module subtree, not file. Nested helpers count with
-  their caller; files spanning different depths can count separately.
-- Skips the root, parent-to-child and internal references, multiple
-  callers, mutual sole-caller pairs, and `#[cfg(test)]` code.
-  An outer finding covers nested modules.
+- Include the caller's first-reference file or directory to see the finding.
+- Checks the first `.rs` input's crate; warns once and skips if not found.
+- Groups callers by module subtree at the target's depth, not by file.
+- Skips the root, parent-to-child and internal references, multiple callers,
+  mutual sole-caller pairs, and `#[cfg(test)]` code.
+  Outer findings cover nested modules.
 
 Resolution follows the `mod` tree. Re-exports, trait/dynamic dispatch,
-and macro bodies can hide references. Single-segment imports such as
-`use xbe::{..}` are not resolved; qualified imports such as
-`use crate::xbe::{..}` are.
+and macros may hide uses. Imports like `use xbe::{..}` are not resolved;
+qualified imports like `use crate::xbe::{..}` are.
 
 #### MOD004 in C#
 
-The same heuristic applies to namespaces across the nearest `.csproj`
-and its project references. Callers count by namespace, not file;
-folder layout is not checked.
+Checks namespaces in the nearest `.csproj` and its project references.
+Groups callers by namespace at the target's depth; ignores folder layout.
 
-- Skips the root, parent-to-child and internal references, multiple
-  callers, and mutual sole-caller pairs.
-- Ignores references inside members marked `[Test]`, `[TestMethod]`,
-  `[Fact]`, or `[Theory]`. Other test code may count as production use.
-- Blind spots: aliases other than `using static`, `global using`,
+- Uses the same root and reference exclusions as Rust.
+- Ignores uses inside `[Test]`, `[TestMethod]`, `[Fact]`, or `[Theory]`
+  members. Other test code may count.
+- Blind spots: aliases except `using static`, `global using`,
   reflection, string-built names, `nameof`, `dynamic`, implicit extension
   imports, and source generators.
 

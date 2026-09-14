@@ -14,7 +14,7 @@
 //! - Ignore references from within that same subtree.
 //! - Group the remaining callers by module subtree, at the depth of
 //!   the module under review. A caller spread across several files,
-//!   including nested helper modules, counts as one caller.
+//!   including nested modules, counts as one caller.
 //! - Suggest a move if exactly one caller remains, unless the module
 //!   already lives directly under that caller.
 //!
@@ -78,9 +78,10 @@ pub(crate) fn analyze(index: &RustCrateIndex) -> SoleCallerFindings {
         }
     }
 
-    // Candidate modules: every nonempty prefix of a referenced target's
-    // module path. Sorted, so a module precedes its descendants and the
-    // maximal-subtree filter below only needs prefixes seen so far.
+    // Candidate modules: every nonempty prefix of a referenced target's path.
+    //
+    // Sort ancestors before descendants so the subtree filter below
+    // only needs prefixes seen so far.
     let mut modules: Vec<&[Box<str>]> = Vec::new();
     for edge in edges {
         if let Some(target) = segments.get(edge.target.as_path()) {
@@ -145,12 +146,11 @@ fn diagnostic(
             "module `{module_path}` is referenced only by `{caller_path}` \
              ({references}).\n\
              Why:\n\
-             - Nesting helpers under their callers lets readers follow call flow\n\
-             through the file layout.\n\
+             - Nesting code under its caller makes call flow easier to follow.\n\
              Suggestions:\n\
-             - Consider moving `{name}` under `{caller_path}` as `{nested}`.\n\
-             Update references and preserve behavior and any public API.\n\
-             - Keep the current layout if reuse or readability favors it."
+             - Consider moving `{name}` to `{nested}`.\n\
+             Update references; preserve behavior and public APIs.\n\
+             - Keep the current layout if it better supports reuse or readability."
         ),
         line: first.line,
         item_kind: "mod".to_string(),
@@ -162,7 +162,7 @@ fn diagnostic(
 ///
 /// The caller unit is the subtree at `module`'s depth containing the
 /// referencing file. One caller module split across files (or
-/// referencing through a nested helper file) therefore counts once.
+/// referencing through a nested module) therefore counts once.
 ///
 /// # Arguments
 ///
@@ -332,12 +332,11 @@ mod tests {
             d.message,
             "module `crate::xbe` is referenced only by `crate::load` (2 references).\n\
              Why:\n\
-             - Nesting helpers under their callers lets readers follow call flow\n\
-             through the file layout.\n\
+             - Nesting code under its caller makes call flow easier to follow.\n\
              Suggestions:\n\
-             - Consider moving `xbe` under `crate::load` as `crate::load::xbe`.\n\
-             Update references and preserve behavior and any public API.\n\
-             - Keep the current layout if reuse or readability favors it."
+             - Consider moving `xbe` to `crate::load::xbe`.\n\
+             Update references; preserve behavior and public APIs.\n\
+             - Keep the current layout if it better supports reuse or readability."
         );
     }
 

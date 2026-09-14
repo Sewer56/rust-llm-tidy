@@ -16,7 +16,7 @@
 //! - Group the remaining callers at the depth of the namespace under
 //!   review. For example, when checking `App.Storage`, callers in
 //!   `App.Web` and `App.Web.Pages` count as one: `App.Web`.
-//!   A namespace spread across several files also counts as one caller.
+//! - Count a namespace spread across several files as one caller.
 //! - Suggest a move if exactly one caller remains, unless the namespace
 //!   already lives directly under that caller.
 //!
@@ -119,12 +119,11 @@ fn diagnostic(
             "namespace `{namespace_path}` is referenced only by `{caller_path}` \
              ({references}).\n\
              Why:\n\
-             - Nesting helpers under their callers lets readers follow call flow\n\
-             through the file layout.\n\
+             - Nesting code under its caller makes call flow easier to follow.\n\
              Suggestions:\n\
              - Consider nesting `{namespace_path}` as `{nested}`, with folders to match.\n\
-             Update references and preserve behavior and any public API.\n\
-             - Keep the current layout if reuse or readability favors it."
+             Update references; preserve behavior and public APIs.\n\
+             - Keep the current layout if it better supports reuse or readability."
         ),
         line: first.line,
         item_kind: "namespace".to_string(),
@@ -291,12 +290,11 @@ mod tests {
             d.message,
             "namespace `App.Core` is referenced only by `App.Run` (1 reference).\n\
              Why:\n\
-             - Nesting helpers under their callers lets readers follow call flow\n\
-             through the file layout.\n\
+             - Nesting code under its caller makes call flow easier to follow.\n\
              Suggestions:\n\
              - Consider nesting `App.Core` as `App.Run.Core`, with folders to match.\n\
-             Update references and preserve behavior and any public API.\n\
-             - Keep the current layout if reuse or readability favors it."
+             Update references; preserve behavior and public APIs.\n\
+             - Keep the current layout if it better supports reuse or readability."
         );
     }
 
