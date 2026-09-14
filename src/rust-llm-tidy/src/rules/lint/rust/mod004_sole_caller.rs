@@ -1,43 +1,43 @@
-//! `MOD004`: nest a subtree under its sole production caller.
+//! `MOD004`: suggest moving a module under its only production caller.
 //!
-//! File layout that follows control flow reads top-down: when exactly
-//! one module subtree calls another, the callee can live beneath the
-//! caller.
+//! When only one part of a crate uses a module, placing that module
+//! beneath its caller makes the file layout easier to follow.
 //!
-//! This rule measures that fan-in from one whole-crate parse
-//! ([`RustCrateIndex`]) and emits one non-gating hint per qualifying
-//! subtree.
+//! This rule uses a whole-crate parse ([`RustCrateIndex`]) to find these
+//! opportunities. Each suggestion is a hint, not a failing check.
 //!
-//! # How a module qualifies
+//! # When the rule suggests a move
 //!
-//! For each module `M` in the crate (the root module excluded):
+//! The rule checks every module except the crate root:
 //!
-//! - Collect the references whose target lies inside `M`'s subtree.
-//! - Group them by caller unit: the subtree at `M`'s depth containing
-//!   the referencing file. A caller module split across several files
-//!   therefore counts once, and so does its nested helper file.
-//! - Ignore references from inside `M`'s own subtree, including
-//!   self-references from `M`'s files.
-//! - `M` qualifies when exactly one caller unit remains, and that unit
-//!   is not `M`'s parent.
+//! - Find references to the module or any of its descendants.
+//! - Ignore references from within that same subtree.
+//! - Group the remaining callers by module subtree, at the depth of
+//!   the module under review. A caller spread across several files,
+//!   including nested helper modules, counts as one caller.
+//! - Suggest a move if exactly one caller remains, unless the module
+//!   already lives directly under that caller.
 //!
-//! A qualifying module stays silent when the pair is mutual: the
-//! caller's subtree is itself referenced only by `M`. A module nested
-//! inside an already-flagged subtree also stays silent; the outer
-//! finding covers it.
+//! Two modules that are each other's only caller get no suggestion:
+//! neither is a clear choice to contain the other.
 //!
-//! The finding anchors at the caller's first reference, so it surfaces
-//! in diffs that add the dependency.
+//! If a module gets a suggestion, its descendants get no separate
+//! suggestions. Moving the outer module already covers them.
 //!
-//! # Blind spots
+//! The hint points to the caller's first reference, so it can appear
+//! in a diff that introduces the dependency.
 //!
-//! Inherited from [`RustCrateIndex`]: re-export veils, dyn and trait
-//! dispatch, paths inside macro token trees, and single-segment `use`
-//! prefixes (`use a::{..}` stays silent; scoped prefixes such as
-//! `use crate::a::{..}` resolve).
+//! # Limitations
 //!
-//! Multi-crate runs index one crate: the one owning the first `.rs`
-//! input.
+//! [`RustCrateIndex`] cannot reliably track references through
+//! re-exports, dynamic or trait dispatch, or paths inside macro token
+//! trees.
+//!
+//! It also skips `use` prefixes with only one segment: `use a::{..}`
+//! is not resolved, but `use crate::a::{..}` is.
+//!
+//! If the inputs span multiple crates, the tool indexes only the crate
+//! owning the first `.rs` input.
 //!
 //! [`RustCrateIndex`]: crate::project::rust_crate::RustCrateIndex
 

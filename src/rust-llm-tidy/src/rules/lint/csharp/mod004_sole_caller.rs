@@ -1,43 +1,39 @@
-//! `MOD004`: nest a C# namespace under its sole production caller.
+//! `MOD004`: suggest moving a namespace under its only production caller.
 //!
-//! File layout that follows control flow reads top-down: when exactly
-//! one namespace's code references another, the referenced namespace
-//! can live beneath the caller.
+//! When only one namespace uses another, placing the used namespace
+//! beneath its caller makes the file layout easier to follow.
 //!
-//! This rule measures that fan-in from the shared namespace
-//! reference facts ([`NamespaceRefIndex`]) and emits one non-gating
-//! hint per qualifying namespace.
+//! This rule uses shared namespace reference data
+//! ([`NamespaceRefIndex`]) to find these opportunities. Each suggestion
+//! is a hint, not a failing check.
 //!
-//! # How a namespace qualifies
+//! # When the rule suggests a move
 //!
-//! For each namespace `N` (the empty root namespace excluded):
+//! The rule checks every namespace except the empty root namespace:
 //!
-//! - Collect the reference edges whose target is `N` itself.
-//! - Ignore edges from inside `N` (self-references and references
-//!   from namespaces nested under `N`).
-//! - Group the rest by caller unit: the caller's namespace truncated
-//!   to `N`'s depth, mirroring the Rust rule. One namespace split
-//!   across several files therefore counts once.
-//! - `N` qualifies when exactly one caller unit remains, and that
-//!   unit is not `N`'s parent (the namespace minus its last
-//!   segment).
+//! - Find references to that exact namespace, not its descendants.
+//! - Ignore references from the namespace itself or its descendants.
+//! - Group the remaining callers at the depth of the namespace under
+//!   review. For example, when checking `App.Storage`, callers in
+//!   `App.Web` and `App.Web.Pages` count as one: `App.Web`.
+//!   A namespace spread across several files also counts as one caller.
+//! - Suggest a move if exactly one caller remains, unless the namespace
+//!   already lives directly under that caller.
 //!
-//! A qualifying namespace stays silent when the pair is mutual: the
-//! caller is itself referenced only by `N`.
+//! Two namespaces that are each other's only caller get no suggestion:
+//! neither is a clear choice to contain the other.
 //!
-//! The finding anchors at the caller's first reference in the
-//! deterministic edge order, so it surfaces in diffs that add the
-//! dependency.
+//! The hint points to the caller's first reference in the index's stable
+//! ordering, so it can appear in a diff that introduces the dependency.
 //!
-//! # Blind spots
+//! # Limitations
 //!
-//! Inherited from [`NamespaceRefIndex`]:
+//! [`NamespaceRefIndex`] does not fully account for:
 //!
-//! - Aliases beyond `using static`, and `global using`.
-//! - Reflection, string-built names, `nameof`, and `dynamic`.
-//! - Extension calls through implicit imports, and source generators.
-//! - Test projects whose members carry none of the recognized test
-//!   attributes.
+//! - Aliases beyond `using static`, or `global using`.
+//! - Reflection, names built from strings, `nameof`, or `dynamic`.
+//! - Extension calls through implicit imports, or source generators.
+//! - Test projects with no recognized test attributes on their members.
 //!
 //! [`NamespaceRefIndex`]:
 //! crate::languages::csharp::analysis::namespace_refs::NamespaceRefIndex
