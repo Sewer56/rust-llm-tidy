@@ -24,6 +24,7 @@ against misread declarations.
 | `TEST001` | Warning  | A `TestMethod`/`Test`/`Fact`/`Theory` method uses a `test_*`, `case_*`, or `test` + digits name. |
 | `TEST002` | Reminder | A `TestMethod`/`Test`/`Fact`/`Theory` method has no comment above its attributes.                |
 | `MOD003`  | Hint     | A path includes the full namespace.                                                              |
+| `MOD004`  | Hint     | File layout may not follow call flow.                                                            |
 | `SYM`     | Reminder | A configured text or symbol hint matches; severity is configurable.                              |
 
 Errors fail the run with a non-zero exit; warnings, hints, and reminders do
@@ -767,6 +768,15 @@ Hints never fail the run or rewrite source.
 See [shared MOD003 policy] for Rust behavior.
 
 [shared MOD003 policy]: ../../lints.md#mod003---full-namespace-qualification-in-code
+
+### MOD004 - sole-caller namespace placement
+
+Suggests nesting helpers under their callers so file layout follows
+call flow. For C#, the check uses namespaces, not folders.
+
+See [shared MOD004 policy] for the example and C# caveats.
+
+[shared MOD004 policy]: ../../lints.md#mod004---sole-caller-module-nesting
 
 ## SYM - symbol rules
 

@@ -11,6 +11,10 @@
 //! [`mod003_qualified_path`] walks the whole retained tree once per
 //! file at the end of [`run_all`].
 //!
+//! [`mod004_sole_caller`] is crate-level: the pipeline builds the
+//! crate's reference facts once per run and emits the precomputed
+//! findings from `check_file`, like MOD001, outside [`run_all`].
+//!
 //! [`len001_method_length`] consumes a config threshold, so the pipeline runs it
 //! from `check_file` outside [`run_all`].
 //!
@@ -43,6 +47,7 @@ pub(crate) mod len001_method_length;
 pub(crate) mod mod001_module_size;
 mod mod002_fn_local_use;
 mod mod003_qualified_path;
+pub(crate) mod mod004_sole_caller;
 mod test001_test_naming;
 mod test002_test_summary;
 

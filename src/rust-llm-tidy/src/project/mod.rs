@@ -2,3 +2,4 @@
 
 pub(crate) mod csharp;
 pub(crate) mod documentation;
+pub(crate) mod rust_crate;

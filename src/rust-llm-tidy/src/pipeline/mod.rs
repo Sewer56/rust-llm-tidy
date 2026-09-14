@@ -10,7 +10,11 @@
 //! - `file_execution`: per-file mutation and lint phase execution
 //! - `files`: file I/O operations and the crate-aware visibility context
 //! - `run_options`: explicit permissions and rule selection for `run`
+//! - `sole_caller`: MOD004 crate-level and C# cross-project facts for
+//!   the lint phase
 //! - `source_options`: options for standalone buffer processing
+//!
+//! `run` folds per-file warnings through [`collect_file_warnings`].
 
 use crate::config::{self, CompiledConfig, FilePolicy, PostProcessStep};
 use crate::input as paths;
@@ -33,6 +37,7 @@ mod lint_context;
 #[cfg(test)]
 mod lint_context_tests;
 mod run_options;
+mod sole_caller;
 mod source_options;
 
 impl FileReport {
@@ -59,8 +64,9 @@ impl FileReport {
 ///
 /// File previews leave each pass reading the original disk source; see
 /// [`tidy_source`] for final-buffer linting.
-/// Cargo project discovery requires `options.cargo_discovery`; otherwise
-/// Rust visibility uses standalone facts.
+/// Cargo project discovery requires `options.cargo_discovery`;
+/// otherwise Rust visibility uses standalone facts and MOD004 skips
+/// its crate facts.
 ///
 /// # Arguments
 ///
@@ -169,7 +175,7 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
             &disabled,
             context.as_ref(),
             !options.apply,
-            (None, None),
+            (None, None, None, None),
             &lint_context,
         )
     };
@@ -183,6 +189,25 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
     if let Some(index) = &mut csharp {
         index.refresh(&paths);
     }
+    // MOD004 is crate-level: its findings are built once, after all
+    // mutations and before the lint phases.
+    let sole_caller = sole_caller::sole_caller_findings(
+        &paths,
+        options,
+        config,
+        included.as_ref(),
+        &disabled,
+        &mut report.warnings,
+    );
+    // The C# findings reuse the refreshed parses: same timing, no
+    // second parse of the project closure.
+    let csharp_sole_caller = sole_caller::csharp_sole_caller_findings(
+        csharp.as_ref(),
+        &paths,
+        config,
+        included.as_ref(),
+        &disabled,
+    );
     let lint = |(path, out): (&PathBuf, FileReport)| {
         if out.failure.is_some() {
             return out;
@@ -193,7 +218,12 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
             &disabled,
             context.as_ref(),
             !options.apply,
-            (Some(out), csharp.as_ref()),
+            (
+                Some(out),
+                csharp.as_ref(),
+                sole_caller.as_ref(),
+                csharp_sole_caller.as_ref(),
+            ),
             &lint_context,
         )
     };
@@ -207,13 +237,7 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
         paths.iter().zip(results).map(lint).collect()
     };
 
-    for file in &report.files {
-        report.warnings.extend(
-            file.warnings
-                .iter()
-                .map(|warning| format!("{}: {warning}", file.path.display())),
-        );
-    }
+    collect_file_warnings(&mut report);
 
     if options.apply
         && options.post_process
@@ -316,6 +340,17 @@ pub(crate) fn validate_selection(
         langs::validate_extension(ext)?;
     }
     Ok(())
+}
+
+/// Fold each file's phase warnings into the report, prefixed by its path.
+fn collect_file_warnings(report: &mut RunReport) {
+    for file in &report.files {
+        report.warnings.extend(
+            file.warnings
+                .iter()
+                .map(|warning| format!("{}: {warning}", file.path.display())),
+        );
+    }
 }
 
 /// Collapse path aliases before dispatch.
@@ -459,11 +494,185 @@ fn effective_policy(
 mod tests {
     use super::dedup_inputs;
     use super::file_execution::process_one;
+    use super::sole_caller;
+    use crate::project::rust_crate::RustCrateIndex;
+    use crate::rules::lint::CODE_MOD004;
+    use crate::rules::lint::rust::mod004_sole_caller;
+    use crate::rules::lint::sole_caller::SoleCallerFindings;
+    use crate::rules::transform::visibility::rust::ParsedFile;
     use core::sync::atomic::{AtomicU64, Ordering};
+    use rstest::rstest;
+    use std::collections::HashSet;
     use std::fs;
     use std::path::PathBuf;
 
     static TEST_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
+
+    /// The lint target, its precomputed MOD004 findings, and which
+    /// phase slot carries them.
+    struct Mod004Fixture {
+        /// Owning temp dir; keeps the fixture files on disk.
+        dir: PathBuf,
+        /// The caller file the findings anchor to.
+        target: PathBuf,
+        /// Facts handed to the lint phase through the phase tuple.
+        findings: SoleCallerFindings,
+        /// Whether the findings ride the C# slot instead of the Rust slot.
+        csharp: bool,
+    }
+
+    /// A three-file Rust crate whose `load.rs` is the sole caller of
+    /// `xbe`; the paths match the process_one spelling, so no
+    /// discovery runs here.
+    fn rust_mod004_fixture() -> Mod004Fixture {
+        let dir = temp_dir();
+        let lib = dir.join("lib.rs");
+        let load = dir.join("load.rs");
+        let xbe = dir.join("xbe.rs");
+        fs::write(&lib, "//! Module docs.\nmod load;\nmod xbe;\n").unwrap();
+        fs::write(&load, "//! Module docs.\nfn go() { crate::xbe::f(); }\n").unwrap();
+        fs::write(&xbe, "//! Module docs.\nfn f() {}\n").unwrap();
+
+        // Facts straight from the pure constructor.
+        let sources = [&lib, &load, &xbe]
+            .iter()
+            .map(|path| {
+                let source = fs::read_to_string(path).unwrap();
+                ParsedFile::new((*path).clone(), source).expect("test source must parse")
+            })
+            .collect::<Vec<_>>();
+        let index = RustCrateIndex::from_parsed(&lib, &sources).expect("index builds");
+        Mod004Fixture {
+            dir,
+            target: load,
+            findings: mod004_sole_caller::analyze(&index),
+            csharp: false,
+        }
+    }
+
+    /// Two C# files where `Caller.cs` is the sole referrer of `Widget`;
+    /// the paths match the process_one spelling, so no discovery runs
+    /// here.
+    fn csharp_mod004_fixture() -> Mod004Fixture {
+        let dir = temp_dir();
+        let caller = dir.join("Caller.cs");
+        let lib = dir.join("Lib.cs");
+        fs::write(
+            &caller,
+            "namespace App.Run\n{\n    using App.Core;\n\n    class Runner\n    {\n        Widget value;\n    }\n}\n",
+        )
+        .unwrap();
+        fs::write(&lib, "namespace App.Core\n{\n    class Widget { }\n}\n").unwrap();
+
+        // Facts straight from the shared parse cache.
+        let inputs = [caller.clone(), lib.clone()];
+        let index = crate::project::csharp::CSharpIndex::build(&inputs).unwrap();
+        let findings = sole_caller::csharp_sole_caller_findings(
+            Some(&index),
+            &inputs,
+            None,
+            None,
+            &HashSet::new(),
+        )
+        .expect("gates pass for a .cs input");
+        Mod004Fixture {
+            dir,
+            target: caller,
+            findings,
+            csharp: true,
+        }
+    }
+
+    /// MOD004's precomputed findings reach the report through the lint
+    /// phase, and the per-file disabled gate suppresses them.
+    #[rstest]
+    #[case::rust_enabled(rust_mod004_fixture(), false, 1)]
+    #[case::rust_excluded(rust_mod004_fixture(), true, 0)]
+    #[case::csharp_enabled(csharp_mod004_fixture(), false, 1)]
+    #[case::csharp_excluded(csharp_mod004_fixture(), true, 0)]
+    fn process_one_should_emit_mod004_when_enabled_and_skip_when_excluded(
+        #[case] fixture: Mod004Fixture,
+        #[case] excluded: bool,
+        #[case] expected: usize,
+    ) {
+        let included: HashSet<String> = ["lints".to_string()].into_iter().collect();
+        let disabled: HashSet<String> = [excluded.then(|| CODE_MOD004.to_string())]
+            .into_iter()
+            .flatten()
+            .collect();
+
+        // An absent prior output selects the mutation phase.
+        let mutated = process_one(
+            &fixture.target,
+            Some(&included),
+            &disabled,
+            None,
+            false,
+            (None, None, None, None),
+            &super::lint_context::LintContext::new(None, false),
+        );
+        // A present prior output selects linting; the findings ride
+        // their language's slot.
+        let phase = if fixture.csharp {
+            (Some(mutated), None, None, Some(&fixture.findings))
+        } else {
+            (Some(mutated), None, Some(&fixture.findings), None)
+        };
+        let linted = process_one(
+            &fixture.target,
+            Some(&included),
+            &disabled,
+            None,
+            false,
+            phase,
+            &super::lint_context::LintContext::new(None, false),
+        );
+
+        let count = linted
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == CODE_MOD004)
+            .count();
+        assert_eq!(count, expected);
+
+        cleanup(&fixture.dir);
+    }
+
+    /// A config `exclude` group disabling `lints` for every `.cs` input
+    /// keeps the C# MOD004 gate closed.
+    #[test]
+    fn csharp_mod004_should_be_absent_when_config_disables_lints_group() {
+        let dir = temp_dir();
+        fs::write(
+            dir.join(".rust-llm-tidy.yml"),
+            "exclude:\n  - paths: [\"*.cs\"]\n    rules: [\"lints\"]\n",
+        )
+        .unwrap();
+        let caller = dir.join("Caller.cs");
+        let lib = dir.join("Lib.cs");
+        fs::write(&caller, "class Runner { Widget value; }\n").unwrap();
+        fs::write(&lib, "class Widget { }\n").unwrap();
+
+        // Arrange: the same shared parse cache the enabled path uses.
+        let config = crate::config::load_and_compile(&dir.join(".rust-llm-tidy.yml"))
+            .expect("config compiles");
+        let inputs = [caller, lib];
+        let index = crate::project::csharp::CSharpIndex::build(&inputs).unwrap();
+
+        // Act + assert: the per-file `lints` disable keeps the gate closed.
+        assert!(
+            sole_caller::csharp_sole_caller_findings(
+                Some(&index),
+                &inputs,
+                Some(&config),
+                None,
+                &HashSet::new(),
+            )
+            .is_none()
+        );
+
+        cleanup(&dir);
+    }
 
     /// A read failure between phases revokes post-processing eligibility.
     /// Successful linting retains eligibility even when diagnostics report
@@ -494,7 +703,7 @@ mod tests {
                 &disabled,
                 None,
                 false,
-                (None, None),
+                (None, None, None, None),
                 &super::lint_context::LintContext::new(None, false),
             );
             assert!(mutated.processed, "{label}");
@@ -508,7 +717,7 @@ mod tests {
                 &disabled,
                 None,
                 false,
-                (Some(mutated), None),
+                (Some(mutated), None, None, None),
                 &super::lint_context::LintContext::new(None, false),
             );
 

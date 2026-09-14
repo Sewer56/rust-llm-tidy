@@ -44,10 +44,16 @@ mod vis;
 /// - `method_length`: resolved LEN001 `max_lines` threshold
 /// - `lint_context`: compiled hints, exclusion policies and reporting scopes
 /// - `index`: refreshed C# facts and cached parses for this run
+/// - `sole_caller`: precomputed MOD004 findings grouped by anchor file;
+///   `None` when the run skipped building the crate facts
+/// - `csharp_sole_caller`: precomputed MOD004 findings for `.cs`
+///   files, grouped by anchor file; `None` when the run skipped
+///   building the C# namespace facts
 ///
 /// # Errors
 /// Returns an error when reading source or constructing its syntax tree fails,
 /// or declaration policies encounter syntax errors or missing tokens.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn check_file(
     path: &Path,
     disabled: &HashSet<String>,
@@ -56,6 +62,8 @@ pub(crate) fn check_file(
     method_length: MethodLengthConfig,
     lint_context: &super::lint_context::LintContext<'_>,
     index: Option<&csharp_index::CSharpIndex>,
+    sole_caller: Option<&check::sole_caller::SoleCallerFindings>,
+    csharp_sole_caller: Option<&check::sole_caller::SoleCallerFindings>,
 ) -> anyhow::Result<(Vec<Diagnostic>, Vec<String>)> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
@@ -118,6 +126,23 @@ pub(crate) fn check_file(
                 parsed,
                 method_length.max_lines,
             ));
+        }
+        // MOD004 is crate-level: its findings were precomputed from a
+        // whole-crate parse and anchor at the caller's file. This seam
+        // only emits that file's share behind the disabled gate.
+        if paths::ext_in(Some(ext), &["rs"])
+            && !disabled.contains(check::CODE_MOD004)
+            && let Some(findings) = sole_caller
+        {
+            diagnostics.extend(findings.for_file(path).iter().cloned());
+        }
+        // MOD004's C# findings are equally precomputed, over the
+        // project closure's namespace references.
+        if paths::ext_in(Some(ext), &["cs"])
+            && !disabled.contains(check::CODE_MOD004)
+            && let Some(findings) = csharp_sole_caller
+        {
+            diagnostics.extend(findings.for_file(path).iter().cloned());
         }
     }
 

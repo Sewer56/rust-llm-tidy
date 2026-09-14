@@ -56,6 +56,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`MOD001`]  | Warning            | A code file exceeds `module_size.max_lines` (default 500).                        |
 | [`MOD002`]  | Error              | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
 | [`MOD003`]  | Hint               | A path includes the full namespace.                                               |
+| [`MOD004`]  | Hint               | File layout may not follow call flow.                                             |
 | [`LEN001`]  | Hint               | A Rust fn body exceeds `method_length.max_lines` (default 100).                   |
 | [`SYM`]     | Reminder           | A configured text or symbol hint matches; severity is configurable.               |
 | [`DUP001`]  | Reminder           | Five meaningful lines repeat at three same-file sites, including a changed copy.  |
@@ -940,6 +941,70 @@ MOD003 skips:
 
 See [C# MOD003] for C# import advice.
 
+### MOD004 - sole-caller module nesting
+
+Nest code under its only caller so the layout follows call flow.
+
+MOD004 suggests nesting a module under its only production caller when
+it is not already there.
+
+Before (`src/`):
+
+```text
+src/lib.rs       mod load; mod xbe;
+src/load/mod.rs  pub fn go() {
+                  crate::xbe::parse_xbe_header(); }
+src/xbe.rs       pub fn parse_xbe_header() {}
+```
+
+After, if you accept the hint:
+
+```text
+src/lib.rs        mod load;
+src/load/mod.rs   mod xbe; pub fn go() { xbe::parse_xbe_header(); }
+src/load/xbe.rs   pub fn parse_xbe_header() {}
+```
+
+#### MOD004 CLI output
+
+With a `config.yml` containing `{}`, the local CLI renders:
+
+```text
+$ cargo run -p rust-llm-tidy-cli -- --config config.yml --include MOD004 src/load/mod.rs
+src/load/mod.rs:2: hint[MOD004]: module `crate::xbe` is referenced only by `crate::load` (1 reference).
+Why:
+- Nesting code under its caller makes call flow easier to follow.
+Suggestions:
+- Consider moving `xbe` to `crate::load::xbe`.
+Update references; preserve behavior and public APIs.
+- Keep the current layout if it better supports reuse or readability. (mod `xbe`)
+```
+
+#### Remarks
+
+- Include the caller's first-reference file or directory to see the finding.
+- Checks the first `.rs` input's crate; warns once and skips if not found.
+- Groups callers by module subtree at the target's depth, not by file.
+- Skips the root, parent-to-child and internal references, multiple callers,
+  mutual sole-caller pairs, and `#[cfg(test)]` code.
+  Outer findings cover nested modules.
+
+Resolution follows the `mod` tree. Re-exports, trait/dynamic dispatch,
+and macros may hide uses. Imports like `use xbe::{..}` are not resolved;
+qualified imports like `use crate::xbe::{..}` are.
+
+#### MOD004 in C#
+
+Checks namespaces in the nearest `.csproj` and its project references.
+Groups callers by namespace at the target's depth; ignores folder layout.
+
+- Uses the same root and reference exclusions as Rust.
+- Ignores uses inside `[Test]`, `[TestMethod]`, `[Fact]`, or `[Theory]`
+  members. Other test code may count.
+- Blind spots: aliases except `using static`, `global using`,
+  reflection, string-built names, `nameof`, `dynamic`, implicit extension
+  imports, and source generators.
+
 ### LEN001 - oversized function or method
 
 Suggests reviewing Rust functions that exceed `method_length.max_lines`
@@ -1201,6 +1266,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`MOD001`]: #mod001---oversized-module
 [`MOD002`]: #mod002---function-local-use-without-cfg
 [`MOD003`]: #mod003---full-namespace-qualification-in-code
+[`MOD004`]: #mod004---sole-caller-module-nesting
 [C# MOD003]: languages/lints/csharp.md#mod003---full-namespace-qualification-in-code
 [`LEN001`]: #len001---oversized-function-or-method
 [`SYM`]: #sym---configured-symbol-policies

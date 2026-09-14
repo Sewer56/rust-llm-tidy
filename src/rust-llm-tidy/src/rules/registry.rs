@@ -33,6 +33,7 @@ pub const LINT_CODES: &[&str] = &[
     CODE_MODULE_SIZE,
     CODE_MOD002,
     CODE_QUALIFIED_PATH,
+    CODE_MOD004,
     CODE_LEN001,
     CODE_SYM,
     CODE_DUPLICATION,
@@ -69,6 +70,9 @@ pub const CODE_MISSING_RETURNS: &str = "DOC011";
 /// Rule code for a `use` inside a function body without its own
 /// `#[cfg]` attribute.
 pub const CODE_MOD002: &str = "MOD002";
+/// Rule code for a module subtree referenced only by one non-parent
+/// caller.
+pub const CODE_MOD004: &str = "MOD004";
 /// Rule code for a source file over its language's line budget.
 pub const CODE_MODULE_SIZE: &str = "MOD001";
 /// Rule code for an over-limit paragraph of stripped doc text.
@@ -130,6 +134,7 @@ mod tests {
             CODE_MODULE_SIZE,
             CODE_MOD002,
             CODE_QUALIFIED_PATH,
+            CODE_MOD004,
             CODE_LEN001,
             CODE_SYM,
             CODE_DUPLICATION,

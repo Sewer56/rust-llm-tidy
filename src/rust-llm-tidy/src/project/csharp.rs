@@ -81,6 +81,20 @@ impl CSharpIndex {
     pub(crate) fn parsed(&self, path: &Path) -> Option<&ParseResult> {
         self.parses.get(&path.canonicalize().ok()?)
     }
+
+    /// Iterate every cached parse with its resolved cache key.
+    ///
+    /// Order is unspecified; callers needing deterministic reference
+    /// edge order sort by path.
+    ///
+    /// # Returns
+    ///
+    /// Each `(path, parse)` pair in the project-reference scope.
+    pub(crate) fn parses(&self) -> impl Iterator<Item = (&Path, &ParseResult)> {
+        self.parses
+            .iter()
+            .map(|(path, parsed)| (path.as_path(), parsed))
+    }
 }
 
 /// Reproduce the resolved cache key a since-deleted `path` received from

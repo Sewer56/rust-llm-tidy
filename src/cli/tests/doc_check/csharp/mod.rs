@@ -16,6 +16,7 @@
 //! - `doc010_tag_order`: DOC010 doc tags out of standard order
 //! - `doc011_missing_returns`: DOC011 missing `<returns>` tags
 //! - `mod003_qualified_path`: MOD003 fully-qualified path hints
+//! - `mod004_sole_caller`: MOD004 sole-caller namespace placement hints
 //! - `perf001_allocation_hints`: built-in PERF001 capacity reminders via SYM
 //! - `test001_test_naming`: TEST001 discouraged test-method names
 //! - `test002_test_summary`: TEST002 missing test summary comments
@@ -33,6 +34,7 @@ mod doc009_missing_module_docs;
 mod doc010_tag_order;
 mod doc011_missing_returns;
 mod mod003_qualified_path;
+mod mod004_sole_caller;
 mod perf001_allocation_hints;
 mod test001_test_naming;
 mod test002_test_summary;
