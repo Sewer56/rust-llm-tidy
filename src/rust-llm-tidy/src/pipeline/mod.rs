@@ -638,6 +638,42 @@ mod tests {
         cleanup(&fixture.dir);
     }
 
+    /// A config `exclude` group disabling `lints` for every `.cs` input
+    /// keeps the C# MOD004 gate closed.
+    #[test]
+    fn csharp_mod004_should_be_absent_when_config_disables_lints_group() {
+        let dir = temp_dir();
+        fs::write(
+            dir.join(".rust-llm-tidy.yml"),
+            "exclude:\n  - paths: [\"*.cs\"]\n    rules: [\"lints\"]\n",
+        )
+        .unwrap();
+        let caller = dir.join("Caller.cs");
+        let lib = dir.join("Lib.cs");
+        fs::write(&caller, "class Runner { Widget value; }\n").unwrap();
+        fs::write(&lib, "class Widget { }\n").unwrap();
+
+        // Arrange: the same shared parse cache the enabled path uses.
+        let config = crate::config::load_and_compile(&dir.join(".rust-llm-tidy.yml"))
+            .expect("config compiles");
+        let inputs = [caller, lib];
+        let index = crate::project::csharp::CSharpIndex::build(&inputs).unwrap();
+
+        // Act + assert: the per-file `lints` disable keeps the gate closed.
+        assert!(
+            sole_caller::csharp_sole_caller_findings(
+                Some(&index),
+                &inputs,
+                Some(&config),
+                None,
+                &HashSet::new(),
+            )
+            .is_none()
+        );
+
+        cleanup(&dir);
+    }
+
     /// A read failure between phases revokes post-processing eligibility.
     /// Successful linting retains eligibility even when diagnostics report
     /// errors.

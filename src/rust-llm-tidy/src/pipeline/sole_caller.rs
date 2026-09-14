@@ -118,6 +118,7 @@ fn selects_mod004(
         let policy = effective_policy(path, config, included, disabled);
         !policy.skip
             && paths::ext_in(path.extension().and_then(|e| e.to_str()), &[ext])
+            && !policy.disabled.contains("lints")
             && !policy.disabled.contains(check::CODE_MOD004)
             && match &policy.enabled {
                 Some(set) => set.contains("lints") || set.contains(check::CODE_MOD004),
