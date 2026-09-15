@@ -6,21 +6,23 @@
 //! - [`RustCrateIndex::from_parsed`]: the pure core. It reuses
 //!   [`build_module_paths`] for module resolution, then walks each
 //!   parsed tree once to collect reference edges.
-//! - [`RustCrateIndex::build`]: the discovery wrapper, mirroring
-//!   `resolve_vis_context` (`src/pipeline/files/vis.rs`).
+//! - [`RustCrateIndex::build_all`]: the discovery wrapper, mirroring
+//!   `resolve_vis_context` (`src/pipeline/files/vis.rs`). It indexes
+//!   every crate owning a `.rs` input, one index per crate.
 //!
 //! Blind spots: re-export veils, dyn and trait dispatch, paths inside
 //! macro token trees, and single-segment `use` paths (`use a::{..}`
 //! stays silent; scoped prefixes resolve).
 //!
-//! Multi-crate inputs index one crate: the one owning the first `.rs`
-//! input.
+//! Cross-crate references (`other_crate::path`) resolve to nothing:
+//! the rule analyzes each crate alone, so a module shared with a
+//! dependent crate can still look sole-called.
 
 use crate::input;
 use crate::rules::transform::visibility::rust::{
-    ModulePaths, ParsedFile, build_module_paths, discover_crate_root,
+    ModulePaths, ParsedFile, build_module_paths, discover_crate_root, find_cargo_toml,
 };
-use ahash::AHashMap;
+use ahash::{AHashMap, AHashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tree_sitter::Node;
@@ -43,7 +45,7 @@ pub(crate) struct RustCrateIndex {
 /// `from == target`.
 pub(crate) struct ReferenceEdge {
     /// Path of the file containing the reference, in the form passed
-    /// to the constructor (`build` canonicalizes to absolute).
+    /// to the constructor (`build_all` canonicalizes to absolute).
     pub(crate) from: PathBuf,
     /// Path of the resolved target module's file (same form as `from`).
     pub(crate) target: PathBuf,
@@ -104,42 +106,87 @@ impl RustCrateIndex {
         Ok(RustCrateIndex { paths, edges })
     }
 
-    /// Build the index from the first `.rs` input's owning crate,
-    /// mirroring `resolve_vis_context` (`src/pipeline/files/vis.rs`)
-    /// in the `vis` step.
+    /// Build one index per crate owning a `.rs` input, mirroring
+    /// `resolve_vis_context` (`src/pipeline/files/vis.rs`) in the `vis`
+    /// step.
     ///
-    /// Discovers the crate root, canonicalizes it, parses every `.rs`
-    /// under the crate directory once, then calls [`Self::from_parsed`].
+    /// The pass groups inputs by their nearest `Cargo.toml` (one
+    /// group per crate), then discovers each crate's root, parses its
+    /// directory, and builds its index.
+    ///
+    /// Inputs are sorted before they arrive, so crate order is
+    /// deterministic.
     ///
     /// # Arguments
     ///
-    /// - `inputs` - the run's input paths; the first `.rs` selects the
-    ///   crate.
-    /// - `warnings` - sink for the one failure warning, per-file parse
-    ///   warnings (skipped files), and module-resolution warnings;
-    ///   unreadable files skip silently, and a failed directory walk
-    ///   still indexes the files it collected.
+    /// - `inputs` - the run's input paths; every `.rs` input selects
+    ///   its owning crate.
+    /// - `warnings` - sink for the manifest-less input warning,
+    ///   per-crate discovery-failure warnings, per-file parse
+    ///   warnings, and module-resolution warnings.
     ///
     /// # Returns
     ///
-    /// `Some(index)` when discovery succeeds; `None` (with one warning
-    /// pushed) on discovery failure, and `None` without a warning when
-    /// there is no `.rs` input.
-    pub(crate) fn build(inputs: &[PathBuf], warnings: &mut Vec<String>) -> Option<Self> {
-        let first = inputs
-            .iter()
-            .find(|p| input::ext_in(p.extension().and_then(|e| e.to_str()), &["rs"]))?;
-        // Canonicalize the crate root so it matches the canonicalized
-        // source paths collected below (symlinked temp dirs otherwise
-        // break the root lookup).
-        let root = match discover_crate_root(first) {
-            Ok(r) => fs::canonicalize(&r).unwrap_or(r),
-            Err(e) => {
-                warnings.push(format!("rust crate index unavailable ({e})"));
-                return None;
+    /// One index per resolvable crate, in first-input order; empty
+    /// when no `.rs` input exists.
+    ///
+    /// A crate whose root discovery fails contributes one warning and
+    /// no index; other crates still index. Unreadable files skip
+    /// silently, and a failed directory walk still indexes the files
+    /// it collected.
+    pub(crate) fn build_all(inputs: &[PathBuf], warnings: &mut Vec<String>) -> Vec<Self> {
+        // One entry per distinct crate: its canonical manifest and a
+        // representative input, in first-seen order.
+        let mut crates: Vec<(PathBuf, &PathBuf)> = Vec::new();
+        let mut seen: AHashSet<PathBuf> = AHashSet::new();
+        let mut warned_manifestless = false;
+        for input in inputs {
+            if !input::ext_in(input.extension().and_then(|e| e.to_str()), &["rs"]) {
+                continue;
             }
-        };
+            match find_cargo_toml(input) {
+                Ok(manifest) => {
+                    let manifest = fs::canonicalize(&manifest).unwrap_or(manifest);
+                    if seen.insert(manifest.clone()) {
+                        crates.push((manifest, input));
+                    }
+                }
+                Err(e) if !warned_manifestless => {
+                    // Warn once for all manifest-less inputs, keeping
+                    // multi-file runs quiet; inputs arrive sorted, so
+                    // the named path is deterministic.
+                    warnings.push(format!("rust crate index unavailable ({e})"));
+                    warned_manifestless = true;
+                }
+                Err(_) => {}
+            }
+        }
 
+        let mut indexes = Vec::with_capacity(crates.len());
+        for (manifest, input) in crates {
+            let root = match discover_crate_root(input) {
+                Ok(root) => fs::canonicalize(&root).unwrap_or(root),
+                Err(e) => {
+                    warnings.push(format!(
+                        "rust crate index unavailable for {} ({e})",
+                        manifest.display()
+                    ));
+                    continue;
+                }
+            };
+            if let Some(index) = Self::index_crate(&root, warnings) {
+                indexes.push(index);
+            }
+        }
+        indexes
+    }
+
+    /// Parse and index one crate from its root source file.
+    ///
+    /// The caller canonicalizes `root` beforehand so it matches the
+    /// canonicalized source paths collected below (symlinked temp
+    /// dirs otherwise break the root lookup).
+    fn index_crate(root: &Path, warnings: &mut Vec<String>) -> Option<Self> {
         // Collect every .rs under the crate src dir, parse each once.
         let crate_dir = root.parent().unwrap_or_else(|| Path::new("."));
         let mut rs_files: Vec<PathBuf> = Vec::new();
@@ -155,7 +202,7 @@ impl RustCrateIndex {
             }
         }
 
-        let index = match Self::from_parsed(&root, &files) {
+        let index = match Self::from_parsed(root, &files) {
             Ok(i) => i,
             Err(e) => {
                 warnings.push(format!("failed to build rust crate index ({e:?})"));
@@ -171,7 +218,7 @@ impl RustCrateIndex {
     /// # Arguments
     ///
     /// - `file` - the file's path in the form passed to the
-    ///   constructor (`build` canonicalizes to absolute).
+    ///   constructor (`build_all` canonicalizes to absolute).
     ///
     /// # Returns
     ///
@@ -592,20 +639,20 @@ mod tests {
         );
     }
 
-    // Discovery wrapper contract (no crate metadata in tests).
+    // Discovery wrapper contract (real manifests; no crate deps).
 
     #[test]
-    fn build_should_return_none_without_warning_when_no_rs_input() {
+    fn build_all_should_return_empty_without_warning_when_no_rs_input() {
         let mut warnings = Vec::new();
-        let idx = RustCrateIndex::build(&[PathBuf::from("docs/README.md")], &mut warnings);
-        assert!(idx.is_none(), "no .rs input selects no crate");
+        let idx = RustCrateIndex::build_all(&[PathBuf::from("docs/README.md")], &mut warnings);
+        assert!(idx.is_empty(), "no .rs input selects no crate");
         assert!(warnings.is_empty(), "missing .rs input is not a warning");
     }
 
-    /// `build` discovers the crate through its `Cargo.toml`, so the
+    /// `build_all` discovers crates through their `Cargo.toml`, so the
     /// happy path needs a real (dependency-free) manifest fixture.
     #[test]
-    fn build_should_index_crate_when_manifest_resolves() {
+    fn build_all_should_index_crate_when_manifest_resolves() {
         let dir =
             std::env::temp_dir().join(format!("rust-llm-tidy-crate-build-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
@@ -624,11 +671,13 @@ mod tests {
         fs::write(dir.join("src/xbe.rs"), "pub fn f() {}\n").unwrap();
 
         let mut warnings = Vec::new();
-        let idx = RustCrateIndex::build(&[dir.join("src/lib.rs")], &mut warnings);
+        let idx = RustCrateIndex::build_all(&[dir.join("src/lib.rs")], &mut warnings);
 
-        let idx = idx.unwrap_or_else(|| panic!("index builds; warnings: {warnings:?}"));
-        assert_eq!(idx.edges().len(), 1);
-        let edge = &idx.edges()[0];
+        let [index] = idx.as_slice() else {
+            panic!("one index builds; warnings: {warnings:?}")
+        };
+        assert_eq!(index.edges().len(), 1);
+        let edge = &index.edges()[0];
         assert!(
             edge.from.ends_with("load/mod.rs"),
             "{}",
@@ -640,6 +689,108 @@ mod tests {
             edge.target.display()
         );
         assert_eq!(edge.line, 1);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Every crate owning an input gets its own index, whatever the
+    /// sorted input order.
+    #[test]
+    fn build_all_should_index_every_crate_when_inputs_span_two_crates() {
+        let dir =
+            std::env::temp_dir().join(format!("rust-llm-tidy-crate-two-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        for (crate_name, callee) in [("alpha", "util"), ("beta", "codec")] {
+            let root = dir.join(crate_name);
+            fs::create_dir_all(root.join("src/caller")).unwrap();
+            fs::write(
+                root.join("Cargo.toml"),
+                format!(
+                    "[package]\nname = \"{crate_name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"
+                ),
+            )
+            .unwrap();
+            fs::write(
+                root.join("src/lib.rs"),
+                format!("mod caller;\nmod {callee};\n"),
+            )
+            .unwrap();
+            fs::write(
+                root.join("src/caller/mod.rs"),
+                format!("pub fn go() {{ crate::{callee}::f(); }}\n"),
+            )
+            .unwrap();
+            fs::write(root.join(format!("src/{callee}.rs")), "pub fn f() {}\n").unwrap();
+        }
+
+        let mut warnings = Vec::new();
+        // The pipeline resolves directories before this call; the
+        // sorted file list mirrors a whole-workspace run.
+        let inputs = [
+            dir.join("alpha/src/caller/mod.rs"),
+            dir.join("alpha/src/lib.rs"),
+            dir.join("alpha/src/util.rs"),
+            dir.join("beta/src/caller/mod.rs"),
+            dir.join("beta/src/lib.rs"),
+            dir.join("beta/src/codec.rs"),
+        ];
+        let indexes = RustCrateIndex::build_all(&inputs, &mut warnings);
+
+        assert_eq!(
+            indexes.len(),
+            2,
+            "one index per crate; warnings: {warnings:?}"
+        );
+        let edge_counts: Vec<usize> = indexes.iter().map(|i| i.edges().len()).collect();
+        assert_eq!(edge_counts, [1, 1], "each crate sees its own edge");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A broken crate warns and drops out while the healthy crate
+    /// still indexes; the manifest-less input warns once.
+    #[test]
+    fn build_all_should_skip_broken_crate_and_warn_once_for_manifestless_input() {
+        let dir =
+            std::env::temp_dir().join(format!("rust-llm-tidy-crate-mixed-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("good/src")).unwrap();
+        fs::create_dir_all(dir.join("bad/src")).unwrap();
+        fs::write(
+            dir.join("good/Cargo.toml"),
+            "[package]\nname = \"good\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        fs::write(dir.join("good/src/lib.rs"), "pub fn f() {}\n").unwrap();
+        // Invalid manifest: `cargo metadata` fails for this crate only.
+        fs::write(dir.join("bad/Cargo.toml"), "[package]\nname =\n").unwrap();
+        fs::write(dir.join("bad/src/lib.rs"), "pub fn g() {}\n").unwrap();
+        fs::create_dir_all(dir.join("loose")).unwrap();
+        fs::write(dir.join("loose/stray.rs"), "pub fn h() {}\n").unwrap();
+
+        let mut warnings = Vec::new();
+        let indexes = RustCrateIndex::build_all(
+            &[
+                dir.join("loose/stray.rs"),
+                dir.join("bad/src/lib.rs"),
+                dir.join("good/src/lib.rs"),
+            ],
+            &mut warnings,
+        );
+
+        assert_eq!(indexes.len(), 1, "only the good crate indexes");
+        assert_eq!(warnings.len(), 2, "one warning each: {warnings:?}");
+        assert!(
+            warnings[0].contains("no Cargo.toml found walking up from")
+                && warnings[0].contains("stray.rs"),
+            "{}",
+            warnings[0]
+        );
+        assert!(
+            warnings[1].contains("rust crate index unavailable for") && warnings[1].contains("bad"),
+            "{}",
+            warnings[1]
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }

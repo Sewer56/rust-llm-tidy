@@ -91,12 +91,14 @@ mod symbol_rule;
 ///
 /// - `no_config == true` -> `None`.
 /// - Explicit `arg` -> that path (used as-is).
-/// - Else walk up from `std::env::current_dir()` towards the filesystem root.
-///   At each level checked (including the starting dir), look for
-///   `.rust-llm-tidy.yml`; the first one found wins. Stop at the first ancestor
-///   that contains a `.git` entry (the repo root) if no config appeared there;
-///   if no `.git` is found, continue to the filesystem root. Returns `None`
-///   when no config file is found.
+/// - Else walk up from `std::env::current_dir()` towards the filesystem
+///   root.
+/// - At each level checked (including the starting dir), look for
+///   `.rust-llm-tidy.yml`; the first one found wins.
+/// - Stop at the first ancestor that contains a `.git` entry (the repo
+///   root) if no config appeared there. Otherwise continue to the
+///   filesystem root.
+/// - Returns `None` when no config file is found.
 ///
 /// # Arguments
 ///

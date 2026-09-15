@@ -87,9 +87,8 @@ impl ReorderProfile for RustProfile {
             ItemKind::Use => 2,
             ItemKind::Mod => {
                 // Only an inline `#[cfg(test)] mod x { ... }` lands last;
-                // file-based decls and inline non-test mods stay in the
-                // mod phase (rustfmt owns alphabetical order for
-                // file-based decls).
+                // file-based decls and inline non-test mods keep the
+                // mod phase (rustfmt owns ordering).
                 if item.is_test_module() && item.is_inline() {
                     10
                 } else {

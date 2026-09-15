@@ -349,9 +349,9 @@ impl Profile {
     /// [`crate::pipeline`] resolves them.
     ///
     /// Whitelist mode intersects the whitelist with the profile's `ops`;
-    /// default mode runs the profile's `default_ops` minus the disabled
-    /// names. Either way an op the profile never allows stays refused -
-    /// `links` outside the markdown family and Rust.
+    /// default mode runs `default_ops` minus the disabled names. An op
+    /// the profile never allows stays refused in both modes - `links`
+    /// outside the markdown family and Rust.
     ///
     /// The AST ops (`reorder`, `vis`, parser-driven `lints`) also
     /// require [`Profile::backend`]; that gate applies where they dispatch.

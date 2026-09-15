@@ -175,7 +175,7 @@ pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
 ///
 /// Here `end` is one past
 /// the closing `)`. Eligible text is non-blank (at least one byte that is
-/// not a space or tab) and contains no `[` or `]` byte, nested or escaped;
+/// not a space or tab) and contains no `[` or `]` byte, nested or escaped.
 /// [`super`] documents why.
 ///
 /// Returns `None` for:

@@ -1,9 +1,9 @@
 //! Module-header recognition for MOD001's line budget.
 //!
 //! A module header is the leading block of full-line file comments and
-//! module documentation before the file's code: the family's comment
-//! markers, Rust `//!` and `/*! ... */` docs, and Python's module
-//! docstring.
+//! module documentation before the file's code. Members include the
+//! family's comment markers, Rust `//!` and `/*! ... */` docs, and
+//! Python's module docstring.
 //!
 //! [`header_lines`] returns the block's physical-line extent, so the
 //! size rule can keep it out of the budget.

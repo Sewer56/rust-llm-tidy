@@ -31,8 +31,8 @@
 //!
 //! Unsupported literal forms:
 //!
-//! - a bare Ruby `<<word` heredoc opener (ambiguous with `arr << item`),
-//!   a Ruby percent literal, a PHP `<<<` heredoc, a C++ `R"` raw string,
+//! - a bare Ruby `<<word` heredoc opener (ambiguous with `arr << item`);
+//! - a Ruby percent literal, a PHP `<<<` heredoc, a C++ `R"` raw string,
 //!   or a Swift `#"""` raw text block;
 //! - a PostgreSQL dollar-quoted string (`$$`, `$tag$`), a Lua long
 //!   bracket (`[[`, `[=[`), a Haskell quasiquote (`[name|`, `[|`), or
@@ -69,8 +69,9 @@
 //! carrying comment-looking text can misattribute its tail.
 //!
 //! The `--` marker follows PostgreSQL and always comments in SQL;
-//! MySQL `#` comments and `a--b` double negation are not modeled. An
-//! unbalanced `'` in the single-quote families (SQL, Lua, MATLAB,
+//! MySQL `#` comments and `a--b` double negation are not modeled.
+//!
+//! An unbalanced `'` in the single-quote families (SQL, Lua, MATLAB,
 //! Erlang) hides its own line's trailing comment: silence, never
 //! measurement.
 //!

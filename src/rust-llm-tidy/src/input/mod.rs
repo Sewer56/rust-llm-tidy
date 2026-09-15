@@ -23,8 +23,8 @@ pub mod git;
 /// (ASCII case-insensitively).
 ///
 /// Walks with the `ignore` crate so each repo's own `.gitignore` rules decide
-/// what counts as a source input - build output (`target/`), vendored code,
-/// and any user-ignored paths are skipped without a hardcoded list.
+/// what counts as a source input. Build output (`target/`), vendored code,
+/// and user-ignored paths are skipped without a hardcoded list.
 ///
 /// Ancestor `.gitignore` files (up to the repo root) apply too, so a
 /// subdirectory walk still honours the repo's root rules. Works when the repo
@@ -148,7 +148,7 @@ pub(crate) fn is_license_document(path: &Path) -> bool {
 /// ASCII case-insensitive extension membership check.
 ///
 /// Returns `true` when `ext` (a path extension without the leading dot) matches
-/// any entry in `exts` ignoring ASCII case, so `.RS`/`.MD` variants are
+/// any entry in `exts` ignoring ASCII case. `.RS`/`.MD` variants are
 /// allowed exactly like their lowercase forms.
 ///
 /// Non-allocating: compares each candidate byte-wise instead of materializing a

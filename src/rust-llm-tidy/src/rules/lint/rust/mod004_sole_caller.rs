@@ -4,7 +4,8 @@
 //! beneath its caller makes the file layout easier to follow.
 //!
 //! This rule uses a whole-crate parse ([`RustCrateIndex`]) to find these
-//! opportunities. Each suggestion is a hint, not a failing check.
+//! opportunities: one parse per crate owning an input, each analyzed
+//! alone. Each suggestion is a hint, not a failing check.
 //!
 //! # When the rule suggests a move
 //!
@@ -36,8 +37,9 @@
 //! It also skips `use` prefixes with only one segment: `use a::{..}`
 //! is not resolved, but `use crate::a::{..}` is.
 //!
-//! If the inputs span multiple crates, the tool indexes only the crate
-//! owning the first `.rs` input.
+//! The rule analyzes each crate alone: cross-crate callers are
+//! invisible, so a module shared with a dependent crate can still
+//! look sole-called.
 //!
 //! [`RustCrateIndex`]: crate::project::rust_crate::RustCrateIndex
 

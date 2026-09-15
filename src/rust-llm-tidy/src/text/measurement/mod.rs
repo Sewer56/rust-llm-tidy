@@ -453,18 +453,18 @@ fn fence_info(trimmed: &str) -> &str {
 
 /// True for lines that look like code signatures rather than plain text.
 ///
-/// Signature keywords must start the line, after any Rust visibility
-/// modifier; keyword mentions inside text stay measured.
+/// A line qualifies when a signature keyword starts it, after any Rust
+/// visibility modifier, or when it ends with `{`, `(`, or `->`.
+///
+/// Keyword mentions in text stay measured, as do `use ...;` or
+/// `let ...;` statements; fence code to exempt it.
 fn is_signature_line(trimmed: &str) -> bool {
     for keyword in ["fn ", "struct ", "enum ", "trait ", "impl "] {
         if starts_with_signature_keyword(trimmed, keyword) {
             return true;
         }
     }
-    trimmed.ends_with(';')
-        || trimmed.ends_with('{')
-        || trimmed.ends_with('(')
-        || trimmed.ends_with("->")
+    trimmed.ends_with('{') || trimmed.ends_with('(') || trimmed.ends_with("->")
 }
 
 /// True when `keyword` starts `line`, after any Rust visibility modifier
@@ -965,6 +965,25 @@ mod tests {
         let doc = analyze(source, "rs");
         assert_eq!(doc.paragraphs.len(), 1);
         assert_eq!(paragraph_at(&doc, 1).unwrap().size, "prose".len());
+    }
+
+    // A prose line ending with a semicolon stays a paragraph member:
+    // wrapping a clause list must not split the paragraph.
+    #[test]
+    fn analyze_keeps_semicolon_ended_prose_in_paragraph() {
+        let first = "a scope keeps only findings anchored at the files it owns;";
+        let second = "the parses come from the refreshed index and the closure is";
+        let third = "parsed once so the joined size crosses the two hundred and";
+        let fourth = "forty character budget for paragraphs and the test wants a";
+        let fifth = "clear margin above it";
+        let source = format!("/// {first}\n/// {second}\n/// {third}\n/// {fourth}\n/// {fifth}\n");
+
+        let doc = analyze(&source, "rs");
+
+        let joined = format!("{first} {second} {third} {fourth} {fifth}");
+        assert!(joined.len() > 240, "fixture must cross the budget");
+        assert_eq!(doc.paragraphs.len(), 1, "one unsplit paragraph");
+        assert_eq!(paragraph_at(&doc, 1).unwrap().size, joined.len());
     }
 
     // A backtick-wrapped signature mention is text, not a signature line:

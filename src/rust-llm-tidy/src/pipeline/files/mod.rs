@@ -37,18 +37,14 @@ mod vis;
 ///
 /// - `path`: source file to check
 /// - `disabled`: diagnostic codes to suppress
-/// - `suppress_in_release_notes`: the resolved
-///   `passive_narration.suppress_in_release_notes` setting; suppresses
-///   TEXT007 narration markers in release and migration notes
+/// - `suppress_in_release_notes`: resolved
+///   `passive_narration.suppress_in_release_notes` setting
 /// - `module_size`: resolved MOD001 eligibility and counting options
 /// - `method_length`: resolved LEN001 `max_lines` threshold
 /// - `lint_context`: compiled hints, exclusion policies and reporting scopes
 /// - `index`: refreshed C# facts and cached parses for this run
-/// - `sole_caller`: precomputed MOD004 findings grouped by anchor file;
-///   `None` when the run skipped building the crate facts
-/// - `csharp_sole_caller`: precomputed MOD004 findings for `.cs`
-///   files, grouped by anchor file; `None` when the run skipped
-///   building the C# namespace facts
+/// - `sole_caller` / `csharp_sole_caller`: precomputed MOD004 findings
+///   grouped by anchor file; `None` when the run skipped building them
 ///
 /// # Errors
 /// Returns an error when reading source or constructing its syntax tree fails,

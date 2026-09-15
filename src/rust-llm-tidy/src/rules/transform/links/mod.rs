@@ -544,9 +544,9 @@ after
 
     #[test]
     fn bracket_text_link_untouched() {
-        // Repeated links with `[`/`]` in their text have no valid hoisted label;
-        // escaped `\[x](u)` is literal text, never a link.
-        // Both engines return these inputs byte-identical.
+        // Repeated links with `[`/`]` in their text have no valid hoisted
+        // label, and escaped `\[x](u)` is literal text. Both engines
+        // return these inputs byte-identical.
         for input in [
             "[text [x]](u) and [text [x]](u)\n",
             "[\\[x\\]](u) and [\\[x\\]](u)\n",

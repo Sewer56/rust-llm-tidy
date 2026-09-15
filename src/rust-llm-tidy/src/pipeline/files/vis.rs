@@ -28,7 +28,7 @@ pub(crate) struct VisContext {
 /// Build the crate-aware [`VisContext`] from the first `.rs` input path.
 ///
 /// Returns `None` (without warning) when there is no `.rs` input or
-/// crate-root discovery fails, so standalone files keep working via
+/// crate-root discovery fails. Standalone files keep working via
 /// `narrow_vis_in_tree` with `floor = None` and a per-file re-export guard.
 ///
 /// Vis only ever narrows `.rs` items, so non-Rust inputs (e.g. `.md` docs in

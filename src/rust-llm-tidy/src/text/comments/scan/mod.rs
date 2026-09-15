@@ -148,9 +148,11 @@ impl<'a> Scanner<'a> {
             State::Quote { double, carried } => {
                 // A quote continues onto the next line when the family's
                 // strings span lines or the line ends in a backslash
-                // continuation. A carried quote persists until it closes;
-                // anything else closes here (invalid source; the desync
-                // stays line-local).
+                // continuation.
+                //
+                // A carried quote persists until it closes; anything else
+                // closes here (invalid source; the desync stays
+                // line-local).
                 if !carried {
                     if self.comment_spans.is_some()
                         && !self.lex.multiline_quotes

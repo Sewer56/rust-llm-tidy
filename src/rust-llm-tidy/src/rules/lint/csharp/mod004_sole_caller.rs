@@ -4,8 +4,9 @@
 //! beneath its caller makes the file layout easier to follow.
 //!
 //! This rule uses shared namespace reference data
-//! ([`NamespaceRefIndex`]) to find these opportunities. Each suggestion
-//! is a hint, not a failing check.
+//! ([`NamespaceRefIndex`]) to find these opportunities: one index per
+//! project closure, each measured alone. Each suggestion is a hint,
+//! not a failing check.
 //!
 //! # When the rule suggests a move
 //!

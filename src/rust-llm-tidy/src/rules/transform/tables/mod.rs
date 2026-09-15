@@ -180,7 +180,7 @@ pub(crate) fn split_terminator(line: &str) -> (&str, &str) {
 /// (e.g. `///`) beats a shorter one it starts with (e.g. `//`).
 ///
 /// Returns `(prefix, rest)`: `prefix` is the leading indent (spaces and
-/// tabs) plus the matched marker and one separating space when present;
+/// tabs) plus the matched marker and one separating space when present.
 /// `rest` is the remainder of the line.
 ///
 /// Lines that match no marker get an empty prefix and the full line back.

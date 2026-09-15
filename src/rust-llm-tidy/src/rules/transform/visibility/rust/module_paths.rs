@@ -2,8 +2,10 @@
 //!
 //! Maps each reachable source file to the declared `mod` name segments from
 //! the crate root, reusing the exact resolution rules of `modules.rs`
-//! (`build_module_tree`): edition `foo.rs` preference, `foo/mod.rs` fallback,
-//! `#[path]` overrides.
+//! (`build_module_tree`).
+//!
+//! Edition `foo.rs` preference, `foo/mod.rs` fallback, and `#[path]`
+//! overrides all apply.
 
 use super::ParsedFile;
 use super::modules::{ModChild, resolve_mod_children};

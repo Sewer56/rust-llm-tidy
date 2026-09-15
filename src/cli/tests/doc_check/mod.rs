@@ -14,6 +14,7 @@
 //! - `json_output`: `--output-mode json` record contracts
 //! - `mod001_module_headers`: MOD001 module-header exclusion acceptance
 //! - `mod001_module_size`: cross-language MOD001 acceptance
+//! - `mod004_sole_caller`: MOD004 per-crate indexing over a workspace fixture
 //! - `python`: Python lints over the `.py` fixtures
 //! - `rust`: Rust lints over the `.rs` fixtures
 //!
@@ -44,6 +45,7 @@ mod forbidden_characters;
 mod json_output;
 mod mod001_module_headers;
 mod mod001_module_size;
+mod mod004_sole_caller;
 mod python;
 mod rust;
 mod text001_paragraph_size;

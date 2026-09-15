@@ -9,12 +9,16 @@
 //! line and never embed the reconstructed source bytes.
 //!
 //! Reorder records come from the reorder module's `ReorderMove` producer
-//! plus one record per member-reordered type ([`reorder_changes`]). Fence fix
-//! records come from the per-entity [`crate::rules::transform::FixAnchor`]s via
-//! [`fence_changes`]; tables emit one per-file record via [`table_changes`];
-//! link hoists map the transformation module's before/after pairs to records via
-//! [`link_changes`]. Vis records come from diffing the narrowed output against
-//! the source ([`vis_changes`]).
+//! plus one record per member-reordered type ([`reorder_changes`]). Vis
+//! records come from diffing the narrowed output against the source
+//! ([`vis_changes`]).
+//!
+//! Fence fix records come from the per-entity
+//! [`crate::rules::transform::FixAnchor`]s via [`fence_changes`].
+//!
+//! Tables emit one per-file record via [`table_changes`]; link hoists
+//! map the transformation module's before/after pairs to records via
+//! [`link_changes`].
 
 use crate::rules::transform::FixAnchor;
 use crate::rules::transform::reorder::{self, Permutation};

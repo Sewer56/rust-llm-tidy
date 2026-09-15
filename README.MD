@@ -213,7 +213,7 @@ semantics (`*` does not cross `/`; `**` recurses).
 Rule names are the lint codes plus the six ops: `tables`, `fences`,
 `links`, `reorder`, `vis`, `lints`.
 
-The config is discovered automatically: `rust-llm-tidy` walks up from the
+The config is discovered automatically. `rust-llm-tidy` walks up from the
 current directory to the repo root (the first ancestor containing `.git`),
 checking each level for `.rust-llm-tidy.yml`; the first found wins.
 

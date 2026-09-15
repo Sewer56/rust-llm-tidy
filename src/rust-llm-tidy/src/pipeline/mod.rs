@@ -9,7 +9,7 @@
 //! - `file_execution`: per-file mutation and lint phase execution
 //! - `files`: file I/O operations and the crate-aware visibility context
 //! - `run_options`: explicit permissions and rule selection for `run`
-//! - `sole_caller`: MOD004 crate-level and C# cross-project lint facts
+//! - `sole_caller`: MOD004 per-crate Rust and per-project C# lint facts
 //! - `source_options`: options for standalone buffer processing
 //!
 //! `run` folds per-file warnings through [`collect_file_warnings`].
@@ -62,6 +62,7 @@ impl FileReport {
 ///
 /// File previews leave each pass reading the original disk source; see
 /// [`tidy_source`] for final-buffer linting.
+///
 /// Cargo project discovery requires `options.cargo_discovery`;
 /// otherwise Rust visibility uses standalone facts and MOD004 skips
 /// its crate facts.
@@ -115,9 +116,9 @@ impl FileReport {
 ///
 /// # Remarks
 ///
-/// License documents are excluded by default for all path selections. Set
-/// `exclude_license_documents: false` in config to disable this filter;
-/// see [`crate::input`] for filename matching.
+/// Path selection excludes license documents by default; set
+/// `exclude_license_documents: false` to disable the filter. See
+/// [`crate::input`] for filename matching.
 pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Result<RunReport> {
     validate_selection(&options.include, &options.exclude, &options.extensions)?;
 
@@ -353,19 +354,14 @@ fn cross_file_facts(
 
 /// Collapse path aliases before dispatch.
 ///
-/// The input resolver dedups literal paths only, so one inode reachable under
-/// two spellings (`.` vs `./src`, a symlink, or a dir-walk plus an explicit
-/// file) would otherwise be processed twice.
+/// The input resolver dedups literal paths only. One inode under two
+/// spellings (`.` vs `./src`, a symlink, or a dir-walk plus an
+/// explicit file) would run twice and emit duplicate records.
 ///
-/// In parallel, both copies run on the original source and emit duplicate
-/// change records.
-///
-/// Each inode keeps its first spelling, so displayed paths and output order
-/// are unchanged.
-///
-/// Canonicalization covers relative/absolute differences and symlinks. On
-/// Unix a `(dev, ino)` key also catches hardlinks, which
-/// canonicalization cannot (distinct paths, one inode).
+/// Each inode keeps its first spelling, so displayed paths and output
+/// order are unchanged. Canonicalization covers relative/absolute
+/// differences and symlinks; on Unix a `(dev, ino)` key also catches
+/// hardlinks.
 fn dedup_inputs(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut by_path: HashSet<PathBuf> = HashSet::new();
     #[cfg(unix)]

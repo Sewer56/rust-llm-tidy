@@ -4,19 +4,53 @@ use crate::input as paths;
 use crate::languages::{CanThrowIndex, backend_for};
 use crate::pipeline;
 use crate::source::ParseResult;
+use ahash::{AHashMap, AHashSet};
 use quick_xml::XmlVersion;
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use rayon::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
-/// Run-owned C# parses and shared throw answers.
+/// Run-owned C# parses, shared throw answers, and analysis scopes.
 #[derive(Default)]
 pub(crate) struct CSharpIndex {
     parses: HashMap<PathBuf, ParseResult>,
     /// Qualified throw answers for the current cached source versions.
     pub(crate) index: CanThrowIndex,
+    /// Per-project scopes and file ownership for indexed linting.
+    scopes: CSharpScopes,
+}
+
+/// Files collected under project directories, keyed by project path.
+type ProjectFiles = HashMap<PathBuf, Vec<PathBuf>>;
+
+/// Project-backed inputs paired with their nearest projects.
+type RoutedInputs = Vec<(PathBuf, Vec<PathBuf>)>;
+
+/// Per-project analysis scopes plus file ownership for indexed linting.
+///
+/// One scope covers each nearest project's reference closure;
+/// project-less inputs share one loose scope.
+///
+/// Closures overlap, so the owner map resolves each file to one
+/// scope: the deepest project that scanned it, or the loose scope.
+#[derive(Default)]
+pub(crate) struct CSharpScopes {
+    /// Project scopes sorted by project path, loose scope last.
+    scopes: Vec<CSharpScope>,
+    /// Scoped file -> owning project; loose files never appear here.
+    owners: AHashMap<PathBuf, PathBuf>,
+    /// Project-less input files (the loose scope's members).
+    loose: AHashSet<PathBuf>,
+}
+
+/// One project's analysis scope.
+pub(crate) struct CSharpScope {
+    /// The anchoring project; `None` for the loose scope.
+    pub(crate) project: Option<PathBuf>,
+    /// The scope's files, sorted.
+    pub(crate) files: Vec<PathBuf>,
 }
 
 impl CSharpIndex {
@@ -25,7 +59,8 @@ impl CSharpIndex {
     /// # Errors
     /// Returns an error when collecting project source entries fails.
     pub(crate) fn build(inputs: &[PathBuf]) -> anyhow::Result<Self> {
-        let files = project_scope(inputs)?;
+        let scopes = project_scope(inputs)?;
+        let files = scopes.flat_files();
 
         let parse = |path: &PathBuf| {
             let source = std::fs::read_to_string(path).ok()?;
@@ -41,6 +76,7 @@ impl CSharpIndex {
         let mut cache = Self {
             parses,
             index: CanThrowIndex::default(),
+            scopes,
         };
         cache.index = CanThrowIndex::from_parses(cache.parses.values());
         Ok(cache)
@@ -78,22 +114,49 @@ impl CSharpIndex {
     }
 
     /// Return the cached parse for the resolved absolute identity of `path`.
+    ///
+    /// Resolved spellings (scope files) hit the exact key; only other
+    /// spellings pay for the `canonicalize` fallback.
     pub(crate) fn parsed(&self, path: &Path) -> Option<&ParseResult> {
+        if let Some(parsed) = self.parses.get(path) {
+            return Some(parsed);
+        }
         self.parses.get(&path.canonicalize().ok()?)
     }
 
-    /// Iterate every cached parse with its resolved cache key.
+    /// The per-project analysis scopes discovered for this run.
     ///
-    /// Iteration order follows the hash map's internal layout; callers
-    /// needing deterministic reference edge order sort by path.
-    ///
-    /// # Returns
-    ///
-    /// Each `(path, parse)` pair in the project-reference scope.
-    pub(crate) fn parses(&self) -> impl Iterator<Item = (&Path, &ParseResult)> {
-        self.parses
+    /// Path-level facts: unlike the parses, they stay valid through
+    /// [`CSharpIndex::refresh`], which only swaps source versions.
+    pub(crate) fn scopes(&self) -> &CSharpScopes {
+        &self.scopes
+    }
+}
+
+impl CSharpScopes {
+    /// The scopes: project scopes in sorted project order, loose last.
+    pub(crate) fn list(&self) -> &[CSharpScope] {
+        &self.scopes
+    }
+
+    /// Whether `project`'s scope owns `file` (`None` = loose).
+    pub(crate) fn owned_by(&self, file: &Path, project: Option<&Path>) -> bool {
+        match project {
+            Some(project) => self.owners.get(file).is_some_and(|owner| owner == project),
+            None => self.loose.contains(file),
+        }
+    }
+
+    /// The sorted union of every scope's files; the run's parse set.
+    fn flat_files(&self) -> Vec<PathBuf> {
+        let mut files: Vec<PathBuf> = self
+            .scopes
             .iter()
-            .map(|(path, parsed)| (path.as_path(), parsed))
+            .flat_map(|scope| scope.files.iter().cloned())
+            .collect();
+        files.sort();
+        files.dedup();
+        files
     }
 }
 
@@ -117,58 +180,192 @@ fn missing_source_key(path: &Path) -> PathBuf {
 
 /// Resolve nearest projects and their literal reference closure for C# `inputs`.
 ///
+/// Discovery walks in three phases:
+///
+/// - each input's nearest projects (memoized walk-up that stops at
+///   repository boundaries),
+/// - one scan per reachable project (own files plus literal
+///   references),
+/// - one scope per root project (its reference closure) plus a loose
+///   scope for project-less inputs.
+///
+/// Explicit inputs join a scanned project's own files even when a
+/// `.gitignore` rule hides them from the project scan, so explicitly
+/// named files always parse.
+///
 /// # Errors
 /// Returns an error when a project's source directory entries cannot be read.
-fn project_scope(inputs: &[PathBuf]) -> anyhow::Result<Vec<PathBuf>> {
-    let mut files = HashSet::new();
-    let mut pending = Vec::new();
+fn project_scope(inputs: &[PathBuf]) -> anyhow::Result<CSharpScopes> {
+    let (roots, routed, mut loose) = nearest_roots(inputs);
+    let (mut own_files, references) = scan_projects(&roots)?;
+    // Explicit inputs survive ignore rules: each joins its first
+    // scanned project's files, or goes loose when no scan collected it.
+    for (input, projects) in routed {
+        if let Some(project) = projects
+            .iter()
+            .find(|project| own_files.contains_key(*project))
+            && let Some(files) = own_files.get_mut(project)
+        {
+            files.push(input);
+        } else if !own_files.values().any(|files| files.contains(&input)) {
+            loose.push(input);
+        }
+    }
+    Ok(build_scopes(roots, own_files, references, loose))
+}
+
+/// Phase 3: one scope per root (sorted), plus the loose scope.
+fn build_scopes(
+    roots: Vec<PathBuf>,
+    own_files: ProjectFiles,
+    references: ProjectFiles,
+    mut loose: Vec<PathBuf>,
+) -> CSharpScopes {
+    // Owners: the deepest scanning project wins; path order breaks
+    // ties, so unordered iteration stays deterministic.
+    let mut owners: AHashMap<PathBuf, PathBuf> = AHashMap::new();
+    for (project, files) in &own_files {
+        let depth = dir_depth(project);
+        for file in files {
+            let replace = match owners.get(file) {
+                None => true,
+                Some(previous) => {
+                    let previous_depth = dir_depth(previous);
+                    depth > previous_depth || (depth == previous_depth && project < previous)
+                }
+            };
+            if replace {
+                owners.insert(file.clone(), project.clone());
+            }
+        }
+    }
+
+    let mut sorted_roots = roots;
+    sorted_roots.sort();
+    let mut scopes: Vec<CSharpScope> =
+        Vec::with_capacity(sorted_roots.len() + usize::from(!loose.is_empty()));
+    for root in &sorted_roots {
+        // Closure membership: every project reachable from this root.
+        let mut seen: HashSet<PathBuf> = HashSet::new();
+        let mut stack = vec![root.clone()];
+        let mut files: Vec<PathBuf> = Vec::new();
+        while let Some(project) = stack.pop() {
+            if !seen.insert(project.clone()) {
+                continue;
+            }
+            if let Some(own) = own_files.get(&project) {
+                files.extend(own.iter().cloned());
+            }
+            if let Some(found) = references.get(&project) {
+                stack.extend(found.iter().cloned());
+            }
+        }
+        files.sort();
+        files.dedup();
+        scopes.push(CSharpScope {
+            project: Some(root.clone()),
+            files,
+        });
+    }
+    let mut loose_set: AHashSet<PathBuf> = AHashSet::new();
+    if !loose.is_empty() {
+        loose_set.extend(loose.iter().cloned());
+        loose.sort();
+        scopes.push(CSharpScope {
+            project: None,
+            files: loose,
+        });
+    }
+
+    CSharpScopes {
+        scopes,
+        owners,
+        loose: loose_set,
+    }
+}
+
+/// Phase 1: each input's nearest projects, or the loose set.
+///
+/// Returns the distinct canonical root projects in first-seen order,
+/// one `(input, projects)` pair per project-backed input, and the
+/// project-less inputs.
+fn nearest_roots(inputs: &[PathBuf]) -> (Vec<PathBuf>, RoutedInputs, Vec<PathBuf>) {
+    let mut roots: Vec<PathBuf> = Vec::new();
+    let mut routed: RoutedInputs = Vec::new();
+    let mut loose: Vec<PathBuf> = Vec::new();
+    let mut root_seen: HashSet<PathBuf> = HashSet::new();
+    // Memoized per-directory nearest projects, in raw read_dir spelling.
     let mut nearest: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
     for path in inputs {
         if !paths::ext_in(path.extension().and_then(|e| e.to_str()), &["cs"]) {
             continue;
         }
         let path = path.canonicalize().unwrap_or_else(|_| path.clone());
-        files.insert(path.clone());
+        let mut found: Vec<PathBuf> = Vec::new();
         if let Some(parent) = path.parent() {
-            if nearest.contains_key(parent) {
-                continue;
-            }
-            let mut searched = Vec::new();
-            let mut found = Vec::new();
-            for dir in parent.ancestors() {
-                if let Some(projects) = nearest.get(dir) {
-                    found = projects.clone();
-                    break;
+            if let Some(projects) = nearest.get(parent) {
+                found = projects.clone();
+            } else {
+                let mut searched = Vec::new();
+                for dir in parent.ancestors() {
+                    if let Some(projects) = nearest.get(dir) {
+                        found = projects.clone();
+                        break;
+                    }
+                    searched.push(dir.to_path_buf());
+                    let mut projects: Vec<_> = std::fs::read_dir(dir)
+                        .into_iter()
+                        .flatten()
+                        .filter_map(Result::ok)
+                        .map(|entry| entry.path())
+                        .filter(|p| p.extension().is_some_and(|e| e == "csproj") && p.is_file())
+                        .collect();
+                    if !projects.is_empty() {
+                        projects.sort();
+                        found = projects;
+                        break;
+                    }
+                    if dir.join(".git").exists() {
+                        break;
+                    }
                 }
-                searched.push(dir.to_path_buf());
-                let mut projects: Vec<_> = std::fs::read_dir(dir)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(Result::ok)
-                    .map(|entry| entry.path())
-                    .filter(|p| p.extension().is_some_and(|e| e == "csproj") && p.is_file())
-                    .collect();
-                if !projects.is_empty() {
-                    projects.sort();
-                    found = projects;
-                    break;
-                }
-                if dir.join(".git").exists() {
-                    break;
+                for dir in searched {
+                    nearest.insert(dir, found.clone());
                 }
             }
-            for dir in searched {
-                nearest.insert(dir, found.clone());
+        }
+        // Unresolvable projects drop out here, as they would in the scan.
+        let found: Vec<PathBuf> = found
+            .iter()
+            .filter_map(|project| project.canonicalize().ok())
+            .collect();
+        if found.is_empty() {
+            loose.push(path);
+        } else {
+            for project in &found {
+                if root_seen.insert(project.clone()) {
+                    roots.push(project.clone());
+                }
             }
-            pending.extend(found);
+            routed.push((path, found));
         }
     }
+    (roots, routed, loose)
+}
 
-    let mut visited = HashSet::new();
-    while let Some(project) = pending.pop() {
-        let Ok(project) = project.canonicalize() else {
-            continue;
-        };
+/// Phase 2: scan each reachable project once.
+///
+/// Returns each scanned project's own files and its canonical literal
+/// references.
+///
+/// # Errors
+/// Returns an error when a project's source directory entries cannot be read.
+fn scan_projects(roots: &[PathBuf]) -> anyhow::Result<(ProjectFiles, ProjectFiles)> {
+    let mut own_files: ProjectFiles = HashMap::new();
+    let mut references: ProjectFiles = HashMap::new();
+    let mut visited: HashSet<PathBuf> = HashSet::new();
+    let mut queue: VecDeque<PathBuf> = roots.iter().cloned().collect();
+    while let Some(project) = queue.pop_front() {
         if !visited.insert(project.clone()) {
             continue;
         }
@@ -180,16 +377,31 @@ fn project_scope(inputs: &[PathBuf]) -> anyhow::Result<Vec<PathBuf>> {
         };
         let mut sources = Vec::new();
         paths::collect_project_files(dir, &["cs"], &mut sources, true, true)?;
-        files.extend(sources.into_iter().filter_map(|p| p.canonicalize().ok()));
+        own_files.insert(
+            project.clone(),
+            sources
+                .into_iter()
+                .filter_map(|p| p.canonicalize().ok())
+                .collect(),
+        );
 
-        for include in literal_project_includes(&source) {
-            pending.push(dir.join(include.replace('\\', "/")));
-        }
+        let mut found: Vec<PathBuf> = literal_project_includes(&source)
+            .into_iter()
+            .filter_map(|include| dir.join(include.replace('\\', "/")).canonicalize().ok())
+            .collect();
+        found.sort();
+        queue.extend(found.iter().cloned());
+        references.insert(project, found);
     }
+    Ok((own_files, references))
+}
 
-    let mut files: Vec<_> = files.into_iter().collect();
-    files.sort();
-    Ok(files)
+/// The component depth of `project`'s directory, for owner conflicts.
+fn dir_depth(project: &Path) -> usize {
+    project
+        .parent()
+        .map(|dir| dir.components().count())
+        .unwrap_or(0)
 }
 
 /// Extract the literal `Include` targets of `<ProjectReference>` elements
@@ -233,6 +445,16 @@ fn literal_project_includes(source: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The sorted files of one project's scope (`None` = loose).
+    fn scope_files<'a>(scopes: &'a CSharpScopes, project: Option<&Path>) -> &'a [PathBuf] {
+        scopes
+            .list()
+            .iter()
+            .find(|scope| scope.project.as_deref() == project)
+            .map(|scope| scope.files.as_slice())
+            .unwrap_or(&[])
+    }
 
     /// Nearest projects close over literal references without crossing ignored
     /// or nested repository boundaries.
@@ -280,13 +502,25 @@ mod tests {
         let loose = project_scope(&[root.join("loose/L.cs")]).unwrap();
         std::fs::write(root.join("outer.csproj"), "<Project />").unwrap();
         std::fs::write(root.join("Outer.cs"), "class Outer {}").unwrap();
-        let scope = project_scope(&[root.join("a/src/A.cs")]).unwrap();
+        let scopes = project_scope(&[root.join("a/src/A.cs")]).unwrap();
 
+        // a's closure follows the reference cycle a -> b -> c -> a once.
         assert_eq!(
-            scope,
+            scope_files(&scopes, Some(&root.join("a/a.csproj"))),
             ["a/src/A.cs", "b/B.cs", "c/C.cs"].map(|p| root.join(p))
         );
-        assert_eq!(loose, [root.join("loose/L.cs")]);
+        assert_eq!(scope_files(&loose, None), [root.join("loose/L.cs")]);
+        // The project that scans each closure file owns it.
+        for (file, project) in [
+            ("a/src/A.cs", "a/a.csproj"),
+            ("b/B.cs", "b/b.csproj"),
+            ("c/C.cs", "c/c.csproj"),
+        ] {
+            assert!(
+                scopes.owned_by(&root.join(file), Some(&root.join(project))),
+                "{file} owned by {project}"
+            );
+        }
     }
 
     /// Include targets survive quote style, spaced equals signs, paired
@@ -333,9 +567,138 @@ mod tests {
         )
         .unwrap();
 
-        let scope = project_scope(&[root.join("a/A.cs")]).unwrap();
+        let scopes = project_scope(&[root.join("a/A.cs")]).unwrap();
 
-        assert_eq!(scope, ["a/A.cs", "b/B.cs", "c/C.cs"].map(|p| root.join(p)));
+        assert_eq!(
+            scope_files(&scopes, Some(&root.join("a/a.csproj"))),
+            ["a/A.cs", "b/B.cs", "c/C.cs"].map(|p| root.join(p))
+        );
+    }
+
+    /// Two input projects get one scope each; the file's own project
+    /// owns a shared referenced file, so overlaps never
+    /// double-report.
+    #[test]
+    fn scope_should_emit_one_scope_per_input_project_and_route_shared_files_to_their_owner() {
+        let root = std::env::temp_dir().join(format!("rlt-csharp-two-{}", std::process::id()));
+        let _guard = Directory(root.clone());
+        for dir in ["x", "y"] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        // project_scope canonicalizes its results; align expectations when the
+        // platform temp dir is a symlink (macOS /var -> /private/var).
+        let root = root.canonicalize().unwrap();
+        std::fs::write(root.join("x/X.cs"), "class X { }").unwrap();
+        std::fs::write(root.join("y/Y.cs"), "class Y { }").unwrap();
+        std::fs::write(root.join("x/x.csproj"), "<Project />").unwrap();
+        std::fs::write(
+            root.join("y/y.csproj"),
+            "<ProjectReference Include=\"../x/x.csproj\"/>",
+        )
+        .unwrap();
+
+        // Input order must not matter: scopes sort by project path.
+        let scopes = project_scope(&[root.join("y/Y.cs"), root.join("x/X.cs")]).unwrap();
+
+        assert_eq!(scopes.list().len(), 2, "one scope per input project");
+        assert_eq!(
+            scopes.list()[0].project.as_deref(),
+            Some(root.join("x/x.csproj").as_path())
+        );
+        assert_eq!(
+            scope_files(&scopes, Some(&root.join("x/x.csproj"))),
+            [root.join("x/X.cs")]
+        );
+        assert_eq!(
+            scope_files(&scopes, Some(&root.join("y/y.csproj"))),
+            [root.join("x/X.cs"), root.join("y/Y.cs")]
+        );
+        // The shared file belongs to its own project's scope only.
+        assert!(scopes.owned_by(&root.join("x/X.cs"), Some(&root.join("x/x.csproj"))));
+        assert!(!scopes.owned_by(&root.join("x/X.cs"), Some(&root.join("y/y.csproj"))));
+    }
+
+    /// An explicitly-named input survives ignore rules: it joins its
+    /// project's scope and the parse set even when `.gitignore` hides
+    /// it from the scan.
+    #[test]
+    fn scope_should_keep_explicit_input_when_gitignore_hides_it_from_the_scan() {
+        let root = std::env::temp_dir().join(format!("rlt-csharp-ignored-{}", std::process::id()));
+        let _guard = Directory(root.clone());
+        for dir in [".git", "p/hidden"] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        let root = root.canonicalize().unwrap();
+        std::fs::write(root.join(".gitignore"), "p/hidden/\n").unwrap();
+        std::fs::write(root.join("p/p.csproj"), "<Project />").unwrap();
+        std::fs::write(root.join("p/V.cs"), "class V { }").unwrap();
+        std::fs::write(root.join("p/hidden/H.cs"), "class H { }").unwrap();
+
+        let scopes = project_scope(&[root.join("p/hidden/H.cs"), root.join("p/V.cs")]).unwrap();
+
+        // The explicit hidden input stays in its project's scope,
+        // anchored to the owning project.
+        assert_eq!(
+            scope_files(&scopes, Some(&root.join("p/p.csproj"))),
+            [root.join("p/V.cs"), root.join("p/hidden/H.cs")]
+        );
+        assert!(scopes.owned_by(&root.join("p/hidden/H.cs"), Some(&root.join("p/p.csproj"))));
+        assert!(scopes.flat_files().contains(&root.join("p/hidden/H.cs")));
+    }
+
+    /// The deepest scanning project owns a file shared with an outer
+    /// project's recursive scan.
+    #[test]
+    fn scope_should_pick_deepest_project_when_nested_project_shares_a_directory() {
+        let root = std::env::temp_dir().join(format!("rlt-csharp-nested-{}", std::process::id()));
+        let _guard = Directory(root.clone());
+        for dir in ["outer", "outer/inner"] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        let root = root.canonicalize().unwrap();
+        std::fs::write(root.join("outer/outer.csproj"), "<Project />").unwrap();
+        std::fs::write(root.join("outer/inner/inner.csproj"), "<Project />").unwrap();
+        std::fs::write(root.join("outer/O.cs"), "class O { }").unwrap();
+        std::fs::write(root.join("outer/inner/I.cs"), "class I { }").unwrap();
+
+        let scopes =
+            project_scope(&[root.join("outer/O.cs"), root.join("outer/inner/I.cs")]).unwrap();
+
+        // Both scans see the nested file; the nested project owns it.
+        assert!(scopes.owned_by(
+            &root.join("outer/inner/I.cs"),
+            Some(&root.join("outer/inner/inner.csproj"))
+        ));
+        assert!(!scopes.owned_by(
+            &root.join("outer/inner/I.cs"),
+            Some(&root.join("outer/outer.csproj"))
+        ));
+        // The outer project still owns its own file.
+        assert!(scopes.owned_by(
+            &root.join("outer/O.cs"),
+            Some(&root.join("outer/outer.csproj"))
+        ));
+    }
+
+    /// Two projects sharing one directory tie on depth; the
+    /// lexicographically smaller project path owns the shared files.
+    #[test]
+    fn scope_should_pick_smaller_project_when_two_projects_share_a_directory() {
+        let root = std::env::temp_dir().join(format!("rlt-csharp-tie-{}", std::process::id()));
+        let _guard = Directory(root.clone());
+        std::fs::create_dir_all(root.join("p")).unwrap();
+        let root = root.canonicalize().unwrap();
+        std::fs::write(root.join("p/a.csproj"), "<Project />").unwrap();
+        std::fs::write(root.join("p/b.csproj"), "<Project />").unwrap();
+        std::fs::write(root.join("p/F.cs"), "class F { }").unwrap();
+
+        let scopes = project_scope(&[root.join("p/F.cs")]).unwrap();
+
+        // Both projects scan the shared directory; `a` wins the tie.
+        assert!(scopes.owned_by(&root.join("p/F.cs"), Some(&root.join("p/a.csproj"))));
+        assert!(!scopes.owned_by(&root.join("p/F.cs"), Some(&root.join("p/b.csproj"))));
+        // Each project still gets its own scope.
+        assert_eq!(scopes.list().len(), 2);
     }
 
     /// Changed sources replace throw evidence while unchanged sources retain

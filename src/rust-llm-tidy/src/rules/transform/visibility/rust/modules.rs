@@ -162,10 +162,10 @@ pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<Mo
 /// Then runs `cargo metadata --no-deps` and returns that package's `lib`
 /// target's `src_path` (else the `bin` target whose path ends in `main.rs`).
 ///
-/// The owning crate is matched by manifest path rather than `root_package()`:
-/// under `--no-deps` `root_package()` resolves to the package at
-/// `workspace_root/Cargo.toml`, which does not exist for a *virtual*
-/// workspace.
+/// The code matches the owning crate by manifest path rather than
+/// `root_package()`. Under `--no-deps`, `root_package()` resolves to
+/// the package at `workspace_root/Cargo.toml`, which does not exist
+/// for a *virtual* workspace.
 ///
 /// Member crates of a virtual workspace would otherwise degrade to
 /// standalone narrowing. The CLI maps failure to a warn + standalone
@@ -199,10 +199,10 @@ pub fn discover_crate_root(start: &Path) -> anyhow::Result<PathBuf> {
         .exec()?;
     // Match the owning package by manifest path.
     //
-    // `root_package()` only works for standalone packages and non-virtual
-    // workspaces: under `--no-deps` it resolves to the package at
-    // `workspace_root/Cargo.toml`, which does not exist for a *virtual*
-    // workspace.
+    // `root_package()` only works for standalone packages and
+    // non-virtual workspaces. Under `--no-deps` it resolves to the
+    // package at `workspace_root/Cargo.toml`, which does not exist
+    // for a *virtual* workspace.
     //
     // Member crates would otherwise degrade to standalone narrowing.
     let canon_manifest = fs::canonicalize(&manifest).unwrap_or_else(|_| manifest.clone());
@@ -226,6 +226,43 @@ pub fn discover_crate_root(start: &Path) -> anyhow::Result<PathBuf> {
         })
         .map(|t| t.src_path.clone().into_std_path_buf())
         .ok_or_else(|| anyhow::anyhow!("no lib/main target in {}", manifest.display()))
+}
+
+/// Walk up from `start` to the nearest `Cargo.toml`.
+///
+/// Grouping inputs by this manifest splits a multi-crate run into one
+/// group per owning crate; each group then resolves its crate root
+/// with [`discover_crate_root`].
+///
+/// # Arguments
+///
+/// - `start` - the file or directory to walk up from.
+///
+/// # Returns
+///
+/// The nearest existing `Cargo.toml` at or above `start`.
+///
+/// # Errors
+///
+/// Returns `anyhow::Error` when:
+///
+/// - `start` has no parent directory (a bare file name).
+/// - No `Cargo.toml` file exists in `start`'s own or any ancestor
+///   directory.
+pub fn find_cargo_toml(start: &Path) -> anyhow::Result<PathBuf> {
+    let dir = if start.is_file() {
+        start.parent()
+    } else {
+        Some(start)
+    }
+    .ok_or_else(|| anyhow::anyhow!("no parent dir for {}", start.display()))?;
+    for ancestor in dir.ancestors() {
+        let m = ancestor.join("Cargo.toml");
+        if m.is_file() {
+            return Ok(m);
+        }
+    }
+    anyhow::bail!("no Cargo.toml found walking up from {}", start.display())
 }
 
 /// Resolve top-level `mod` items of one file into children.
@@ -324,23 +361,6 @@ pub(super) fn resolve_mod_children(
         }
     }
     out
-}
-
-/// Walk up from `start` to the nearest `Cargo.toml`.
-fn find_cargo_toml(start: &Path) -> anyhow::Result<PathBuf> {
-    let dir = if start.is_file() {
-        start.parent()
-    } else {
-        Some(start)
-    }
-    .ok_or_else(|| anyhow::anyhow!("no parent dir for {}", start.display()))?;
-    for ancestor in dir.ancestors() {
-        let m = ancestor.join("Cargo.toml");
-        if m.is_file() {
-            return Ok(m);
-        }
-    }
-    anyhow::bail!("no Cargo.toml found walking up from {}", start.display())
 }
 
 /// Extract the string value of a `#[path = "..."]` attribute from a run of

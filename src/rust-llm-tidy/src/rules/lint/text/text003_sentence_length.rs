@@ -17,11 +17,12 @@ const SENTENCE_RECOMMENDED: usize = 14;
 ///
 /// Sentence detection:
 ///
-/// - Sentences split at terminal punctuation `.`, `!`, `?`; a word is a
-///   whitespace-separated token, bullets included.
-/// - The split is deliberately naive: over-splitting decimals like `3.5`
-///   or abbreviations like `e.g.` only shortens fragments, so it can
-///   miss violations but never fabricate them.
+/// - Sentences split at terminal punctuation `.`, `!`, `?` outside
+///   backtick code spans; a word is a whitespace-separated token,
+///   bullets included.
+/// - The split outside spans stays naive. Over-splitting decimals
+///   like `3.5` or abbreviations like `e.g.` only shortens
+///   fragments, so it can miss violations but never fabricate them.
 pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for para in &doc.paragraphs {
@@ -45,14 +46,20 @@ fn paragraph_diagnostics(para: &Paragraph, diags: &mut Vec<Diagnostic>) {
     // Whether the sentence just ended, so adjacent closers like `")` are
     // skipped instead of opening a new word.
     let mut after_terminal = false;
+    // Backtick parity: terminal punctuation inside code spans
+    // (`.csproj`, `3.5`) never ends a sentence.
+    let mut in_code_span = false;
 
     for (offset, ch) in para.text.char_indices() {
+        if ch == '`' {
+            in_code_span = !in_code_span;
+        }
         if after_terminal && CLOSERS.contains(&ch) {
             continue;
         }
         after_terminal = false;
         match ch {
-            '.' | '!' | '?' => {
+            '.' | '!' | '?' if !in_code_span => {
                 finish_sentence(diags, para, sentence_start, words, &mut member);
                 words = 0;
                 at_word_start = true;
@@ -189,6 +196,23 @@ mod tests {
         assert!(codes(&diags, CODE_SENTENCE_LENGTH).is_empty());
     }
 
+    // Periods inside backtick code spans never split: one over-limit
+    // sentence with a dotted span fires as one sentence.
+    #[test]
+    fn text_checks_keep_sentence_whole_when_period_sits_inside_code_span() {
+        let span = "`.csproj`";
+        let head = words(9);
+        let tail = words(SENTENCE_LIMIT - 9);
+        // `span` counts as one word, so the sentence exceeds the limit.
+        let source = format!("/// {head} {span} {tail}.\n");
+
+        let diags = run_text_checks(&source, "rs");
+
+        let found = codes(&diags, CODE_SENTENCE_LENGTH);
+        assert_eq!(found.len(), 1, "the span dot must not split the sentence");
+        assert_eq!(found[0].line, 1);
+    }
+
     // A final sentence still counts when it never receives terminal
     // punctuation, the common shape for doc comments and bullets.
     #[test]
@@ -228,8 +252,8 @@ mod tests {
     }
 
     // An abbreviation like `e.g.` splits the same way: a sentence two
-    // words over the limit shatters into `e`, `g`, and a final fragment
-    // one word under it.
+    // words over the limit shatters into `e`, `g`, and an under-limit
+    // final fragment.
     #[test]
     fn text_checks_stay_silent_when_an_abbreviation_splits_a_sentence() {
         let source = format!("/// w0 e.g. {}.\n", words(SENTENCE_LIMIT - 1));

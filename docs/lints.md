@@ -985,17 +985,22 @@ Update references; preserve behavior and public APIs.
 - Include the caller's first-reference file or directory to see the finding.
 - A caller spread across several files or nested modules counts as one
   caller.
-- Uses resolve through the `mod` tree, so re-exports, trait/dynamic
-  dispatch, macros, and unqualified imports like `use xbe::{..}` can hide a
-  caller and suppress the suggestion.
+- Re-exports, trait or dynamic dispatch, macros, and unqualified
+  imports can hide a caller.
 - `#[cfg(test)]` code never counts as a caller.
-- The check warns once and skips if it cannot find the crate of the first
-  `.rs` input.
+- The check analyzes each crate alone; cross-crate callers stay
+  invisible.
+- A missing manifest warns once per run; failing root discovery warns
+  per crate.
 
 #### MOD004 in C#
 
 For C#, callers are namespaces in the nearest `.csproj` and its project
 references; folder layout does not matter.
+
+The check measures each input project and its references separately,
+so same-named namespaces in unrelated projects never silence each
+other.
 
 - Uses inside `[Test]`, `[TestMethod]`, `[Fact]`, or `[Theory]` members
   never count as callers; other test code may.

@@ -184,6 +184,7 @@ public string Load(string key) { return key; }
     fn code_and_example_subtrees_stay_quiet() {
         let source = "\
 /// <summary>Runs the sample.</summary>
+///
 /// <example>
 /// <code>
 /// var loader = new Loader();

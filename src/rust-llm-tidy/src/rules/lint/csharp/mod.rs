@@ -152,8 +152,9 @@ pub(crate) fn run_indexed(parsed: &ParseResult, shared: Option<&CanThrowIndex>) 
     );
 
     // The can-throw closure spans the whole file (a caller may sit
-    // before its callee), so it runs between collection and the rules;
-    // stamping from its answers keeps diagnostics in document order.
+    // before its callee), so it runs between collection and the rules.
+    //
+    // Stamping from its answers keeps diagnostics in document order.
     let index = CanThrowIndex::from_declarations(&declarations);
     let shared = shared.map(|index| index.including(parsed));
     for (position, decl) in declarations.iter_mut().enumerate() {
@@ -348,9 +349,9 @@ pub(crate) mod tests {
 
     // ── nested-callable scan boundaries ──
 
-    /// A returned lambda's body runs on the caller's schedule, so a
-    /// throwing call inside it must not flag the enclosing member;
-    /// a direct call in the member's own body still does.
+    /// A returned lambda runs on the caller's schedule: a throwing
+    /// call inside its body must not flag the enclosing member. A
+    /// direct call in the member's body does.
     #[test]
     fn deferred_lambda_calls_do_not_flag_enclosing_member() {
         let source = "\

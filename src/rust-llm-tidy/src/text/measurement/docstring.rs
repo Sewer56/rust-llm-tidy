@@ -161,7 +161,7 @@ mod tests {
     // ── Doctest exemption ──
 
     // A doctest example - source, `...` continuation, and expected
-    // output lines - measures as code: long lines stay quiet and no
+    // output lines - measures as code. Long lines stay quiet and no
     // text pools across the example.
     #[test]
     fn doctest_examples_are_exempt() {
