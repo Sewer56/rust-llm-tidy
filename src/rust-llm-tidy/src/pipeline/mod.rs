@@ -354,14 +354,12 @@ fn cross_file_facts(
 
 /// Collapse path aliases before dispatch.
 ///
-/// The input resolver dedups literal paths only. One inode under two
-/// spellings (`.` vs `./src`, a symlink, or a dir-walk plus an
-/// explicit file) would run twice and emit duplicate records.
+/// The input resolver dedups literal paths only. Aliases (`.` vs
+/// `./src`, symlinks, hardlinks) would otherwise run twice and emit
+/// duplicate records.
 ///
 /// Each inode keeps its first spelling, so displayed paths and output
-/// order are unchanged. Canonicalization covers relative/absolute
-/// differences and symlinks; on Unix a `(dev, ino)` key also catches
-/// hardlinks.
+/// order are unchanged.
 fn dedup_inputs(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut by_path: HashSet<PathBuf> = HashSet::new();
     #[cfg(unix)]

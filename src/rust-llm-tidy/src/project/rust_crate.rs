@@ -110,12 +110,12 @@ impl RustCrateIndex {
     /// `resolve_vis_context` (`src/pipeline/files/vis.rs`) in the `vis`
     /// step.
     ///
-    /// The pass groups inputs by their nearest `Cargo.toml` (one
-    /// group per crate), then discovers each crate's root, parses its
-    /// directory, and builds its index.
+    /// Groups inputs by nearest `Cargo.toml`, then resolves each
+    /// input to its owning target root (`discover_crate_root`).
+    /// Each distinct root indexes once, so lib, bin, example, and
+    /// test trees index separately.
     ///
-    /// Inputs are sorted before they arrive, so crate order is
-    /// deterministic.
+    /// Inputs arrive sorted, so order is deterministic.
     ///
     /// # Arguments
     ///
@@ -127,18 +127,17 @@ impl RustCrateIndex {
     ///
     /// # Returns
     ///
-    /// One index per resolvable crate, in first-input order; empty
-    /// when no `.rs` input exists.
+    /// One index per resolvable target root, in first-input order;
+    /// empty when no `.rs` input exists.
     ///
-    /// A crate whose root discovery fails contributes one warning and
-    /// no index; other crates still index. Unreadable files skip
-    /// silently, and a failed directory walk still indexes the files
-    /// it collected.
+    /// Discovery failure warns once per crate and skips that crate;
+    /// unreadable files skip silently, and a failed directory walk
+    /// still indexes what it collected.
     pub(crate) fn build_all(inputs: &[PathBuf], warnings: &mut Vec<String>) -> Vec<Self> {
-        // One entry per distinct crate: its canonical manifest and a
-        // representative input, in first-seen order.
-        let mut crates: Vec<(PathBuf, &PathBuf)> = Vec::new();
-        let mut seen: AHashSet<PathBuf> = AHashSet::new();
+        // One group per crate: canonical manifest plus its inputs,
+        // first-seen order.
+        let mut crates: Vec<(PathBuf, Vec<&PathBuf>)> = Vec::new();
+        let mut group_of: AHashMap<PathBuf, usize> = AHashMap::new();
         let mut warned_manifestless = false;
         for input in inputs {
             if !input::ext_in(input.extension().and_then(|e| e.to_str()), &["rs"]) {
@@ -147,8 +146,12 @@ impl RustCrateIndex {
             match find_cargo_toml(input) {
                 Ok(manifest) => {
                     let manifest = fs::canonicalize(&manifest).unwrap_or(manifest);
-                    if seen.insert(manifest.clone()) {
-                        crates.push((manifest, input));
+                    match group_of.get(&manifest) {
+                        Some(&i) => crates[i].1.push(input),
+                        None => {
+                            group_of.insert(manifest.clone(), crates.len());
+                            crates.push((manifest, vec![input]));
+                        }
                     }
                 }
                 Err(e) if !warned_manifestless => {
@@ -163,19 +166,32 @@ impl RustCrateIndex {
         }
 
         let mut indexes = Vec::with_capacity(crates.len());
-        for (manifest, input) in crates {
-            let root = match discover_crate_root(input) {
-                Ok(root) => fs::canonicalize(&root).unwrap_or(root),
-                Err(e) => {
-                    warnings.push(format!(
-                        "rust crate index unavailable for {} ({e})",
-                        manifest.display()
-                    ));
+        // Distinct roots already indexed; inputs may share a root.
+        let mut seen_roots: AHashSet<PathBuf> = AHashSet::new();
+        for (manifest, group) in crates {
+            let mut warned_failed = false;
+            for input in group {
+                let root = match discover_crate_root(input) {
+                    Ok(root) => fs::canonicalize(&root).unwrap_or(root),
+                    Err(e) => {
+                        // Warn once per crate, whatever input fails.
+                        if !warned_failed {
+                            warnings.push(format!(
+                                "rust crate index unavailable for {} ({e})",
+                                manifest.display()
+                            ));
+                            warned_failed = true;
+                        }
+                        continue;
+                    }
+                };
+                if seen_roots.contains(&root) {
                     continue;
                 }
-            };
-            if let Some(index) = Self::index_crate(&root, warnings) {
-                indexes.push(index);
+                if let Some(index) = Self::index_crate(&root, warnings) {
+                    seen_roots.insert(root);
+                    indexes.push(index);
+                }
             }
         }
         indexes
@@ -743,6 +759,61 @@ mod tests {
         );
         let edge_counts: Vec<usize> = indexes.iter().map(|i| i.edges().len()).collect();
         assert_eq!(edge_counts, [1, 1], "each crate sees its own edge");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A package with both library and binary targets gets one index
+    /// per target root, so the index covers each target's tree.
+    #[test]
+    fn build_all_should_index_both_targets_when_package_has_lib_and_bin() {
+        let dir =
+            std::env::temp_dir().join(format!("rust-llm-tidy-crate-libbin-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("src")).unwrap();
+        fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\
+             [lib]\npath = \"src/lib.rs\"\n\
+             [[bin]]\nname = \"fixture\"\npath = \"src/main.rs\"\n",
+        )
+        .unwrap();
+        fs::write(dir.join("src/lib.rs"), "mod xbe;\n").unwrap();
+        fs::write(dir.join("src/xbe.rs"), "pub fn f() {}\n").unwrap();
+        fs::write(
+            dir.join("src/main.rs"),
+            "mod binutil;\nfn main() { binutil::g(); }\n",
+        )
+        .unwrap();
+        fs::write(dir.join("src/binutil.rs"), "pub fn g() {}\n").unwrap();
+
+        let mut warnings = Vec::new();
+        let indexes = RustCrateIndex::build_all(
+            &[dir.join("src/lib.rs"), dir.join("src/main.rs")],
+            &mut warnings,
+        );
+
+        assert_eq!(
+            indexes.len(),
+            2,
+            "one index per target root; warnings: {warnings:?}"
+        );
+        // Sorted inputs put the lib root first; only the bin tree
+        // references a module.
+        let edge_counts: Vec<usize> = indexes.iter().map(|i| i.edges().len()).collect();
+        assert_eq!(edge_counts, [0, 1], "only the bin tree records an edge");
+        let edge = &indexes[1].edges()[0];
+        assert!(
+            edge.from.ends_with("src/main.rs"),
+            "{}",
+            edge.from.display()
+        );
+        assert!(
+            edge.target.ends_with("src/binutil.rs"),
+            "{}",
+            edge.target.display()
+        );
+        assert_eq!(edge.line, 2);
 
         let _ = fs::remove_dir_all(&dir);
     }

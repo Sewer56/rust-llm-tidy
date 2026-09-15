@@ -271,6 +271,7 @@ fn build_scopes(
     if !loose.is_empty() {
         loose_set.extend(loose.iter().cloned());
         loose.sort();
+        loose.dedup();
         scopes.push(CSharpScope {
             project: None,
             files: loose,

@@ -453,13 +453,15 @@ fn fence_info(trimmed: &str) -> &str {
 
 /// True for lines that look like code signatures rather than plain text.
 ///
-/// A line qualifies when a signature keyword starts it, after any Rust
+/// A line qualifies when a declaration keyword starts it, after any Rust
 /// visibility modifier, or when it ends with `{`, `(`, or `->`.
 ///
 /// Keyword mentions in text stay measured, as do `use ...;` or
 /// `let ...;` statements; fence code to exempt it.
 fn is_signature_line(trimmed: &str) -> bool {
-    for keyword in ["fn ", "struct ", "enum ", "trait ", "impl "] {
+    for keyword in [
+        "fn ", "struct ", "enum ", "trait ", "impl ", "type ", "const ", "static ",
+    ] {
         if starts_with_signature_keyword(trimmed, keyword) {
             return true;
         }
@@ -1001,14 +1003,33 @@ mod tests {
     // visibility modifiers.
     #[test]
     fn analyze_exempts_signature_keywords_at_line_start() {
-        let source = indoc! {"
+        let source = indoc! {r#"
             /// fn compute(x: usize) -> usize
             /// pub struct Config
             /// pub(crate) enum Mode
             /// pub(in crate::base) trait Load
-        "};
+            /// type Alias = usize;
+            /// const MAX: usize = 8;
+            /// pub static NAME: &str = "x";
+        "#};
         let doc = analyze(source, "rs");
         assert!(doc.paragraphs.is_empty());
+    }
+
+    // `use` and `let` statements are not declarations: they stay measured.
+    #[test]
+    fn analyze_measures_use_and_let_statements() {
+        let source = indoc! {"
+            /// use crate::config::Settings;
+            /// let value = 3;
+        "};
+        let doc = analyze(source, "rs");
+        assert_eq!(doc.paragraphs.len(), 1);
+        let para = paragraph_at(&doc, 1).unwrap();
+        assert_eq!(
+            para.size,
+            "use crate::config::Settings; let value = 3;".len()
+        );
     }
 
     // The pass measures inline keyword mentions in text; it exempts none.

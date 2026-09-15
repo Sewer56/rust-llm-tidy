@@ -159,8 +159,9 @@ pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<Mo
 /// Discover the crate root source file by walking up from `start` to the
 /// nearest `Cargo.toml` (the owning crate's manifest).
 ///
-/// Then runs `cargo metadata --no-deps` and returns that package's `lib`
-/// target's `src_path` (else the `bin` target whose path ends in `main.rs`).
+/// Then runs `cargo metadata --no-deps` and returns the owning
+/// package's target root. That is the target whose `src_path` is
+/// `start` itself, else the `lib` target, else the `main.rs` bin.
 ///
 /// The code matches the owning crate by manifest path rather than
 /// `root_package()`. Under `--no-deps`, `root_package()` resolves to
@@ -214,7 +215,14 @@ pub fn discover_crate_root(start: &Path) -> anyhow::Result<PathBuf> {
             pm == canon_manifest || fs::canonicalize(&pm).ok() == Some(canon_manifest.clone())
         })
         .ok_or_else(|| anyhow::anyhow!("no package owns {}", manifest.display()))?;
-    // Prefer a lib target; else main.rs bin.
+    // Prefer the target rooted at `start` itself, else lib, else main.rs.
+    let canon_start = fs::canonicalize(start).unwrap_or_else(|_| start.to_path_buf());
+    if let Some(t) = pkg.targets.iter().find(|t| {
+        let sp: &Path = t.src_path.as_std_path();
+        *sp == canon_start || fs::canonicalize(sp).ok() == Some(canon_start.clone())
+    }) {
+        return Ok(t.src_path.clone().into_std_path_buf());
+    }
     pkg.targets
         .iter()
         .find(|t| t.kind.iter().any(|k| k == &cargo_metadata::TargetKind::Lib))
@@ -246,7 +254,6 @@ pub fn discover_crate_root(start: &Path) -> anyhow::Result<PathBuf> {
 ///
 /// Returns `anyhow::Error` when:
 ///
-/// - `start` has no parent directory (a bare file name).
 /// - No `Cargo.toml` file exists in `start`'s own or any ancestor
 ///   directory.
 pub fn find_cargo_toml(start: &Path) -> anyhow::Result<PathBuf> {

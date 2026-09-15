@@ -46,13 +46,28 @@ fn paragraph_diagnostics(para: &Paragraph, diags: &mut Vec<Diagnostic>) {
     // Whether the sentence just ended, so adjacent closers like `")` are
     // skipped instead of opening a new word.
     let mut after_terminal = false;
-    // Backtick parity: terminal punctuation inside code spans
-    // (`.csproj`, `3.5`) never ends a sentence.
+    // Code-span state: terminal punctuation inside code spans
+    // (`.csproj`, `` `3.5` ``) never ends a sentence. A span opens at
+    // any backtick run and closes only at a matching-length run.
     let mut in_code_span = false;
+    let mut code_delim = 0;
 
-    for (offset, ch) in para.text.char_indices() {
+    let mut chars = para.text.char_indices().peekable();
+    while let Some((offset, ch)) = chars.next() {
         if ch == '`' {
-            in_code_span = !in_code_span;
+            let mut run = 1;
+            while matches!(chars.peek(), Some((_, '`'))) {
+                chars.next();
+                run += 1;
+            }
+            if !in_code_span {
+                in_code_span = true;
+                code_delim = run;
+            } else if run == code_delim {
+                in_code_span = false;
+                code_delim = 0;
+            }
+            continue;
         }
         if after_terminal && CLOSERS.contains(&ch) {
             continue;
@@ -204,6 +219,22 @@ mod tests {
         let head = words(9);
         let tail = words(SENTENCE_LIMIT - 9);
         // `span` counts as one word, so the sentence exceeds the limit.
+        let source = format!("/// {head} {span} {tail}.\n");
+
+        let diags = run_text_checks(&source, "rs");
+
+        let found = codes(&diags, CODE_SENTENCE_LENGTH);
+        assert_eq!(found.len(), 1, "the span dot must not split the sentence");
+        assert_eq!(found[0].line, 1);
+    }
+
+    // Multi-backtick spans close only at a matching run: ``.csproj``
+    // keeps the whole sentence together just like `.csproj`.
+    #[test]
+    fn text_checks_keep_sentence_whole_when_period_sits_inside_multi_backtick_span() {
+        let span = "``.csproj``";
+        let head = words(9);
+        let tail = words(SENTENCE_LIMIT - 9);
         let source = format!("/// {head} {span} {tail}.\n");
 
         let diags = run_text_checks(&source, "rs");
