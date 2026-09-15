@@ -86,7 +86,6 @@
 //! - `scan` - the fail-closed scanner.
 //! - `header` - MOD001's module-header recognizer (fail-open, unlike
 //!   the scans above).
-//! - `yaml` - plain-scalar and comment token boundaries.
 
 use crate::reporting::Diagnostic;
 use crate::rules::lint::run_region_checks;
@@ -103,7 +102,6 @@ mod header;
 mod lexical_safety_tests;
 mod lexicon;
 mod scan;
-mod yaml;
 
 /// Whether `ext` has a lexicon entry: the `//`, `#`, `--`, `;`, and `%`
 /// comment families.

@@ -22,13 +22,13 @@
 //!
 //! [`DocRegion`]: crate::text::measurement::DocRegion
 
-use super::parse::{doc_attribute_content, is_outer_doc};
+use crate::languages::rust::parse::{doc_attribute_content, is_outer_doc};
 #[cfg(test)]
 use crate::reporting::Diagnostic;
+use crate::rules::lint::forbidden_character_regions::parsed_regions;
 #[cfg(test)]
 use crate::rules::lint::run_region_checks;
 use crate::source::ParseResult;
-use crate::text::forbidden_character_regions::parsed_regions;
 use crate::text::measurement::{Dialect, DocRegion, RegionLine, line_marker_regions};
 use core::iter;
 

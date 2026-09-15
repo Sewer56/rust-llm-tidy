@@ -5,7 +5,6 @@
 //!
 //! - this file: `run`, `should_parallelize`, `validate_selection`, `dedup_inputs`
 //! - `buffer`: standalone source-buffer processing shared by entry points
-//! - `comment_fixes`: comment-run text fixes shared by buffer and file paths
 //! - `file_execution`: per-file mutation and lint phase execution
 //! - `files`: file I/O operations and the crate-aware visibility context
 //! - `run_options`: explicit permissions and rule selection for `run`
@@ -29,7 +28,6 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 mod buffer;
-mod comment_fixes;
 mod file_execution;
 mod files;
 mod lint_context;

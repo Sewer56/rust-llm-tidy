@@ -2,9 +2,9 @@
 
 use crate::config::ForbiddenCharacterRule;
 use crate::reporting::{Diagnostic, Severity};
+use crate::rules::lint::forbidden_character_regions::parsed_regions;
 use crate::rules::registry::CODE_FORBIDDEN_CHARACTERS;
 use crate::source::ParseResult;
-use crate::text::forbidden_character_regions::parsed_regions;
 use crate::text::measurement::{Document, is_link_reference_definition, measure};
 use std::collections::{HashMap, HashSet};
 

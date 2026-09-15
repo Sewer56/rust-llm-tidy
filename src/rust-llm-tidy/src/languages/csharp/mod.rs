@@ -3,11 +3,7 @@
 //! The parser emits shared source items with type and namespace members.
 //! Lint and ordering policies live under `crate::rules`.
 //!
-//! The TEXT* text checks ride the same lint composition from
-//! [`text_regions`]' doc-region walk of the same parse.
-//!
 //! [`parse`]: parse::parse
-//! [`text_regions`]: text_regions
 //!
 //! # Reorder degradation
 //!
@@ -32,10 +28,9 @@ use crate::source::ParseResult;
 pub use analysis::can_throw::CanThrowIndex;
 
 pub mod analysis;
-mod lines;
 pub(crate) mod parse;
 pub(crate) mod regions;
-pub(crate) mod text_regions;
+mod reorder;
 
 /// The `cs` backend.
 pub(crate) struct CSharpBackend;
@@ -62,7 +57,7 @@ impl LanguageBackend for CSharpBackend {
     }
 
     fn reorder_permutation(&self, parsed: &ParseResult) -> anyhow::Result<Option<Permutation>> {
-        crate::rules::transform::reorder::csharp::reorder_permutation(parsed)
+        reorder::reorder_permutation(parsed)
     }
 }
 

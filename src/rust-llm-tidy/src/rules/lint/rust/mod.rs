@@ -27,11 +27,11 @@
 use super::run_region_checks;
 use crate::config::forbidden_character_rule::defaults;
 use crate::languages::rust::parse;
-use crate::languages::rust::text_regions::{doc_regions, forbidden_character_regions};
 use crate::reporting::Diagnostic;
 use crate::rules::registry::CODE_FORBIDDEN_CHARACTERS;
 use crate::source::{ItemKind, ParseResult, SourceItem, VisibilityTier};
 use crate::text::measurement::measure;
+use text_regions::{doc_regions, forbidden_character_regions};
 
 mod doc001_missing_docs;
 mod doc002_missing_errors_section;
@@ -50,6 +50,7 @@ mod mod003_qualified_path;
 pub(crate) mod mod004_sole_caller;
 mod test001_test_naming;
 mod test002_test_summary;
+pub(crate) mod text_regions;
 
 /// Accepted rustdoc headers for documenting function parameters.
 ///

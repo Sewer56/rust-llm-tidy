@@ -39,9 +39,11 @@
 //! a macro call. An edge to a locally defined macro reverses, so the
 //! definition precedes its use.
 
-use super::profile::{ReferencePosition, ReferenceWalk};
+use self::profile::{ReferencePosition, ReferenceWalk};
 use ahash::{AHashMap, AHashSet};
 use tree_sitter::{Node, Tree};
+
+pub(super) mod profile;
 
 /// Collects intra-file reference edges by walking a tree-sitter tree.
 ///

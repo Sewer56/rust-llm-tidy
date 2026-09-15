@@ -7,7 +7,7 @@
 //! strategy within each phase. It also ranks in-type members. It provides
 //! the grammar node-kind data the reference walk matches against.
 
-use super::toposort::TieBreak;
+use super::super::toposort::TieBreak;
 use crate::source::{ItemKind, SourceItem};
 use ahash::AHashSet;
 use derive_more::Constructor;

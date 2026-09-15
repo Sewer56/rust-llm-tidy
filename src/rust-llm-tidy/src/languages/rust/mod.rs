@@ -8,7 +8,7 @@ use crate::rules::transform::reorder::Permutation;
 use crate::source::ParseResult;
 
 pub(crate) mod parse;
-pub(crate) mod text_regions;
+mod reorder;
 
 /// The `rs` backend.
 ///
@@ -33,7 +33,7 @@ impl LanguageBackend for RustBackend {
     }
 
     fn reorder_permutation(&self, parsed: &ParseResult) -> anyhow::Result<Option<Permutation>> {
-        crate::rules::transform::reorder::rust::reorder_permutation(parsed)
+        reorder::reorder_permutation(parsed)
     }
 }
 

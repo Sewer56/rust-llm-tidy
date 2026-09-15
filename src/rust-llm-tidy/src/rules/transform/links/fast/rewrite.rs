@@ -3,7 +3,7 @@
 //! The specialized threshold-one engine reuses this module's link iteration,
 //! definition emission, and replacement-pair construction.
 
-use super::scan::{inline_links, is_reference_definition};
+use crate::rules::transform::links::scan::{inline_links, is_reference_definition};
 use std::collections::{HashMap, HashSet};
 
 /// Append hoisted `[text]: url` definitions at the end of one comment block,
@@ -17,7 +17,7 @@ use std::collections::{HashMap, HashSet};
 /// surrounding code.
 ///
 /// See [`needs_blank_before_defs`] for the blank separator line.
-pub(super) fn append_block_definitions(
+pub(crate) fn append_block_definitions(
     buf: &mut String,
     prefix: &str,
     defs: &[(&str, &str)],
@@ -47,7 +47,7 @@ pub(super) fn append_block_definitions(
 ///
 /// Documents already ending in a blank
 /// line or reference definition continue that block contiguously.
-pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &str) {
+pub(crate) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &str) {
     if !buf.ends_with('\n') {
         buf.push_str(le);
     }
@@ -68,7 +68,7 @@ pub(super) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &
 ///
 /// Mirrors `crate::source::line_endings::dominant_line_ending`.
 /// Duplicated to avoid coupling this crate to the source module; keep in sync.
-pub(super) fn dominant_line_ending(source: &str) -> &'static str {
+pub(crate) fn dominant_line_ending(source: &str) -> &'static str {
     let crlf = source.matches("\r\n").count();
     let lf = source.matches('\n').count().saturating_sub(crlf);
     if crlf > 0 && crlf >= lf { "\r\n" } else { "\n" }
@@ -77,7 +77,7 @@ pub(super) fn dominant_line_ending(source: &str) -> &'static str {
 /// Build one externally reported `[text]` -> `[text]` replacement pair.
 /// \[text\]: url
 #[inline]
-pub(super) fn replacement_pair(text: &str, url: &str) -> (String, String) {
+pub(crate) fn replacement_pair(text: &str, url: &str) -> (String, String) {
     let mut before = String::with_capacity(text.len() + url.len() + 4);
     before.push('[');
     before.push_str(text);
@@ -105,7 +105,7 @@ pub(super) fn replacement_pair(text: &str, url: &str) -> (String, String) {
 /// Non-hoisted inline links leave `last` alone so their bytes are emitted
 /// verbatim in a later gap (or the trailing copy), exactly like the eager
 /// version.
-pub(super) fn rewrite_links<'a>(
+pub(crate) fn rewrite_links<'a>(
     prefix: &str,
     body: &'a str,
     term: &str,
@@ -119,7 +119,7 @@ pub(super) fn rewrite_links<'a>(
 ///
 /// The comment-block rewrite path uses this to collect which definitions
 /// belong to the enclosing block.
-pub(super) fn rewrite_links_track<'a, F>(
+pub(crate) fn rewrite_links_track<'a, F>(
     prefix: &str,
     body: &'a str,
     term: &str,
@@ -142,7 +142,7 @@ where
 /// character: the cost is O(number of brackets), not O(text). `[` is ASCII, so
 /// byte offsets are valid char boundaries and behavior is identical to a
 /// char-by-char scan.
-pub(super) fn tally_links<'a>(
+pub(crate) fn tally_links<'a>(
     body: &'a str,
     counts: &mut HashMap<(&'a str, &'a str), usize>,
     order: &mut Vec<(&'a str, &'a str)>,

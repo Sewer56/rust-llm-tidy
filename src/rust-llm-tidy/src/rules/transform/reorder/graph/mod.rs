@@ -13,18 +13,17 @@
 //! The permutation puts callers before callees (and macro/impl definitions
 //! before their uses).
 
+pub use self::toposort::{TieBreak, toposort};
 use crate::source::{ItemKind, ParseResult, TypeMember, VisibilityTier};
 use ahash::{AHashMap, AHashSet};
 pub use collect::ReferenceCollector;
-use core::ops::Range;
-pub use profile::{
+pub use collect::profile::{
     DeclNamePosition, PhaseContext, PhaseStrategy, ReferencePosition, ReferenceWalk, ReorderProfile,
 };
+use core::ops::Range;
 use std::collections::BTreeMap;
-pub use toposort::{TieBreak, toposort};
 
 mod collect;
-mod profile;
 #[cfg(test)]
 pub(crate) mod test_profiles;
 mod toposort;

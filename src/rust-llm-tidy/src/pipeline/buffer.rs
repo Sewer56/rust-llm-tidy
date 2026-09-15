@@ -19,6 +19,8 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
 
+mod comment_fixes;
+
 /// Tidy a standalone buffer without reading files, writing files, or running
 /// commands.
 ///
@@ -255,7 +257,7 @@ pub(super) fn fix_source_protected<'a>(
         return (Cow::Borrowed(source), Vec::new());
     }
 
-    let runs = super::comment_fixes::comment_runs_protected(source, ext, profile.prefixes, ranges);
+    let runs = comment_fixes::comment_runs_protected(source, ext, profile.prefixes, ranges);
     let mut output: Option<String> = None;
     let mut copied = 0;
     let mut changes = Vec::new();

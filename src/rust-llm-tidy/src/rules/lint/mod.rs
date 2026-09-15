@@ -6,10 +6,11 @@ use crate::text::measurement;
 pub use crate::text::measurement::{Dialect, DocRegion, RegionLine, line_marker_regions};
 pub(crate) use text::is_narration_marker;
 
+mod comment_spans;
 pub(crate) mod csharp;
 pub(crate) mod doc009_missing_module_docs;
 pub(crate) mod dup001_duplication;
-pub(crate) mod mod001_module_size;
+mod forbidden_character_regions;
 pub(crate) mod rust;
 pub(crate) mod sole_caller;
 pub(crate) mod symbols;

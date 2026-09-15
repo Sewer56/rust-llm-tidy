@@ -287,7 +287,7 @@ fn build_scopes(
 
 /// Phase 1: each input's nearest projects, or the loose set.
 ///
-/// Returns the distinct canonical root projects in first-seen order,
+/// Returns the distinct canonicalized root projects in first-seen order,
 /// one `(input, projects)` pair per project-backed input, and the
 /// project-less inputs.
 fn nearest_roots(inputs: &[PathBuf]) -> (Vec<PathBuf>, RoutedInputs, Vec<PathBuf>) {
@@ -356,7 +356,7 @@ fn nearest_roots(inputs: &[PathBuf]) -> (Vec<PathBuf>, RoutedInputs, Vec<PathBuf
 
 /// Phase 2: scan each reachable project once.
 ///
-/// Returns each scanned project's own files and its canonical literal
+/// Returns each scanned project's own files and its canonicalized literal
 /// references.
 ///
 /// # Errors

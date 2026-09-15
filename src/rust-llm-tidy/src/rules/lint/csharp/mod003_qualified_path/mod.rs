@@ -52,10 +52,10 @@
 //! # Module layout
 //!
 //! - [`walker`]: traversal, occurrence recording, and suggestions
-//! - [`scope`]: the scope-frame data model and its queries
-//! - [`usings`]: `using`-directive import collection
-//! - [`names`]: dotted-chain segments and bound-name extraction
-//! - [`syntax`]: tree-shape predicates and name-leaf readers
+//! - `walker::scope`: the scope-frame data model and its queries
+//! - `walker::usings`: `using`-directive import collection
+//! - `walker::names`: dotted-chain segments and bound-name extraction
+//! - `walker::syntax`: tree-shape predicates and name-leaf readers
 //!
 //! # Code walkthrough: start at `check`
 //!
@@ -66,11 +66,13 @@
 //! 2. [`walker::Walker::collect_relative_roots`] finds namespace components
 //!    that could make a known root relative rather than absolute.
 //! 3. [`walker::Walker::walk`] visits syntax nodes recursively. Entering
-//!    a scope pushes a [`scope::ScopeFrame`]; leaving a nested scope pops it.
-//! 4. [`syntax::is_chain_head`] selects the outermost node of a dotted chain. For
-//!    `System.Console.WriteLine`, this avoids separate hints for shorter prefixes.
+//!    a scope pushes a `walker::scope::ScopeFrame`; leaving a nested
+//!    scope pops it.
+//! 4. `walker::syntax::is_chain_head` selects the outermost node of a
+//!    dotted chain. For `System.Console.WriteLine`, this avoids
+//!    separate hints for shorter prefixes.
 //!    [`walker::Walker::record_occurrence`] then checks the name's eligibility.
-//! 5. [`scope::covering_import`] finds the longest visible import prefix.
+//! 5. `walker::scope::covering_import` finds the longest visible import prefix.
 //!    [`walker::Walker::suggestion_under`] removes a plain import's prefix or replaces
 //!    an aliased prefix with its alias.
 //! 6. [`walker::Walker::record_occurrence`] adds a hint only when it has advice.
@@ -80,15 +82,17 @@
 //! ## What the stored data means
 //!
 //! - [`walker::Walker`]: source bytes, relative roots, scopes, and hints
-//! - [`scope::ScopeFrame`]: imports and bound names in one active scope
-//! - [`scope::Import`]: an imported path, its name, and whether it is an alias
-//! - [`scope::Binding`]: a declared name and the position where it starts counting
+//! - `walker::scope::ScopeFrame`: imports and bound names in one active scope
+//! - `walker::scope::Import`: an imported path, its name, and whether
+//!   it is an alias
+//! - `walker::scope::Binding`: a declared name and the position where
+//!   it starts counting
 //! - `walker::Suggestion`: the import's name for the hint and the replacement text
 //!
 //! The scope stack models nested visibility, not compiler name resolution.
 //!
-//! [`scope::frame_mentions`] asks whether a scope uses a name;
-//! [`scope::frame_shadows`] asks whether it conflicts with the import.
+//! `walker::scope::frame_mentions` asks whether a scope uses a name;
+//! `walker::scope::frame_shadows` asks whether it conflicts with the import.
 //!
 //! Imports and declaration names are collected before visiting a scope's children.
 //! A binding's `start` value distinguishes scope-wide declarations from locals
@@ -99,10 +103,10 @@
 //!
 //! ## Trace the first example
 //!
-//! `usings::collect_usings` records `using System.Threading.Tasks;` as a
+//! `walker::usings::collect_usings` records `using System.Threading.Tasks;` as a
 //! plain import.
 //!
-//! `names::name_segments` splits the path into `System`, `Threading`,
+//! `walker::names::name_segments` splits the path into `System`, `Threading`,
 //! `Tasks`, `Task`, and `Delay`.
 //!
 //! The covering import matches `System.Threading.Tasks`. `suggestion_under`
@@ -121,10 +125,6 @@ use crate::source::ParseResult;
 use std::collections::HashSet;
 use walker::Walker;
 
-mod names;
-mod scope;
-mod syntax;
-mod usings;
 mod walker;
 
 /// Known namespace roots, unless syntax shows shadowing or relative use.

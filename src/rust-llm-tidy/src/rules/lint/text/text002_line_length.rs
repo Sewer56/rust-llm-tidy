@@ -5,7 +5,8 @@ use crate::reporting::diagnostic::{Diagnostic, Severity};
 use crate::rules::registry::CODE_LINE_LENGTH;
 use crate::text::measurement::{Document, StrippedLine};
 use crate::text::measurement::{is_decorative_border, is_link_reference_definition};
-use crate::text::urls;
+
+mod urls;
 
 /// Maximum line length before TEXT002 fires.
 const LINE_LIMIT: usize = 80;

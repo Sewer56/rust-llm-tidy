@@ -42,7 +42,7 @@ pub(super) fn use_path(path: &str) -> &str {
 }
 
 /// Collect imports from one `use` argument node under `prefix`.
-fn collect_use_argument<'a>(
+pub(super) fn collect_use_argument<'a>(
     bytes: &'a [u8],
     node: Node,
     prefix: &[&'a str],

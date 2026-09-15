@@ -28,7 +28,7 @@ use self::signature::{
 };
 pub(super) use self::trivia::{PendingTrivia, is_attachable, is_transparent_comment};
 use self::trivia::{collect_attributes, extract_doc_comments, is_test_fn, is_test_module};
-pub(in crate::languages::rust) use self::trivia::{doc_attribute_content, is_outer_doc};
+pub(crate) use self::trivia::{doc_attribute_content, is_outer_doc};
 use crate::source::{ItemKind, ReturnKind, VisibilityTier};
 use tree_sitter::Node;
 

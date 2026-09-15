@@ -4,11 +4,11 @@
 //! The queries decide whether a short name is mentioned or shadowed,
 //! which import covers a path, and whether a path's root is explicit.
 
-use super::ROOT_SEGMENTS;
+use super::super::ROOT_SEGMENTS;
 
 /// The imports and names one lexical scope introduces during the walk.
 #[derive(Default)]
-pub(super) struct ScopeFrame<'a> {
+pub(crate) struct ScopeFrame<'a> {
     pub(super) imports: Vec<Import<'a>>,
     pub(super) bindings: Vec<Binding<'a>>,
     /// Explicit external crate names visible throughout this scope.

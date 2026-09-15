@@ -6,7 +6,7 @@
 
 /// The imports and names one lexical scope introduces during the walk.
 #[derive(Default)]
-pub(super) struct ScopeFrame<'a> {
+pub(crate) struct ScopeFrame<'a> {
     pub(super) imports: Vec<Import<'a>>,
     pub(super) bindings: Vec<Binding<'a>>,
 }

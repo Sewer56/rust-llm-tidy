@@ -47,8 +47,10 @@ fn paragraph_diagnostics(para: &Paragraph, diags: &mut Vec<Diagnostic>) {
     // skipped instead of opening a new word.
     let mut after_terminal = false;
     // Code-span state: terminal punctuation inside code spans
-    // (`.csproj`, `` `3.5` ``) never ends a sentence. A span opens at
-    // any backtick run and closes only at a matching-length run.
+    // (`.csproj`, `` `3.5` ``) never ends a sentence.
+    //
+    // A span opens at any backtick run and closes only at a
+    // matching-length run.
     let mut in_code_span = false;
     let mut code_delim = 0;
 

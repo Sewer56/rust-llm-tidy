@@ -21,10 +21,11 @@
 use super::super::lexicon::{
     Heredoc, Lexicon, Syntax, comment_starts_word, ident_byte, ident_start,
 };
-use super::super::yaml;
 use super::heredoc::{PendingHeredoc, heredoc_open};
 use super::{Scanner, State, Step, close_run};
 use crate::rules::lint::{Dialect, DocRegion, RegionLine};
+
+mod yaml;
 
 impl<'a> Scanner<'a> {
     /// One Code-state byte: the ordered family checks, then the

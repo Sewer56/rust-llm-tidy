@@ -1,6 +1,6 @@
 //! Rust ordering policy and permutation construction.
 
-use super::{Permutation, graph};
+use crate::rules::transform::reorder::{Permutation, graph};
 use crate::source::ParseResult;
 
 mod profile;

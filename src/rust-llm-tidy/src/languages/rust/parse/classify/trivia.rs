@@ -250,10 +250,7 @@ pub(in super::super) fn is_transparent_comment(node: Node) -> bool {
 ///
 /// - `item` - the `attribute_item` node to read.
 /// - `source` - the full source text for text extraction.
-pub(in super::super::super) fn doc_attribute_content<'a>(
-    item: Node<'a>,
-    source: &str,
-) -> Option<Node<'a>> {
+pub(crate) fn doc_attribute_content<'a>(item: Node<'a>, source: &str) -> Option<Node<'a>> {
     let attr = child_of_kind(item, "attribute")?;
     // The attribute path must be exactly `doc` (a plain identifier, not scoped).
     let path = attr_path(attr)?;
@@ -279,7 +276,7 @@ pub(in super::super::super) fn doc_attribute_content<'a>(
 /// # Arguments
 ///
 /// - `node` - the `line_comment` or `block_comment` node to test.
-pub(in super::super::super) fn is_outer_doc(node: Node) -> bool {
+pub(crate) fn is_outer_doc(node: Node) -> bool {
     has_field(node, "outer")
 }
 

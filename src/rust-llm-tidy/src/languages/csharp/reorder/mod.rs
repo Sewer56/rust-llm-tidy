@@ -1,8 +1,8 @@
 //! Reorder C# declarations without crossing preprocessor boundaries.
 
-use super::Permutation;
-use super::graph::compute_member_order;
 use crate::languages::csharp::regions::Regions;
+use crate::rules::transform::reorder::Permutation;
+use crate::rules::transform::reorder::graph::compute_member_order;
 use crate::source::{ItemKind, ParseResult};
 use profile::CSharpProfile;
 

@@ -4,18 +4,23 @@
 //! usings before a scope's children, and turns each eligible chain
 //! head into a hint through `suggestion_under`.
 
-use super::ROOT_SEGMENTS;
-use super::names::{declarator_names, local_bindings, name_segments};
-use super::scope::{Binding, Import, ScopeFrame, covering_import, frame_mentions, frame_shadows};
-use super::syntax::{
+use self::names::{declarator_names, local_bindings, name_segments};
+use self::scope::{Binding, Import, ScopeFrame, covering_import, frame_mentions, frame_shadows};
+use self::syntax::{
     contains_conditional, is_chain_head, is_scope, leaf_text, leftmost_name, leftmost_segment,
 };
-use super::usings::collect_usings;
+use super::ROOT_SEGMENTS;
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::CODE_QUALIFIED_PATH;
 use crate::source::ItemKind;
 use std::collections::HashSet;
 use tree_sitter::Node;
+use usings::collect_usings;
+
+mod names;
+mod scope;
+mod syntax;
+mod usings;
 
 /// What an existing import advises: the covering directive's
 /// name for the hint and the replacement text for the whole path.

@@ -22,7 +22,7 @@
 use self::classify::classify_item;
 use self::classify::result_error_type;
 use self::classify::{PendingTrivia, is_attachable, is_transparent_comment};
-pub(in crate::languages::rust) use self::classify::{doc_attribute_content, is_outer_doc};
+pub(crate) use self::classify::{doc_attribute_content, is_outer_doc};
 use crate::source::{ParseResult, SourceItem};
 use core::mem;
 

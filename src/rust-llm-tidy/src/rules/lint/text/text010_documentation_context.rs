@@ -6,8 +6,9 @@
 //! The shared [`super::diagnostics`] dispatcher never emits it, so
 //! context-free buffer and region entry points stay silent.
 //!
-//! Detection lives in `crate::project::documentation`; this module owns
-//! only the reminder text so every detection signal shares one message.
+//! Detection lives in `crate::pipeline::lint_context::documentation`;
+//! this module owns only the reminder text so every detection signal
+//! shares one message.
 
 use super::bulleted;
 use crate::reporting::diagnostic::{Diagnostic, Severity};

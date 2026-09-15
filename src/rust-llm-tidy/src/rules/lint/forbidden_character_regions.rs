@@ -1,8 +1,9 @@
 //! Classify TEXT009 text as documentation or ordinary comments.
 
-use crate::languages::{python, rust};
+use crate::languages::python;
+use crate::rules::lint::comment_spans::comment_spans;
+use crate::rules::lint::rust as lint_rust;
 use crate::source::ParseResult;
-use crate::text::comment_spans::comment_spans;
 use crate::text::measurement::{Dialect, DocRegion, RegionLine};
 
 /// Extract parsed comments and recognized string-based documentation separately.
@@ -13,7 +14,7 @@ pub(crate) fn parsed_regions(parsed: &ParseResult, ext: &str) -> (Vec<DocRegion>
         return (Vec::new(), Vec::new());
     };
     let mut docs = match ext.to_ascii_lowercase().as_str() {
-        "rs" => rust::text_regions::attribute_regions(parsed),
+        "rs" => lint_rust::text_regions::attribute_regions(parsed),
         "py" | "pyi" => python::text_regions::doc_regions(parsed)
             .into_iter()
             .filter(|region| region.dialect == Dialect::Docstring)

@@ -7,15 +7,17 @@ use crate::config::{
 };
 use crate::input::changed_lines::{self, ChangedLineCollection, ChangedLines};
 use crate::languages::{backend_for, registry as langs};
-use crate::project::documentation::DocumentationContext;
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::{self, symbols};
 use crate::source::ParseResult;
 use core::array::from_fn;
 use core::mem;
 use core::ops::Range;
+use documentation::DocumentationContext;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+
+mod documentation;
 
 /// Immutable policy shared by both execution phases and all selected files.
 pub(super) struct LintContext<'a> {

@@ -47,9 +47,9 @@
 //! # Module layout
 //!
 //! - [`walker`]: traversal, occurrence recording, and suggestions
-//! - [`scope`]: the scope-frame data model and its queries
-//! - [`imports`]: `use`-declaration collection and import advice
-//! - [`syntax`]: tree-shape predicates and path-segment readers
+//! - `walker::scope`: the scope-frame data model and its queries
+//! - `walker::imports`: `use`-declaration collection and import advice
+//! - `walker::syntax`: tree-shape predicates and path-segment readers
 //!
 //! # Code walkthrough: start at `check`
 //!
@@ -60,12 +60,12 @@
 //! 2. [`ROOT_SEGMENTS`] identifies standard crates and `crate`. Explicit
 //!    `extern crate` declarations supply other roots within their scopes.
 //! 3. [`walker::Walker::walk`] visits syntax nodes recursively. Entering
-//!    a scope pushes a [`scope::ScopeFrame`]; leaving a nested scope pops it.
-//! 4. [`syntax::is_chain_head`] selects a path's outermost node, so
+//!    a scope pushes a `walker::scope::ScopeFrame`; leaving a nested scope pops it.
+//! 4. `walker::syntax::is_chain_head` selects a path's outermost node, so
 //!    `std::sync::Arc::new` yields one hint, not one per prefix.
 //!    [`walker::Walker::record_occurrence`] splits it into segments
 //!    and checks eligibility.
-//! 5. [`scope::covering_import`] finds the longest visible import prefix.
+//! 5. `walker::scope::covering_import` finds the longest visible import prefix.
 //!    [`walker::Walker::suggestion_under`] builds a replacement when that import's
 //!    short name is usable.
 //! 6. [`walker::Walker::record_occurrence`] adds a hint only when it has advice.
@@ -75,29 +75,31 @@
 //! ## What the stored data means
 //!
 //! - [`walker::Walker`]: source bytes, active scopes, and accumulated hints
-//! - [`scope::ScopeFrame`]: imports and bound names in one active scope
-//! - [`scope::Import`]: a full imported path and its short name or alias
-//! - [`scope::Binding`]: a declared name and the position where it starts counting
+//! - `walker::scope::ScopeFrame`: imports and bound names in one active scope
+//! - `walker::scope::Import`: a full imported path and its short name or alias
+//! - `walker::scope::Binding`: a declared name and the position where
+//!   it starts counting
 //! - `walker::Suggestion`: the short name used and the replacement text
 //!
 //! The scope stack models nested visibility, not compiler name resolution.
 //!
-//! [`scope::frame_mentions`] asks whether a scope uses a name;
-//! [`scope::frame_shadows`] asks whether it conflicts with the import.
+//! `walker::scope::frame_mentions` asks whether a scope uses a name;
+//! `walker::scope::frame_shadows` asks whether it conflicts with the import.
 //!
 //! Imports and item names are collected before visiting a scope's children.
 //! Their declarations can appear after their uses. A binding's `start` value
 //! distinguishes scope-wide items from locals that count only from their position.
 //!
-//! Without a covering import, [`imports::use_path`] chooses what
+//! Without a covering import, `walker::imports::use_path` chooses what
 //! to import, as shown in Explanation 2.
 //!
 //! ## Trace the first example
 //!
-//! `imports::collect_use` turns `use std::sync::Arc;` into an import
+//! `walker::imports::collect_use` turns `use std::sync::Arc;` into an import
 //! whose short name is `Arc`.
 //!
-//! `syntax::scoped_segments` turns the path into `std`, `sync`, `Arc`, `new`.
+//! `walker::syntax::scoped_segments` turns the path into `std`,
+//! `sync`, `Arc`, `new`.
 //!
 //! The covering import matches the first three segments. `suggestion_under`
 //! joins `Arc` to the remaining `new`, producing `Arc::new`.
@@ -117,9 +119,6 @@ use crate::reporting::Diagnostic;
 use crate::source::ParseResult;
 use walker::Walker;
 
-mod imports;
-mod scope;
-mod syntax;
 mod walker;
 
 /// Known crate roots, unless a visible declaration or import shadows them.

@@ -3,9 +3,11 @@
 //! Partially vendored from rust-reorder (MIT); modified based on
 //! <https://github.com/umwelt-ai/rust-reorder>.
 
-use crate::source::line_count::count_lines;
 use crate::source::line_endings::dominant_line_ending;
 use anyhow::{Result, bail, ensure};
+use line_count::count_lines;
+
+mod line_count;
 
 /// Verify that every non-blank line in `original` appears exactly once in `output`.
 ///

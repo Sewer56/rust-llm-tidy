@@ -28,6 +28,10 @@
 //! The hint points to the caller's first reference, so it can appear
 //! in a diff that introduces the dependency.
 //!
+//! `#[cfg(test)]` regions are not production callers: files reachable
+//! from the crate root only through `#[cfg(test)]`-gated `mod` chains
+//! contribute no caller edges.
+//!
 //! # Limitations
 //!
 //! [`RustCrateIndex`] cannot reliably track references through
@@ -36,6 +40,9 @@
 //!
 //! It also skips `use` prefixes with only one segment: `use a::{..}`
 //! is not resolved, but `use crate::a::{..}` is.
+//!
+//! Test gating is structural: a file reached through both a gated and
+//! an ungated `mod` still counts as a production caller.
 //!
 //! The rule analyzes each crate alone: cross-crate callers are
 //! invisible, so a module shared with a dependent crate can still
@@ -555,6 +562,34 @@ mod tests {
         let found = all_findings_sorted_by_line(&findings);
         assert_eq!(found.len(), 1, "load remains the sole caller");
         assert_eq!(found[0].line, 1);
+    }
+
+    /// A file reached only through a `#[cfg(test)]`-gated `mod` chain
+    /// is no production caller, so the module it alone references
+    /// stays silent.
+    #[test]
+    fn analyze_should_stay_silent_when_sole_caller_is_cfg_test_mod_chain() {
+        // Arrange.
+        let sources = vec![
+            (
+                src("src/lib.rs"),
+                "mod util;\n#[cfg(test)]\nmod ctx;\n".into(),
+            ),
+            (
+                src("src/ctx.rs"),
+                "pub fn t() { crate::util::f(); }\n".into(),
+            ),
+            (src("src/util.rs"), "pub fn f() {}\n".into()),
+        ];
+
+        // Act.
+        let findings = analyze_sources(sources);
+
+        // Assert.
+        assert!(
+            findings.all().next().is_none(),
+            "a test-only sole caller yields no MOD004 hint"
+        );
     }
 
     // Convenience: per-file lookup.

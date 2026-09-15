@@ -10,9 +10,20 @@
 //! [`ParseResult`] plus the file's path and the per-run threshold. The
 //! pipeline therefore invokes it from `check_file` instead of the per-item
 //! `run_all` composition.
+//!
+//! [`check`] counts non-Rust files by every physical line: blanks,
+//! comments, and tests all count.
+//!
+//! A recognized module header leaves the count when exclusion is enabled
+//! ([`crate::text::comments::header_lines`]). The Rust rule supplies its
+//! test-aware count to [`diagnostic`].
+//!
+//! Diagnostics encourage cohesive splits rather than mechanical line
+//! reduction. [`diagnostic`] states why size matters, then suggests split
+//! patterns; the Rust rule appends its own advice and counting notes.
 
-use crate::reporting::Diagnostic;
-use crate::rules::lint::mod001_module_size::{check, diagnostic};
+use crate::reporting::{Diagnostic, Severity};
+use crate::rules::lint::CODE_MODULE_SIZE;
 use crate::source::ParseResult;
 use crate::text::comments;
 use core::fmt::Write;
@@ -116,6 +127,86 @@ pub(crate) fn check_with_options(
             header > 0,
         )
     })
+}
+
+/// Check a whole file against the resolved `module_size.max_lines` budget.
+///
+/// Exactly `max_lines` stays silent. A final line without a newline counts;
+/// a trailing newline does not create an extra line.
+///
+/// With `exclude_module_headers`, the file's leading module-header lines
+/// leave the count first. The reported line is then the physical line
+/// holding the first counted line past the budget. Reports at
+/// `max_lines + 1` otherwise.
+///
+/// # Arguments
+///
+/// - `source`: the file's raw text.
+/// - `ext`: the file extension without the leading dot; selects the
+///   header syntax.
+/// - `max_lines`: the resolved `module_size.max_lines` budget.
+/// - `exclude_module_headers`: the resolved `module_size.exclude_module_headers`.
+pub(crate) fn check(
+    source: &str,
+    ext: &str,
+    max_lines: usize,
+    exclude_module_headers: bool,
+) -> Option<Diagnostic> {
+    let header = if exclude_module_headers {
+        comments::header_lines(source, ext)
+    } else {
+        0
+    };
+    let lines = source.lines().count() - header;
+    let exclusions = if header > 0 {
+        " outside module headers"
+    } else {
+        ""
+    };
+
+    // The header is a contiguous prefix, so the `max_lines + 1`-th
+    // counted line is the `max_lines + header + 1`-th physical line.
+    (lines > max_lines).then(|| diagnostic(lines, max_lines + header + 1, max_lines, exclusions))
+}
+
+/// Build the shared warning with a language-specific description of excluded lines.
+pub(super) fn diagnostic(
+    lines: usize,
+    crossing_line: usize,
+    max_lines: usize,
+    exclusions: &str,
+) -> Diagnostic {
+    Diagnostic {
+        title: Some("oversized module".into()),
+        severity: Severity::Warning,
+        code: CODE_MODULE_SIZE,
+        message: indoc::formatdoc! {"
+            file has {lines} lines{exclusions},
+            over the {max_lines}-line budget (module_size.max_lines).
+            Why:
+            - Large files make readers search farther and keep more context in mind.
+            - Focused modules help readers find responsibilities without scanning unrelated code.
+            - Large files cost LLMs more input tokens when read in full and leave less
+              context for other relevant code.
+            Suggestions:
+            - Consider keeping entry points and orchestration near the top level, with
+              implementation details in focused child modules.
+            - Group code by responsibility, such as parsing or validation. Domain names
+              usually explain more than catch-all names like `utils`.
+            - Let orchestration read as calls to clear operations, such as `parse_imports`
+              or `validate_config`.
+            - Free functions suit stateless work. Methods suit behavior that manages a
+              type's state.
+            - Keep closely related code together. A split need not add new types,
+              forwarding wrappers, or a wider public API.
+            - Preserve behavior and performance across the split. Avoid needless
+              allocations, clones, or repeated work just to cross module boundaries.
+            - Update overview docs to explain responsibilities and point readers to the
+              entry points. Keep useful documentation; a split should not remove it."},
+        line: crossing_line,
+        item_kind: "file".to_string(),
+        item_name: None,
+    }
 }
 
 /// Count physical lines no span fully owns, tracking where the count
@@ -240,12 +331,73 @@ fn with_rust_guidance(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reporting::Severity;
-    use crate::rules::lint::CODE_MODULE_SIZE;
     use rstest::rstest;
 
+    /// Physical-line boundaries do not depend on newline style or line content.
+    #[rstest]
+    #[case::empty("", 1, None)]
+    #[case::below_budget("code\n", 2, None)]
+    #[case::at_budget("code\n\n", 2, None)]
+    #[case::over_budget("code\n\n// comment\n", 2, Some(3))]
+    #[case::unterminated_last_line("code\n\n// comment", 2, Some(3))]
+    #[case::crlf("code\r\n\r\n// comment\r\n", 2, Some(3))]
+    #[case::maximum_budget("code\n", usize::MAX, None)]
+    fn check_should_report_physical_lines_over_budget(
+        #[case] source: &str,
+        #[case] max_lines: usize,
+        #[case] expected_line: Option<usize>,
+    ) {
+        let finding = check(source, "js", max_lines, false);
+
+        assert_eq!(finding.as_ref().map(|d| d.line), expected_line);
+        if let Some(finding) = finding {
+            assert_eq!(finding.code, CODE_MODULE_SIZE);
+            assert_eq!(finding.severity, Severity::Warning);
+            assert!(finding.message.starts_with("file has 3 lines,\n"));
+            assert!(finding.message.contains(
+                "- Preserve behavior and performance across the split. Avoid needless\n  \
+                 allocations, clones, or repeated work just to cross module boundaries."
+            ));
+            assert_eq!(finding.item_kind, "file");
+            assert!(finding.item_name.is_none());
+        }
+    }
+
+    /// The module header leaves the count; the crossing line keeps its
+    /// physical position. Disabling the exclusion counts it again.
+    #[rstest]
+    #[case::docstring("py", "# header\n\"\"\"Doc.\n\"\"\"\nx = 1\ny = 2\n", 3, Some(5), true)]
+    #[case::line_comments("js", "// note\n// note\nx = 1\ny = 2\n", 2, Some(4), true)]
+    #[case::block_comments("cs", "/* Note. */\nclass A {{}}\nclass B {{}}\n", 1, Some(3), true)]
+    #[case::no_header("py", "x = 1\ny = 2\n", 0, Some(2), true)]
+    #[case::exclusion_disabled("js", "// note\nx = 1\n", 0, Some(2), false)]
+    fn check_should_exclude_module_headers_from_the_budget(
+        #[case] ext: &str,
+        #[case] source: &str,
+        #[case] header: usize,
+        #[case] expected_line: Option<usize>,
+        #[case] exclude_module_headers: bool,
+    ) {
+        let finding = check(source, ext, 1, exclude_module_headers);
+
+        assert_eq!(finding.as_ref().map(|d| d.line), expected_line);
+        if let (true, true, Some(finding)) = (exclude_module_headers, header > 0, finding.as_ref())
+        {
+            let counted = source.lines().count() - header;
+            assert!(
+                finding.message.starts_with(&format!(
+                    "file has {counted} lines outside module headers,\n"
+                )),
+                "{}",
+                finding.message
+            );
+        }
+    }
+
+    // ── Rust rule: [`check_with_options`] ──
+
     /// Exercise the default test-excluding policy in existing Rust cases.
-    fn check(parsed: &ParseResult, path: &Path, max_lines: usize) -> Option<Diagnostic> {
+    fn check_rust(parsed: &ParseResult, path: &Path, max_lines: usize) -> Option<Diagnostic> {
         check_with_options(parsed, path, max_lines, false, false, true)
     }
 
@@ -262,14 +414,12 @@ mod tests {
             .collect()
     }
 
-    // ── firing and the strict boundary ──
-
     // Over the budget: one warning at the first line past the budget.
     #[test]
     fn fires_when_non_test_lines_exceed_the_threshold() {
         let parsed = parse(&fn_lines(3));
 
-        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 2).expect("3 lines > 2");
+        let diagnostic = check_rust(&parsed, Path::new("src/lib.rs"), 2).expect("3 lines > 2");
 
         assert_eq!(diagnostic.code, CODE_MODULE_SIZE);
         assert_eq!(diagnostic.severity, Severity::Warning);
@@ -291,7 +441,7 @@ mod tests {
     fn stays_silent_at_exactly_the_threshold() {
         let parsed = parse(&fn_lines(2));
 
-        assert!(check(&parsed, Path::new("src/lib.rs"), 2).is_none());
+        assert!(check_rust(&parsed, Path::new("src/lib.rs"), 2).is_none());
     }
 
     // Under the budget: silent.
@@ -299,7 +449,7 @@ mod tests {
     fn stays_silent_under_the_threshold() {
         let parsed = parse(&fn_lines(1));
 
-        assert!(check(&parsed, Path::new("src/lib.rs"), 500).is_none());
+        assert!(check_rust(&parsed, Path::new("src/lib.rs"), 500).is_none());
     }
 
     // Blank lines are file lines and count toward the budget.
@@ -307,12 +457,10 @@ mod tests {
     fn counts_blank_lines_toward_the_budget() {
         let parsed = parse("fn a() {}\n\nfn b() {}\n");
 
-        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 2).expect("3 lines > 2");
+        let diagnostic = check_rust(&parsed, Path::new("src/lib.rs"), 2).expect("3 lines > 2");
 
         assert_eq!(diagnostic.line, 3);
     }
-
-    // ── `#[cfg(test)]` region exclusion ──
 
     // The whole `#[cfg(test)]` mod span, attribute through closing brace,
     // leaves the count.
@@ -327,10 +475,11 @@ mod tests {
 
         // 10 physical lines, 2 counted.
         assert!(
-            check(&parsed, Path::new("src/lib.rs"), 8).is_none(),
+            check_rust(&parsed, Path::new("src/lib.rs"), 8).is_none(),
             "test-module lines must not count toward the budget"
         );
-        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 1).expect("2 non-test lines > 1");
+        let diagnostic =
+            check_rust(&parsed, Path::new("src/lib.rs"), 1).expect("2 non-test lines > 1");
         assert_eq!(diagnostic.line, 2);
     }
 
@@ -344,7 +493,7 @@ mod tests {
         let parsed = parse(&source);
 
         // 8 physical lines, 2 counted.
-        assert!(check(&parsed, Path::new("src/lib.rs"), 5).is_none());
+        assert!(check_rust(&parsed, Path::new("src/lib.rs"), 5).is_none());
     }
 
     // A line mixing a test module with trailing production code still
@@ -354,14 +503,15 @@ mod tests {
     fn counts_a_line_mixing_a_test_module_with_production_code() {
         let parsed = parse("fn a() {}\nfn b() {}\n#[cfg(test)] mod t {} fn c() {}\n");
 
-        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 2).expect("3 non-test lines > 2");
+        let diagnostic =
+            check_rust(&parsed, Path::new("src/lib.rs"), 2).expect("3 non-test lines > 2");
 
         assert_eq!(
             diagnostic.line, 3,
             "the mixed line is the first past the budget"
         );
         assert!(
-            check(&parsed, Path::new("src/lib.rs"), 3).is_none(),
+            check_rust(&parsed, Path::new("src/lib.rs"), 3).is_none(),
             "exactly 3 non-test lines"
         );
     }
@@ -372,7 +522,8 @@ mod tests {
     fn counts_a_closing_brace_line_shared_with_production_code() {
         let parsed = parse("fn a() {}\nfn b() {}\n#[cfg(test)]\nmod t {\n} fn c() {}\n");
 
-        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 2).expect("3 non-test lines > 2");
+        let diagnostic =
+            check_rust(&parsed, Path::new("src/lib.rs"), 2).expect("3 non-test lines > 2");
 
         assert_eq!(
             diagnostic.line, 5,
@@ -387,7 +538,8 @@ mod tests {
         let source = "fn a() {}\r\n#[cfg(test)]\r\nmod t {\r\n}\r\nfn b() {}\r\n";
         let parsed = parse(source);
 
-        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 1).expect("2 non-test lines > 1");
+        let diagnostic =
+            check_rust(&parsed, Path::new("src/lib.rs"), 1).expect("2 non-test lines > 1");
 
         assert_eq!(diagnostic.line, 5, "fn b's CRLF line crosses the budget");
     }
@@ -412,7 +564,7 @@ mod tests {
     fn counts_cfg_test_attributes_on_non_mod_items() {
         let parsed = parse("#[cfg(test)]\nfn gated() {}\nfn other() {}\n");
 
-        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 2).expect("3 lines > 2");
+        let diagnostic = check_rust(&parsed, Path::new("src/lib.rs"), 2).expect("3 lines > 2");
 
         assert_eq!(diagnostic.line, 3);
     }
@@ -429,12 +581,10 @@ mod tests {
         let parsed = parse(&source);
 
         // Counted lines sit at file lines 1, 2, 6, 7.
-        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 3).expect("4 counted > 3");
+        let diagnostic = check_rust(&parsed, Path::new("src/lib.rs"), 3).expect("4 counted > 3");
 
         assert_eq!(diagnostic.line, 7);
     }
-
-    // ── module-header exclusion ──
 
     // The header span and the test-module spans leave the count together.
     #[test]
@@ -442,7 +592,7 @@ mod tests {
         let source = format!("//! Docs.\n{}#[cfg(test)]\nmod t {{\n}}\n", fn_lines(3));
         let parsed = parse(&source);
 
-        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 2).expect("3 counted > 2");
+        let diagnostic = check_rust(&parsed, Path::new("src/lib.rs"), 2).expect("3 counted > 2");
 
         assert!(
             diagnostic.message.starts_with(
@@ -460,7 +610,7 @@ mod tests {
     fn counts_a_blank_line_after_the_header() {
         let parsed = parse("//! Docs.\n\nfn a() {}\n");
 
-        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 1).expect("blank + fn > 1");
+        let diagnostic = check_rust(&parsed, Path::new("src/lib.rs"), 1).expect("blank + fn > 1");
 
         assert_eq!(
             diagnostic.line, 3,
@@ -495,7 +645,7 @@ mod tests {
         let parsed = parse(&source);
 
         let diagnostic =
-            check(&parsed, Path::new("src/lib.rs"), 2).expect("3 non-header lines > 2");
+            check_rust(&parsed, Path::new("src/lib.rs"), 2).expect("3 non-header lines > 2");
 
         assert!(
             diagnostic.message.starts_with(
@@ -514,7 +664,7 @@ mod tests {
         let source = "#![allow(dead_code)]\n/// Item doc.\nfn a() {}\nfn b() {}\n";
         let parsed = parse(source);
 
-        let diagnostic = check(&parsed, Path::new("src/lib.rs"), 3).expect("4 lines > 3");
+        let diagnostic = check_rust(&parsed, Path::new("src/lib.rs"), 3).expect("4 lines > 3");
 
         assert!(
             diagnostic
@@ -555,12 +705,10 @@ mod tests {
         let parsed = parse(&source);
 
         assert!(
-            check(&parsed, Path::new("src/lib.rs"), 3).is_none(),
+            check_rust(&parsed, Path::new("src/lib.rs"), 3).is_none(),
             "the header block's 3 lines (banner, blank, docs) never count; only 2 remain"
         );
     }
-
-    // ── tests/ path skip ──
 
     // A `tests` directory component at any depth skips the rule.
     #[rstest]
@@ -570,7 +718,7 @@ mod tests {
         let parsed = parse(&fn_lines(600));
 
         assert!(
-            check(&parsed, Path::new(path), 500).is_none(),
+            check_rust(&parsed, Path::new(path), 500).is_none(),
             "no MOD001 under a `tests` directory component"
         );
     }
@@ -583,6 +731,6 @@ mod tests {
     fn fires_when_no_component_is_exactly_tests(#[case] path: &str) {
         let parsed = parse(&fn_lines(3));
 
-        assert!(check(&parsed, Path::new(path), 2).is_some());
+        assert!(check_rust(&parsed, Path::new(path), 2).is_some());
     }
 }

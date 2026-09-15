@@ -55,7 +55,7 @@
 //!   findings carry original file lines. The dialect rules live with
 //!   the lint module's measuring core; see [`text_regions`] producer.
 //!
-//! [`text_regions`]: crate::languages::csharp::text_regions
+//! [`text_regions`]: text_regions
 
 use super::run_region_checks;
 pub use crate::languages::csharp::analysis::can_throw::CanThrowIndex;
@@ -64,9 +64,9 @@ use crate::languages::csharp::analysis::declaration::tag_slices;
 use crate::languages::csharp::analysis::declaration::{
     Declaration, THROWING, collect_children, exception_tags,
 };
-use crate::languages::csharp::text_regions::doc_regions;
 use crate::reporting::{Diagnostic, Severity};
 use crate::source::{ItemKind, ParseResult};
+use text_regions::doc_regions;
 
 mod doc001_missing_docs;
 mod doc002_missing_exception_tag;
@@ -80,6 +80,7 @@ mod mod003_qualified_path;
 pub(crate) mod mod004_sole_caller;
 mod test001_test_naming;
 mod test002_test_summary;
+mod text_regions;
 
 /// Kinds whose non-private declarations need doc comments.
 const DOCUMENTABLE: &[ItemKind] = &[
@@ -197,7 +198,7 @@ fn check_declaration(decl: &Declaration<'_>, diagnostics: &mut Vec<Diagnostic>) 
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::{Diagnostic, run, tag_slices};
+    use super::{Diagnostic, run, tag_slices, text_regions};
     use crate::rules::lint::CODE_MISSING_ERRORS;
     use std::collections::{HashMap, HashSet};
 
@@ -237,7 +238,7 @@ pub(crate) mod tests {
                 super::check_declaration(decl, &mut expected);
             }
             expected.extend(super::mod003_qualified_path::check(&parsed));
-            expected.extend(crate::languages::csharp::text_regions::text_checks(&parsed));
+            expected.extend(text_regions::text_checks(&parsed));
 
             let actual = run(&parsed);
 

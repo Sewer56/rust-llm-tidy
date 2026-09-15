@@ -8,8 +8,8 @@
 //! with the tie-break their language profile selected via
 //! [`PhaseStrategy::Dependency`].
 //!
-//! [`compute_order`]: super::compute_order
-//! [`PhaseStrategy::Dependency`]: super::PhaseStrategy::Dependency
+//! [`compute_order`]: crate::rules::transform::reorder::graph::compute_order
+//! [`PhaseStrategy::Dependency`]: crate::rules::transform::reorder::graph::PhaseStrategy::Dependency
 
 /// Tie-breaking strategy for topological sort.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

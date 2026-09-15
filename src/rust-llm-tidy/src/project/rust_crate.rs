@@ -57,7 +57,8 @@ impl RustCrateIndex {
     /// Build the index from pre-parsed files (pure core, no discovery).
     ///
     /// Module paths come from [`build_module_paths`]; only files inside
-    /// that resolved tree contribute edges.
+    /// that resolved tree contribute edges, and files reachable only
+    /// through `#[cfg(test)]` `mod` chains contribute none.
     ///
     /// # Arguments
     ///
@@ -99,6 +100,11 @@ impl RustCrateIndex {
         let mut edges = Vec::new();
         for pf in files {
             if let Some(current) = paths.segments_for(&pf.path) {
+                // Test-only files (reachable only through `#[cfg(test)]`
+                // mod chains) contribute no production caller edges.
+                if paths.is_test_only(&pf.path) {
+                    continue;
+                }
                 collect_edges(pf, current, &file_of, &mut edges);
             }
         }
@@ -134,7 +140,7 @@ impl RustCrateIndex {
     /// unreadable files skip silently, and a failed directory walk
     /// still indexes what it collected.
     pub(crate) fn build_all(inputs: &[PathBuf], warnings: &mut Vec<String>) -> Vec<Self> {
-        // One group per crate: canonical manifest plus its inputs,
+        // One group per crate: canonicalized manifest plus its inputs,
         // first-seen order.
         let mut crates: Vec<(PathBuf, Vec<&PathBuf>)> = Vec::new();
         let mut group_of: AHashMap<PathBuf, usize> = AHashMap::new();
@@ -245,6 +251,10 @@ impl RustCrateIndex {
     }
 
     /// The collected reference edges.
+    ///
+    /// Files reachable from the crate root only through `#[cfg(test)]`
+    /// `mod` chains contribute no edges; `#[cfg(test)]` regions inside
+    /// a production file are skipped the same way.
     ///
     /// # Returns
     ///
@@ -652,6 +662,50 @@ mod tests {
         assert!(
             idx.segments_for(&src("src/stray.rs")).is_none(),
             "stray file resolves to no module path"
+        );
+    }
+
+    #[test]
+    fn index_should_skip_edges_when_file_only_reached_through_gated_mod() {
+        let idx = index(vec![
+            (
+                src("src/lib.rs"),
+                "mod xbe;\n#[cfg(test)]\nmod ctx;\n".into(),
+            ),
+            (
+                src("src/ctx.rs"),
+                "pub fn t() { crate::xbe::f(); }\n".into(),
+            ),
+            (src("src/xbe.rs"), "pub fn f() {}\n".into()),
+        ]);
+        assert!(
+            idx.edges().is_empty(),
+            "a file reached only through a gated mod is no production caller: {:?}",
+            edge_triples(&idx)
+        );
+        // The gated file still resolves to a module path (it is in the tree).
+        assert!(idx.segments_for(&src("src/ctx.rs")).is_some());
+    }
+
+    #[test]
+    fn index_should_keep_edges_when_file_also_reached_ungated() {
+        let idx = index(vec![
+            (
+                src("src/lib.rs"),
+                "#[cfg(test)]\n#[path = \"shared.rs\"]\nmod t;\n\
+                 #[path = \"shared.rs\"]\nmod p;\nmod xbe;\n"
+                    .into(),
+            ),
+            (
+                src("src/shared.rs"),
+                "pub fn g() { crate::xbe::f(); }\n".into(),
+            ),
+            (src("src/xbe.rs"), "pub fn f() {}\n".into()),
+        ]);
+        assert_eq!(
+            edge_triples(&idx),
+            vec![(Path::new("src/shared.rs"), Path::new("src/xbe.rs"), 1)],
+            "an ungated mod edge keeps the file a production caller"
         );
     }
 

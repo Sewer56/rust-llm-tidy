@@ -49,12 +49,13 @@
 //! - `call_target_name`, `qualified_call_target`, `receiver_value_names`:
 //!   the call-target reads, shared with the DOC002 analysis.
 
-use super::lines::{end_past_newline, line_of, line_start_offsets, skip_one_line_ending};
 use super::regions::Regions;
 use crate::source::{ItemKind, ParseResult, SourceItem, TypeMember, VisibilityTier};
 pub(crate) use call_targets::{call_target_name, qualified_call_target, receiver_value_names};
+use lines::{end_past_newline, line_of, line_start_offsets, skip_one_line_ending};
 
 mod call_targets;
+mod lines;
 
 /// Attribute names marking a test method, per the accepted marker set; the
 /// customary `Attribute` suffix is stripped before matching.

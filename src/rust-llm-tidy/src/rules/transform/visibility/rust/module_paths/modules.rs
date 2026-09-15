@@ -7,7 +7,7 @@
 //! Crate-root discovery uses `cargo metadata --no-deps` (the CLI narrows each
 //! file standalone when that fails - see `cli/src/main.rs`).
 
-use super::{ParsedFile, child_of_kind, visibility_node};
+use crate::rules::transform::visibility::rust::{ParsedFile, child_of_kind, visibility_node};
 use ahash::AHashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -20,10 +20,13 @@ pub(super) enum ModChild {
     Inline,
     /// `mod foo;` -> resolved file path, declared name (`foo`), and verbatim
     /// visibility text (`"pub(crate)"`, or `None` for bare `pub`/private).
+    ///
+    /// `gated` is true when the attribute run contains `#[cfg(test)]`.
     File {
         path: PathBuf,
         name: Box<str>,
         vis_text: Option<String>,
+        gated: bool,
     },
 }
 
@@ -131,9 +134,11 @@ pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<Mo
             continue;
         };
         let parent_dir = path.parent().unwrap_or_else(|| Path::new("."));
+        let children_dir = mod_children_dir(&path, root);
         for child in resolve_mod_children(
             pf.tree.root_node(),
             parent_dir,
+            &children_dir,
             &path,
             &pf.source,
             &mut warnings,
@@ -145,6 +150,7 @@ pub fn build_module_tree(root: &Path, files: &[ParsedFile]) -> anyhow::Result<Mo
                     path: cpath,
                     name: _,
                     vis_text,
+                    gated: _,
                 } => {
                     // child floor: restricted declaration overrides; else inherit.
                     let child_floor = vis_text.or_else(|| floor.clone());
@@ -272,14 +278,34 @@ pub fn find_cargo_toml(start: &Path) -> anyhow::Result<PathBuf> {
     anyhow::bail!("no Cargo.toml found walking up from {}", start.display())
 }
 
+/// Base directory for attr-less `mod foo;` children of `file`.
+///
+/// rustc path rules: the crate root file and `mod.rs` files own their
+/// directory, so children sit beside them. Any other file `dir/foo.rs`
+/// resolves children in the subdirectory `dir/foo/`.
+///
+/// `#[path = "..."]` joins stay relative to the declaring file's own
+/// directory (not this base), so callers pass both directories.
+pub(super) fn mod_children_dir(file: &Path, root: &Path) -> PathBuf {
+    let dir = file.parent().unwrap_or_else(|| Path::new("."));
+    if file == root || file.file_name().is_some_and(|n| n == "mod.rs") {
+        return dir.to_path_buf();
+    }
+    dir.join(file.file_stem().unwrap_or_default())
+}
+
 /// Resolve top-level `mod` items of one file into children.
 ///
 /// Edition path rules: both editions prefer `foo.rs` over `foo/mod.rs`
-/// (mod.rs is the deprecated fallback).
+/// (mod.rs is the deprecated fallback). Attr-less children resolve
+/// against `children_dir` (see [`mod_children_dir`]).
 ///
-/// `#[path = "..."]` overrides normal resolution. `#[cfg]`-gated mods are
-/// treated as present. Unresolved `mod foo;` and missing `#[path]` targets
-/// append a warning rather than failing.
+/// `#[path = "..."]` overrides normal resolution, joining `path_dir`
+/// (the declaring file's own directory). `#[cfg]`-gated mods are
+/// treated as present; `gated` records a `#[cfg(test)]` gate.
+///
+/// Unresolved `mod foo;` and missing `#[path]` targets append a warning
+/// rather than failing.
 ///
 /// In the tree-sitter CST, `#[...]` attributes are *preceding sibling*
 /// `attribute_item` nodes (not children of the item).
@@ -290,7 +316,8 @@ pub fn find_cargo_toml(start: &Path) -> anyhow::Result<PathBuf> {
 /// Comments are trivia and do not break the run.
 pub(super) fn resolve_mod_children(
     root: Node,
-    parent_dir: &Path,
+    path_dir: &Path,
+    children_dir: &Path,
     parent: &Path,
     source: &str,
     warnings: &mut Vec<String>,
@@ -313,6 +340,7 @@ pub(super) fn resolve_mod_children(
                 }
                 let vis_text = vis_text_of(visibility_node(item), source);
                 let path_attr = find_path_attr(&pending_attrs, source);
+                let gated = has_cfg_test_attr(&pending_attrs, source);
                 let name = item
                     .child_by_field_name("name")
                     .and_then(|n| n.utf8_text(source.as_bytes()).ok())
@@ -328,7 +356,7 @@ pub(super) fn resolve_mod_children(
                 let resolved = match path_attr {
                     Some(p) => {
                         path_attr_used = true;
-                        let candidate = parent_dir.join(&p);
+                        let candidate = path_dir.join(&p);
                         // Canonicalize the candidate for lookup against the known set.
                         let cand_canon = fs::canonicalize(&candidate).unwrap_or(candidate.clone());
                         if known_files.contains(&cand_canon)
@@ -345,13 +373,14 @@ pub(super) fn resolve_mod_children(
                             None
                         }
                     }
-                    None => resolve_mod_file(parent_dir, name_str, known_files, warnings, parent),
+                    None => resolve_mod_file(children_dir, name_str, known_files, warnings, parent),
                 };
                 match resolved {
                     Some(p) => out.push(ModChild::File {
                         path: p,
                         name: Box::from(name_str),
                         vis_text,
+                        gated,
                     }),
                     None if !path_attr_used => warnings.push(format!(
                         "{}: `mod {};` resolves to no `{}.rs` or `{}/mod.rs`",
@@ -403,6 +432,19 @@ fn find_path_attr(attrs: &[Node], source: &str) -> Option<String> {
             .map(str::to_string);
     }
     None
+}
+
+/// True when the attribute run contains `#[cfg(test)]`: the attribute
+/// text must equal `cfg(test)` after trimming, so `cfg_attr` and other
+/// predicates never match.
+fn has_cfg_test_attr(attrs: &[Node], source: &str) -> bool {
+    attrs.iter().any(|a| {
+        let Some(attr) = child_of_kind(*a, "attribute") else {
+            return false;
+        };
+        attr.utf8_text(source.as_bytes())
+            .is_ok_and(|t| t.trim() == "cfg(test)")
+    })
 }
 
 /// `mod foo;` -> `foo.rs` (preferred) else `foo/mod.rs`.
@@ -628,6 +670,70 @@ mod tests {
             w.iter()
                 .any(|s| s.contains("`mod missing;`") && s.contains("missing.rs")),
             "generic warning names the missing module: {w:?}"
+        );
+    }
+
+    #[test]
+    fn non_mod_rs_parent_resolves_children_in_stem_subdir() {
+        // rustc rule: `dir/foo.rs` resolves `mod bar;` in `dir/foo/bar.rs`.
+        let files = parse_files(vec![
+            (src("src/lib.rs"), "mod builtins;\n".into()),
+            (src("src/builtins.rs"), "mod capacity_tests;\n".into()),
+            (
+                src("src/builtins/capacity_tests.rs"),
+                "pub fn f() {}\n".into(),
+            ),
+        ]);
+        let tree = build_module_tree(&src("src/lib.rs"), &files).unwrap();
+
+        // The child resolves without warnings.
+        assert!(
+            tree.contains(&src("src/builtins/capacity_tests.rs")),
+            "child of non-mod.rs parent sits in the stem subdirectory"
+        );
+        assert!(
+            tree.warnings().is_empty(),
+            "stem-subdir child must not warn: {:?}",
+            tree.warnings()
+        );
+    }
+
+    #[test]
+    fn crate_root_file_resolves_children_beside_it() {
+        // The crate root file owns its directory: children sit beside it.
+        let files = parse_files(vec![
+            (src("src/main.rs"), "mod util;\n".into()),
+            (src("src/util.rs"), "pub fn f() {}\n".into()),
+        ]);
+        let tree = build_module_tree(&src("src/main.rs"), &files).unwrap();
+        assert!(
+            tree.contains(&src("src/util.rs")),
+            "crate-root children resolve beside the root file"
+        );
+        assert!(
+            tree.warnings().is_empty(),
+            "no warnings: {:?}",
+            tree.warnings()
+        );
+    }
+
+    #[test]
+    fn mod_rs_children_still_resolve_beside_it() {
+        // mod.rs files own their directory (unchanged behavior).
+        let files = parse_files(vec![
+            (src("src/lib.rs"), "mod foo;\n".into()),
+            (src("src/foo/mod.rs"), "mod bar;\n".into()),
+            (src("src/foo/bar.rs"), "pub fn f() {}\n".into()),
+        ]);
+        let tree = build_module_tree(&src("src/lib.rs"), &files).unwrap();
+        assert!(
+            tree.contains(&src("src/foo/bar.rs")),
+            "mod.rs children resolve beside the mod.rs"
+        );
+        assert!(
+            tree.warnings().is_empty(),
+            "no warnings: {:?}",
+            tree.warnings()
         );
     }
 

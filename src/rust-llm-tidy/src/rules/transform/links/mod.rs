@@ -74,17 +74,16 @@
 //! assert!(matches!(fix_links(expected, &[], 1).0, Cow::Borrowed(_)));
 //! ```
 
+use self::scan::{definition_text, doc_block_key, line_segments, step_fence};
 use crate::rules::transform::tables::{split_terminator, strip_comment_prefix};
-use rewrite::{
+use fast::rewrite::{
     append_block_definitions, append_definitions, dominant_line_ending, replacement_pair,
     rewrite_links, rewrite_links_track, tally_links,
 };
-use scan::{definition_text, doc_block_key, line_segments, step_fence};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 mod fast;
-mod rewrite;
 mod scan;
 
 /// Collapse each inline link `[text](url)` to reference form when its

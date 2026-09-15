@@ -111,7 +111,7 @@ mod tests {
 
     /// Parses `source` as C# and runs its text checks.
     fn checks(source: &str) -> Vec<Diagnostic> {
-        text_checks(&super::super::parse::parse(source).unwrap())
+        text_checks(&crate::languages::csharp::parse::parse(source).unwrap())
     }
 
     /// The diagnostics carrying `code`.

@@ -130,7 +130,7 @@ pub(crate) fn check_file(
         || (profile.module_size == langs::ModuleSize::NonCode && module_size.include_non_code))
         && !disabled.contains(check::CODE_MODULE_SIZE)
     {
-        diagnostics.extend(check::mod001_module_size::check(
+        diagnostics.extend(check::rust::mod001_module_size::check(
             &source,
             ext,
             module_size.max_lines,

@@ -1,9 +1,9 @@
 //! Test-only [`ReorderProfile`] implementations shared by the graph and
 //! reorder-stage test suites; compiled only under `#[cfg(test)]`.
 //!
-//! [`ReorderProfile`]: super::profile::ReorderProfile
+//! [`ReorderProfile`]: super::collect::profile::ReorderProfile
 
-use super::profile::{
+use super::collect::profile::{
     DeclNamePosition, PhaseContext, PhaseStrategy, ReferencePosition, ReferenceWalk, ReorderProfile,
 };
 use super::toposort::TieBreak;

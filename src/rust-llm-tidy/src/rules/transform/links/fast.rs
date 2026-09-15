@@ -7,7 +7,7 @@
 //! It avoids pair-count hashing, a second parse, pair-set lookups, per-line
 //! output allocations, and separate line-ending scans.
 
-use super::rewrite::{
+use self::rewrite::{
     append_definition, blank_line_prefix, needs_blank_before_defs, replacement_pair,
 };
 use super::scan::{definition_text, line_segments, parse_inline_link, step_fence};
@@ -15,6 +15,8 @@ use crate::rules::transform::tables::{split_terminator, strip_comment_prefix};
 use memchr::memmem;
 use smallvec::SmallVec;
 use std::borrow::Cow;
+
+pub(super) mod rewrite;
 
 const NO_BLOCK: usize = usize::MAX;
 

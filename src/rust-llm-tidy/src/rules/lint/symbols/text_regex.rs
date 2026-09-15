@@ -2,8 +2,8 @@
 
 use super::{SymbolObservations, observation};
 use crate::config::{CompiledSymbolRule, RegexComments, SymbolMatcher};
+use crate::rules::lint::comment_spans::comment_spans;
 use crate::source::ParseResult;
-use crate::text::comment_spans::comment_spans;
 use core::ops::Range;
 use std::collections::BTreeMap;
 

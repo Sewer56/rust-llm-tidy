@@ -4,18 +4,22 @@
 //! imports before a scope's children, and turns each eligible chain
 //! head into a hint through `suggestion_under`.
 
-use super::imports::{collect_use, use_path};
-use super::scope::{
+use self::scope::{
     Binding, Import, ScopeFrame, covering_import, frame_mentions, frame_shadows, is_full_path,
 };
-use super::syntax::{
+use self::syntax::{
     contains_conditional, has_conditional_attribute, is_chain_head, is_conditional_attribute,
     is_scope, leaf_text, scoped_segments,
 };
 use crate::reporting::{Diagnostic, Severity};
 use crate::rules::lint::CODE_QUALIFIED_PATH;
 use crate::source::ItemKind;
+use imports::{collect_use, use_path};
 use tree_sitter::Node;
+
+mod imports;
+mod scope;
+mod syntax;
 
 /// What an existing import advises: the imported short name
 /// and the replacement text for the whole path.

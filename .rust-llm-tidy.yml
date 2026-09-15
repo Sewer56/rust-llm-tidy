@@ -142,12 +142,28 @@ exclude:
     rules:
       - DOC006
   # Tests reference placeholder markers and keep module/case lists together.
+  # The doc_check crate keeps its flat per-rule acceptance layout; helpers
+  # are shared across rule tests, not nested under one.
   - paths: ["src/cli/tests/doc_check/**/*"]
-    rules: [DOC006, TEXT008]
+    rules: [DOC006, MOD004, TEXT008]
   # The MOD001 acceptance matrix is intentionally one file; it sits a few
   # lines over the 500-line budget and no split improves it.
   - paths: ["src/cli/tests/doc_check/mod001_module_size.rs"]
     rules: [MOD001]
+  # `input::file_io` and `reporting::change` are shared input/reporting
+  # layers; `pipeline::files` is a consumer, not their owner.
+  - paths:
+      - "src/rust-llm-tidy/src/pipeline/files/reorder.rs"
+    rules: [MOD004]
+  # Language MOD004 rule implementations stay in the rules domain; the
+  # pipeline orchestrates them.
+  - paths:
+      - "src/rust-llm-tidy/src/pipeline/sole_caller.rs"
+    rules: [MOD004]
+  # `reporting::diagnostic` is the shared reporting core type.
+  - paths:
+      - "src/rust-llm-tidy/src/rules/lint/text/text006_verbose_synonyms/mod.rs"
+    rules: [MOD004]
 
 # Commented examples (uncomment and tailor paths to enable):
 #
