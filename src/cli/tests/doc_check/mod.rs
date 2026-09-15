@@ -260,6 +260,14 @@ fn text007_marker_and_passive_md() -> String {
     "This no longer panics.\nErrors are returned by the scanner.\n".to_string()
 }
 
+/// Rewrite path separators in CLI diagnostics to `/`.
+///
+/// The CLI reports native separators, so assertions anchoring on
+/// fixture-relative paths must spell them Unix-style on every platform.
+fn unix_separators(stderr: &str) -> String {
+    stderr.replace('\\', "/")
+}
+
 /// The directory holding the Python lint fixtures.
 fn python_fixture_dir() -> PathBuf {
     fixture_dir().join("python")

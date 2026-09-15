@@ -6,6 +6,7 @@
 
 use crate::common::binary;
 use crate::manifest_dir;
+use crate::unix_separators;
 use std::process::Command;
 
 /// Unrelated projects measure namespaces separately: a shared
@@ -21,7 +22,8 @@ fn csharp_mod004_should_flag_each_project_when_two_projects_share_a_namespace() 
         .arg(&root);
 
     let output = command.output().unwrap();
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Hint paths anchor inside each project, so normalize separators first.
+    let stderr = unix_separators(&String::from_utf8_lossy(&output.stderr));
 
     assert!(
         output.status.success(),

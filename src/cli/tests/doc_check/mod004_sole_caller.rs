@@ -6,6 +6,7 @@
 
 use crate::common::binary;
 use crate::manifest_dir;
+use crate::unix_separators;
 use std::process::Command;
 
 /// A workspace run reports each crate's sole-caller hint, including
@@ -19,7 +20,8 @@ fn mod004_should_flag_every_crate_when_run_spans_workspace() {
         .arg(&root)
         .output()
         .unwrap();
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Hint paths anchor inside each crate, so normalize separators first.
+    let stderr = unix_separators(&String::from_utf8_lossy(&output.stderr));
 
     assert!(
         output.status.success(),
