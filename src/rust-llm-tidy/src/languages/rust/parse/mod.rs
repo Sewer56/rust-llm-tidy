@@ -269,7 +269,7 @@ fn collect_impl_members(
 /// doc comments.
 ///
 /// Non-attachable nodes (plain `//` comments, inner `//!` docs, empty
-/// statements) are transparent: they neither attach to an item nor break a
+/// statements) are transparent. They neither attach to an item nor break a
 /// pending run of attachable trivia.
 fn collect_item_entries(root: tree_sitter::Node<'_>) -> Vec<RawEntry<'_>> {
     let mut entries = Vec::new();

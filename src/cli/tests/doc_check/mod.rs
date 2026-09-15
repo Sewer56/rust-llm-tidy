@@ -14,6 +14,7 @@
 //! - `json_output`: `--output-mode json` record contracts
 //! - `mod001_module_headers`: MOD001 module-header exclusion acceptance
 //! - `mod001_module_size`: cross-language MOD001 acceptance
+//! - `mod004_sole_caller`: MOD004 per-crate indexing over a workspace fixture
 //! - `python`: Python lints over the `.py` fixtures
 //! - `rust`: Rust lints over the `.rs` fixtures
 //!
@@ -44,6 +45,7 @@ mod forbidden_characters;
 mod json_output;
 mod mod001_module_headers;
 mod mod001_module_size;
+mod mod004_sole_caller;
 mod python;
 mod rust;
 mod text001_paragraph_size;
@@ -256,6 +258,14 @@ fn temp_named_file(rel: &str, content: &str) -> PathBuf {
 /// passive construction, so both TEXT007 classes are observable.
 fn text007_marker_and_passive_md() -> String {
     "This no longer panics.\nErrors are returned by the scanner.\n".to_string()
+}
+
+/// Rewrite path separators in CLI diagnostics to `/`.
+///
+/// The CLI reports native separators, so assertions anchoring on
+/// fixture-relative paths must spell them Unix-style on every platform.
+fn unix_separators(stderr: &str) -> String {
+    stderr.replace('\\', "/")
 }
 
 /// The directory holding the Python lint fixtures.

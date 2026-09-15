@@ -118,8 +118,8 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
 /// Whether `diag` is a TEXT007 narration-marker finding.
 ///
 /// Callers with the checked file's path (the pipeline lint pass) use
-/// this to suppress marker findings in release and migration notes;
-/// passive findings still fire there. This module never sees paths.
+/// this to suppress marker findings in release and migration notes.
+/// Passive findings still fire there. This module never sees paths.
 pub(crate) fn is_narration_marker(diag: &Diagnostic) -> bool {
     diag.code == CODE_PASSIVE_NARRATION && diag.message.starts_with(NARRATION_MARKER_SUMMARY)
 }

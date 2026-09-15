@@ -1,5 +1,9 @@
-//! Build MOD004's whole-crate and cross-project sole-caller facts for
-//! the lint phase.
+//! Build MOD004's per-crate Rust and per-project C# sole-caller facts
+//! for the lint phase.
+//!
+//! Rust inputs yield one whole-crate parse per owning crate; C# inputs
+//! yield one namespace-reference index per project closure. Both
+//! merge into one finding set keyed by anchor file.
 
 use super::{RunOptions, effective_policy};
 use crate::config::CompiledConfig;
@@ -12,6 +16,7 @@ use crate::rules::lint::rust::mod004_sole_caller;
 use crate::rules::lint::sole_caller::SoleCallerFindings;
 use crate::rules::registry as check;
 use crate::source::ParseResult;
+use ahash::AHashMap;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -19,10 +24,12 @@ use std::path::{Path, PathBuf};
 ///
 /// Gates mirror the Rust facts minus the Cargo permission: linting
 /// may run, and at least one `.cs` input must select MOD004 under its
-/// resolved per-file policy.
+/// policy.
 ///
-/// The parses come from the already-refreshed [`CSharpIndex`]; the
-/// project closure is never parsed twice.
+/// The pass measures each scope alone (nearest `.csproj` plus its
+/// references; project-less inputs form one loose scope). A scope
+/// keeps only findings anchored at its own files and reuses the
+/// refreshed [`CSharpIndex`] parses.
 ///
 /// # Arguments
 ///
@@ -50,17 +57,26 @@ pub(super) fn csharp_sole_caller_findings(
         return None;
     }
     let index = index?;
-
-    // Sort by path for a deterministic edge order; the index itself
-    // iterates its cache unordered.
-    let mut parses: Vec<(&Path, &ParseResult)> = index.parses().collect();
-    parses.sort_unstable_by_key(|(path, _)| *path);
-    Some(csharp_mod004::analyze(&NamespaceRefIndex::from_parses(
-        parses,
-    )))
+    let scopes = index.scopes();
+    let mut merged = SoleCallerFindings::new(AHashMap::new());
+    for scope in scopes.list() {
+        // Scope files arrive sorted, so edge order stays deterministic.
+        let parses: Vec<(&Path, &ParseResult)> = scope
+            .files
+            .iter()
+            .filter_map(|file| index.parsed(file).map(|parse| (file.as_path(), parse)))
+            .collect();
+        let mut findings = csharp_mod004::analyze(&NamespaceRefIndex::from_parses(parses));
+        // Overlapping closures double-report; keep only the anchors
+        // this scope's project owns (`None` = the loose scope).
+        findings.retain_anchors(|file| scopes.owned_by(file, scope.project.as_deref()));
+        merged.merge(findings);
+    }
+    Some(merged)
 }
 
-/// Build MOD004's sole-caller findings from one whole-crate parse.
+/// Build MOD004's sole-caller findings from one whole-crate parse per
+/// owning crate.
 ///
 /// Gates mirror the vis context: linting may run and the run options
 /// permit Cargo discovery (the crate lookup also runs
@@ -77,12 +93,12 @@ pub(super) fn csharp_sole_caller_findings(
 ///   or language defaults
 /// - `included` - explicit CLI include set, when present
 /// - `disabled` - explicit CLI exclude set
-/// - `warnings` - sink for the one discovery-failure warning
+/// - `warnings` - sink for per-crate discovery-failure warnings
 ///
 /// # Returns
 ///
-/// The grouped findings when the gates pass and crate discovery
-/// succeeds; `None` otherwise.
+/// The grouped findings when the gates pass; empty when every crate
+/// fails discovery, and `None` when a gate fails.
 pub(super) fn sole_caller_findings(
     paths: &[PathBuf],
     options: &RunOptions,
@@ -97,7 +113,11 @@ pub(super) fn sole_caller_findings(
     if !selects_mod004(paths, "rs", config, included, disabled) {
         return None;
     }
-    RustCrateIndex::build(paths, warnings).map(|index| mod004_sole_caller::analyze(&index))
+    let mut merged = SoleCallerFindings::new(AHashMap::new());
+    for index in &RustCrateIndex::build_all(paths, warnings) {
+        merged.merge(mod004_sole_caller::analyze(index));
+    }
+    Some(merged)
 }
 
 /// Whether the explicit selection still permits any lint phase.

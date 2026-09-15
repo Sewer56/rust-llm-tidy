@@ -36,9 +36,10 @@ mod toposort;
 /// original order.
 ///
 /// Inside a run, members bucket by [`ReorderProfile::member_phase`] with
-/// each phase applying [`ReorderProfile::member_strategy`]. Member phases
-/// honor [`PhaseStrategy::Stable`] and [`PhaseStrategy::Dependency`];
-/// other strategies fall back to `Stable`.
+/// each phase applying [`ReorderProfile::member_strategy`].
+///
+/// Member phases honor [`PhaseStrategy::Stable`] and
+/// [`PhaseStrategy::Dependency`]; other strategies fall back to `Stable`.
 ///
 /// Returns a permutation of `0..members.len()` (identity when nothing
 /// moves).
@@ -421,9 +422,9 @@ fn dependency_order(
 /// Topologically sort `group` (item or member positions) by `edges`.
 ///
 /// [`toposort`] speaks in positions local to one call (`0..group.len()`),
-/// while callers hold node ids from a wider numbering: item indices into
-/// `parsed.items` for top-level items, or member positions for one type
-/// body.
+/// while callers hold node ids from a wider numbering. Item indices map
+/// into `parsed.items` for top-level items; member positions map into
+/// one type body.
 ///
 /// This adapter bridges the two:
 ///

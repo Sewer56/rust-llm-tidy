@@ -93,9 +93,11 @@ pub struct SymbolRule {
     pub scope: Option<ReportingScope>,
     /// Hint severity; absent uses [`Severity::Reminder`]. Exclusions ignore it.
     pub severity: Option<Severity>,
-    /// For usage hints, require zero arguments (`true`) or nonzero (`false`).
-    /// Absent imposes no argument constraint. Arrays have no call arguments;
-    /// their sizes and initializer elements do not count as arguments.
+    /// For usage hints, require zero arguments (`true`) or nonzero
+    /// (`false`); absent imposes no argument constraint.
+    ///
+    /// Arrays have no call arguments; their sizes and initializer elements
+    /// do not count as arguments.
     pub zero_arguments: Option<bool>,
     /// For usage hints, require no initializer (`true`) or one (`false`).
     /// Absent imposes no initializer constraint.

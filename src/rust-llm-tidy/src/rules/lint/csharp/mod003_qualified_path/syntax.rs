@@ -14,7 +14,7 @@ pub(super) fn contains_conditional(node: Node) -> bool {
 /// True when `node` is the outermost node of a dotted name chain, so
 /// it carries the whole path.
 ///
-/// Inner chain links are covered by their parent: an expression
+/// Inner chain links are covered by their parent. An expression
 /// receiver such as `System.Console` inside
 /// `System.Console.WriteLine` is a link, never a second occurrence,
 /// so call-target receivers are never double-counted.

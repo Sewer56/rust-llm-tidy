@@ -189,9 +189,11 @@ pub const LINT_FIXTURES: &[(&str, &str)] = &[
 /// Reorder benchmark fixtures: `(name, source)` pairs, named by reorder state.
 ///
 /// `stable` fixtures are already in standard order (reorder is a no-op);
-/// `dirty` fixtures move many items. The `medium/stable` and `large/stable`
-/// fixtures are the reorder output of their clean counterparts, so they are
-/// genuine Rust source already in standard order.
+/// `dirty` fixtures move many items.
+///
+/// The `medium/stable` and `large/stable` fixtures are the reorder output
+/// of their clean counterparts, so they are genuine Rust source already in
+/// standard order.
 #[allow(dead_code)] // each bench compiles `common` separately, using one set
 pub const REORDER_FIXTURES: &[(&str, &str)] = &[
     (

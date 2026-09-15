@@ -79,8 +79,8 @@ impl<'a> PendingTrivia<'a> {
     /// its body, when it carries no attributes).
     ///
     /// Accepts any line or block comment on the line directly above the
-    /// boundary: outer docs (`///`/`/** */`), inner docs (`//!`/`/*! */`),
-    /// and plain `//`/`/* */` comments.
+    /// boundary. Outer docs (`///`/`/** */`), inner docs (`//!`/`/*! */`),
+    /// and plain `//`/`/* */` comments all count.
     ///
     /// The last line of a multi-line run counts. A blank line between the
     /// comment and the boundary breaks the run.

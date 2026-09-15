@@ -274,8 +274,10 @@ fn first_segment_node<'t>(walk: &'static ReferenceWalk, node: Node<'t>) -> Optio
 
 /// True when `node` (an `identifier`/`type_identifier`) is in a declaration
 /// position (an item name, a binding pattern, an alias) rather than a
-/// reference position. Declaration names are not recorded as references;
-/// the spots come from the walk data.
+/// reference position.
+///
+/// Declaration names are not recorded as references; the spots come from
+/// the walk data.
 fn is_decl_position(walk: &'static ReferenceWalk, node: Node) -> bool {
     let Some(parent) = node.parent() else {
         return false;

@@ -24,9 +24,11 @@ use std::path::Path;
 ///
 /// Transformations run in pipeline order; lint findings describe the final
 /// source.
+///
 /// Text fixes process Markdown/plaintext documents or parser-verified standalone
 /// line-comment groups. Unsupported source and syntax-error trees skip text fixes;
 /// literals, block comments, and trailing comments remain unchanged.
+///
 /// Rust visibility uses only local re-exports, and C# throw analysis uses only
 /// this buffer.
 /// Use [`crate::run`] for project-aware processing.

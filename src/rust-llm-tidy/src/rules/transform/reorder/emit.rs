@@ -264,7 +264,7 @@ pub fn compute_moves(items: &[SourceItem], perm: &Permutation) -> Vec<ReorderMov
 /// carried leading trivia (blank lines and plain `//` section headers).
 ///
 /// Leading and trailing whitespace are stripped ([`str::trim`]) so separators
-/// do not pile up when items move, while the `//` header and `///`/`//!` doc
+/// do not pile up when items move. The `//` header and `///`/`//!` doc
 /// lines (non-whitespace) are preserved.
 ///
 /// Inter-item spacing is then re-derived from the compact-group logic below.

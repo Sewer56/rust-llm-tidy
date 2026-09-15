@@ -453,18 +453,20 @@ fn fence_info(trimmed: &str) -> &str {
 
 /// True for lines that look like code signatures rather than plain text.
 ///
-/// Signature keywords must start the line, after any Rust visibility
-/// modifier; keyword mentions inside text stay measured.
+/// A line qualifies when a declaration keyword starts it, after any Rust
+/// visibility modifier, or when it ends with `{`, `(`, or `->`.
+///
+/// Keyword mentions in text stay measured, as do `use ...;` or
+/// `let ...;` statements; fence code to exempt it.
 fn is_signature_line(trimmed: &str) -> bool {
-    for keyword in ["fn ", "struct ", "enum ", "trait ", "impl "] {
+    for keyword in [
+        "fn ", "struct ", "enum ", "trait ", "impl ", "type ", "const ", "static ",
+    ] {
         if starts_with_signature_keyword(trimmed, keyword) {
             return true;
         }
     }
-    trimmed.ends_with(';')
-        || trimmed.ends_with('{')
-        || trimmed.ends_with('(')
-        || trimmed.ends_with("->")
+    trimmed.ends_with('{') || trimmed.ends_with('(') || trimmed.ends_with("->")
 }
 
 /// True when `keyword` starts `line`, after any Rust visibility modifier
@@ -967,6 +969,25 @@ mod tests {
         assert_eq!(paragraph_at(&doc, 1).unwrap().size, "prose".len());
     }
 
+    // A prose line ending with a semicolon stays a paragraph member:
+    // wrapping a clause list must not split the paragraph.
+    #[test]
+    fn analyze_keeps_semicolon_ended_prose_in_paragraph() {
+        let first = "a scope keeps only findings anchored at the files it owns;";
+        let second = "the parses come from the refreshed index and the closure is";
+        let third = "parsed once so the joined size crosses the two hundred and";
+        let fourth = "forty character budget for paragraphs and the test wants a";
+        let fifth = "clear margin above it";
+        let source = format!("/// {first}\n/// {second}\n/// {third}\n/// {fourth}\n/// {fifth}\n");
+
+        let doc = analyze(&source, "rs");
+
+        let joined = format!("{first} {second} {third} {fourth} {fifth}");
+        assert!(joined.len() > 240, "fixture must cross the budget");
+        assert_eq!(doc.paragraphs.len(), 1, "one unsplit paragraph");
+        assert_eq!(paragraph_at(&doc, 1).unwrap().size, joined.len());
+    }
+
     // A backtick-wrapped signature mention is text, not a signature line:
     // it counts toward the paragraph budget in full.
     #[test]
@@ -982,14 +1003,33 @@ mod tests {
     // visibility modifiers.
     #[test]
     fn analyze_exempts_signature_keywords_at_line_start() {
-        let source = indoc! {"
+        let source = indoc! {r#"
             /// fn compute(x: usize) -> usize
             /// pub struct Config
             /// pub(crate) enum Mode
             /// pub(in crate::base) trait Load
-        "};
+            /// type Alias = usize;
+            /// const MAX: usize = 8;
+            /// pub static NAME: &str = "x";
+        "#};
         let doc = analyze(source, "rs");
         assert!(doc.paragraphs.is_empty());
+    }
+
+    // `use` and `let` statements are not declarations: they stay measured.
+    #[test]
+    fn analyze_measures_use_and_let_statements() {
+        let source = indoc! {"
+            /// use crate::config::Settings;
+            /// let value = 3;
+        "};
+        let doc = analyze(source, "rs");
+        assert_eq!(doc.paragraphs.len(), 1);
+        let para = paragraph_at(&doc, 1).unwrap();
+        assert_eq!(
+            para.size,
+            "use crate::config::Settings; let value = 3;".len()
+        );
     }
 
     // The pass measures inline keyword mentions in text; it exempts none.

@@ -101,8 +101,8 @@ pub(super) fn replacement_pair(text: &str, url: &str) -> (String, String) {
 /// Output is allocated lazily: only once the first hoisted link is found. If
 /// no link in `body` is hoisted, returns `None` with zero allocation.
 ///
-/// `last` tracks how far the verbatim prefix of `body` has been emitted;
-/// non-hoisted inline links leave `last` alone so their bytes are emitted
+/// `last` tracks how far the verbatim prefix of `body` has been emitted.
+/// Non-hoisted inline links leave `last` alone so their bytes are emitted
 /// verbatim in a later gap (or the trailing copy), exactly like the eager
 /// version.
 pub(super) fn rewrite_links<'a>(

@@ -256,8 +256,9 @@ fn narrow_if_eligible<'a, 'n>(
     }
 
     // Re-export guard: skip items whose name is re-exported via `pub use`;
-    // a glob sentinel ("*") disables narrowing for every named child. The
-    // name is only read when a re-export set exists (rare path).
+    // a glob sentinel ("*") disables narrowing for every named child.
+    //
+    // The name is only read when a re-export set exists (rare path).
     if let Some(set) = reexported
         && let Ok(n) = name.utf8_text(source.as_bytes())
         && (set.contains(n) || set.contains("*"))

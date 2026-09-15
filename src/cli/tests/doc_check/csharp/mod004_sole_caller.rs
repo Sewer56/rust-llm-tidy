@@ -6,7 +6,43 @@
 
 use crate::common::binary;
 use crate::manifest_dir;
+use crate::unix_separators;
 use std::process::Command;
+
+/// Unrelated projects measure namespaces separately: a shared
+/// `App.Core` name with different callers flags once per project
+/// instead of silencing each other.
+#[test]
+fn csharp_mod004_should_flag_each_project_when_two_projects_share_a_namespace() {
+    let root = manifest_dir().join("tests/fixtures/doc/csharp/mod004_two_projects");
+
+    let mut command = Command::new(binary());
+    command
+        .args(["--no-config", "--include", "MOD004"])
+        .arg(&root);
+
+    let output = command.output().unwrap();
+    // Hint paths anchor inside each project, so normalize separators first.
+    let stderr = unix_separators(&String::from_utf8_lossy(&output.stderr));
+
+    assert!(
+        output.status.success(),
+        "hints never fail the run:\n{stderr}"
+    );
+    assert_eq!(stderr.matches("hint[MOD004]").count(), 2, "{stderr}");
+    assert!(
+        stderr.contains(
+            "p1/Caller.cs:7: hint[MOD004]: namespace `App.Core` is referenced only by `App.Run` (1 reference)."
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(
+            "p2/Caller.cs:7: hint[MOD004]: namespace `App.Core` is referenced only by `App.Web` (1 reference)."
+        ),
+        "{stderr}"
+    );
+}
 
 /// Project-scope and explicit-pair inputs report the same sole-caller
 /// hint, anchored at the caller's file.

@@ -35,9 +35,11 @@ pub struct ChangedLineCollection {
 /// repository.
 ///
 /// Each differing tracked file uses one immutable temporary-file diff.
-/// New and untracked files include all current lines. Deleted inputs have
-/// an empty source and no eligible lines. Staged renames retain baseline content;
-/// an unstaged move to an untracked name is treated as a new file.
+/// New and untracked files include all current lines.
+///
+/// Deleted inputs have an empty source and no eligible lines. Staged
+/// renames retain baseline content; an unstaged move to an untracked name
+/// counts as a new file.
 ///
 /// Callers must grant Git and input-file reads before invoking this function and
 /// prevent concurrent input/index changes during collection. The function does

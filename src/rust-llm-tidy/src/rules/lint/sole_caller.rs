@@ -20,6 +20,35 @@ impl SoleCallerFindings {
         Self { by_file }
     }
 
+    /// Absorb `other`'s anchors into this set.
+    ///
+    /// Production merges come from disjoint analysis scopes (one crate
+    /// or project closure per anchor file), so merge order does not
+    /// matter. A shared anchor appends `other`'s findings after
+    /// `self`'s.
+    ///
+    /// # Arguments
+    ///
+    /// - `other` - findings from one more analysis scope; consumed.
+    pub(crate) fn merge(&mut self, other: Self) {
+        for (file, mut findings) in other.by_file {
+            self.by_file.entry(file).or_default().append(&mut findings);
+        }
+    }
+
+    /// Drop findings anchored at files rejected by `keep`.
+    ///
+    /// Scopes overlap when one project references another; a scope
+    /// keeps only the anchors it owns, so one file never anchors
+    /// findings from two scopes.
+    ///
+    /// # Arguments
+    ///
+    /// - `keep` - receives each anchor file; return `true` to keep it.
+    pub(crate) fn retain_anchors(&mut self, keep: impl Fn(&Path) -> bool) {
+        self.by_file.retain(|file, _| keep(file));
+    }
+
     /// The diagnostics anchored at `path`.
     ///
     /// Falls back to the canonicalized spelling of `path`: findings are
@@ -61,7 +90,7 @@ mod tests {
     use crate::reporting::{Diagnostic, Severity};
     use crate::rules::lint::CODE_MOD004;
     use ahash::AHashMap;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     #[cfg(unix)]
     use std::fs;
@@ -116,7 +145,48 @@ mod tests {
         assert_eq!(count, 3);
     }
 
+    /// Merging keeps each scope's anchors; a shared anchor appends.
+    #[test]
+    fn merge_should_combine_scopes_and_append_shared_anchors() {
+        // Arrange: an empty accumulator, then one scope anchoring at
+        // `b.rs`, then another anchoring at `a.rs` and the shared
+        // `b.rs`.
+        let mut accumulator = SoleCallerFindings::new(AHashMap::new());
+        let mut second = AHashMap::new();
+        second.insert(PathBuf::from("b.rs"), vec![finding("three")]);
+        let mut first = AHashMap::new();
+        first.insert(PathBuf::from("a.rs"), vec![finding("one")]);
+        first.insert(PathBuf::from("b.rs"), vec![finding("four")]);
+
+        // Act.
+        accumulator.merge(SoleCallerFindings::new(second));
+        accumulator.merge(SoleCallerFindings::new(first));
+
+        // Assert.
+        let names: Vec<_> = accumulator
+            .for_file(&PathBuf::from("b.rs"))
+            .iter()
+            .map(|d| d.item_name.as_deref())
+            .collect();
+        assert_eq!(names, [Some("three"), Some("four")]);
+        assert_eq!(accumulator.all().count(), 3);
+    }
+
     // Edge cases.
+
+    /// Only owned anchors survive; emptied anchors disappear.
+    #[test]
+    fn retain_anchors_should_drop_findings_when_anchor_is_not_owned() {
+        // Arrange.
+        let mut findings = grouped();
+
+        // Act.
+        findings.retain_anchors(|file| file != Path::new("a.rs"));
+
+        // Assert.
+        assert!(findings.for_file(&PathBuf::from("a.rs")).is_empty());
+        assert_eq!(findings.all().count(), 1, "b.rs keeps its finding");
+    }
 
     /// Unknown anchors anchor nothing.
     #[test]

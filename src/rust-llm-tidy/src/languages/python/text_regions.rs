@@ -7,9 +7,9 @@
 //! and emits two kinds of [`DocRegion`] for the lint module's measuring
 //! core:
 //!
-//! - a triple-quoted string that is the first statement of a module,
-//!   class, or function becomes a [`Docstring`]-dialect region, with the
-//!   quotes stripped and the docstring's common indentation removed;
+//! - a triple-quoted string starting a module, class, or function
+//!   becomes a [`Docstring`]-dialect region, with the quotes stripped
+//!   and the common indentation removed;
 //! - `#` comments become markdown-text regions exactly as the comment
 //!   lexicon measured them. Contiguous standalone runs join one region,
 //!   the marker run and one space strip, and a trailing comment is its
