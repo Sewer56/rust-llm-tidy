@@ -24,6 +24,7 @@ mod text006_verbose_synonyms;
 mod text007_passive_narration;
 mod text008_list_density;
 mod text010_documentation_context;
+mod urls;
 
 /// TEXT001 through TEXT009 diagnostics for one measured document.
 ///
