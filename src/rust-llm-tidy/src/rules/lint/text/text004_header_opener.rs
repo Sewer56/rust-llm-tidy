@@ -5,6 +5,8 @@ use crate::reporting::diagnostic::{Diagnostic, Severity};
 use crate::rules::registry::CODE_HEADER_OPENER;
 use crate::text::measurement::{Document, Paragraph, ParagraphKind, StrippedLine};
 
+mod measurement;
+
 /// Plain openers with more measured chars than this fire TEXT004.
 ///
 /// Tighter than TEXT001's paragraph limit so the lead stays scannable even
@@ -16,6 +18,9 @@ const OPENER_SENTENCE_LIMIT: usize = 2;
 
 /// TEXT004 diagnostics for `doc`: one Warning per opener paragraph that
 /// exceeds the sentence limit, or, when plain, the char limit.
+///
+/// The char budget excludes separate-line URLs, optionally preceded by one
+/// word. Sentence checks still use the full paragraph text.
 ///
 /// Openers:
 ///
@@ -35,7 +40,14 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
 
         let sentences = sentence_count(&para.text);
         let over_sentences = sentences > OPENER_SENTENCE_LIMIT;
-        let over_chars = para.kind == ParagraphKind::Plain && para.size > OPENER_CHAR_LIMIT;
+        // Exclusions can only shorten the opener; skip remeasurement when
+        // the cached count already fits or the character budget does not apply.
+        let size = if para.kind == ParagraphKind::Plain && para.size > OPENER_CHAR_LIMIT {
+            measurement::char_count(para)
+        } else {
+            para.size
+        };
+        let over_chars = para.kind == ParagraphKind::Plain && size > OPENER_CHAR_LIMIT;
         if over_sentences || over_chars {
             let summary = if over_sentences {
                 format!(
@@ -44,12 +56,11 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
                 )
             } else {
                 format!(
-                    "opener paragraph is {} chars long; maximum is \
-                     {OPENER_CHAR_LIMIT}.",
-                    para.size
+                    "opener paragraph is {size} chars long; maximum is \
+                     {OPENER_CHAR_LIMIT}."
                 )
             };
-            diags.push(opener_diagnostic(para, &summary));
+            diags.push(opener_diagnostic(para, &summary, over_chars));
         }
     }
     diags
@@ -80,8 +91,8 @@ fn is_opener(doc: &Document, headings: &[usize], index: usize, para: &Paragraph)
 }
 
 /// TEXT004 Warning for one opener paragraph, reported at its first line.
-fn opener_diagnostic(para: &Paragraph, summary: &str) -> Diagnostic {
-    let bullets = [
+fn opener_diagnostic(para: &Paragraph, summary: &str, over_chars: bool) -> Diagnostic {
+    let mut bullets = vec![
         "Lead with the main point, ideally in one short sentence.".to_string(),
         format!("Keep a plain opener to {OPENER_CHAR_LIMIT} measured chars or fewer."),
         "Move supporting details below the opener without losing necessary \
@@ -90,6 +101,14 @@ fn opener_diagnostic(para: &Paragraph, summary: &str) -> Diagnostic {
         "Use bullets for distinct facts, one fact per bullet.".to_string(),
         "Keep a connected explanation in a separate short paragraph.".to_string(),
     ];
+    if over_chars {
+        bullets.push(
+            "Put links on a separate line. A URL alone, or one word followed by a URL, \
+             does not count toward the opener's character limit."
+                .to_string(),
+        );
+    }
+
     Diagnostic {
         title: Some("header opener shape".into()),
         severity: Severity::Warning,
@@ -446,14 +465,18 @@ mod tests {
     // The summary reports the sentence count against the limit, with the
     // guidance bullets.
     #[rstest]
-    #[case::sentences("Sentence. ".repeat(OPENER_SENTENCE_LIMIT + 1), "opener paragraph has")]
-    #[case::chars("x".repeat(OPENER_CHAR_LIMIT + 1), "opener paragraph is")]
+    #[case::sentences("Sentence. ".repeat(OPENER_SENTENCE_LIMIT + 1), "opener paragraph has", false)]
+    #[case::chars("x".repeat(OPENER_CHAR_LIMIT + 1), "opener paragraph is", true)]
+    #[case::both("Sentence. ".repeat(20), "opener paragraph has", true)]
     fn text_checks_should_explain_opener_cause_and_guidance(
         #[case] source: String,
         #[case] summary: &str,
+        #[case] link_guidance: bool,
     ) {
+        // Act
         let diags = run_text_checks(&source, "md");
 
+        // Assert
         let found = codes(&diags, CODE_HEADER_OPENER);
         assert_eq!(found.len(), 1);
         let msg = &found[0].message;
@@ -461,6 +484,13 @@ mod tests {
         assert!(msg.contains("\nWhy: A long opener delays the main point and makes the section harder to scan.\nSuggestions:\n  - "));
         assert!(msg.contains("main point"));
         assert!(msg.contains("one fact per bullet"));
+        assert_eq!(
+            msg.contains(
+                "Put links on a separate line. A URL alone, or one word followed by a URL, \
+                          does not count toward the opener's character limit."
+            ),
+            link_guidance,
+        );
     }
 
     // The sentence count itself is unit-pinned on the helper.

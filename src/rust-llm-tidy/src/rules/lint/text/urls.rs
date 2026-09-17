@@ -18,7 +18,7 @@ const SCHEME_PREFIXES: &[&str] = &[
 /// The range covers the URL token alone: surrounding markdown, link labels,
 /// and trailing punctuation stay outside it. Returns `None` when the line
 /// does not end with a recognized URL.
-pub(crate) fn trailing_range(line: &str) -> Option<Range<usize>> {
+pub(super) fn trailing_range(line: &str) -> Option<Range<usize>> {
     for (start, _) in line.char_indices() {
         let Some(scheme) = scheme_at(line, start) else {
             continue;
@@ -40,10 +40,16 @@ pub(crate) fn trailing_range(line: &str) -> Option<Range<usize>> {
     None
 }
 
+/// Whether `ch` may trail a URL without ending its exemption: sentence
+/// punctuation, markdown closers, or whitespace.
+fn is_ignorable_tail(ch: char) -> bool {
+    ch.is_whitespace() || is_sentence_punctuation(ch) || matches!(ch, '>' | ']' | ')')
+}
+
 /// The recognized scheme starting at byte `index`, if any.
 ///
 /// Returns `None` when `index` is mid-token or no listed scheme matches.
-pub(crate) fn scheme_at(text: &str, index: usize) -> Option<&'static str> {
+fn scheme_at(text: &str, index: usize) -> Option<&'static str> {
     if !starts_token(text, index) {
         return None;
     }
@@ -52,32 +58,6 @@ pub(crate) fn scheme_at(text: &str, index: usize) -> Option<&'static str> {
         .iter()
         .copied()
         .find(|scheme| starts_with_ignore_ascii_case(tail, scheme))
-}
-
-/// Whether `ch` may trail a URL without ending its exemption: sentence
-/// punctuation, markdown closers, or whitespace.
-fn is_ignorable_tail(ch: char) -> bool {
-    ch.is_whitespace() || is_sentence_punctuation(ch) || matches!(ch, '>' | ']' | ')')
-}
-
-/// Whether `text` starts a token at `index`, not the middle of a word.
-///
-/// Rejects a scheme glued to an alphanumeric run or scheme punctuation, so
-/// `xhttps://` and `git+https://` never read as a URL.
-fn starts_token(text: &str, index: usize) -> bool {
-    match text[..index].chars().next_back() {
-        None => true,
-        Some(previous) => {
-            !previous.is_alphanumeric() && !matches!(previous, '+' | '.' | '-' | '_' | '/')
-        }
-    }
-}
-
-/// Case-insensitive ASCII prefix test over `haystack`.
-fn starts_with_ignore_ascii_case(haystack: &str, prefix: &str) -> bool {
-    haystack
-        .get(..prefix.len())
-        .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
 }
 
 /// Trims trailing sentence punctuation off `raw`, leaving the URL token.
@@ -119,6 +99,26 @@ fn url_body_end(line: &str, body_start: usize) -> usize {
 /// the URL.
 fn is_sentence_punctuation(ch: char) -> bool {
     matches!(ch, '.' | ',' | ';' | ':' | '!' | '?' | '\'' | '"')
+}
+
+/// Whether `text` starts a token at `index`, not the middle of a word.
+///
+/// Rejects a scheme glued to an alphanumeric run or scheme punctuation, so
+/// `xhttps://` and `git+https://` never read as a URL.
+fn starts_token(text: &str, index: usize) -> bool {
+    match text[..index].chars().next_back() {
+        None => true,
+        Some(previous) => {
+            !previous.is_alphanumeric() && !matches!(previous, '+' | '.' | '-' | '_' | '/')
+        }
+    }
+}
+
+/// Case-insensitive ASCII prefix test over `haystack`.
+fn starts_with_ignore_ascii_case(haystack: &str, prefix: &str) -> bool {
+    haystack
+        .get(..prefix.len())
+        .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
 }
 
 #[cfg(test)]

@@ -272,10 +272,26 @@ Suggestions:
   - Keep a plain opener to 160 measured chars or fewer.
   - Move supporting details below the opener without losing necessary information.
   - Use bullets for distinct facts, one fact per bullet.
-  - Keep a connected explanation in a separate short paragraph. (file)
+  - Keep a connected explanation in a separate short paragraph.
+  - Put links on a separate line. A URL alone, or one word followed by a URL, does not count toward the opener's character limit. (file)
 ```
 
 `TEXT004` is warning-severity, so the run exits 0.
+
+### Remarks
+
+A separate line containing a URL alone, or one whitespace-delimited word
+followed by a URL, counts as zero characters.
+
+Bare URLs and angle-bracket autolinks use the [TEXT002 URL policy],
+including accepted trailing punctuation. These reference lines do not count:
+
+```rust
+// Loads the configured data.
+// https://example.test/reference
+// See <https://example.test/reference>
+// Reference: https://example.test/reference
+```
 
 ## TEXT005 - fenced code block without a language tag
 
@@ -661,3 +677,4 @@ For complete processing and project context, see [library entry points].
 
 [library entry points]: architecture.md#library-entry-points
 [example configuration]: ../.rust-llm-tidy.example.yml
+[TEXT002 URL policy]: #text002---long-line
