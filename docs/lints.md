@@ -16,9 +16,10 @@ So `exclude: [{rules: [DOC001]}]` turns off just missing-docs and
 
 Which codes run depends on the language:
 
-- Rust: documentation, text, test, module, length, and symbol checks.
-- C#: checks XML documentation, test names, and test summary comments
-  ([lints for C#]).
+- Rust: documentation, text, test, module, length, formatting, and
+  symbol checks.
+- C#: checks XML documentation, member spacing, test names, and test
+  summary comments ([lints for C#]).
 - Python: checks module docstrings ([`DOC009`]).
 
 Text lints for other languages use these sources ([text lints]):
@@ -58,6 +59,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`MOD003`]  | Hint               | A path includes the full namespace.                                               |
 | [`MOD004`]  | Hint               | File layout may not follow call flow.                                             |
 | [`LEN001`]  | Hint               | A Rust fn body exceeds `method_length.max_lines` (default 100).                   |
+| [`FMT001`]  | Warning            | Consecutive documented members of an item lack a separating blank line.           |
 | [`SYM`]     | Reminder           | A configured text or symbol hint matches; severity is configurable.               |
 | [`DUP001`]  | Reminder           | Five meaningful lines repeat at three same-file sites, including a changed copy.  |
 
@@ -1049,6 +1051,59 @@ Suggestions:
 
 `LEN001` is hint-severity, so the run exits 0.
 
+### FMT001 - missing blank line between documented members
+
+Keep one blank line between documented members so each doc comment
+reads with its own member.
+
+Before:
+
+```rust
+/// An edge in the flow graph.
+pub(in crate::analysis) struct LocalEdge {
+    /// Address of the instruction taking this path.
+    pub source: u32,
+    /// Address of the first instruction at the destination.
+    pub target: u32,
+}
+```
+
+After:
+
+```rust
+/// An edge in the flow graph.
+pub(in crate::analysis) struct LocalEdge {
+    /// Address of the instruction taking this path.
+    pub source: u32,
+
+    /// Address of the first instruction at the destination.
+    pub target: u32,
+}
+```
+
+- Rust: applies to braced `struct`, `union`, `enum`, `trait`, and `impl`
+  bodies: fields, variants, and trait or impl members.
+- C#: applies to `class`, `struct`, `interface`, `record`, and `enum` bodies.
+- A member's doc comments and attributes count as part of it; the blank
+  line goes before them.
+- Fires only when at least one member of the pair has docs or
+  attributes; undocumented members may stay packed.
+- Members sharing one line are exempt: there is no room for a blank
+  line. Tuple structs and unit structs are not checked.
+
+#### FMT001 CLI output
+
+```text
+$ cargo run -p rust-llm-tidy-cli -- --config config.yml --include FMT001 example.rs
+example.rs:5: warning[FMT001]: `LocalEdge` struct fields `source` and `target` need a blank line between them.
+Why: a blank line keeps each doc comment attached to its own member.
+Suggestions:
+- Add one blank line between `source` and `target`, before any docs and
+  attributes of `target`. (struct `LocalEdge`)
+```
+
+`FMT001` is warning-severity, so the run exits 0.
+
 ### SYM - configured symbol policies
 
 `SYM` reports text hints across supported text languages and custom or
@@ -1272,6 +1327,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`MOD004`]: #mod004---sole-caller-module-nesting
 [C# MOD003]: languages/lints/csharp.md#mod003---full-namespace-qualification-in-code
 [`LEN001`]: #len001---oversized-function-or-method
+[`FMT001`]: #fmt001---missing-blank-line-between-documented-members
 [`SYM`]: #sym---configured-symbol-policies
 [`DUP001`]: #dup001---same-file-textual-duplication
 [lints for C#]: ./languages/lints/csharp.md
