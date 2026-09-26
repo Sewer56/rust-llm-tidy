@@ -121,9 +121,18 @@ fn check_item<'a>(node: tree_sitter::Node<'a>, source: &str, out: &mut Vec<Diagn
         };
         match child.kind() {
             "comment" => {
-                attach.get_or_insert((child.start_byte(), child.start_position().row));
+                // A comment sharing the previous member's end row
+                // trails that member; only later-row comments lead
+                // the next one.
+                let row = child.start_position().row;
+                if prev
+                    .as_ref()
+                    .is_none_or(|p| p.node.end_position().row != row)
+                {
+                    attach.get_or_insert((child.start_byte(), row));
+                }
                 if doc_row.is_none() && is_doc_comment(child, source) {
-                    doc_row = Some(child.start_position().row);
+                    doc_row = Some(row);
                 }
             }
             "preproc_if" => {
@@ -557,6 +566,27 @@ public enum Exit
 
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].line, 5);
+    }
+
+    #[test]
+    fn check_should_flag_when_a_trailing_comment_shares_the_prev_member_row() {
+        let source =
+            "class C {\n    /// d for a.\n    int a; // note\n    /// d for b.\n    int b;\n}\n";
+
+        let diags = checks(source);
+
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].line, 4);
+    }
+
+    #[test]
+    fn check_should_anchor_at_the_member_when_only_a_trailing_comment_precedes_it() {
+        let source = "class C {\n    /// d for a.\n    int a; // note\n    int b;\n}\n";
+
+        let diags = checks(source);
+
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].line, 4);
     }
 
     #[test]

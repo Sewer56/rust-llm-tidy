@@ -122,9 +122,18 @@ fn check_item<'a>(node: tree_sitter::Node<'a>, source: &str, out: &mut Vec<Diagn
                 has_attrs = true;
             }
             "line_comment" | "block_comment" => {
-                attach.get_or_insert((child.start_byte(), child.start_position().row));
+                // A comment sharing the previous member's end row
+                // trails that member; only later-row comments lead
+                // the next one.
+                let row = child.start_position().row;
+                if prev
+                    .as_ref()
+                    .is_none_or(|p| p.node.end_position().row != row)
+                {
+                    attach.get_or_insert((child.start_byte(), row));
+                }
                 if doc_row.is_none() && is_outer_doc(child) {
-                    doc_row = Some(child.start_position().row);
+                    doc_row = Some(row);
                 }
             }
             _ => {
@@ -500,6 +509,35 @@ impl Bytes {
 
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].line, 5);
+    }
+
+    #[rstest]
+    #[case::line_comment(
+        "struct S {\n    /// docs for a.\n    a: u32, // note\n    /// docs for b.\n    b: u32,\n}\n",
+        4
+    )]
+    #[case::block_comment(
+        "struct S {\n    /// docs for a.\n    a: u32, /* note */\n    /// docs for b.\n    b: u32,\n}\n",
+        4
+    )]
+    fn check_should_flag_when_a_trailing_comment_shares_the_prev_member_row(
+        #[case] source: &str,
+        #[case] line: usize,
+    ) {
+        let diags = checks(source);
+
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].line, line);
+    }
+
+    #[test]
+    fn check_should_anchor_at_the_member_when_only_a_trailing_comment_precedes_it() {
+        let source = "struct S {\n    /// docs for a.\n    a: u32, // note\n    b: u32,\n}\n";
+
+        let diags = checks(source);
+
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].line, 4);
     }
 
     #[test]
