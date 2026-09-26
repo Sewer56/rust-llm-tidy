@@ -1,14 +1,12 @@
-//! Spacing op integration tests for the `rust-llm-tidy` CLI.
+//! Check the CLI's member spacing in preview and apply modes.
 //!
-//! The fixtures live in `tests/fixtures/spacing/`; every test copies
-//! one to a temporary file first so the checked-in fixtures never
-//! change.
+//! Copy fixtures to temporary files so apply-mode tests leave them alone.
 
 use super::{manifest_dir, run_command, temp_file_ext};
 use std::fs;
 use std::path::PathBuf;
 
-/// C# spacing previews and writes through the same op.
+/// C# preview and apply produce the same spaced members.
 #[test]
 fn spacing_should_fix_csharp_members() {
     let before = fixture_copy("csharp_before.cs", "cs");
@@ -30,9 +28,7 @@ fn spacing_should_fix_csharp_members() {
     let _ = fs::remove_file(&before);
 }
 
-/// `--include spacing --dry-run` previews the blank lines without
-/// writing, and the in-place run reproduces the `_after` fixture
-/// byte-for-byte.
+/// Preview leaves the Rust fixture alone; apply matches the expected file.
 #[test]
 fn spacing_should_preview_and_then_write_the_after_fixture() {
     let before = fixture_copy("rust_before.rs", "rs");
@@ -77,7 +73,7 @@ fn spacing_should_preview_and_then_write_the_after_fixture() {
     let _ = fs::remove_file(&before);
 }
 
-/// The retired FMT001 code is no longer a selectable rule.
+/// Selecting FMT001 fails instead of silently enabling spacing.
 #[test]
 fn spacing_should_replace_the_retired_fmt001_code() {
     let path = fixture_copy("rust_before.rs", "rs");
@@ -94,8 +90,7 @@ fn spacing_should_replace_the_retired_fmt001_code() {
     let _ = fs::remove_file(&path);
 }
 
-/// The default pipeline spaces members; `--exclude spacing` keeps them
-/// packed.
+/// The default spaces members, while `--exclude spacing` leaves them packed.
 #[test]
 fn spacing_should_run_by_default_and_stay_excludable() {
     let excluded = fixture_copy("rust_before.rs", "rs");
@@ -126,7 +121,7 @@ fn spacing_should_run_by_default_and_stay_excludable() {
     let _ = fs::remove_file(&default);
 }
 
-/// `--checks-only` never spaces members and reports no change records.
+/// Checks-only neither edits nor reports spacing changes.
 #[test]
 fn spacing_should_stay_suppressed_under_checks_only() {
     let path = fixture_copy("rust_before.rs", "rs");

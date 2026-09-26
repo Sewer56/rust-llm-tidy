@@ -1,5 +1,4 @@
-//! Insert missing blank lines between documented members in a single
-//! source file.
+//! Insert blank lines between documented members in one source file.
 
 use crate::config::CompiledSymbolRule;
 use crate::input::file_io as io;
@@ -11,25 +10,25 @@ use anyhow::Context;
 use std::fs;
 use std::path::Path;
 
-/// Space documented members of a single Rust or C# file.
+/// Space documented members of one Rust or C# file.
 ///
-/// Returns one [`changes::Change`] per inserted blank line, in both
-/// dry-run and in-place modes.
+/// Uses the file's backend to find gaps. A syntax-error tree produces
+/// no changes unless `exclude_edits` requires a complete parse.
+/// In that case the file fails. Dry-run reports edits without writing.
 ///
-/// Parses through the file's registered backend; a parse failure
-/// fails the file. A tree that recovered from syntax errors is a
-/// no-op - zero change records, no write - unless declaration
-/// exclusions apply; those fail closed and fail the file.
+/// # Arguments
 ///
-/// Declaration exclusions with `exclude_edits` protect both members
-/// of a gap.
+/// - `path` - Rust or C# file to read and, unless previewing, update.
+/// - `dry_run` - If true, report changes without writing.
+/// - `rules` - Declaration rules that may protect members from edits.
 ///
-/// Writes the spaced source only when not in dry-run and the output
-/// differs from the original.
+/// # Returns
+///
+/// One [`changes::Change`] per inserted or proposed blank line.
 ///
 /// # Errors
-/// Returns an error when reading or parsing the file fails, or the
-/// result cannot be written.
+/// Returns an error if the file cannot be read, parsed or written, or
+/// if a damaged tree prevents identifying a protected declaration.
 pub(crate) fn spacing_file(
     path: &Path,
     dry_run: bool,
@@ -46,8 +45,7 @@ pub(crate) fn spacing_file(
         .parse(&source)
         .with_context(|| format!("failed to parse {}", path.display()))?;
 
-    // Protected declaration ranges come from the same parse the walk
-    // visits.
+    // Use the same parse for protected ranges and spacing decisions.
     let ranges = check::symbols::excluded_ranges(&parsed, ext, rules)?;
     let (out, edits) = match ext.to_ascii_lowercase().as_str() {
         "rs" => spacing::rust::fix_rust(&source, &parsed, &ranges),

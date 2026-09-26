@@ -150,8 +150,7 @@ mod tests {
         );
     }
 
-    /// `cs` resolves to a backend carrying reorder, spacing, and
-    /// lints, never `vis` (visibility narrowing stays Rust-only).
+    /// C# supports member spacing, but not Rust-only visibility narrowing.
     #[test]
     fn cs_resolves_with_reorder_and_lints() {
         let backend = backend_for("cs").expect("cs must resolve to a backend");

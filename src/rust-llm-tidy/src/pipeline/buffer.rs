@@ -94,7 +94,7 @@ mod comment_fixes;
 ///   multiset
 /// - Visibility failure: parsing or applying the standalone visibility
 ///   transformation fails
-/// - Spacing failure: the backend cannot parse the buffer for member spacing
+/// - Spacing failure: the backend cannot parse the source
 pub fn tidy_source<'a>(
     source: &'a str,
     ext: &str,

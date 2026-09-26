@@ -1,37 +1,31 @@
-//! Insert missing blank lines between documented members of C#
-//! bodies.
+//! Space documented members inside C# type bodies.
 //!
-//! A member's doc comments (`///`, `/**`) and any preprocessor
-//! conditional bind to the member that follows. A gap between two
-//! members on different lines is fixed when either member is
-//! documented and no blank line separates them.
+//! Docs (`///` or `/**`) or attributes on either neighbor call for a
+//! blank line, unless one already exists or both share a line.
 //!
-//! Other preprocessor directives annotate the body and open no gap.
-//! Members directly inside a conditional stay unchecked: they sit in
-//! the conditional's subtree, not the member list.
+//! A leading `#if` stays with the next member. Other directives do
+//! not count as members; the pass skips members inside a conditional.
 
 use super::{SpacingEdit, attachment_line_start, emit, has_blank_line, overlaps_span};
 use crate::source::{ItemKind, ParseResult};
 use core::ops::Range;
 use std::borrow::Cow;
 
-/// The previous member of a body, kept for the gap check against the
-/// next member.
+/// Previous member, used to decide whether the next gap needs spacing.
 struct PrevMember<'a> {
-    /// The member node, kept for its label and span.
+    /// Member node for labeling and checking protected ranges.
     node: tree_sitter::Node<'a>,
 
     /// Byte offset where the member ends.
     end: usize,
 
-    /// True when the member carries docs or attributes of its own.
+    /// Whether the member has a doc comment or attribute.
     documented: bool,
 }
 
 /// Insert missing blank lines between documented members.
 ///
-/// A tree that recovered from syntax errors is never edited: the
-/// function borrows `source` back and returns no edits.
+/// A syntax-error tree returns the original source and no edits.
 pub(crate) fn fix_csharp<'a>(
     source: &'a str,
     parsed: &ParseResult,
@@ -50,7 +44,7 @@ pub(crate) fn fix_csharp<'a>(
     emit(source, edits)
 }
 
-/// Depth-first cursor walk over `root`, fixing every member-list item.
+/// Visit nested types and check their member lists too.
 fn walk_items<'a>(
     root: tree_sitter::Node<'a>,
     source: &str,
@@ -74,20 +68,13 @@ fn walk_items<'a>(
     }
 }
 
-/// Checks `node`'s member list when `node` declares one.
+/// Check adjacent members in `node`'s body, if it has one.
 ///
-/// Doc comments precede their member as `comment` siblings, so the
-/// walk binds them, and any preprocessor conditional, to the member
-/// that follows.
+/// The parser puts doc comments beside the member they precede. Place
+/// the blank line before the first comment or `#if` so both stay with
+/// the next member.
 ///
-/// The blank line goes before the first attached node. A comment
-/// ahead of a conditional keeps the boundary; otherwise the `#if`
-/// line opens the inserted gap.
-///
-/// A gap is edited when either member is documented, the members sit
-/// on different lines, and no blank line separates them. The
-/// attachment line must hold nothing but the attachment, and no
-/// protected range may overlap the two members.
+/// Skip same-line or already-spaced pairs and protected members.
 fn check_item<'a>(
     node: tree_sitter::Node<'a>,
     source: &str,

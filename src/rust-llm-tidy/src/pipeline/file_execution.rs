@@ -153,8 +153,7 @@ pub(super) fn process_one(
             }
         }
     }
-    // Space documented members last (inserts missing blank lines) so it
-    // sees the final member order of the other fixes.
+    // Space members last, after reorder and visibility have finished.
     if !lint_phase && ast_op_on("spacing") {
         match files::spacing_file(path, dry_run, lint_context.rules()) {
             Ok(found) => out.changes.extend(found),

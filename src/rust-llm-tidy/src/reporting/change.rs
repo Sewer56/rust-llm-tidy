@@ -18,8 +18,8 @@
 //!
 //! Tables emit one per-file record via [`table_changes`]; link hoists
 //! map the transformation module's before/after pairs to records via
-//! [`link_changes`]. Spacing records map one-to-one from the spacing
-//! module's edits via [`spacing_changes`].
+//! [`link_changes`]. [`spacing_changes`] gives each inserted blank line
+//! its own record.
 
 use crate::rules::transform::FixAnchor;
 use crate::rules::transform::reorder::{self, Permutation};
@@ -225,11 +225,10 @@ pub(crate) fn reorder_changes(parsed: &ParseResult, permutation: &Permutation) -
     change_records
 }
 
-/// One [`Change`] per blank line the spacing pass inserts.
+/// Report each blank line inserted between members.
 ///
-/// Each record names the two members around the inserted line and
-/// carries the enclosing item's kind. `name` stays empty: the message
-/// already names both members.
+/// The message names both members; `kind` identifies their enclosing
+/// item. `name` stays empty because the record covers a pair.
 pub(crate) fn spacing_changes(edits: &[SpacingEdit]) -> Vec<Change> {
     edits
         .iter()

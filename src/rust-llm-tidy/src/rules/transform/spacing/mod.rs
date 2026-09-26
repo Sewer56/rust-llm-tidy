@@ -1,16 +1,13 @@
 //! Insert missing blank lines between documented members.
 //!
-//! [`fix_spacing`] parses Rust or C# source and adds one blank line
-//! between members of a type body when either member carries docs or
-//! attributes. Undocumented members stay packed, and members sharing
-//! a line are left alone.
+//! [`fix_spacing`] adds a blank line between adjacent Rust or C# type
+//! members if either has docs or attributes. It leaves undocumented
+//! pairs and same-line members alone.
 //!
-//! Detection follows the member's attachments: attributes, comments,
-//! and preprocessor conditionals attach to the member that follows,
-//! so the blank line goes before them.
+//! The line goes before the next member's attached comments and
+//! attributes. In C#, it also goes before a leading `#if`.
 //!
-//! The rewrite inserts line terminators only; every other byte is
-//! copied unchanged, and a re-run over the output changes nothing.
+//! The fix only inserts line endings; running it again changes nothing.
 
 use crate::languages::backend_for;
 use crate::source::ItemKind;
@@ -20,51 +17,47 @@ use std::borrow::Cow;
 pub(crate) mod csharp;
 pub(crate) mod rust;
 
-/// One blank-line insertion between two documented members.
+/// One blank line inserted between adjacent members.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpacingEdit {
-    /// Byte offset in the transform input where the blank line is
-    /// inserted (the start of the attachment line).
+    /// Byte offset at the start of the next member's first attached line.
     pub byte: usize,
 
-    /// 1-based input line of the attachment the blank line precedes.
+    /// 1-based input line before which the blank line goes.
     pub line: u32,
 
-    /// Kind of the enclosing item (struct, enum, trait, impl, class,
-    /// ...).
+    /// Kind of the enclosing type or impl.
     pub kind: ItemKind,
 
-    /// Label of the member before the gap (declared name or kind
-    /// phrase).
+    /// Previous member's name, or its kind when unnamed.
     pub prev: Box<str>,
 
-    /// Label of the member after the gap.
+    /// Next member's name, or its kind when unnamed.
     pub next: Box<str>,
 }
 
 /// Insert missing blank lines between documented members of Rust or C#
 /// source.
 ///
-/// Files whose extension is neither `rs` nor `cs` (ASCII
-/// case-insensitive) come back borrowed and unparsed. Trees that
-/// recovered from syntax errors are never edited.
+/// Other extensions return the original text without parsing. The
+/// extension match ignores ASCII case. A syntax-error tree also leaves
+/// the text unchanged.
 ///
 /// # Arguments
 ///
-/// - `source` - the file text to fix.
-/// - `ext` - the file extension without the leading dot.
-/// - `protected` - byte ranges the pass must not touch; a gap is
-///   skipped when one overlaps the two members around it.
+/// - `source` - Source text to space.
+/// - `ext` - File extension without a dot (`rs` or `cs`).
+/// - `protected` - Byte ranges to leave alone. A range overlapping
+///   either member prevents an edit between them.
 ///
 /// # Returns
 ///
-/// The rewritten text, borrowed when nothing needed fixing, plus one
-/// [`SpacingEdit`] per inserted blank line, sorted by byte.
+/// Source text, borrowed when unchanged, and one [`SpacingEdit`] per
+/// inserted blank line in byte order.
 ///
 /// # Errors
 ///
-/// Returns the failure as `anyhow::Error` when the backend cannot
-/// parse `source`.
+/// Returns an error if the Rust or C# backend cannot parse `source`.
 pub fn fix_spacing<'a>(
     source: &'a str,
     ext: &str,

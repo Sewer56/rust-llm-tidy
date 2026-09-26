@@ -2,109 +2,89 @@
 
 ## What it does
 
-Inserts a missing blank line between two members of a type body when
-either member has docs or attributes. Each doc comment then reads with
-its own member.
-
-- On by default for Rust (`.rs`) and C# (`.cs`); no other language
-  has it.
-- Rust bodies: braced `struct`, `union`, `enum`, `trait`, and `impl`.
-- C# bodies: `class`, `struct`, `interface`, `record`, and `enum`.
-- Tuple structs and unit structs (Rust) and positional records (C#)
-  are not checked.
-- Undocumented neighbors stay packed.
-- Members on the same line are exempt.
-
-A member's docs, attributes, and attached comments belong to it: the
-blank line goes before them. A comment trailing the previous member
-stays on its line.
-
-C# specifics: when a `#if` conditional leads the next member, the
-blank line goes before the `#if`, or before a comment ahead of it.
-
-`#region`/`#endregion` lines are skipped, and a gap across them is
-still spaced: the blank line lands after the directive. Members
-inside conditionals are unchecked.
-
-Existing bytes are preserved; the op only inserts a line terminator -
-carriage return/line feed (CRLF) where the file uses CRLF. A re-run
-over the output changes nothing.
-
-Files whose tree recovered from syntax errors are skipped without
-failing the run. Declaration exclusions with `exclude_edits` are the
-exception: they fail closed on damaged trees and fail the file.
-
-The same exclusions otherwise protect a gap from being spaced.
+Adds a blank line between adjacent members when either has docs or
+attributes. Runs by default on Rust (`.rs`) and C# (`.cs`) files.
 
 ## Before
 
 ```rust,ignore
-/// An edge in the flow graph.
-pub struct LocalEdge {
-    /// Address of the instruction taking this path.
-    pub source: u32,
-    /// Address of the first instruction at the destination.
-    pub target: u32,
+struct Edge {
+    /// Address of the source instruction.
+    source: u32,
+    /// Address of the destination instruction.
+    target: u32,
 }
 ```
 
 ## After
 
 ```rust,ignore
-/// An edge in the flow graph.
-pub struct LocalEdge {
-    /// Address of the instruction taking this path.
-    pub source: u32,
+struct Edge {
+    /// Address of the source instruction.
+    source: u32,
 
-    /// Address of the first instruction at the destination.
-    pub target: u32,
+    /// Address of the destination instruction.
+    target: u32,
 }
 ```
 
+The line goes before the next member's docs or attributes, not between
+the comment and the member it describes.
+
+The fix covers Rust braced structs, unions, enums, traits and impls,
+and C# classes, structs, interfaces, records and enums. It skips:
+
+- Existing blank lines, undocumented pairs and same-line members.
+- Rust tuple and unit structs, and C# positional records.
+- Members inside C# `#if` blocks. A leading `#if` stays with the next
+  member.
+- Files with syntax-error trees. With `exclude_edits` declaration
+  protection, a damaged tree fails the file instead.
+
+It inserts only a line ending, matching the preceding line (including
+CRLF). Running it again changes nothing.
+
 ## Config
 
+Use `include` to run only spacing for matching files:
+
 ```yaml
-# Whitelist: run only spacing on Rust and C# sources
 include:
   - paths: ["src/**/*.rs", "src/**/*.cs"]
     rules: [spacing]
+```
 
-# Blacklist: never space generated code
+Or use `exclude` to skip spacing in generated code:
+
+```yaml
 exclude:
   - paths: ["**/generated/**"]
     rules: [spacing]
 ```
 
 ```bash
-# CLI: run only spacing for this invocation
+# Preview spacing alone
 rust-llm-tidy --include spacing --dry-run src/lib.rs
-# CLI: skip spacing for this invocation
+# Skip spacing
 rust-llm-tidy --exclude spacing src
 ```
 
-Selections naming the retired `FMT001` code are rejected as unknown
-rules.
+Do not combine `include` and `exclude` in one config. `--dry-run` exits
+non-zero if it finds edits; `--checks-only` runs no transforms.
 
-`--dry-run` previews the inserts without writing and exits non-zero
-when edits are proposed. `--checks-only` never spaces: it suppresses
-transform ops.
-
-The op runs after [reorder] and [vis], so it spaces the final member
-order.
+Spacing runs after [reorder] and [vis].
+The retired `FMT001` warning is not selectable; `spacing` is a fix.
 
 ## Change output
 
-Every run reports each insert it applies (or would apply under
-`--dry-run`) as one record. In text mode the record prints to stderr:
+Each inserted line reports a change, including under `--dry-run`:
 
 ```text
 src/lib.rs:5: success[FIX]: insert blank line between `source` and `target` (struct)
 ```
 
-The record's line is the line the blank line goes before. The message
-names the two members; the parenthesized kind is the enclosing item.
-In JSON mode the same record appears on stdout with
-`severity: "success"`:
+The line number points to the next member's first attached line in the
+input. JSON mode reports the same change on stdout:
 
 ```json
 [
@@ -121,14 +101,16 @@ In JSON mode the same record appears on stdout with
 ]
 ```
 
-See [Change reporting] for the shared format.
-[Change reporting]: ./lints.md#change-reporting
-[reorder]: ./reorder.md
-[vis]: ./vis.md
+See [change reporting] for the shared format.
 
 ## Library access
 
-Use `rust_llm_tidy::rules::transform::spacing`.
-For complete processing and project context, see [library entry points].
+Use `rust_llm_tidy::rules::transform::spacing::fix_spacing` for a source
+buffer. It returns the text and one edit per inserted line.
 
+For the full pipeline and project context, see [library entry points].
+
+[reorder]: ./reorder.md
+[vis]: ./vis.md
+[change reporting]: ./lints.md#change-reporting
 [library entry points]: architecture.md#library-entry-points

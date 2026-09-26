@@ -1,13 +1,10 @@
-//! Insert missing blank lines between documented members of Rust
-//! bodies.
+//! Space documented members inside Rust type and impl bodies.
 //!
-//! A member's attributes and outer doc comments attach to it. A gap
-//! between two members is fixed when either member is documented,
-//! the members sit on different lines, and no blank line separates
-//! them.
+//! An outer doc comment or attribute on either neighbor calls for a
+//! blank line, unless one already exists or both share a line.
 //!
-//! The blank line goes before the first attached node. Tuple structs
-//! carry no braced members and are skipped.
+//! The line goes before the next member's comments or attributes.
+//! Tuple structs have no braced member list to space.
 
 use super::{SpacingEdit, attachment_line_start, emit, has_blank_line, overlaps_span};
 use crate::languages::rust::parse::is_outer_doc;
@@ -15,23 +12,21 @@ use crate::source::{ItemKind, ParseResult};
 use core::ops::Range;
 use std::borrow::Cow;
 
-/// The previous member of a body, kept for the gap check against the
-/// next member.
+/// Previous member, used to decide whether the next gap needs spacing.
 struct PrevMember<'a> {
-    /// The member node, kept for its label and span.
+    /// Member node for labeling and checking protected ranges.
     node: tree_sitter::Node<'a>,
 
     /// Byte offset where the member ends.
     end: usize,
 
-    /// True when the member carries attributes or docs of its own.
+    /// Whether the member has an outer doc comment or attribute.
     documented: bool,
 }
 
 /// Insert missing blank lines between documented members.
 ///
-/// A tree that recovered from syntax errors is never edited: the
-/// function borrows `source` back and returns no edits.
+/// A syntax-error tree returns the original source and no edits.
 pub(crate) fn fix_rust<'a>(
     source: &'a str,
     parsed: &ParseResult,
@@ -50,7 +45,7 @@ pub(crate) fn fix_rust<'a>(
     emit(source, edits)
 }
 
-/// Depth-first cursor walk over `root`, fixing every member-list item.
+/// Visit nested items and check their member lists too.
 fn walk_items<'a>(
     root: tree_sitter::Node<'a>,
     source: &str,
@@ -74,16 +69,12 @@ fn walk_items<'a>(
     }
 }
 
-/// Checks `node`'s member list when `node` declares one.
+/// Check adjacent members in `node`'s body, if it has one.
 ///
-/// Attributes, comments, and doc comments preceding a member bind to
-/// it as siblings, so the walk groups them into the member they
-/// document.
-///
-/// A gap is edited when either member is documented, the members sit
-/// on different lines, and no blank line separates them. The
-/// attachment line must hold nothing but the attachment, and no
-/// protected range may overlap the two members.
+/// The parser places comments and attributes beside the member they
+/// precede. Keep these with that member by placing the blank line
+/// before the first attachment. Skip same-line or already-spaced pairs
+/// and gaps involving a protected member.
 fn check_item<'a>(
     node: tree_sitter::Node<'a>,
     source: &str,
