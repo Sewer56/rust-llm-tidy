@@ -96,7 +96,7 @@ See [reporting scope] for baseline comparison and scope precedence.
 | `links`   | hoist inline links to reference style   | `md` family, `rs`                    | yes     |
 | `reorder` | review-friendly item order              | `rs`, `cs`                           | yes     |
 | `vis`     | narrow bare `pub` in restricted modules | `rs`                                 | yes     |
-| `lints`   | run DOC*, TEXT*, TEST* checks           | all allowed                          | no      |
+| `lints`   | run read-only source and doc checks     | all allowed                          | no      |
 
 Every allowed op is on by default; `--include`/`--exclude` and the config
 narrow them. The `md` family is `.md`, `.markdown`, `.txt`, `.text`,

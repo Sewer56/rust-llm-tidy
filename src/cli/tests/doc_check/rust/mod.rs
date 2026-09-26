@@ -16,6 +16,8 @@
 //! - `doc009_missing_module_docs`: missing module documentation
 //! - `doc010_section_order`: DOC010 out-of-standard-order doc sections
 //! - `doc011_missing_returns`: DOC011 value/bool fns without `# Returns`
+//! - `fmt001_member_spacing`: FMT001 missing blank lines between
+//!   documented members
 //!
 //! Size, naming, text, and perf modules:
 //!
@@ -44,6 +46,7 @@ mod doc008_error_variant_order;
 mod doc009_missing_module_docs;
 mod doc010_section_order;
 mod doc011_missing_returns;
+mod fmt001_member_spacing;
 mod len001_method_length;
 mod mod001_module_size;
 mod mod003_qualified_path;

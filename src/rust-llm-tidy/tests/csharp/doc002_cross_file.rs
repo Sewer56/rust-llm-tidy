@@ -188,8 +188,8 @@ fn indexed_lints_should_respect_exception_tags() {
 #[test]
 fn lint_should_preserve_findings_when_same_name_members_have_different_owners() {
     let sources = [
-        "class C {\n void Helper() { throw new E(); }\n void Helper(int x) {}\n /// <summary>Calls a helper.</summary>\n public void Caller() { obj.Helper(); }\n}",
-        "class C { class Nested {\n void Helper() { throw new E(); } }\n void Helper(int x) {}\n /// <summary>Calls a helper.</summary>\n public void Caller() { obj.Helper(); }\n}",
+        "class C {\n void Helper() { throw new E(); }\n void Helper(int x) {}\n\n /// <summary>Calls a helper.</summary>\n public void Caller() { obj.Helper(); }\n}",
+        "class C { class Nested {\n void Helper() { throw new E(); } }\n void Helper(int x) {}\n\n /// <summary>Calls a helper.</summary>\n public void Caller() { obj.Helper(); }\n}",
     ];
 
     let findings: Vec<_> = sources

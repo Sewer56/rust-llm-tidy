@@ -215,6 +215,7 @@ include:
       # - MOD001  # oversized code file
       # - MOD002  # function-local `use` without `#[cfg]`
       # - LEN001  # oversized Rust function or method
+      # - FMT001  # missing blank line between documented members
       # Built-in performance families are selected with perf_hints above.
       # - SYM     # configured text and symbol hints
       # - DUP001  # same-file textual duplication reminders

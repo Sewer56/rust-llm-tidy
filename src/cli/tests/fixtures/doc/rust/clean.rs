@@ -15,6 +15,7 @@ pub struct Config {
 pub enum Status {
     /// Idle state.
     Idle,
+
     /// Active state.
     Active,
 }
@@ -55,6 +56,7 @@ pub type Port = u16;
 pub union RawBytes {
     /// As a u32.
     as_u32: u32,
+
     /// As bytes.
     as_bytes: [u8; 4],
 }

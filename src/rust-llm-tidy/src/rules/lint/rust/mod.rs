@@ -1,4 +1,4 @@
-//! The Rust lint rules: DOC*, TEST*, LEN*, and MOD*.
+//! The Rust lint rules: DOC*, TEST*, LEN*, MOD*, and FMT*.
 //!
 //! One module per rule, named by lint code: [`doc001_missing_docs`]
 //! through [`test002_test_summary`].
@@ -43,6 +43,7 @@ mod doc008_error_variant_order;
 mod doc009_missing_module_docs;
 mod doc010_section_order;
 mod doc011_missing_returns;
+mod fmt001_member_spacing;
 pub(crate) mod len001_method_length;
 pub(crate) mod mod001_module_size;
 mod mod002_fn_local_use;
@@ -83,6 +84,7 @@ pub(crate) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
         defaults(),
     ));
     diagnostics.extend(mod002_fn_local_use::check(parsed));
+    diagnostics.extend(fmt001_member_spacing::check(parsed));
     diagnostics
 }
 
