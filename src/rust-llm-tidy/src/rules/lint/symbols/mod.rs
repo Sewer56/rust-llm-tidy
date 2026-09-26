@@ -32,8 +32,10 @@ mod usage;
 pub(crate) struct SymbolObservations {
     pub(crate) warnings: Vec<String>,
     pub(crate) hints: Vec<HintObservation>,
+
     /// Edit protection, independent of lint suppression.
     pub(crate) excluded_ranges: Vec<Range<usize>>,
+
     /// Declaration byte ranges paired with registry-ordered lint-code masks.
     pub(crate) lint_exclusions: Vec<(Range<usize>, u32)>,
 }

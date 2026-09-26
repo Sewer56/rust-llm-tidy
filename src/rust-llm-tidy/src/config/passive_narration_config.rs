@@ -16,6 +16,7 @@ pub struct PassiveNarrationConfig {
     /// - Pathless library text checks: unaffected
     #[serde(default = "default_true")]
     pub enable: bool,
+
     /// Suppress TEXT007 narration markers in release and migration notes.
     ///
     /// - Default: `true`

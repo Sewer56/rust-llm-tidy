@@ -19,9 +19,9 @@
 //! - Markdown family (`md`, `markdown`, `txt`, `text`, `mdx`): the text ops
 //!   `tables`, `fences`, `links` plus text-based `lints`
 //! - Rust (`rs`): every op - `tables`, `fences`, `links`, `reorder`, `vis`,
-//!   `lints` - with the `///`/`//!` doc prefixes
-//! - C# (`cs`): `tables`, `fences` plus the AST ops `reorder`/`lints`; no
-//!   `links`
+//!   `spacing`, `lints` - with the `///`/`//!` doc prefixes
+//! - C# (`cs`): `tables`, `fences` plus the AST ops `reorder`/`spacing`/
+//!   `lints`; no `links`
 //! - Python (`py`, `pyi`): `tables`, `fences`, and `lints` by default,
 //!   with `#` prefixes. Its text checks use the backend's docstring and
 //!   comment regions.
@@ -35,9 +35,9 @@
 //! - Data formats (`ini`, `json`): only MOD001 with `include_non_code`; never in
 //!   [`DEFAULT_EXTENSIONS`]
 //!
-//! `reorder` and the parser-driven `lints` checks require `backend` in
-//! addition to `ops` membership, so they stay dormant for extensions
-//! without a parser.
+//! `reorder`, `spacing`, `vis`, and the parser-driven `lints` checks
+//! require `backend` in addition to `ops` membership, so they stay
+//! dormant for extensions without a parser.
 //!
 //! `vis` appears only in the Rust profile.
 //!
@@ -217,9 +217,9 @@ const LANG_ENTRIES: &[(&str, Profile)] = &[
 /// C#: tables plus the backend-gated AST ops; no links - appended
 /// `[text]: url` definitions are invalid C#.
 const C_SHARP: Profile = Profile {
-    ops: &["tables", "fences", "reorder", "lints"],
+    ops: &["tables", "fences", "reorder", "spacing", "lints"],
     prefixes: &["///", "//"],
-    default_ops: &["tables", "fences", "reorder", "lints"],
+    default_ops: &["tables", "fences", "reorder", "spacing", "lints"],
     backend: true,
     text_lints: TextLints::Ast,
     module_size: ModuleSize::WholeFile,
@@ -251,9 +251,13 @@ const PYTHON: Profile = Profile {
 };
 /// Rust: every op, with the `///`/`//!` doc markers longest first.
 const RUST: Profile = Profile {
-    ops: &["tables", "fences", "links", "reorder", "vis", "lints"],
+    ops: &[
+        "tables", "fences", "links", "reorder", "vis", "spacing", "lints",
+    ],
     prefixes: &["///", "//!"],
-    default_ops: &["tables", "fences", "links", "reorder", "vis", "lints"],
+    default_ops: &[
+        "tables", "fences", "links", "reorder", "vis", "spacing", "lints",
+    ],
     backend: true,
     text_lints: TextLints::Ast,
     module_size: ModuleSize::RustNonTest,
@@ -278,23 +282,28 @@ pub(crate) struct Profile {
     /// Ops this extension may ever run, as rule names accepted by
     /// `--include`/`--exclude`, in [`crate::config::KNOWN_FIX_OPS`] order.
     pub ops: &'static [&'static str],
+
     /// Line-comment markers stripped and re-applied around tables and
     /// fences, longest first.
     ///
     /// A `///` marker must precede `//`; the list is empty for text and
     /// profiles without transformations. TEXT scanners do not use this list.
     pub prefixes: &'static [&'static str],
+
     /// Ops that run when no explicit include list narrows the run; always a
     /// subset of `ops`.
     pub default_ops: &'static [&'static str],
+
     /// Whether an AST parser is registered for the extension.
     ///
     /// `reorder` and the parser-driven `lints` checks require this in
     /// addition to appearing in `ops`, as does the [`TextLints::Ast`]
     /// tier's doc-region producer.
     pub backend: bool,
+
     /// How the TEXT* text checks are sourced for this profile.
     pub text_lints: TextLints,
+
     /// File-size counting policy, independent of text-lint or parser support.
     ///
     /// Also gates DUP001 source admission: WholeFile/RustNonTest participate,
@@ -307,10 +316,13 @@ pub(crate) struct Profile {
 pub(crate) enum ModuleSize {
     /// Unsupported extensions do not measure, even with the non-code opt-in.
     None,
+
     /// Supported configuration, data, or text; measure only with the opt-in.
     NonCode,
+
     /// Count every physical line, including test files and inline tests.
     WholeFile,
+
     /// Exclude Rust test-module regions and files under `tests/` directories.
     RustNonTest,
 }
@@ -321,15 +333,18 @@ pub(crate) enum TextLints {
     /// Whole-file text measurement over the raw source: the markdown
     /// family's producer, no parser needed.
     Prose,
+
     /// Text regions from the language's AST backend: the backend's parse
     /// feeds its lint composition, which emits the text checks.
     Ast,
+
     /// Text regions from the language module's fail-closed comment lexicon:
     /// a linear scan over line and block comments.
     ///
     /// String content and code lines never measure, and ambiguous sources
     /// produce no findings.
     Lexicon,
+
     /// No text checks: data formats and unmapped extensions produce no
     /// text findings.
     None,
@@ -353,8 +368,9 @@ impl Profile {
     /// the profile never allows stays refused in both modes - `links`
     /// outside the markdown family and Rust.
     ///
-    /// The AST ops (`reorder`, `vis`, parser-driven `lints`) also
-    /// require [`Profile::backend`]; that gate applies where they dispatch.
+    /// The AST ops (`reorder`, `vis`, `spacing`, parser-driven `lints`)
+    /// also require [`Profile::backend`]; that gate applies where they
+    /// dispatch.
     pub(crate) fn op_enabled(
         &self,
         op: &str,
@@ -637,8 +653,11 @@ mod tests {
 
     /// Explicit selection cannot enable operations outside a profile's capabilities.
     #[rstest]
-    #[case::rust("rs", &["tables", "fences", "links", "reorder", "vis", "lints"])]
-    #[case::csharp("cs", &["tables", "fences", "reorder", "lints"])]
+    #[case::rust(
+        "rs",
+        &["tables", "fences", "links", "reorder", "vis", "spacing", "lints"]
+    )]
+    #[case::csharp("cs", &["tables", "fences", "reorder", "spacing", "lints"])]
     #[case::python("py", &["tables", "fences", "lints"])]
     #[case::python_stub("pyi", &["tables", "fences", "lints"])]
     #[case::markdown("md", &["tables", "fences", "links", "lints"])]

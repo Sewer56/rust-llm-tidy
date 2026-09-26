@@ -9,8 +9,10 @@ use std::path::PathBuf;
 pub struct RunReport {
     /// File results in deterministic input order.
     pub files: Vec<FileReport>,
+
     /// Project-discovery warnings in discovery order.
     pub warnings: Vec<String>,
+
     /// Configured subprocess failures in step and file order.
     pub post_process_failures: Vec<PostProcessFailure>,
 }
@@ -20,10 +22,13 @@ pub struct RunReport {
 pub struct PostProcessFailure {
     /// File supplied to the command.
     pub path: PathBuf,
+
     /// Configured executable name.
     pub command: String,
+
     /// Whether spawning failed rather than the child exiting unsuccessfully.
     pub spawn_failed: bool,
+
     /// Spawn error or child stderr.
     pub message: String,
 }

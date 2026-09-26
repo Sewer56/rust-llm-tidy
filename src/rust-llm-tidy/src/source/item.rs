@@ -16,8 +16,10 @@ use std::fmt;
 pub struct ParseResult {
     /// The parsed items in file order.
     pub items: Vec<SourceItem>,
+
     /// The original source text.
     pub source: String,
+
     /// The parsed tree-sitter syntax tree, retained for reuse by downstream
     /// passes.
     ///
@@ -25,6 +27,7 @@ pub struct ParseResult {
     /// it instead of re-parsing `source`.
     /// `pub(crate)`: read it through [`ParseResult::syntax_tree`].
     pub(crate) tree: tree_sitter::Tree,
+
     /// Byte offset where the preamble ends.
     ///
     /// The preamble is everything before the first top-level item. It may
@@ -38,6 +41,7 @@ pub struct ParseResult {
     /// Emitted verbatim before any reordered items. `0` when an item starts
     /// at offset 0 (no preamble).
     pub preamble_end: usize,
+
     /// Byte offset where the trailer begins.
     ///
     /// The trailer is everything after the last top-level item's trailing
@@ -57,40 +61,52 @@ pub struct ParseResult {
 pub struct SourceItem {
     /// Byte offset of the start of this item (including prefix comments/attrs).
     pub start: usize,
+
     /// Byte offset of the end of this item.
     pub end: usize,
+
     /// 1-based source line where this item starts (including prefix
     /// comments/attrs).
     ///
     /// Precomputed at parse time so lint checks need not rescan the
     /// source for each diagnostic.
     start_line: usize,
+
     /// The kind of this item.
     kind: ItemKind,
+
     /// The name of this item (if it has one).
     name: Option<String>,
+
     /// For impl blocks, the target type name.
     impl_target: Option<String>,
+
     /// True if this is a `mod` item gated by `#[cfg(test)]`.
     is_test_module: bool,
+
     /// True only for inline `mod x { ... }` definitions (body present); false
     /// for file-based `mod x;` declarations and every non-mod item.
     is_inline: bool,
+
     /// True for `impl Trait for Type` (trait impl), false for `impl Type` (inherent).
     is_trait_impl: bool,
+
     /// Visibility tier used for ordering and doc-coverage checks. `Some` for
     /// every item kind that has a visibility modifier (fn, struct, enum, etc.).
     visibility: Option<VisibilityTier>,
+
     /// Text of each leading `///` (or `#[doc = "..."]`) line for this item.
     ///
     /// - Entries follow source order.
     /// - Each entry preserves syn's value (so a `/// foo` line yields `" foo"`).
     /// - Empty when the item has no doc comment.
     doc_comments: Vec<String>,
+
     /// True for fn items whose return type path ends in `Result` (i.e. a
     /// `-> Result<...>` signature). `false` for non-fn items and fns that do
     /// not return `Result`.
     returns_result: bool,
+
     /// Final path segment of the `Result` error type (the `E` in
     /// `Result<T, E>`), owned. Used by DOC008 to resolve the documented
     /// enum in the same file.
@@ -98,14 +114,18 @@ pub struct SourceItem {
     /// `None` for non-fn items, non-`Result` fns, and error types that are
     /// not a plain path.
     result_error_type: Option<String>,
+
     /// Named parameter idents of a fn, excluding `self`/`&self`/`&mut self`.
     /// Empty for non-fn items.
     params: Vec<String>,
+
     /// The fn's [`ReturnKind`]; [`ReturnKind::NoValue`] for non-fn items.
     return_kind: ReturnKind,
+
     /// True for fn items carrying a test marker: `#[test]`, `#[...::test]`,
     /// `#[rstest]`, `#[...::rstest]`, `#[test_case]`, or `#[...::test_case]`.
     is_test_fn: bool,
+
     /// True when a comment sits directly above this item's leading attributes
     /// (or its body, when it carries no attributes).
     ///
@@ -114,12 +134,14 @@ pub struct SourceItem {
     /// `//`/`/* */` comments. A blank line between the comment and the
     /// attributes breaks the run.
     has_summary_comment: bool,
+
     /// Preprocessor region id this item belongs to.
     ///
     /// Reordering permutes items only within one region id, so no item
     /// crosses a preprocessor conditional boundary. `0` for languages
     /// without preprocessor conditionals (Rust).
     region: u32,
+
     /// In-type members of this item, for member reordering. Empty unless a
     /// language backend's parse produced them; the Rust parse emits none.
     members: Vec<TypeMember>,
@@ -131,16 +153,20 @@ pub struct SourceItem {
 pub enum ReturnKind {
     /// No declared return type, `()`, or `!`: nothing to document.
     NoValue,
+
     /// Exactly `bool` (references stripped): obvious from a good summary,
     /// so DOC011 only reminds.
     Bool,
+
     /// `Self`, `&Self`, or `&mut Self` (builder-style chaining): the
     /// receiver's meaning is self-evident, so DOC011 stays silent.
     SelfValue,
+
     /// `Result<(), E>` of any path, plus qualified unit aliases like
     /// `core::fmt::Result`. DOC002's `# Errors` section covers the
     /// contract, so DOC011 stays silent.
     ResultUnit,
+
     /// Any other declared return type: a value readers may need described.
     Value,
 }
@@ -150,8 +176,10 @@ pub enum ReturnKind {
 pub enum VisibilityTier {
     /// `pub` - fully public
     Pub,
+
     /// `pub(crate)`, `pub(super)`, `pub(in path)` - restricted
     PubRestricted,
+
     /// No visibility modifier (private / inherited)
     Private,
 }

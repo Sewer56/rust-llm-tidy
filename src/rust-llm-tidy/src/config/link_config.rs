@@ -18,6 +18,7 @@ pub struct LinkConfig {
     /// hoist, unchanged behavior.
     #[serde(default = "default_one")]
     pub min_occurrences: usize,
+
     /// Per-extension thresholds, applied before the global setting.
     #[serde(default)]
     pub by_extension: BTreeMap<String, usize>,

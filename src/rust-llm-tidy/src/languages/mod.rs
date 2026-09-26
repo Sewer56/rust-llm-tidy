@@ -67,7 +67,7 @@ pub trait LanguageBackend: Sync {
     fn parse(&self, source: &str) -> anyhow::Result<ParseResult>;
 
     /// The AST pipeline ops this backend implements, as pipeline rule names
-    /// (`reorder`, `vis`, `lints`).
+    /// (`reorder`, `vis`, `spacing`, `lints`).
     ///
     /// Consumers compose this with their extension profiles: an op runs only
     /// when both the profile and the backend's list carry it.
@@ -144,16 +144,21 @@ mod tests {
     fn rs_resolves_with_all_ast_ops() {
         let backend = backend_for("rs").expect("rs must resolve to a backend");
 
-        assert_eq!(backend.ast_ops(), ["reorder", "vis", "lints"].as_slice());
+        assert_eq!(
+            backend.ast_ops(),
+            ["reorder", "vis", "spacing", "lints"].as_slice()
+        );
     }
 
-    /// `cs` resolves to a backend carrying reorder and lints, never `vis`
-    /// (visibility narrowing stays Rust-only).
+    /// C# supports member spacing, but not Rust-only visibility narrowing.
     #[test]
     fn cs_resolves_with_reorder_and_lints() {
         let backend = backend_for("cs").expect("cs must resolve to a backend");
 
-        assert_eq!(backend.ast_ops(), ["reorder", "lints"].as_slice());
+        assert_eq!(
+            backend.ast_ops(),
+            ["reorder", "spacing", "lints"].as_slice()
+        );
     }
 
     /// Python extensions resolve to a backend supporting only `lints`.

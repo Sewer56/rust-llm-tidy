@@ -18,12 +18,15 @@ struct TagScan {
     /// Inside a `<...>` span that has not closed yet; a span may open on
     /// one line and close on a later one.
     in_tag: bool,
+
     /// The open quote inside the tag being scanned, if any; a quoted
     /// attribute value may contain `>`.
     quote: Option<char>,
+
     /// Nesting depth of `<code>` and `<example>` subtrees; text inside
     /// them is exempt from both checks.
     exempt: usize,
+
     /// Whether the open paragraph continues into the next text node.
     /// True only when a text node reached the end of its line without a
     /// tag boundary after it.

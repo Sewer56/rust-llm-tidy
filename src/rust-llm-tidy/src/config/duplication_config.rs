@@ -13,8 +13,10 @@ pub(crate) const DEFAULT_MIN_OCCURRENCES: usize = 3;
 pub struct DuplicationConfig {
     /// Minimum lines containing a Unicode letter or number; must be at least 1.
     pub min_meaningful_lines: usize,
+
     /// Minimum non-overlapping sites, including the query; must be at least 2.
     pub min_occurrences: usize,
+
     /// Preserve edge whitespace and line endings instead of normalizing them.
     pub exact_whitespace: bool,
 }

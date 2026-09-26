@@ -26,26 +26,37 @@ mod steps;
 struct Scanner<'a> {
     /// Exact comment bytes are collected only for strict text-regex scans.
     comment_spans: Option<Vec<Range<usize>>>,
+
     /// Current line's absolute byte offset and the open block's start.
     line_offset: usize,
+
     block_start: usize,
+
     /// The family's lexical table.
     lex: &'a Lexicon,
+
     /// Completed regions, in source order.
     regions: Vec<DocRegion>,
+
     /// The open standalone-comment run; every other region closes it
     /// so regions stay in source order.
     run: Option<DocRegion>,
+
     /// The open block comment's content lines.
     block_lines: Vec<RegionLine>,
+
     /// Whether the open block's current line is its opener's.
     block_opener: bool,
+
     /// The lexical state at the next byte.
     state: State,
+
     /// Queued heredocs awaiting their terminator lines.
     heredocs: Vec<PendingHeredoc>,
+
     /// YAML flow nesting depth.
     yaml_flow_depth: usize,
+
     /// Where the open block's pending content segment starts; reset at
     /// each line's start.
     seg_start: usize,
@@ -60,6 +71,7 @@ struct Scanner<'a> {
 enum Step {
     /// Consumed `width` bytes; the byte loop continues.
     Advanced(usize),
+
     /// The rest of the line is consumed; the end-of-line carry runs.
     LineDone,
 }
@@ -69,16 +81,21 @@ enum Step {
 enum State {
     /// Ordinary code.
     Code,
+
     /// Inside a block comment.
     Block,
+
     /// Inside a `"..."` or '...' string; `double` selects the closing
     /// quote, and `carried` marks one that legally spans lines.
     Quote { double: bool, carried: bool },
+
     /// Inside a backtick literal (multi-line).
     Backtick,
+
     /// Inside a `"""` or `'''` string (multi-line); `single` selects the
     /// closing fence.
     Triple { single: bool },
+
     /// Inside a `${...}` interpolation hole of a backtick template, by
     /// brace depth.
     Hole { depth: u32 },

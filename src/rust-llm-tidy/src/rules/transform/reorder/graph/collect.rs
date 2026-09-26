@@ -57,15 +57,20 @@ pub(super) mod profile;
 pub struct ReferenceCollector<'names> {
     /// Stack of current top-level item *indices* we are inside.
     item_stack: Vec<usize>,
+
     /// Top-level item name -> item index, borrowed from the parse.
     name_to_idx: AHashMap<&'names str, usize>,
+
     /// Set of top-level macro names; edges to macros are reversed so the
     /// macro definition precedes its use sites.
     macro_names: AHashSet<&'names str>,
+
     /// The grammar's node-kind data, from the language's reorder profile.
     walk: &'static ReferenceWalk,
+
     /// Edges: `(referencer_index, referenced_index)`.
     edges: Vec<(usize, usize)>,
+
     /// Reused buffer for ident -> `&str` conversion during probing.
     ///
     /// Writing an ident via `fmt::Write` fills existing capacity instead of

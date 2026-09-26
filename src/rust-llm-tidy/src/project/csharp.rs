@@ -16,8 +16,10 @@ use std::path::{Path, PathBuf};
 #[derive(Default)]
 pub(crate) struct CSharpIndex {
     parses: HashMap<PathBuf, ParseResult>,
+
     /// Qualified throw answers for the current cached source versions.
     pub(crate) index: CanThrowIndex,
+
     /// Per-project scopes and file ownership for indexed linting.
     scopes: CSharpScopes,
 }
@@ -39,8 +41,10 @@ type RoutedInputs = Vec<(PathBuf, Vec<PathBuf>)>;
 pub(crate) struct CSharpScopes {
     /// Project scopes sorted by project path, loose scope last.
     scopes: Vec<CSharpScope>,
+
     /// Scoped file -> owning project; loose files never appear here.
     owners: AHashMap<PathBuf, PathBuf>,
+
     /// Project-less input files (the loose scope's members).
     loose: AHashSet<PathBuf>,
 }
@@ -49,6 +53,7 @@ pub(crate) struct CSharpScopes {
 pub(crate) struct CSharpScope {
     /// The anchoring project; `None` for the loose scope.
     pub(crate) project: Option<PathBuf>,
+
     /// The scope's files, sorted.
     pub(crate) files: Vec<PathBuf>,
 }

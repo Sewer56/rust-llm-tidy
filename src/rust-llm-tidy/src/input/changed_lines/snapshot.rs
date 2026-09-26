@@ -12,6 +12,7 @@ use std::collections::HashMap;
 pub struct ChangedLineSnapshot {
     /// Exact UTF-8 input, including its line endings.
     pub source: Box<str>,
+
     /// Eligible lines in [`Self::source`], not in transformed coordinates.
     pub changed: ChangedLines,
 }

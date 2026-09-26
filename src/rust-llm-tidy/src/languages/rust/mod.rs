@@ -25,7 +25,7 @@ impl LanguageBackend for RustBackend {
     }
 
     fn ast_ops(&self) -> &'static [&'static str] {
-        &["reorder", "vis", "lints"]
+        &["reorder", "vis", "spacing", "lints"]
     }
 
     fn lint(&self, parsed: &ParseResult) -> Vec<Diagnostic> {

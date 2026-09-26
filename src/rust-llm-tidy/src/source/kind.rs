@@ -18,30 +18,35 @@ pub enum ItemKind {
     /// fn main() {}
     /// ```
     Fn,
+
     /// A struct definition.
     ///
     /// ```rust,ignore
     /// struct Foo { x: i32 }
     /// ```
     Struct,
+
     /// An enum definition.
     ///
     /// ```rust,ignore
     /// enum Color { Red, Green, Blue }
     /// ```
     Enum,
+
     /// A type alias.
     ///
     /// ```rust,ignore
     /// type Point = (i32, i32);
     /// ```
     Type,
+
     /// A union definition.
     ///
     /// ```rust,ignore
     /// union Bytes { as_u32: u32, as_bytes: [u8; 4] }
     /// ```
     Union,
+
     /// An inherent or trait impl block.
     ///
     /// ```rust,ignore
@@ -49,24 +54,28 @@ pub enum ItemKind {
     /// impl Default for Foo { fn default() -> Self { Self {} } }
     /// ```
     Impl,
+
     /// A `use` import.
     ///
     /// ```rust,ignore
     /// use std::io;
     /// ```
     Use,
+
     /// A `const` item or constant field.
     ///
     /// ```rust,ignore
     /// const MAX: u32 = 100;
     /// ```
     Const,
+
     /// A `static` item.
     ///
     /// ```rust,ignore
     /// static COUNTER: AtomicUsize = AtomicUsize::new(0);
     /// ```
     Static,
+
     /// A module declaration or inline module.
     ///
     /// ```rust,ignore
@@ -74,24 +83,28 @@ pub enum ItemKind {
     /// mod bar {}
     /// ```
     Mod,
+
     /// An `extern crate` declaration.
     ///
     /// ```rust,ignore
     /// extern crate serde;
     /// ```
     Extern,
+
     /// A trait definition.
     ///
     /// ```rust,ignore
     /// trait Draw { fn render(&self); }
     /// ```
     Trait,
+
     /// A `macro_rules!` definition.
     ///
     /// ```rust,ignore
     /// macro_rules! say_hello { () => { println!("hi"); }; }
     /// ```
     Macro,
+
     /// A top-level macro invocation (e.g. `foo!();`) that is not a
     /// `macro_rules!` definition.
     ///
@@ -102,72 +115,84 @@ pub enum ItemKind {
     /// println!("x");
     /// ```
     MacroInvocation,
+
     /// A namespace declaration (C-family).
     ///
     /// ```csharp
     /// namespace App.Models;
     /// ```
     Namespace,
+
     /// A class declaration (C-family).
     ///
     /// ```csharp
     /// class Service { }
     /// ```
     Class,
+
     /// An interface declaration (C-family).
     ///
     /// ```csharp
     /// interface IRepository { }
     /// ```
     Interface,
+
     /// A using directive (C-family).
     ///
     /// ```csharp
     /// using System.IO;
     /// ```
     Using,
+
     /// A property or indexer declaration (C-family).
     ///
     /// ```csharp
     /// int Count { get; set; }
     /// ```
     Property,
+
     /// An event declaration (C-family).
     ///
     /// ```csharp
     /// event EventHandler Changed;
     /// ```
     Event,
+
     /// A constructor declaration (C-family).
     ///
     /// ```csharp
     /// Service(int count) { }
     /// ```
     Constructor,
+
     /// A finalizer declaration (C-family).
     ///
     /// ```csharp
     /// ~Service() { }
     /// ```
     Destructor,
+
     /// A delegate type declaration (C-family).
     ///
     /// ```csharp
     /// public delegate void Handler(object sender);
     /// ```
     Delegate,
+
     /// An operator or conversion operator member (C-family).
     ///
     /// ```csharp
     /// public static Service operator +(Service a, Service b) => a;
     /// ```
     Operator,
+
     /// A record declaration (C-family).
     ///
     /// ```csharp
     /// public record Point(int X, int Y);
     /// ```
     Record,
+
     /// Any other top-level item not covered above (foreign modules, trait
     /// aliases, verbatim items).
     ///

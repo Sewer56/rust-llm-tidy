@@ -17,7 +17,7 @@
 # Omitting `paths` in a group implies `["**"]` (all paths).
 #
 # Rule names (used in include.rules, exclude.rules, --include, --exclude):
-# ops tables, fences, links, reorder, vis, lints - plus lint codes
+# ops tables, fences, links, reorder, vis, spacing, lints - plus lint codes
 # (`DOC*`, `TEXT*`, `TEST*` families). The `lints` op groups them all.
 #
 # The `links` op hoists inline links `[text](url)` to `[text]` + a definition
@@ -149,6 +149,9 @@ exclude:
   # The MOD001 acceptance matrix is intentionally one file; it sits a few
   # lines over the 500-line budget and no split improves it.
   - paths: ["src/cli/tests/doc_check/mod001_module_size.rs"]
+    rules: [MOD001]
+  # The item model just barely exceeds the limit; keep its accessors together.
+  - paths: ["src/rust-llm-tidy/src/source/item.rs"]
     rules: [MOD001]
   # `input::file_io` and `reporting::change` are shared input/reporting
   # layers; `pipeline::files` is a consumer, not their owner.

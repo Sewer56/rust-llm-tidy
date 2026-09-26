@@ -7,6 +7,7 @@ use core::ops::Range;
 /// A contiguous comment run with one indentation and marker, in source bytes.
 pub(super) struct CommentRun {
     pub bytes: Range<usize>,
+
     /// Zero-based source row for translating transform-local change anchors.
     pub row: usize,
 }

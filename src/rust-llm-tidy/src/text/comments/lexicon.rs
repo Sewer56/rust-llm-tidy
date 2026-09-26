@@ -7,41 +7,53 @@
 pub(super) struct Lexicon {
     /// Language-specific token boundaries and escape rules.
     pub(super) syntax: Syntax,
+
     /// The line-comment marker.
     pub(super) line: &'static str,
+
     /// The block-comment open/close pair.
     pub(super) block: Option<(&'static str, &'static str)>,
+
     /// Whether `"""` and `'''` open multi-line strings.
     pub(super) triple: bool,
+
     /// Whether a backtick opens a multi-line literal.
     pub(super) backtick: bool,
+
     /// Whether `${` holes inside backtick literals are walked (template
     /// languages) instead of read as literal text.
     pub(super) template_holes: bool,
+
     /// The heredoc recognition style.
     pub(super) heredoc: Heredoc,
+
     /// Fail-closed rejects: literal forms the scan does not model,
     /// whose payload could otherwise be misread as comments.
     pub(super) rejects: &'static [Reject],
+
     /// Whether a backslash escapes the comment marker (TeX): an
     /// odd-length backslash run makes the marker print literally
     /// instead of commenting.
     pub(super) escaped_marker: bool,
+
     /// Whether `'` opens a string literal. False where the apostrophe is
     /// punctuation instead.
     ///
     /// Punctuation cases: the Lisp quote operator, Ada attributes
     /// (`X'First`), Haskell names (`x'`), Elm and TeX text.
     pub(super) single_quotes: bool,
+
     /// Whether quoted strings may span lines natively (shells, Ruby,
     /// the Lisp family, Elm), so a quote left open at the line's end
     /// carries its state.
     pub(super) multiline_quotes: bool,
+
     /// Whether the comment marker opens a comment only at the start of a
     /// word (POSIX `#` rules; Ruby after a token).
     ///
     /// Outside that, regex literals and mid-word `#` stay code.
     pub(super) word_start_comments: bool,
+
     /// Whether the block pair's markers open and close only alone on
     /// their lines (MATLAB `%{`/`%}`); elsewhere the line marker
     /// comments, as MATLAB itself reads it.
@@ -53,8 +65,10 @@ pub(super) struct Lexicon {
 pub(super) enum Heredoc {
     /// No heredoc syntax (`<<` is always an operator).
     None,
+
     /// Shell: `<<`, `<<-`, `<<'D'`, `<<"D"`, spaces allowed after `<<`.
     Shell,
+
     /// Ruby: marked forms only (`<<~D`, `<<-D`, `<<'D'`); bare `<<D`
     /// is ambiguous with the push/shift operators and rejects.
     Ruby,
@@ -66,23 +80,31 @@ pub(super) enum Heredoc {
 pub(super) enum Reject {
     /// CMake bracket arguments and bracket comments, including `=` levels.
     CmakeBracket,
+
     /// Ruby percent literals (`%w[]`, `%Q(...)`): arbitrary delimiters.
     PercentLiteral,
+
     /// PostgreSQL dollar-quoted strings.
     ///
     /// Forms: `$$ ... $$` and `$tag$ ... $tag$`.
     DollarQuote,
+
     /// Lua long strings and level-`=` comments (`[[`, `[=[`).
     LongBracket,
+
     /// Haskell quasiquotes and template brackets (`[name|`, `[|`).
     QuasiQuote,
+
     /// Lisp semicolons that are not comments: `#;` datum comments,
     /// `#\;` characters, Elisp `?;`/`?\;`, and Clojure `\;`.
     SemicolonLiteral,
+
     /// TeX verbatim material: `\verb` and verbatim-like environments.
     Verbatim,
+
     /// Erlang `$%` and `$\%`: the percent character literal.
     DollarPercent,
+
     /// YAML block-scalar indicators (`|`, `>`, with `-`/`+`/digit
     /// modifiers) at a value position.
     BlockScalar,
@@ -93,8 +115,10 @@ pub(super) enum Reject {
 pub(super) enum Syntax {
     /// Shared code-family rules with backslash escapes.
     Common,
+
     /// YAML plain scalars and whitespace-separated comments.
     Yaml,
+
     /// PowerShell backtick escapes and literal single-quoted strings.
     PowerShell,
 }

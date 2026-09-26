@@ -45,9 +45,11 @@ type Occurrences = SmallVec<[Occurrence; 24]>;
 
 struct Candidate<'a> {
     text: &'a str,
+
     /// First inline URL for this label. `None` means a pre-existing definition
     /// was seen, making every occurrence ineligible.
     url: Option<&'a str>,
+
     occurrences: usize,
     last_block: usize,
 }
@@ -57,6 +59,7 @@ struct DocBlock<'a> {
     end: usize,
     definition_start: usize,
     definition_end: usize,
+
     /// Whether a blank comment line must precede this block's definitions.
     /// Decided while sizing the output, reused when writing it.
     needs_blank: bool,

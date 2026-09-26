@@ -36,6 +36,7 @@ use core::iter;
 enum DocNode<'a> {
     /// The `doc` content child of an outer `/** */` block comment.
     Block(tree_sitter::Node<'a>),
+
     /// A `#[doc = "..."]` attribute: the `attribute_item` for the
     /// run-continuation gap check and the value's `string_content`.
     Attr {

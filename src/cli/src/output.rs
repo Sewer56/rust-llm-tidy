@@ -38,20 +38,27 @@ Reminders alone do not fail the check.\n";
 pub(crate) struct JsonRecord<'a> {
     /// Path of the file the record was raised in.
     path: Cow<'a, str>,
+
     /// Optional 1-based line number where the item starts; `null` when the
     /// record has no specific line (e.g. link/table fixes).
     line: Option<NonZeroU32>,
+
     /// Lowercase `error`, `warning`, `hint`, `reminder`, `ai_reminder`, or
     /// `success`.
     severity: &'static str,
+
     /// Stable rule or operation code, e.g. "DOC001", "FIX", "REORDER", "VIS".
     code: &'static str,
+
     /// Human-readable description of the finding or would-be edit.
     message: Cow<'a, str>,
+
     /// Kind of item that produced the record, e.g. "fn".
     item_kind: Cow<'a, str>,
+
     /// Name of the item, or `null` when unnamed.
     item_name: Option<Cow<'a, str>>,
+
     /// Producer-owned title, or the raw code when absent; `null` for changes.
     title: Option<&'a str>,
 }
@@ -61,6 +68,7 @@ pub(crate) struct JsonRecord<'a> {
 pub(crate) enum OutputMode {
     /// Human-readable `path:line: sev[CODE]: ...` diagnostics on stderr.
     Text,
+
     /// A single JSON array of all lint findings and dry-run change records on
     /// stdout.
     Json,

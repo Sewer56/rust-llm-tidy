@@ -25,11 +25,14 @@ use tree_sitter::Node;
 #[derive(Default)]
 pub(in super::super) struct PendingTrivia<'a> {
     pub(super) nodes: Vec<Node<'a>>,
+
     /// The first `#[...]` attribute item in the run, if any.
     first_attr: Option<Node<'a>>,
+
     /// The comment directly above [`Self::first_attr`], recorded when that
     /// attribute is pushed. `None` when the attribute opens the run.
     first_attr_comment: Option<Node<'a>>,
+
     /// The most recent comment node in the run, doc or transparent. Used when
     /// the item carries no attributes.
     last_comment: Option<Node<'a>>,

@@ -48,8 +48,6 @@
 //! - MOD004: sole-caller namespace placement hints, precomputed once
 //!   per run (see [`mod004_sole_caller`]) and reaching `.cs` files
 //!   through the pipeline's per-file seam, not this per-file pass.
-//! - FMT001: members of a type body with docs or attributes need a
-//!   blank line between them (warning severity).
 //!
 //! Text checks:
 //!
@@ -78,7 +76,6 @@ mod doc005_undocumented_param;
 mod doc006_placeholder;
 mod doc010_tag_order;
 mod doc011_missing_returns;
-mod fmt001_member_spacing;
 mod mod003_qualified_path;
 pub(crate) mod mod004_sole_caller;
 mod test001_test_naming;
@@ -180,7 +177,6 @@ pub(crate) fn run_indexed(parsed: &ParseResult, shared: Option<&CanThrowIndex>) 
     }
 
     diagnostics.extend(mod003_qualified_path::check(parsed));
-    diagnostics.extend(fmt001_member_spacing::check(parsed));
 
     diagnostics.extend(run_region_checks(doc_regions(parsed)));
     diagnostics

@@ -18,6 +18,7 @@ use tree_sitter::Node;
 pub(super) enum ModChild {
     /// `mod foo {}` - inline, no file (already narrowed by `walk()`).
     Inline,
+
     /// `mod foo;` -> resolved file path, declared name (`foo`), and verbatim
     /// visibility text (`"pub(crate)"`, or `None` for bare `pub`/private).
     ///
@@ -40,6 +41,7 @@ pub struct ModuleTree {
     /// Resolved absolute file path -> effective floor visibility text
     /// (e.g. `"pub(crate)"`), or `None` at the crate root.
     floors: AHashMap<PathBuf, Option<String>>,
+
     /// Non-fatal resolution warnings (unresolved `mod foo;`, missing `#[path]`
     /// target). Surfaced to the CLI as diagnostics.
     warnings: Vec<String>,

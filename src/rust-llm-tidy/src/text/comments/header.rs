@@ -23,12 +23,16 @@
 struct HeaderSyntax {
     /// The line-comment marker.
     line: &'static str,
+
     /// The block-comment open/close pair.
     block: Option<(&'static str, &'static str)>,
+
     /// Whether block markers comment only alone on their lines.
     alone_markers: bool,
+
     /// Whether a module docstring may form the header.
     docstring: bool,
+
     /// Whether `///` and `/**` document the following item instead of
     /// the file: only Rust and C# read them that way.
     item_docs: bool,

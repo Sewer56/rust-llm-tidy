@@ -152,6 +152,7 @@ print in separate groups in text mode, and AI reminders print last, under
 | `links`   | hoist inline links to reference style   | yes     | yes         |
 | `reorder` | review-friendly item order              | yes     | yes         |
 | `vis`     | narrow bare `pub` in restricted modules | yes     | yes         |
+| `spacing` | blank lines between documented members  | yes     | yes         |
 | `lints`   | run DOC*, TEXT*, TEST* checks           | no      | yes         |
 
 An optional YAML config file (`.rust-llm-tidy.yml`) customizes processing.

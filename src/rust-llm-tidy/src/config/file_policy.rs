@@ -8,9 +8,11 @@ use std::collections::HashSet;
 pub struct FilePolicy {
     /// Matched by an `exclude_files` pattern.
     pub skip: bool,
+
     /// Ops/rules enabled for this file (whitelist mode) or `None` for the
     /// blacklist/default mode (caller disables via `disabled`).
     pub enabled: Option<HashSet<String>>,
+
     /// Union of `rules` from all matched `exclude` groups (blacklist/default
     /// mode). Empty in whitelist mode.
     pub disabled: HashSet<String>,

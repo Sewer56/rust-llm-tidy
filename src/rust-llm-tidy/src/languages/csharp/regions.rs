@@ -37,25 +37,33 @@
 enum LexState {
     /// Ordinary code.
     Code,
+
     /// Inside a `/* */` comment.
     BlockComment,
+
     /// Inside a regular `"..."` string literal.
     String,
+
     /// Inside a verbatim `@"..."` string literal.
     VerbatimString,
+
     /// Inside a `'...'` character literal.
     Char,
+
     /// Inside a raw string literal opened by a run of `len` `"` quotes.
     RawString {
         /// The opening quote-run length; the literal closes on the next
         /// run of at least this many quotes.
         len: usize,
     },
+
     /// Inside the literal text of an interpolated `$"..."` string.
     InterpString,
+
     /// Inside the literal text of an interpolated verbatim `$@"..."` or
     /// `@$"..."` string.
     InterpVerbatim,
+
     /// Inside an interpolation hole `{ ... }` of an interpolated string:
     /// the hole's expression is walked by brace depth.
     ///

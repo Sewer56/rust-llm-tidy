@@ -32,8 +32,10 @@ pub struct ModulePaths {
     /// Resolved absolute file path -> module-path segments from the
     /// crate root.
     paths: AHashMap<PathBuf, Vec<Box<str>>>,
+
     /// Files with at least one ungated `mod` chain from the root.
     production: AHashSet<PathBuf>,
+
     /// Non-fatal resolution warnings, same content as
     /// [`ModuleTree::warnings`].
     ///

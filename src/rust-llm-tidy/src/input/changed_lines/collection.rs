@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 pub struct ChangedLineCollection {
     /// Original caller paths mapped to snapshots, or `None` without a baseline.
     pub snapshots: BTreeMap<PathBuf, Option<ChangedLineSnapshot>>,
+
     /// One warning per unavailable repository or standalone input directory.
     pub warnings: Vec<String>,
 }

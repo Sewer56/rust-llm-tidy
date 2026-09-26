@@ -14,6 +14,7 @@
 pub struct DocRegion {
     /// The dialect the region's lines are measured with.
     pub dialect: Dialect,
+
     /// The region's doc lines in source order.
     pub lines: Vec<RegionLine>,
 }
@@ -24,17 +25,20 @@ pub enum Dialect {
     /// Markdown text: fences, indented code, exempt content, and bullet
     /// segmentation over the stripped text.
     Markdown,
+
     /// XML doc comments: only the inner text of text nodes is measured.
     ///
     /// Tags and attribute values vanish. `<code>` and `<example>`
     /// subtrees are exempt, and paragraphs never join across tags.
     XmlDoc,
+
     /// Block doc comments (`/** ... */` style): leading `*` continuation
     /// markers vanish, `@tag` lines cost only their remaining text.
     ///
     /// Blank lines split paragraphs, and fenced or indented example
     /// blocks are exempt.
     BlockDoc,
+
     /// Python docstrings: `>>>` doctest examples are exempt, and the
     /// remaining text measures with the markdown rules.
     ///
@@ -48,8 +52,10 @@ pub enum Dialect {
 pub struct RegionLine {
     /// 1-based original file line number.
     pub number: usize,
+
     /// The stripped text: line ending, indent, and comment marker removed.
     pub text: String,
+
     /// Whether the line counts as indented code.
     ///
     /// In marker languages, a tab or 4-space lead in the stripped text

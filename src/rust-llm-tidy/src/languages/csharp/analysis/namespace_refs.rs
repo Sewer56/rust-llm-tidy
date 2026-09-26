@@ -47,6 +47,7 @@ const TYPE_KINDS: &[&str] = &[
 pub struct NamespaceRefIndex {
     /// Each declared namespace's top-level type names.
     types: AHashMap<Box<str>, Vec<Box<str>>>,
+
     /// Reference edges in parse order, then source order.
     edges: Vec<NamespaceEdge>,
 }
@@ -56,10 +57,13 @@ pub struct NamespaceRefIndex {
 pub struct NamespaceEdge {
     /// The namespace containing the reference.
     pub from: Box<str>,
+
     /// The namespace of the referenced top-level type.
     pub target: Box<str>,
+
     /// The file anchoring the reference.
     pub file: PathBuf,
+
     /// The 1-based line of the reference.
     pub line: usize,
 }

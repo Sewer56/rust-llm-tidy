@@ -45,7 +45,7 @@ impl LanguageBackend for CSharpBackend {
     }
 
     fn ast_ops(&self) -> &'static [&'static str] {
-        &["reorder", "lints"]
+        &["reorder", "spacing", "lints"]
     }
 
     fn lint(&self, parsed: &ParseResult) -> Vec<Diagnostic> {

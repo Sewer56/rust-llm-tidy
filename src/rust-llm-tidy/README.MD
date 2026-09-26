@@ -93,8 +93,8 @@ See the [API documentation] for executable examples and error contracts.
 All rule implementations live under one source tree:
 
 - `rules/lint/{rust,csharp,text}` contains diagnostic policies
-- `rules/transform/{tables,fences,links,reorder,visibility}` contains source
-  transformations
+- `rules/transform/{tables,fences,links,reorder,visibility,spacing}` contains
+  source transformations
 - `rules/registry.rs` owns stable rule codes and titles
 - `languages` owns parsing, language profiles and syntax facts
 - `text` owns comment extraction and documentation measurement

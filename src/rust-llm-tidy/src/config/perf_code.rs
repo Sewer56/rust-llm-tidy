@@ -8,6 +8,7 @@ pub enum PerfCode {
     /// Container capacity reminders for Rust and C#.
     #[serde(rename = "PERF001")]
     Capacity,
+
     /// Explicit sized C# array initialization reminder.
     #[serde(rename = "PERF002")]
     ArrayInitialization,

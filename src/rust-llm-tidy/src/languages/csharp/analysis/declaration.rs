@@ -18,21 +18,29 @@ pub(crate) const THROWING: &[ItemKind] = &[ItemKind::Fn, ItemKind::Constructor];
 pub(crate) struct Declaration<'a> {
     /// The declaration's syntax node, for rules that walk attributes.
     pub(crate) node: tree_sitter::Node<'a>,
+
     /// The full source text, slicing companion to `node`.
     pub(crate) source: &'a str,
+
     /// The declaration's model kind.
     pub(crate) kind: ItemKind,
+
     /// The declaration's name, when it has a meaningful one.
     pub(crate) name: Option<String>,
+
     /// The innermost containing type, without namespace qualification.
     pub(crate) type_name: Option<String>,
+
     /// The declaration's `///` doc-comment lines.
     pub(crate) docs: Vec<String>,
+
     /// True when the visibility modifier is not `private`.
     pub(crate) non_private: bool,
+
     /// The 1-based diagnostic line: the `///` doc run's start when
     /// present, else the declaration's own row.
     pub(crate) line: usize,
+
     /// The `<exception>` tag facts for a non-private member that can
     /// throw, directly or through resolved calls: tag count plus every
     /// `cref` value.
@@ -41,11 +49,13 @@ pub(crate) struct Declaration<'a> {
     /// DOC003 share one answer; the lint dispatcher stamps it after the can-throw
     /// closure.
     pub(crate) exception_scan: Option<(usize, Vec<String>)>,
+
     /// The declared parameter names paired with their `<param>` tag names,
     /// for a non-private parameterized member that declares parameters.
     ///
     /// `None` otherwise, so DOC004 and DOC005 share one parameter walk.
     pub(crate) param_scan: Option<(Vec<String>, Vec<String>)>,
+
     /// For a non-private method: the [`ReturnKind`] of its declared
     /// return type, and whether its docs already carry a `<returns>`
     /// tag.

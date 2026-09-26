@@ -7,8 +7,10 @@ use ahash::AHashMap;
 pub(super) struct Lines<'a> {
     pub(super) ids: Vec<usize>,
     pub(super) meaningful: Vec<usize>,
+
     /// Exclusive eligible-run end for each line; zero means ineligible.
     pub(super) query_end: Vec<usize>,
+
     text: Vec<&'a str>,
     hashes: Vec<u64>,
     powers: Vec<u64>,

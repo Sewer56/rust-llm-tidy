@@ -19,9 +19,11 @@ use core::ops::Range;
 #[derive(Debug, Clone)]
 pub struct Permutation {
     order: Vec<usize>,
+
     /// In-type member permutations by item index. Empty unless member
     /// reordering applies; the Rust parse emits no members.
     member_orders: AHashMap<usize, Vec<usize>>,
+
     /// Protected emission keeps original trivia instead of deriving spacing.
     preserve_spacing: bool,
 }

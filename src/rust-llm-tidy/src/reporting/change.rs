@@ -18,10 +18,12 @@
 //!
 //! Tables emit one per-file record via [`table_changes`]; link hoists
 //! map the transformation module's before/after pairs to records via
-//! [`link_changes`].
+//! [`link_changes`]. [`spacing_changes`] gives each inserted blank line
+//! its own record.
 
 use crate::rules::transform::FixAnchor;
 use crate::rules::transform::reorder::{self, Permutation};
+use crate::rules::transform::spacing::SpacingEdit;
 use crate::source::{ItemKind, ParseResult};
 use core::num::NonZeroU32;
 use std::fmt;
@@ -48,13 +50,17 @@ use std::fmt;
 pub struct Change {
     /// Optional 1-based line where the affected entity begins (`None` = no line).
     pub line: Option<NonZeroU32>,
+
     /// Kind of the affected entity, as a typed value (see [`ChangeKind::as_str`]
     /// for the string form).
     pub kind: ChangeKind,
+
     /// Operation code: `FIX`, `REORDER`, or `VIS`.
     pub code: &'static str,
+
     /// Stable, human-readable description (never the reconstructed source).
     pub message: Box<str>,
+
     /// Name of the affected item, when it has one.
     pub name: Option<Box<str>>,
 }
@@ -71,12 +77,16 @@ pub struct Change {
 pub enum ChangeKind {
     /// A parsed source item kind (e.g. `fn`, `struct`).
     Item(ItemKind),
+
     /// A nested code fence whose delimiter was flipped.
     Fence,
+
     /// A hoisted inline link.
     Link,
+
     /// A realigned table.
     Table,
+
     /// An `extern crate` item whose visibility was narrowed.
     ExternCrate,
 }
@@ -213,6 +223,27 @@ pub(crate) fn reorder_changes(parsed: &ParseResult, permutation: &Permutation) -
         });
     }
     change_records
+}
+
+/// Report each blank line inserted between members.
+///
+/// The message names both members; `kind` identifies their enclosing
+/// item. `name` stays empty because the record covers a pair.
+pub(crate) fn spacing_changes(edits: &[SpacingEdit]) -> Vec<Change> {
+    edits
+        .iter()
+        .map(|edit| Change {
+            line: NonZeroU32::new(edit.line),
+            code: "FIX",
+            message: format!(
+                "insert blank line between `{}` and `{}`",
+                edit.prev, edit.next
+            )
+            .into_boxed_str(),
+            kind: ChangeKind::Item(edit.kind),
+            name: None,
+        })
+        .collect()
 }
 
 /// The one [`Change`] a file emits when its tables were realigned.
@@ -450,6 +481,36 @@ mod tests {
     #[test]
     fn link_changes_is_empty_without_pairs() {
         assert!(link_changes(&[]).is_empty());
+    }
+
+    #[test]
+    fn spacing_changes_maps_one_record_per_edit() {
+        let edits = vec![SpacingEdit {
+            byte: 62,
+            line: 5,
+            kind: ItemKind::Struct,
+            prev: "source".into(),
+            next: "target".into(),
+        }];
+        let changes = spacing_changes(&edits);
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].line.unwrap().get(), 5);
+        assert_eq!(changes[0].code, "FIX");
+        assert_eq!(changes[0].kind, ChangeKind::Item(ItemKind::Struct));
+        assert_eq!(
+            changes[0].message.as_ref(),
+            "insert blank line between `source` and `target`"
+        );
+        assert_eq!(
+            changes[0].to_string(),
+            "5: success[FIX]: insert blank line between `source` and `target` (struct)"
+        );
+    }
+
+    #[test]
+    fn spacing_changes_is_empty_without_edits() {
+        assert!(spacing_changes(&[]).is_empty());
     }
 
     #[test]
