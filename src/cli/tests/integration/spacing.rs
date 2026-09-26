@@ -97,7 +97,8 @@ fn spacing_should_run_by_default_and_stay_excludable() {
 
     let output = run_command(&["--exclude", "spacing"], &excluded);
     assert!(output.status.success());
-    let after = fs::read_to_string(&excluded).unwrap();
+    // Normalize CRLF so the packed-members check holds on Windows checkouts.
+    let after = fs::read_to_string(&excluded).unwrap().replace("\r\n", "\n");
     assert!(
         after.contains("pub source: u32,\n    ///"),
         "excluded spacing must leave members packed"
@@ -111,9 +112,11 @@ fn spacing_should_run_by_default_and_stay_excludable() {
         stderr.contains("insert blank line between"),
         "default pipeline must space documented members: {stderr}"
     );
+    // Normalize CRLF so the inserted-blank-line check holds on Windows checkouts.
     assert!(
         fs::read_to_string(&default)
             .unwrap()
+            .replace("\r\n", "\n")
             .contains("pub source: u32,\n\n    ///"),
         "default pipeline must insert the blank line"
     );
