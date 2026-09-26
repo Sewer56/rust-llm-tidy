@@ -350,6 +350,7 @@ fn named_child_of_kind<'a>(
 mod tests {
     use super::*;
     use crate::languages::csharp::parse::parse;
+    use indoc::indoc;
     use rstest::rstest;
 
     /// Parses `source` and runs FMT001 over it.
@@ -462,15 +463,45 @@ public enum Exit
 
     #[rstest]
     #[case::first_documented(
-        "class C {\n    /// <summary>d for a.</summary>\n    int a;\n    int b;\n}\n",
+        indoc! {"
+            class C {
+                /// <summary>d for a.</summary>
+                int a;
+                int b;
+            }
+        "},
         4
     )]
     #[case::second_documented(
-        "class C {\n    int a;\n    /// <summary>d for b.</summary>\n    int b;\n}\n",
+        indoc! {"
+            class C {
+                int a;
+                /// <summary>d for b.</summary>
+                int b;
+            }
+        "},
         3
     )]
-    #[case::attribute_on_first("class C {\n    [SerializeField]\n    int a;\n    int b;\n}\n", 4)]
-    #[case::attribute_on_second("class C {\n    int a;\n    [SerializeField]\n    int b;\n}\n", 3)]
+    #[case::attribute_on_first(
+        indoc! {"
+            class C {
+                [SerializeField]
+                int a;
+                int b;
+            }
+        "},
+        4
+    )]
+    #[case::attribute_on_second(
+        indoc! {"
+            class C {
+                int a;
+                [SerializeField]
+                int b;
+            }
+        "},
+        3
+    )]
     fn check_should_flag_when_only_one_member_is_documented(
         #[case] source: &str,
         #[case] line: usize,
@@ -498,11 +529,13 @@ public enum Exit
         assert_eq!(diags[0].line, 5);
         assert_eq!(
             diags[0].message,
-            "`S` class members `a` and `b` need a blank line between them.\n\
-             Why: a blank line keeps each doc comment attached to its own member.\n\
-             Suggestions:\n\
-             - Add one blank line between `a` and `b`, before any docs and\n  \
-             attributes of `b`."
+            indoc! {"
+                `S` class members `a` and `b` need a blank line between them.
+                Why: a blank line keeps each doc comment attached to its own member.
+                Suggestions:
+                - Add one blank line between `a` and `b`, before any docs and
+                  attributes of `b`."
+            }
         );
     }
 
@@ -529,9 +562,17 @@ public enum Exit
 "#
     )]
     #[case::documented_members_share_a_line(
-        "class P {\n    /// <summary>d for x.</summary>\n    int x; int y;\n}\n"
+        indoc! {"
+            class P {
+                /// <summary>d for x.</summary>
+                int x; int y;
+            }
+        "}
     )]
-    #[case::empty_body("class E {\n}\n")]
+    #[case::empty_body(indoc! {"
+        class E {
+        }
+    "})]
     #[case::single_documented_member(
         r#"class S
 {
@@ -549,8 +590,14 @@ public enum Exit
 
     #[test]
     fn check_should_anchor_at_first_doc_line_when_docs_wrap() {
-        let source =
-            "class S {\n    int a;\n    /// First line.\n    /// Second line.\n    int b;\n}\n";
+        let source = indoc! {"
+            class S {
+                int a;
+                /// First line.
+                /// Second line.
+                int b;
+            }
+        "};
 
         let diags = checks(source);
 
@@ -560,7 +607,15 @@ public enum Exit
 
     #[test]
     fn check_should_flag_when_a_plain_comment_sits_between_members() {
-        let source = "class S {\n    /// d for a.\n    int a;\n    // note.\n    /// d for b.\n    int b;\n}\n";
+        let source = indoc! {"
+            class S {
+                /// d for a.
+                int a;
+                // note.
+                /// d for b.
+                int b;
+            }
+        "};
 
         let diags = checks(source);
 
@@ -570,8 +625,14 @@ public enum Exit
 
     #[test]
     fn check_should_flag_when_a_trailing_comment_shares_the_prev_member_row() {
-        let source =
-            "class C {\n    /// d for a.\n    int a; // note\n    /// d for b.\n    int b;\n}\n";
+        let source = indoc! {"
+            class C {
+                /// d for a.
+                int a; // note
+                /// d for b.
+                int b;
+            }
+        "};
 
         let diags = checks(source);
 
@@ -581,7 +642,13 @@ public enum Exit
 
     #[test]
     fn check_should_anchor_at_the_member_when_only_a_trailing_comment_precedes_it() {
-        let source = "class C {\n    /// d for a.\n    int a; // note\n    int b;\n}\n";
+        let source = indoc! {"
+            class C {
+                /// d for a.
+                int a; // note
+                int b;
+            }
+        "};
 
         let diags = checks(source);
 
@@ -631,7 +698,16 @@ public enum Exit
 
     #[test]
     fn check_should_stay_quiet_for_members_inside_preprocessor_conditionals() {
-        let source = "class C {\n    /// d for a.\n    int a;\n#if DEBUG\n    /// d for b.\n    int b;\n#endif\n}\n";
+        let source = indoc! {"
+            class C {
+                /// d for a.
+                int a;
+            #if DEBUG
+                /// d for b.
+                int b;
+            #endif
+            }
+        "};
 
         assert!(checks(source).is_empty());
     }
@@ -649,7 +725,17 @@ public enum Exit
 
     #[test]
     fn check_should_anchor_at_the_conditional_when_it_sits_between_members() {
-        let source = "class C {\n    /// d for a.\n    int a;\n#if DEBUG\n    int b;\n#endif\n    /// d for c.\n    int c;\n}\n";
+        let source = indoc! {"
+            class C {
+                /// d for a.
+                int a;
+            #if DEBUG
+                int b;
+            #endif
+                /// d for c.
+                int c;
+            }
+        "};
 
         let diags = checks(source);
 
@@ -660,7 +746,16 @@ public enum Exit
 
     #[test]
     fn check_should_stay_quiet_when_a_region_directive_sits_between_members() {
-        let source = "class C {\n    /// d for a.\n    int a;\n#region Edges\n    /// d for b.\n    int b;\n#endregion\n}\n";
+        let source = indoc! {"
+            class C {
+                /// d for a.
+                int a;
+            #region Edges
+                /// d for b.
+                int b;
+            #endregion
+            }
+        "};
 
         let diags = checks(source);
 
@@ -671,7 +766,18 @@ public enum Exit
 
     #[test]
     fn check_should_anchor_at_the_doc_when_a_comment_precedes_the_conditional() {
-        let source = "class C {\n    /// d for a.\n    int a;\n    // note.\n#if DEBUG\n    int b;\n#endif\n    /// d for c.\n    int c;\n}\n";
+        let source = indoc! {"
+            class C {
+                /// d for a.
+                int a;
+                // note.
+            #if DEBUG
+                int b;
+            #endif
+                /// d for c.
+                int c;
+            }
+        "};
 
         let diags = checks(source);
 

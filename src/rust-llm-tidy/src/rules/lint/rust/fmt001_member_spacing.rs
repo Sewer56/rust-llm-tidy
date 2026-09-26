@@ -278,6 +278,7 @@ fn member_kind_phrase(kind: &str) -> &'static str {
 mod tests {
     use super::*;
     use crate::languages::rust::parse::parse_source;
+    use indoc::indoc;
     use rstest::rstest;
 
     /// Parses `source` and runs FMT001 over it.
@@ -385,14 +386,44 @@ impl Bytes {
     }
 
     #[rstest]
-    #[case::first_documented("struct S {\n    /// docs for a.\n    a: u32,\n    b: u32,\n}\n", 4)]
-    #[case::second_documented("struct S {\n    a: u32,\n    /// docs for b.\n    b: u32,\n}\n", 3)]
+    #[case::first_documented(
+        indoc! {"
+            struct S {
+                /// docs for a.
+                a: u32,
+                b: u32,
+            }
+        "},
+        4
+    )]
+    #[case::second_documented(
+        indoc! {"
+            struct S {
+                a: u32,
+                /// docs for b.
+                b: u32,
+            }
+        "},
+        3
+    )]
     #[case::attribute_on_first(
-        "struct S {\n    #[serde(default)]\n    a: u32,\n    b: u32,\n}\n",
+        indoc! {"
+            struct S {
+                #[serde(default)]
+                a: u32,
+                b: u32,
+            }
+        "},
         4
     )]
     #[case::attribute_on_second(
-        "struct S {\n    a: u32,\n    #[serde(default)]\n    b: u32,\n}\n",
+        indoc! {"
+            struct S {
+                a: u32,
+                #[serde(default)]
+                b: u32,
+            }
+        "},
         3
     )]
     fn check_should_flag_when_only_one_member_is_documented(
@@ -421,11 +452,13 @@ impl Bytes {
         assert_eq!(diags[0].line, 4);
         assert_eq!(
             diags[0].message,
-            "`S` struct fields `a` and `b` need a blank line between them.\n\
-             Why: a blank line keeps each doc comment attached to its own member.\n\
-             Suggestions:\n\
-             - Add one blank line between `a` and `b`, before any docs and\n  \
-             attributes of `b`."
+            indoc! {"
+                `S` struct fields `a` and `b` need a blank line between them.
+                Why: a blank line keeps each doc comment attached to its own member.
+                Suggestions:
+                - Add one blank line between `a` and `b`, before any docs and
+                  attributes of `b`."
+            }
         );
     }
 
@@ -467,16 +500,44 @@ impl Bytes {
 "#
     )]
     #[case::documented_members_share_a_line(
-        "struct P {\n    /// docs for x.\n    x: u32, y: u32,\n}\n"
+        indoc! {"
+            struct P {
+                /// docs for x.
+                x: u32, y: u32,
+            }
+        "}
     )]
-    #[case::quad_slash_comment("struct S {\n    //// note.\n    a: u32,\n    b: u32,\n}\n")]
+    #[case::quad_slash_comment(
+        indoc! {"
+            struct S {
+                //// note.
+                a: u32,
+                b: u32,
+            }
+        "}
+    )]
     #[case::triple_star_block_comment(
-        "struct S {\n    /*** not a doc. */\n    a: u32,\n    b: u32,\n}\n"
+        indoc! {"
+            struct S {
+                /*** not a doc. */
+                a: u32,
+                b: u32,
+            }
+        "}
     )]
-    #[case::stray_semicolon("impl Foo {\n    ;\n    /// docs for a.\n    fn a(&self) {}\n}\n")]
+    #[case::stray_semicolon(indoc! {"
+        impl Foo {
+            ;
+            /// docs for a.
+            fn a(&self) {}
+        }
+    "})]
     #[case::unit_struct("struct U;\n")]
     #[case::tuple_struct("struct T(u32, u32);\n")]
-    #[case::empty_body("struct E {\n}\n")]
+    #[case::empty_body(indoc! {"
+        struct E {
+        }
+    "})]
     #[case::single_documented_member(
         r#"struct S {
     /// docs for a.
@@ -492,8 +553,14 @@ impl Bytes {
 
     #[test]
     fn check_should_anchor_at_first_doc_line_when_docs_wrap() {
-        let source =
-            "struct S {\n    a: u32,\n    /// First line.\n    /// Second line.\n    b: u32,\n}\n";
+        let source = indoc! {"
+            struct S {
+                a: u32,
+                /// First line.
+                /// Second line.
+                b: u32,
+            }
+        "};
 
         let diags = checks(source);
 
@@ -503,7 +570,15 @@ impl Bytes {
 
     #[test]
     fn check_should_flag_when_a_plain_comment_sits_between_members() {
-        let source = "struct S {\n    /// docs for a.\n    a: u32,\n    // note.\n    /// docs for b.\n    b: u32,\n}\n";
+        let source = indoc! {"
+            struct S {
+                /// docs for a.
+                a: u32,
+                // note.
+                /// docs for b.
+                b: u32,
+            }
+        "};
 
         let diags = checks(source);
 
@@ -513,11 +588,25 @@ impl Bytes {
 
     #[rstest]
     #[case::line_comment(
-        "struct S {\n    /// docs for a.\n    a: u32, // note\n    /// docs for b.\n    b: u32,\n}\n",
+        indoc! {"
+            struct S {
+                /// docs for a.
+                a: u32, // note
+                /// docs for b.
+                b: u32,
+            }
+        "},
         4
     )]
     #[case::block_comment(
-        "struct S {\n    /// docs for a.\n    a: u32, /* note */\n    /// docs for b.\n    b: u32,\n}\n",
+        indoc! {"
+            struct S {
+                /// docs for a.
+                a: u32, /* note */
+                /// docs for b.
+                b: u32,
+            }
+        "},
         4
     )]
     fn check_should_flag_when_a_trailing_comment_shares_the_prev_member_row(
@@ -532,7 +621,13 @@ impl Bytes {
 
     #[test]
     fn check_should_anchor_at_the_member_when_only_a_trailing_comment_precedes_it() {
-        let source = "struct S {\n    /// docs for a.\n    a: u32, // note\n    b: u32,\n}\n";
+        let source = indoc! {"
+            struct S {
+                /// docs for a.
+                a: u32, // note
+                b: u32,
+            }
+        "};
 
         let diags = checks(source);
 
@@ -590,7 +685,15 @@ impl Bytes {
 
     #[test]
     fn check_should_flag_real_gaps_when_impl_body_leads_with_an_inner_attribute() {
-        let source = "impl Foo {\n    #![allow(dead_code)]\n    /// d for a.\n    fn a(&self) {}\n    /// d for b.\n    fn b(&self) {}\n}\n";
+        let source = indoc! {"
+            impl Foo {
+                #![allow(dead_code)]
+                /// d for a.
+                fn a(&self) {}
+                /// d for b.
+                fn b(&self) {}
+            }
+        "};
 
         let diags = checks(source);
 
