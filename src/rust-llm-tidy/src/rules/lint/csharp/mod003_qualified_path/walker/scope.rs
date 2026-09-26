@@ -31,6 +31,7 @@ pub(super) struct Import<'a> {
     pub(super) segments: Vec<&'a str>,
     pub(super) short: &'a str,
     pub(super) aliased: bool,
+
     /// Whether the directive bypasses relative name resolution with `global::`.
     pub(super) absolute: bool,
 }

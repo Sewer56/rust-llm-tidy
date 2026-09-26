@@ -28,9 +28,11 @@ use core::ops::Range;
 struct FnBody<'a> {
     /// Source bytes strictly between the body braces.
     inner: Range<usize>,
+
     /// 1-based line of the function item itself; preceding attributes
     /// and doc comments sit on earlier lines and do not move it.
     line: usize,
+
     /// The function's identifier text, if the tree names it.
     name: Option<&'a str>,
 }

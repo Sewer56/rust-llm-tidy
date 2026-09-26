@@ -16,6 +16,7 @@
 pub enum TieBreak {
     /// Sort zero-in-degree nodes alphabetically by name.
     Alphabetical,
+
     /// Keep original file order for zero-in-degree nodes.
     Stable,
 }

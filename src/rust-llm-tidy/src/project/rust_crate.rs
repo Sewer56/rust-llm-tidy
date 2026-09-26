@@ -34,6 +34,7 @@ use tree_sitter::Node;
 pub(crate) struct RustCrateIndex {
     /// Resolved file -> module-path segments (crate root -> file).
     paths: ModulePaths,
+
     /// Reference edges, in file discovery order then source order.
     edges: Vec<ReferenceEdge>,
 }
@@ -47,8 +48,10 @@ pub(crate) struct ReferenceEdge {
     /// Path of the file containing the reference, in the form passed
     /// to the constructor (`build_all` canonicalizes to absolute).
     pub(crate) from: PathBuf,
+
     /// Path of the resolved target module's file (same form as `from`).
     pub(crate) target: PathBuf,
+
     /// 1-based line of the referencing path expression.
     pub(crate) line: usize,
 }

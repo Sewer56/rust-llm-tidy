@@ -11,10 +11,13 @@ use std::sync::LazyLock;
 pub struct ForbiddenCharacterRule {
     /// Unicode scalar values to reject in text, not strings or sequences.
     pub characters: Vec<char>,
+
     /// Nonblank diagnostic title.
     pub title: Box<str>,
+
     /// Complete nonblank rewrite guidance, preserved verbatim.
     pub message: Box<str>,
+
     /// Select documentation and ordinary comments independently.
     #[serde(default)]
     pub scope: ForbiddenCharacterScope,
@@ -26,6 +29,7 @@ pub struct ForbiddenCharacterRule {
 pub struct ForbiddenCharacterScope {
     /// Documentation files, doc comments, docstrings, and doc attributes.
     pub docs: bool,
+
     /// Ordinary standalone, trailing, and block comments.
     pub comments: bool,
 }

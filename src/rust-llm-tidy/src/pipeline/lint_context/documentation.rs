@@ -75,8 +75,10 @@ const MAX_CACHED_DIRECTORIES: usize = 4096;
 struct DirectoryFacts {
     /// First recognized marker entry found in this directory.
     marker: Option<&'static str>,
+
     /// Whether this directory is named `docs`.
     docs: bool,
+
     /// Whether this directory holds a `.git` entry (repository boundary).
     boundary: bool,
 }
@@ -94,6 +96,7 @@ pub(crate) struct DocumentationContext {
 struct DocumentationMarker {
     /// Exact directory-entry name probed in each ancestor directory.
     entry: &'static str,
+
     kind: MarkerKind,
 }
 
@@ -102,8 +105,10 @@ struct DocumentationMarker {
 pub(crate) enum DocumentationSignal {
     /// A conventional documentation filename stem.
     Filename(&'static str),
+
     /// A documentation-tool marker in an ancestor directory.
     Marker(&'static str),
+
     /// A `docs` directory component below the repository boundary.
     DocsDirectory,
 }

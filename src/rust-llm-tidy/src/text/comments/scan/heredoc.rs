@@ -13,6 +13,7 @@ pub(super) struct PendingHeredoc {
     /// The delimiter word the terminator line must equal (after its
     /// permitted lead).
     pub(super) word: String,
+
     /// Whether the terminator lead is permitted: `\t` in the shell
     /// family, any whitespace in Ruby.
     pub(super) indented: bool,

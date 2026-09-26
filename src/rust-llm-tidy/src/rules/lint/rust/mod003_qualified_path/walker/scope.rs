@@ -11,10 +11,13 @@ use super::super::ROOT_SEGMENTS;
 pub(crate) struct ScopeFrame<'a> {
     pub(super) imports: Vec<Import<'a>>,
     pub(super) bindings: Vec<Binding<'a>>,
+
     /// Explicit external crate names visible throughout this scope.
     pub(super) external_crates: Vec<&'a str>,
+
     /// A glob may introduce a relative module with a known root's name.
     pub(super) has_glob: bool,
+
     /// Module boundaries stop lexical lookup of external crate declarations.
     pub(super) module_scope: bool,
 }

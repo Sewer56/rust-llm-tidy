@@ -16,14 +16,19 @@ use std::collections::{HashMap, HashSet};
 pub struct CanThrowIndex {
     /// Qualified keys map namespace and nesting collisions to one position.
     members: HashMap<String, usize>,
+
     /// Reverse same-file edges, indexed by graph position.
     callers: Vec<Vec<usize>>,
+
     /// Qualified targets retained separately from same-file propagation edges.
     qualified_calls: Vec<Vec<String>>,
+
     /// Throw evidence after the cycle-safe worklist reaches its fixpoint.
     can_throw: Vec<bool>,
+
     /// Each declaration's graph position, including nameless declarations.
     declarations: Vec<usize>,
+
     /// Parsed tree identities already represented by this graph.
     trees: HashMap<usize, tree_sitter::Tree>,
 }

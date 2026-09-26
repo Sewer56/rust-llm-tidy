@@ -8,8 +8,10 @@ use serde::Deserialize;
 #[serde(deny_unknown_fields)] // Reject hallucinated config keys at parse time.
 pub struct PostProcessStep {
     pub command: String,
+
     #[serde(default)]
     pub args: Vec<String>,
+
     /// Empty = run on every file regardless of extension.
     #[serde(default)]
     pub extensions: Vec<String>,

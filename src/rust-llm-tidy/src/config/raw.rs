@@ -15,61 +15,77 @@ pub struct Config {
     /// TEXT009 replacement entries; absent uses defaults, empty removes them.
     #[serde(default)]
     pub forbidden_characters: Option<Vec<super::ForbiddenCharacterRule>>,
+
     /// TEXT009 entries added to the replacement list or built-in defaults.
     #[serde(default)]
     pub extra_forbidden_characters: Vec<super::ForbiddenCharacterRule>,
+
     /// Whitelist: for matched paths, run ONLY these rules.
     ///
     /// - Mutually exclusive with `exclude` (both present -> config-load error).
     /// - Empty/absent = not whitelist mode.
     #[serde(default)]
     pub include: Vec<RuleGroup>,
+
     /// Blacklist: for matched paths, never run these rules. Mutually exclusive
     /// with `include`.
     #[serde(default)]
     pub exclude: Vec<RuleGroup>,
+
     /// Skip ALL processing for files matching any pattern (was `exclude`).
     #[serde(default)]
     pub exclude_files: Vec<String>,
+
     /// Skip conventional license documents during discovery. Default: `true`.
     ///
     /// Setting `false` retains extension filters and `exclude_files` rules.
     #[serde(default = "default_true")]
     pub exclude_license_documents: bool,
+
     /// External commands run on every processed file after rust-llm-tidy.
     #[serde(default)]
     pub post_process: Vec<PostProcessStep>,
+
     /// Link-hoist threshold settings. Absent = always hoist (threshold 1).
     #[serde(default)]
     pub links: Option<LinkConfig>,
+
     /// Module-size threshold settings. Absent = the default threshold 500.
     #[serde(default)]
     pub module_size: Option<ModuleSizeConfig>,
+
     /// Method-length threshold settings. Absent = the default threshold 100.
     #[serde(default)]
     pub method_length: Option<MethodLengthConfig>,
+
     /// Run-wide DUP001 thresholds and whitespace mode; absent keeps defaults.
     #[serde(default)]
     pub duplication: DuplicationConfig,
+
     /// Full allowed-extension list, replacing the defaults when non-empty
     /// (empty keeps the defaults). No leading dot; case-insensitive.
     #[serde(default)]
     pub extensions: Vec<String>,
+
     /// Extra extensions allowed in addition to the effective base
     /// (`extensions` when non-empty, else the defaults).
     #[serde(default)]
     pub extra_extensions: Vec<String>,
+
     /// Settings under the top-level `passive_narration` key; absent keeps
     /// the section defaults (see [`PassiveNarrationConfig`]).
     #[serde(default)]
     pub passive_narration: Option<PassiveNarrationConfig>,
+
     /// Built-in families (`PERF001`, `PERF002`); absent enables both,
     /// and an empty list disables both. Custom symbol rules are independent.
     #[serde(default)]
     pub perf_hints: Option<Vec<PerfCode>>,
+
     /// Per-lint reporting boundaries. Keys must be registered lint codes.
     #[serde(default)]
     pub lint_scopes: HashMap<String, ReportingScope>,
+
     /// Ordered symbol hints and independent declaration exclusions.
     #[serde(default)]
     pub symbol_rules: Vec<SymbolRule>,
@@ -84,6 +100,7 @@ pub struct Config {
 pub struct RuleGroup {
     #[serde(default)]
     pub paths: Vec<String>,
+
     #[serde(default)]
     pub rules: Vec<String>,
 }

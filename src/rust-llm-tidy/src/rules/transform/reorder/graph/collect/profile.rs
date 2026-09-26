@@ -27,9 +27,11 @@ pub struct PhaseContext<'a> {
 pub enum PhaseStrategy {
     /// Items keep their original file order.
     Stable,
+
     /// Items sort callers before callees; `TieBreak` orders items the
     /// edges do not constrain.
     Dependency(TieBreak),
+
     /// Macro uses must stay below the macro's definition (Rust
     /// `macro_rules!` textual scoping), so:
     ///
@@ -38,6 +40,7 @@ pub enum PhaseStrategy {
     /// - each definition is immediately followed by its invocations in
     ///   the file
     MacroDefinitions,
+
     /// Impl blocks order around the type they name (Rust impl blocks):
     ///
     /// - each impl sorts after the type named in its `impl` head
@@ -46,6 +49,7 @@ pub enum PhaseStrategy {
     /// - impls whose named type is not found in the output go last,
     ///   inherent first, source order within
     ImplsAfterTargetType,
+
     /// Fns group by visibility, widest first (Rust fns):
     ///
     /// - `pub` fns, then restricted (`pub(crate)` style), then private
@@ -90,18 +94,21 @@ pub struct ReferenceWalk {
     /// `struct_item`, ...). Everything inside counts as that item's
     /// references.
     pub declaration_kinds: &'static [&'static str],
+
     /// Spots where an identifier defines a name instead of using one.
     ///
     /// Item names (`fn parse()`), bindings (`let x`, parameters),
     /// aliases (`use a as b`). Skipped, so `let helper = 1;` never
     /// references `fn helper`.
     pub decl_name_positions: &'static [DeclNamePosition],
+
     /// Reference-position shapes: how each reference-holding node kind
     /// records its use.
     ///
     /// Kinds the table omits are walked as pure structure: their
     /// children are examined, nothing records.
     pub reference_positions: &'static [ReferencePosition],
+
     /// Token kind that immediately follows a called path (Rust: `!`),
     /// marking the recorded reference as a call.
     pub macro_marker_kind: &'static str,
@@ -113,6 +120,7 @@ pub struct ReferenceWalk {
 pub struct DeclNamePosition {
     /// Node kind of the identifier's parent, e.g. `function_item`.
     pub parent_kind: &'static str,
+
     /// Field of the parent holding the identifier, e.g. `name`.
     pub field: &'static str,
 }
@@ -134,14 +142,17 @@ pub struct DeclNamePosition {
 pub struct ReferencePosition {
     /// Node kind that holds a reference.
     pub kind: &'static str,
+
     /// Field whose child is the referenced path: a call shape records
     /// the called path, a wrapped shape its wrapped type. `None` when
     /// the node itself is the path.
     pub path_field: Option<&'static str>,
+
     /// Field holding the leftmost segment of a path-shaped node, so
     /// `a::b::c` resolves through `path` to `a`; `None` when the node
     /// itself is the segment.
     pub segment_field: Option<&'static str>,
+
     /// Whether the walk recurses into the node after recording.
     ///
     /// Wrapped shapes carry further references among their children,

@@ -13,15 +13,20 @@ use core::fmt;
 pub struct ReorderMove {
     /// 1-based output position of the moved item.
     to: usize,
+
     /// 1-based input position of the moved item.
     from: usize,
+
     /// Description of the item that directly follows this one in the reordered
     /// output (the item it lands before), if any.
     before: Option<Box<str>>,
+
     /// Kind of the moved item (e.g. `fn`, `impl`).
     kind: ItemKind,
+
     /// Name of the moved item, when it has one.
     name: Option<Box<str>>,
+
     /// 1-based source line where the moved item starts, used to describe
     /// unnamed items (e.g. impl blocks).
     line: usize,

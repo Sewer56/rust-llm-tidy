@@ -10,6 +10,7 @@ use serde::Deserialize;
 pub enum ReportingScope {
     /// Report on every eligible line.
     All,
+
     /// Report only when the diagnostic's line is in the input diff.
     ChangedLines,
 }

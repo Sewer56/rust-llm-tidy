@@ -51,6 +51,7 @@ mod xml_doc;
 pub(crate) struct Document {
     pub lines: Vec<StrippedLine>,
     pub paragraphs: Vec<Paragraph>,
+
     /// Opening fence lines, in source order. Recorded for every
     /// opening fence the markdown classifier measures, whole-file
     /// and doc/comment regions alike.
@@ -72,10 +73,13 @@ struct OpenFence {
 /// them.
 struct PendingParagraph {
     kind: ParagraphKind,
+
     /// 1-based line number of the paragraph's first member line.
     first_line: usize,
+
     /// Member texts so far, joined with single spaces.
     text: String,
+
     /// Each member line's line number and byte offset in `text`, in
     /// member order.
     line_starts: Vec<(usize, usize)>,
@@ -86,6 +90,7 @@ struct PendingParagraph {
 pub(crate) struct Fence {
     /// 1-based line number of the opening fence line.
     pub line: usize,
+
     /// The fence line's info string: the text after the fence marker
     /// run, surrounding whitespace trimmed.
     pub info: Box<str>,
@@ -97,15 +102,20 @@ pub(crate) struct Fence {
 pub(crate) struct Paragraph {
     /// 1-based line number of the paragraph's first member line.
     pub first_line: usize,
+
     /// True when this is the first paragraph of a doc region: the region's
     /// opener, such as a module or method doc's leading paragraph.
     pub opens_region: bool,
+
     pub kind: ParagraphKind,
+
     /// Char count of `text`.
     pub size: usize,
+
     /// The member lines' trimmed text joined with single spaces; the
     /// sentence-length rule splits it into sentences.
     pub text: Box<str>,
+
     /// Each member line's line number and byte offset in `text`, in
     /// member order; the sentence-length rule anchors findings at these
     /// lines.
@@ -118,6 +128,7 @@ pub(crate) struct Paragraph {
 pub(crate) struct StrippedLine {
     pub number: usize,
     pub text: String,
+
     /// True inside fenced or indented code blocks, fence delimiters
     /// included. Code blocks are exempt from both checks.
     pub in_code_block: bool,
@@ -128,6 +139,7 @@ pub(crate) struct StrippedLine {
 pub(crate) enum ParagraphKind {
     /// Consecutive text lines up to a blank or exempt boundary line.
     Plain,
+
     /// A bullet marker line plus its wrapped continuation lines.
     Bullet,
 }

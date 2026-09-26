@@ -24,11 +24,14 @@ pub(super) struct LintContext<'a> {
     pub(super) config: Option<&'a CompiledConfig>,
     all_lines: bool,
     pub(super) snapshots: ChangedLineCollection,
+
     /// Documentation signals classified from the selected paths once per run;
     /// empty for context-free callers such as buffers.
     documentation: DocumentationContext,
+
     rust_hints: Vec<CompiledSymbolRule>,
     csharp_hints: Vec<CompiledSymbolRule>,
+
     /// Explicit CLI source extensions; configuration additions remain borrowed.
     extra_source_extensions: Vec<String>,
 }

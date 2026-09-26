@@ -13,19 +13,25 @@ use serde::Deserialize;
 pub struct Diagnostic {
     /// How severe this finding is.
     pub severity: Severity,
+
     /// Stable rule code, e.g. `"DOC001"`.
     pub code: &'static str,
+
     /// Producer-owned title; absent falls back to `code` in [`Self::title`].
     ///
     /// Plaintext prefixes `SYM` and `TEXT009` messages with this title; other
     /// diagnostics already carry a complete finding summary in `message`.
     pub title: Option<Box<str>>,
+
     /// Human-readable description of the problem.
     pub message: String,
+
     /// 1-based line number where the item starts.
     pub line: usize,
+
     /// The kind of item that produced the finding (e.g. `"fn"`, `"struct"`).
     pub item_kind: String,
+
     /// The name of the item, if it has one.
     pub item_name: Option<String>,
 }
@@ -51,14 +57,18 @@ pub struct Diagnostic {
 pub enum Severity {
     /// A gating finding (missing docs, missing `# Errors` section).
     Error,
+
     /// An advisory finding (vague error wording).
     Warning,
+
     /// A suggestion for an LLM or human to investigate; see the enum
     /// documentation for gating and compatibility.
     Hint,
+
     /// Non-gating guidance for humans and AI, reported on changed input lines
     /// by default.
     Reminder,
+
     /// Non-gating guidance for AI language models only, reported on changed
     /// input lines by default.
     AiReminder,

@@ -31,8 +31,10 @@ mod scan;
 struct OpenFence {
     /// Marker character of the opener as it appears in the source.
     source_marker: char,
+
     /// Run length of the opener's marker run.
     run_len: usize,
+
     /// Marker this fence (and its matching closer) must use after rewriting.
     expected_marker: char,
 }

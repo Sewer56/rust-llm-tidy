@@ -14,6 +14,7 @@ mod tests;
 pub(crate) struct Declaration {
     pub path: Box<str>,
     pub bytes: Range<usize>,
+
     /// One-based lines occupied by the declaration's name, not its documentation.
     pub name_lines: RangeInclusive<usize>,
 }

@@ -44,6 +44,7 @@ struct RawEntry<'a> {
     /// Node whose byte range covers the item body (incl. trailing `;` for
     /// macro invocations wrapped in `expression_statement`).
     body: tree_sitter::Node<'a>,
+
     /// Attachable trivia immediately preceding the item.
     pending: PendingTrivia<'a>,
 }

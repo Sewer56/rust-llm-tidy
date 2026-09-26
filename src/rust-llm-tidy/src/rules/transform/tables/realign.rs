@@ -15,10 +15,13 @@ use core::iter::repeat_n;
 enum Alignment {
     /// `---` with no colons: the GFM default. Pads right, no delimiter colon.
     None,
+
     /// `:---`: leading colon only. Pads right.
     Left,
+
     /// `:---:`: colons on both edges. Pads centered.
     Center,
+
     /// `---:`: trailing colon only. Pads left.
     Right,
 }

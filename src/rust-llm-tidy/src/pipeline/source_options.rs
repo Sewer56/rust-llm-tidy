@@ -7,15 +7,20 @@ use crate::config::SymbolRule;
 pub struct SourceOptions {
     /// Custom usage regex hints for this buffer; other policies are rejected here.
     pub text_rules: Vec<SymbolRule>,
+
     /// Symbol hints and declaration exclusions, with the same validation as files.
     /// Text regex hints are also accepted and precede [`Self::text_rules`].
     pub symbol_rules: Vec<SymbolRule>,
+
     /// Rule or operation whitelist; an empty list uses language defaults.
     pub include: Vec<String>,
+
     /// Extra rule or operation exclusions.
     pub exclude: Vec<String>,
+
     /// Minimum repeated inline-link occurrences before hoisting; must be positive.
     pub links_min_occurrences: usize,
+
     /// Report all lines for every severity, overriding per-rule scopes.
     ///
     /// False respects entry and severity defaults. No input diff is available,

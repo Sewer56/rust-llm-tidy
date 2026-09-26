@@ -46,12 +46,15 @@ pub(super) struct Classification {
     pub(super) visibility: Option<VisibilityTier>,
     pub(super) doc_comments: Vec<String>,
     pub(super) returns_result: bool,
+
     /// Classification of a fn's declared return type
     /// (see [`ReturnKind`]). [`ReturnKind::NoValue`] for non-fn items.
     pub(super) return_kind: ReturnKind,
+
     /// Named parameter idents of a fn, excluding `self`/`&self`/`&mut self`.
     /// Empty for non-fn items.
     pub(super) params: Vec<String>,
+
     /// True for fn items carrying a `#[test]` or `#[...::test]` attribute.
     pub(super) is_test_fn: bool,
 }

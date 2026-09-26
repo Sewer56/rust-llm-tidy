@@ -24,39 +24,55 @@ pub(crate) mod symbol_rules;
 pub struct CompiledConfig {
     /// Resolved TEXT009 replacement-or-default entries plus additions.
     forbidden_characters: Vec<super::ForbiddenCharacterRule>,
+
     /// Canonicalized directory of the config file. Patterns are resolved
     /// relative to this.
     config_dir: PathBuf,
+
     /// Matches `exclude_files` patterns.
     exclude_files_set: GlobSet,
+
     /// Skip conventional license documents during discovery.
     exclude_license_documents: bool,
+
     /// One group per `include` entry (whitelist mode).
     include_groups: Vec<CompiledRuleGroup>,
+
     /// One group per `exclude` entry (blacklist mode).
     exclude_groups: Vec<CompiledRuleGroup>,
+
     /// Stored so file execution can run post-processing without re-parsing.
     post_process: Vec<PostProcessStep>,
+
     /// Link-hoist threshold settings (`None` = always hoist at threshold 1).
     links: Option<LinkConfig>,
+
     /// Module-size threshold settings (`None` = default threshold 500).
     module_size: Option<ModuleSizeConfig>,
+
     /// Method-length threshold settings (`None` = default threshold 100).
     method_length: Option<MethodLengthConfig>,
+
     /// Validated run-wide DUP001 settings.
     duplication: DuplicationConfig,
+
     /// Replacement list from the `extensions:` key; empty = keep the defaults.
     extensions: Vec<String>,
+
     /// Additions from the `extra_extensions:` key, allowed on top of the
     /// effective base list.
     extra_extensions: Vec<String>,
+
     /// Resolved `passive_narration` settings (section defaults when the
     /// top-level key is absent).
     passive_narration: PassiveNarrationConfig,
+
     /// Selected built-in families; absent enables every built-in family.
     configured_perf_hints: Option<Vec<PerfCode>>,
+
     /// Validated overrides, separate from lint enablement.
     lint_scopes: HashMap<String, ReportingScope>,
+
     /// Symbol patterns compiled once when the configuration is loaded.
     symbol_rules: Vec<CompiledSymbolRule>,
 }

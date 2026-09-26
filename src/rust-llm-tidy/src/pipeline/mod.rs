@@ -531,10 +531,13 @@ mod tests {
     struct Mod004Fixture {
         /// Owning temp dir; keeps the fixture files on disk.
         dir: PathBuf,
+
         /// The caller file the findings anchor to.
         target: PathBuf,
+
         /// Facts handed to the lint phase through the phase tuple.
         findings: SoleCallerFindings,
+
         /// Whether the findings ride the C# slot instead of the Rust slot.
         csharp: bool,
     }

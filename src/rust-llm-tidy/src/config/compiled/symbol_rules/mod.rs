@@ -26,8 +26,10 @@ pub(crate) struct CompiledSymbolRule {
     pub(crate) target: SymbolTarget,
     pub(crate) matcher: SymbolMatcher,
     pub(crate) action: SymbolAction,
+
     /// Bits in registry lint-code order; zero suppresses no diagnostics.
     pub(crate) exclude_lints: u32,
+
     pub(crate) exclude_edits: bool,
     pub(crate) exclude_post_process: bool,
     pub(crate) title: Option<Box<str>>,
@@ -36,8 +38,10 @@ pub(crate) struct CompiledSymbolRule {
     pub(crate) severity: Severity,
     pub(crate) zero_arguments: Option<bool>,
     pub(crate) no_initializer: Option<bool>,
+
     /// Preserve PERF001's written diagnostic names and empty argument-list syntax.
     pub(crate) capacity_reminder: bool,
+
     pub(crate) code: &'static str,
 }
 

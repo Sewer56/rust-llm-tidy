@@ -42,8 +42,10 @@ pub struct ParsedFile {
     /// Resolved absolute file path (matches [`ModuleTree`] keys when
     /// crate-aware).
     pub path: PathBuf,
+
     /// The verbatim source text the tree was parsed from.
     pub source: String,
+
     /// The tree-sitter syntax tree. `pub(crate)`: the narrowing and
     /// re-export passes access it; external callers use `path`/`source`.
     pub(crate) tree: Tree,

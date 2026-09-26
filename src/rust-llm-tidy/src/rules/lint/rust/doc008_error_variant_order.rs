@@ -14,6 +14,7 @@ use tree_sitter::Node;
 pub(super) struct DeclaredEnum<'a> {
     /// The enum's name.
     name: &'a str,
+
     /// Names of the enum's declared variants, in declaration order.
     variants: Vec<&'a str>,
 }

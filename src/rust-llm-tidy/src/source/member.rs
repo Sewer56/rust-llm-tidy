@@ -21,17 +21,21 @@ use crate::source::kind::ItemKind;
 pub struct TypeMember {
     /// Byte offset of the start of this member (including pinned comments).
     pub start: usize,
+
     /// Byte offset of the end of this member, including its trailing
     /// newline.
     pub end: usize,
+
     /// Preprocessor region id: member reordering permutes only within one
     /// region id.
     ///
     /// No member crosses a conditional boundary as a result. `0` for
     /// languages without preprocessor conditionals.
     region: u32,
+
     /// The kind of this member.
     kind: ItemKind,
+
     /// The name of this member (if it has one).
     name: Option<String>,
 }
