@@ -98,10 +98,7 @@ pub(super) fn process_one(
             && profile.op_enabled(op, enabled, disabled)
             && backend.is_some_and(|b| b.ast_ops().contains(&op))
     };
-    let should_post_process = ["tables", "fences", "links"]
-        .iter()
-        .any(|op| profile.op_enabled(op, enabled, disabled))
-        || ["reorder", "vis", "spacing"].iter().any(|op| ast_op_on(op));
+    let should_post_process = post_process_enabled(profile, enabled, disabled, ast_op_on);
 
     // Fix auto-fixable formatting (tables, fences, links) via fix_file.
     if !lint_phase
@@ -111,10 +108,7 @@ pub(super) fn process_one(
     {
         // Resolve the link-hoist threshold by the file's extension (1 when no
         // config), so a single per-file value reaches fix_file.
-        let links_min = match config {
-            Some(c) => c.links_min_occurrences_for(ext),
-            None => 1,
-        };
+        let links_min = config.map_or(1, |c| c.links_min_occurrences_for(ext));
         match files::fix_file(
             path,
             dry_run,
@@ -258,4 +252,18 @@ fn lint_gate(
         method_length,
         lints_on,
     }
+}
+
+/// Mark a file for post-processing when at least one fix can run on it.
+#[inline]
+fn post_process_enabled(
+    profile: &langs::Profile,
+    enabled: &Option<HashSet<String>>,
+    disabled: &HashSet<String>,
+    ast_op_on: impl Fn(&str) -> bool,
+) -> bool {
+    ["tables", "fences", "links"]
+        .iter()
+        .any(|op| profile.op_enabled(op, enabled, disabled))
+        || ["reorder", "vis", "spacing"].iter().any(|op| ast_op_on(op))
 }

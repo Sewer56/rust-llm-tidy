@@ -57,7 +57,8 @@ pub struct SpacingEdit {
 ///
 /// # Errors
 ///
-/// Returns an error if the Rust or C# backend cannot parse `source`.
+/// Returns [`anyhow::Error`] if the grammar fails to load, the parser rejects
+/// it, or parsing produces no tree. Syntax errors leave the source unchanged.
 pub fn fix_spacing<'a>(
     source: &'a str,
     ext: &str,
