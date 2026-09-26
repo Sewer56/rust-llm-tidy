@@ -16,8 +16,10 @@ use std::path::Path;
 struct LintGate {
     /// Resolved MOD001 eligibility and counting options.
     module_size: ModuleSizeConfig,
+
     /// Resolved LEN001 `max_lines` threshold.
     method_length: MethodLengthConfig,
+
     /// Whether linting runs for the file under the active selection.
     lints_on: bool,
 }
@@ -99,7 +101,7 @@ pub(super) fn process_one(
     let should_post_process = ["tables", "fences", "links"]
         .iter()
         .any(|op| profile.op_enabled(op, enabled, disabled))
-        || ["reorder", "vis"].iter().any(|op| ast_op_on(op));
+        || ["reorder", "vis", "spacing"].iter().any(|op| ast_op_on(op));
 
     // Fix auto-fixable formatting (tables, fences, links) via fix_file.
     if !lint_phase
@@ -144,6 +146,17 @@ pub(super) fn process_one(
     // restricted-visibility inline modules).
     if !lint_phase && ast_op_on("vis") {
         match files::vis_file(path, dry_run, ctx, disabled, lint_context.rules()) {
+            Ok(found) => out.changes.extend(found),
+            Err(e) => {
+                out.fail(&e);
+                return out;
+            }
+        }
+    }
+    // Space documented members last (inserts missing blank lines) so it
+    // sees the final member order of the other fixes.
+    if !lint_phase && ast_op_on("spacing") {
+        match files::spacing_file(path, dry_run, lint_context.rules()) {
             Ok(found) => out.changes.extend(found),
             Err(e) => {
                 out.fail(&e);

@@ -1,13 +1,14 @@
-//! FMT001 fixture: documented members without blank lines between them.
+//! Spacing fixture: documented members packed without blank lines.
 //!
-//! The struct, enum, and impl body each carry doc comments on
-//! consecutive members with no blank line separating them, so each
-//! flags exactly one warning.
+//! The struct, enum, and impl bodies carry doc comments on
+//! consecutive members with no blank line separating them, so the
+//! spacing pass inserts one line in each body.
 
 /// An edge in the flow graph.
 pub struct LocalEdge {
     /// Address of the instruction taking this path.
     pub source: u32,
+
     /// Address of the first instruction at the destination.
     pub target: u32,
 }
@@ -16,6 +17,7 @@ pub struct LocalEdge {
 pub enum EdgeKind {
     /// Follow the target of a conditional branch.
     BranchTaken,
+
     /// Continue past a conditional branch.
     BranchNotTaken,
 }
@@ -28,6 +30,7 @@ impl EdgeTable {
     pub fn source(&self) -> u32 {
         0
     }
+
     /// Reads the target of an edge.
     pub fn target(&self) -> u32 {
         0

@@ -1,5 +1,5 @@
 //! File-level checks and fixes; project-aware visibility lives in [`vis`],
-//! item reordering in [`reorder`].
+//! item reordering in [`reorder`], member spacing in [`spacing`].
 
 use crate::config::forbidden_character_rule::defaults;
 use crate::config::{CompiledConfig, CompiledSymbolRule, MethodLengthConfig, ModuleSizeConfig};
@@ -16,6 +16,7 @@ use crate::text::comments;
 use crate::text::measurement::{line_marker_regions, measure};
 use anyhow::Context;
 pub(crate) use reorder::reorder_file;
+pub(crate) use spacing::spacing_file;
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fs;
@@ -23,6 +24,7 @@ use std::path::{Path, PathBuf};
 pub(crate) use vis::{VisContext, resolve_vis_context, vis_file};
 
 mod reorder;
+mod spacing;
 mod vis;
 
 /// Check a single source file and return its lint diagnostics.

@@ -96,6 +96,7 @@ See [reporting scope] for baseline comparison and scope precedence.
 | `links`   | hoist inline links to reference style   | `md` family, `rs`                    | yes     |
 | `reorder` | review-friendly item order              | `rs`, `cs`                           | yes     |
 | `vis`     | narrow bare `pub` in restricted modules | `rs`                                 | yes     |
+| `spacing` | blank lines between documented members  | `rs`, `cs`                           | yes     |
 | `lints`   | run read-only source and doc checks     | all allowed                          | no      |
 
 Every allowed op is on by default; `--include`/`--exclude` and the config
@@ -169,6 +170,7 @@ See [change reporting] for the shared record format.
 | -------------------- | ---------------------- |
 | Reorder              | [docs/reorder.md]      |
 | Visibility narrowing | [docs/vis.md]          |
+| Member spacing       | [docs/spacing.md]      |
 | Table alignment      | [docs/tables.md]       |
 | Fence delimiters     | [docs/fences.md]       |
 | Link hoisting        | [docs/links.md]        |
@@ -210,8 +212,8 @@ For `links`, see [docs/links.md]. For `duplication` (DUP001), see
 Globs are relative to the config file's directory and use `literal_separator`
 semantics (`*` does not cross `/`; `**` recurses).
 
-Rule names are the lint codes plus the six ops: `tables`, `fences`,
-`links`, `reorder`, `vis`, `lints`.
+Rule names are the lint codes plus the seven ops: `tables`, `fences`,
+`links`, `reorder`, `vis`, `spacing`, `lints`.
 
 The config is discovered automatically. `rust-llm-tidy` walks up from the
 current directory to the repo root (the first ancestor containing `.git`),
@@ -321,6 +323,7 @@ Licensed under [Apache 2.0].
 [reporting scope]: ./docs/lints.md#reporting-scope
 [docs/reorder.md]: ./docs/reorder.md
 [docs/vis.md]: ./docs/vis.md
+[docs/spacing.md]: ./docs/spacing.md
 [docs/tables.md]: ./docs/tables.md
 [docs/fences.md]: ./docs/fences.md
 [docs/links.md]: ./docs/links.md

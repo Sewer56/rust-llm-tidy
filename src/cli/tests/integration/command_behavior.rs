@@ -158,6 +158,10 @@ fn checks_only_should_run_default_lints_without_include() {
     "//! Module docs.\n/// Nested example:\n/// ```text\n/// ```rust\n/// tidy();\n/// ```\n/// ```\npub fn documented() {}\n",
     "fences"
 )]
+#[case::spacing(
+    "//! Module docs.\n/// An item.\npub struct Packed {\n    /// d a.\n    a: u32,\n    /// d b.\n    b: u32,\n}\n",
+    "spacing"
+)]
 fn checks_only_should_suppress_included_transforms(#[case] source: &str, #[case] op: &str) {
     let (output, consumed) = preview_with_flags(source, op, "{}", "text", &["--checks-only"]);
 

@@ -13,6 +13,8 @@
 //!   `[text]` plus `[text]: url` definitions; idempotent.
 //! - [`fix_tables`]: realign GFM pipe tables, including those nested inside
 //!   comments.
+//! - [`fix_spacing`]: insert missing blank lines between documented members
+//!   of Rust and C# type bodies; idempotent.
 //!
 //! # Comment-prefix families
 //!
@@ -29,12 +31,14 @@
 
 pub use fences::fix_fences;
 pub use links::fix_links;
+pub use spacing::fix_spacing;
 use std::borrow::Cow;
 pub use tables::fix_tables;
 
 pub mod fences;
 pub mod links;
 pub mod reorder;
+pub mod spacing;
 pub mod tables;
 pub mod visibility;
 
@@ -47,6 +51,7 @@ pub mod visibility;
 pub struct FixOutcome<'a> {
     /// Rewritten text, borrowed back unchanged when the pass was a no-op.
     pub text: Cow<'a, str>,
+
     /// One anchor per edited entity, in edit order.
     pub anchors: Vec<FixAnchor>,
 }
@@ -61,6 +66,7 @@ pub struct FixOutcome<'a> {
 pub struct FixAnchor {
     /// 1-based line (in the pass's own input) where the edited entity begins.
     pub line: u32,
+
     /// Kind of the edited entity.
     pub kind: FixKind,
 }

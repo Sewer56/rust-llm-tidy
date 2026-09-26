@@ -94,6 +94,7 @@ mod comment_fixes;
 ///   multiset
 /// - Visibility failure: parsing or applying the standalone visibility
 ///   transformation fails
+/// - Spacing failure: the backend cannot parse the buffer for member spacing
 pub fn tidy_source<'a>(
     source: &'a str,
     ext: &str,
@@ -152,6 +153,14 @@ pub fn tidy_source<'a>(
         changes.extend(change::vis_changes(&output, &narrowed));
         if let Cow::Owned(narrowed) = narrowed {
             output = Cow::Owned(narrowed);
+        }
+    }
+    if ast_enabled("spacing") {
+        let ranges = super::lint_context::protected_ranges(&output, ext, &rules)?;
+        let (spaced, edits) = transform::spacing::fix_spacing(&output, ext, &ranges)?;
+        changes.extend(change::spacing_changes(&edits));
+        if let Cow::Owned(spaced) = spaced {
+            output = Cow::Owned(spaced);
         }
     }
 
@@ -508,5 +517,64 @@ mod protection_tests {
 
         assert_eq!(protected.0, original.0);
         assert_eq!(protected.1, original.1);
+    }
+}
+#[cfg(test)]
+mod spacing_tests {
+    use crate::SourceOptions;
+    use crate::pipeline::tidy_source;
+    use indoc::indoc;
+
+    /// The packed documented pair fixture shared by both cases.
+    fn packed() -> String {
+        indoc! {"
+            //! Module docs.
+
+            /// An item.
+            pub struct Packed {
+                /// d a.
+                a: u32,
+                /// d b.
+                b: u32,
+            }
+        "}
+        .to_string()
+    }
+
+    /// A documented packed pair gains one blank line and one change
+    /// record on a default buffer run.
+    #[test]
+    fn tidy_source_should_space_documented_members_by_default() {
+        let source = packed();
+        let report = tidy_source(&source, "rs", &SourceOptions::default()).unwrap();
+
+        assert!(
+            report.source.contains("a: u32,\n\n    /// d b."),
+            "the blank line must be inserted before the next docs"
+        );
+        assert_eq!(report.changes.len(), 1);
+        assert_eq!(report.changes[0].code, "FIX");
+        assert_eq!(
+            report.changes[0].message.as_ref(),
+            "insert blank line between `a` and `b`"
+        );
+    }
+
+    /// An excluded spacing op leaves the buffer borrowed and unchanged.
+    #[test]
+    fn tidy_source_should_keep_members_packed_when_excluded() {
+        let options = SourceOptions {
+            exclude: vec!["spacing".into()],
+            ..SourceOptions::default()
+        };
+
+        let source = packed();
+        let report = tidy_source(&source, "rs", &options).unwrap();
+
+        assert_eq!(report.source, source.as_str());
+        assert!(
+            report.changes.is_empty(),
+            "excluded spacing must report no records"
+        );
     }
 }

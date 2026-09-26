@@ -1,7 +1,9 @@
 //! Stable lint codes and selectable operations shared by all languages.
 
 /// Selectable transformations and the lint group, in pipeline order.
-pub const KNOWN_FIX_OPS: &[&str] = &["tables", "fences", "links", "reorder", "vis", "lints"];
+pub const KNOWN_FIX_OPS: &[&str] = &[
+    "tables", "fences", "links", "reorder", "vis", "spacing", "lints",
+];
 /// All lint codes accepted through `include.rules`, `exclude.rules`,
 /// `--include`, and `--exclude`, in the order they run.
 ///
@@ -35,7 +37,6 @@ pub const LINT_CODES: &[&str] = &[
     CODE_QUALIFIED_PATH,
     CODE_MOD004,
     CODE_LEN001,
-    CODE_FMT001,
     CODE_SYM,
     CODE_DUPLICATION,
 ];
@@ -50,8 +51,6 @@ pub const CODE_DUPLICATION: &str = "DUP001";
 pub const CODE_ERROR_VARIANT_ORDER: &str = "DOC008";
 /// Rule code for an untagged fenced code block.
 pub const CODE_FENCE_TAG: &str = "TEXT005";
-/// Rule code for a missing blank line between documented members.
-pub const CODE_FMT001: &str = "FMT001";
 /// Rule code for configured forbidden characters in measured text.
 pub const CODE_FORBIDDEN_CHARACTERS: &str = "TEXT009";
 /// Rule code for a misshapen header opener paragraph.
@@ -139,7 +138,6 @@ mod tests {
             CODE_QUALIFIED_PATH,
             CODE_MOD004,
             CODE_LEN001,
-            CODE_FMT001,
             CODE_SYM,
             CODE_DUPLICATION,
         ];

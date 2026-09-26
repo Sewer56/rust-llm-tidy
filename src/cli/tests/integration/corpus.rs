@@ -99,6 +99,8 @@ fn in_place_write_should_match_after_fixture() {
 /// - The repo config is active.
 /// - TEST002 stays out of this gate while the repository's test functions
 ///   still lack summaries.
+/// - `spacing` stays out of this gate: its baseline predates the op, and
+///   the pre-existing packed members are backfilled separately.
 #[test]
 fn repo_corpus_dry_run_emits_zero_change_records() {
     let root = manifest_dir()
@@ -114,7 +116,14 @@ fn repo_corpus_dry_run_emits_zero_change_records() {
 
     let output = Command::new(binary())
         .current_dir(&root)
-        .args(["--dry-run", "--exclude", "TEST002", "."])
+        .args([
+            "--dry-run",
+            "--exclude",
+            "TEST002",
+            "--exclude",
+            "spacing",
+            ".",
+        ])
         .output()
         .expect("failed to spawn rust-llm-tidy over the repo root");
 

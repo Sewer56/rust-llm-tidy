@@ -131,6 +131,11 @@ fn cli_should_match_library_source_and_records() {
             "cs",
             "class C { public void Load() { throw new E(); } }\n",
         ),
+        (
+            "spacing",
+            "rs",
+            "/// An item.\npub struct Packed {\n    /// d a.\n    a: u32,\n    /// d b.\n    b: u32,\n}\n",
+        ),
     ];
 
     for (rule, extension, source) in fixtures {

@@ -17,7 +17,7 @@
 # Omitting `paths` in a group implies `["**"]` (all paths).
 #
 # Rule names (used in include.rules, exclude.rules, --include, --exclude):
-# ops tables, fences, links, reorder, vis, lints - plus lint codes
+# ops tables, fences, links, reorder, vis, spacing, lints - plus lint codes
 # (`DOC*`, `TEXT*`, `TEST*` families). The `lints` op groups them all.
 #
 # The `links` op hoists inline links `[text](url)` to `[text]` + a definition
