@@ -36,6 +36,7 @@ mod vis;
 /// eligible non-Rust files without requiring a parser.
 ///
 /// DUP001 reads raw source with complete remapped queries before scope filtering.
+/// MOD005 reads Rust module directory entries; unreadable layout warns and skips.
 ///
 /// - `path`: source file to check
 /// - `disabled`: diagnostic codes to suppress
@@ -102,6 +103,9 @@ pub(crate) fn check_file(
                 check::symbols::text_regex::check(&source, ext, Some(parsed), lint_context.rules());
             observations.hints.extend(text.hints);
             warnings.extend(text.warnings);
+        }
+        if paths::ext_in(Some(ext), &["rs"]) && !disabled.contains(check::CODE_MOD005) {
+            emit_mod005(&mut diagnostics, &mut warnings, path);
         }
         mod001_len001_seam_checks(
             &mut diagnostics,
@@ -286,6 +290,17 @@ fn emit_mod004(
         {
             diagnostics.extend(findings.for_file(path).iter().cloned());
         }
+    }
+}
+
+/// Emit a layout hint, warning instead of failing on unreadable directories.
+fn emit_mod005(diagnostics: &mut Vec<Diagnostic>, warnings: &mut Vec<String>, path: &Path) {
+    match check::rust::mod005_lone_mod::check(path) {
+        Ok(finding) => diagnostics.extend(finding),
+        Err(error) => warnings.push(format!(
+            "MOD005 skipped for {}: could not read module directory: {error}",
+            path.display()
+        )),
     }
 }
 

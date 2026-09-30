@@ -58,6 +58,7 @@ Text lints for other languages use these sources ([text lints]):
 | [`MOD002`]  | Error              | A `use` inside a function body lacks its own `#[cfg]` attribute.                  |
 | [`MOD003`]  | Hint               | A path includes the full namespace.                                               |
 | [`MOD004`]  | Hint               | File layout may not follow call flow.                                             |
+| [`MOD005`]  | Hint               | A directory contains only a regular `mod.rs` file.                                |
 | [`LEN001`]  | Hint               | A Rust fn body exceeds `method_length.max_lines` (default 100).                   |
 | [`SYM`]     | Reminder           | A configured text or symbol hint matches; severity is configurable.               |
 | [`DUP001`]  | Reminder           | Five meaningful lines repeat at three same-file sites, including a changed copy.  |
@@ -1009,6 +1010,51 @@ other.
   string-built names, `nameof`, `dynamic`, implicit extension imports, and
   source generators.
 
+### MOD005 - lone `mod.rs` directory
+
+Suggests replacing a directory containing only `mod.rs` with a sibling module
+file.
+
+Before:
+
+```text
+src/lib.rs          mod banana;
+src/banana/mod.rs   fn peel() {}
+```
+
+After, if you accept the hint:
+
+```text
+src/lib.rs          mod banana;
+src/banana.rs       fn peel() {}
+```
+
+Ordinary `mod banana;` declarations in the parent stay unchanged.
+
+#### MOD005 CLI output
+
+With a `config.yml` containing `{}`, the local CLI renders:
+
+```text
+$ cargo run -p rust-llm-tidy-cli -- --config config.yml --include MOD005 src/banana/mod.rs
+src/banana/mod.rs:1: hint[MOD005]: directory `banana/` contains only `mod.rs`.
+
+Why: This directory adds a navigation step without grouping other files.
+
+Suggestions:
+- Consider moving `banana/mod.rs` to `banana.rs` and removing the empty directory.
+- Check relative `include!`, `include_str!`, `include_bytes!`, and `#[path]` paths,
+  and explicit references to the old location. Preserve behavior; do not overwrite an existing file. (file)
+```
+
+#### Remarks
+
+- Checks selected Rust files named exactly `mod.rs`; no Cargo manifest needed.
+- Counts every directory entry, including assets, hidden or ignored files, and
+  subdirectories. The check skips a symlink named `mod.rs`.
+- Reports at line 1. An unreadable directory warns and skips the check.
+- The lint never moves files. Buffer-only linting cannot check directory layout.
+
 ### LEN001 - oversized function or method
 
 Suggests reviewing Rust functions that exceed `method_length.max_lines`
@@ -1271,6 +1317,7 @@ Each operation's concrete output in both modes is shown in its own doc page.
 [`MOD002`]: #mod002---function-local-use-without-cfg
 [`MOD003`]: #mod003---full-namespace-qualification-in-code
 [`MOD004`]: #mod004---sole-caller-module-nesting
+[`MOD005`]: #mod005---lone-modrs-directory
 [C# MOD003]: languages/lints/csharp.md#mod003---full-namespace-qualification-in-code
 [`LEN001`]: #len001---oversized-function-or-method
 [`SYM`]: #sym---configured-symbol-policies

@@ -15,6 +15,7 @@
 //! - `mod001_module_headers`: MOD001 module-header exclusion acceptance
 //! - `mod001_module_size`: cross-language MOD001 acceptance
 //! - `mod004_sole_caller`: MOD004 per-crate indexing over a workspace fixture
+//! - `mod005_lone_mod`: MOD005 directory layout and read-only hints
 //! - `python`: Python lints over the `.py` fixtures
 //! - `rust`: Rust lints over the `.rs` fixtures
 //!
@@ -46,6 +47,7 @@ mod json_output;
 mod mod001_module_headers;
 mod mod001_module_size;
 mod mod004_sole_caller;
+mod mod005_lone_mod;
 mod python;
 mod rust;
 mod text001_paragraph_size;

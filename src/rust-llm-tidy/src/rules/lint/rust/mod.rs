@@ -15,6 +15,9 @@
 //! crate's reference facts once per run and emits the precomputed
 //! findings from `check_file`, like MOD001, outside [`run_all`].
 //!
+//! [`mod005_lone_mod`] checks the file's containing directory from `check_file`;
+//! buffer-only linting cannot inspect its layout.
+//!
 //! [`len001_method_length`] consumes a config threshold, so the pipeline runs it
 //! from `check_file` outside [`run_all`].
 //!
@@ -48,6 +51,7 @@ pub(crate) mod mod001_module_size;
 mod mod002_fn_local_use;
 mod mod003_qualified_path;
 pub(crate) mod mod004_sole_caller;
+pub(crate) mod mod005_lone_mod;
 mod test001_test_naming;
 mod test002_test_summary;
 pub(crate) mod text_regions;
