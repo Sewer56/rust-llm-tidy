@@ -1,15 +1,14 @@
 //! File-level checks and fixes; project-aware visibility lives in [`vis`],
 //! item reordering in [`reorder`], member spacing in [`spacing`].
 
+use self::file_io as io;
 use crate::config::forbidden_character_rule::defaults;
 use crate::config::{CompiledConfig, CompiledSymbolRule, MethodLengthConfig, ModuleSizeConfig};
 use crate::input as paths;
-use crate::input::file_io as io;
 use crate::languages::backend_for;
 use crate::languages::registry as langs;
 use crate::project::csharp as csharp_index;
-use crate::reporting::change as changes;
-use crate::reporting::{Diagnostic, RunReport};
+use crate::reporting::{Change, Diagnostic, RunReport};
 use crate::rules::lint as check;
 use crate::source::ParseResult;
 use crate::text::comments;
@@ -23,6 +22,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 pub(crate) use vis::{VisContext, resolve_vis_context, vis_file};
 
+pub mod file_io;
 mod reorder;
 mod spacing;
 mod vis;
@@ -181,13 +181,13 @@ pub(crate) fn check_file(
 /// Writes the result back via [`io::atomic_write`] unless `--dry-run` is
 /// given.
 ///
-/// Every edit reports a [`changes::Change`] in both dry-run and in-place
+/// Every edit reports a [`Change`] in both dry-run and in-place
 /// modes:
 ///
 /// - fences via the transformation module's anchors
-/// - tables as one per-file record ([`changes::table_changes`])
+/// - tables as one per-file record ([`super::changes::table_changes`])
 /// - link hoists as one record per before/after pair
-///   ([`changes::link_changes`])
+///   ([`super::changes::link_changes`])
 ///
 /// A no-op pass borrows its text back and yields no record.
 ///
@@ -202,7 +202,7 @@ pub(crate) fn fix_file(
     disabled: &HashSet<String>,
     links_min_occurrences: usize,
     rules: &[CompiledSymbolRule],
-) -> anyhow::Result<Vec<changes::Change>> {
+) -> anyhow::Result<Vec<Change>> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");

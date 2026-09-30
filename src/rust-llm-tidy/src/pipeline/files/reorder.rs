@@ -1,9 +1,10 @@
 //! Reorder items in a single source file.
 
+use super::super::changes;
+use super::file_io as io;
 use crate::config::CompiledSymbolRule;
-use crate::input::file_io as io;
 use crate::languages::backend_for;
-use crate::reporting::change as changes;
+use crate::reporting::Change;
 use crate::rules::lint as check;
 use crate::rules::transform::reorder;
 use crate::source::preservation as safety;
@@ -14,7 +15,7 @@ use std::path::Path;
 
 /// Reorder a single source file.
 ///
-/// Returns one per-file [`changes::Change`] record per moved item (derived
+/// Returns one per-file [`Change`] record per moved item (derived
 /// from the reorder module's `ReorderMove` producer) in both dry-run and
 /// in-place modes.
 ///
@@ -37,7 +38,7 @@ pub(crate) fn reorder_file(
     dry_run: bool,
     disabled: &HashSet<String>,
     rules: &[CompiledSymbolRule],
-) -> anyhow::Result<Vec<changes::Change>> {
+) -> anyhow::Result<Vec<Change>> {
     if disabled.contains("reorder") {
         return Ok(Vec::new());
     }

@@ -2,6 +2,7 @@
 name = "rust-llm-tidy-cli"
 version = "0.12.0"
 edition = "2024"
+autotests = false
 description = "CLI for linting and tidying Rust, C#, and documentation source."
 repository = "https://github.com/Sewer56/rust-llm-tidy"
 license = "Apache-2.0"
@@ -19,8 +20,31 @@ name = "rust-llm-tidy"
 path = "src/main.rs"
 doc = false
 
-# Folder-rooted integration tests. Cargo auto-discovers only `tests/*.rs` and
-# `tests/*/main.rs`, so the `mod.rs` roots are declared explicitly here.
+# Explicit roots keep shared modules in tests/ out of Cargo's test discovery.
+[[test]]
+name = "config"
+path = "tests/config/main.rs"
+
+[[test]]
+name = "fix"
+path = "tests/fix/main.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
+[[test]]
+name = "library_equivalence"
+path = "tests/library_equivalence.rs"
+
+[[test]]
+name = "symbol_reminders"
+path = "tests/symbol_reminders.rs"
+
+[[test]]
+name = "vis"
+path = "tests/vis.rs"
+
 [[test]]
 name = "doc_check"
 path = "tests/doc_check/mod.rs"

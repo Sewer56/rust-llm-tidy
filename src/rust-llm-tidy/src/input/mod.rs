@@ -11,12 +11,12 @@
 //! - Exception: recognized non-text source extensions, including `license.rs`
 
 use crate::languages::registry::{DEFAULT_EXTENSIONS, TextLints, profile_for};
+pub use crate::pipeline::file_io;
 use anyhow::{Context, bail};
 use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
 
 pub mod changed_lines;
-pub mod file_io;
 pub mod git;
 
 /// Recursively collect all files under `dir` whose extension matches `exts`

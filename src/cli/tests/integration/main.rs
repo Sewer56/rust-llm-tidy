@@ -45,7 +45,7 @@ mod rust_reorder;
 mod spacing;
 // The folder root sits inside `tests/integration/`, so the helpers shared by
 // every test binary resolve at their sibling path, not under this folder.
-#[path = "../common/mod.rs"]
+#[path = "../common.rs"]
 mod common;
 
 static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);

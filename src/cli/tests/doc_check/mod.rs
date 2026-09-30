@@ -60,7 +60,7 @@ mod text008_list_density;
 mod text010_documentation_context;
 // The folder root sits inside `tests/doc_check/`, so the helpers shared by
 // every test binary resolve at their sibling path, not under this folder.
-#[path = "../common/mod.rs"]
+#[path = "../common.rs"]
 mod common;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);

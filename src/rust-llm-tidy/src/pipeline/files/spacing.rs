@@ -1,9 +1,10 @@
 //! Insert blank lines between documented members in one source file.
 
+use super::super::changes;
+use super::file_io as io;
 use crate::config::CompiledSymbolRule;
-use crate::input::file_io as io;
 use crate::languages::backend_for;
-use crate::reporting::change as changes;
+use crate::reporting::Change;
 use crate::rules::lint as check;
 use crate::rules::transform::spacing;
 use anyhow::Context;
@@ -24,7 +25,7 @@ use std::path::Path;
 ///
 /// # Returns
 ///
-/// One [`changes::Change`] per inserted or proposed blank line.
+/// One [`Change`] per inserted or proposed blank line.
 ///
 /// # Errors
 /// Returns an error if the file cannot be read, parsed or written, or
@@ -33,7 +34,7 @@ pub(crate) fn spacing_file(
     path: &Path,
     dry_run: bool,
     rules: &[CompiledSymbolRule],
-) -> anyhow::Result<Vec<changes::Change>> {
+) -> anyhow::Result<Vec<Change>> {
     let source =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
 

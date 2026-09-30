@@ -1,10 +1,11 @@
 //! Crate-aware visibility narrowing: the `vis` step's context and per-file pass.
 
+use super::super::changes;
+use super::file_io as io;
 use crate::config::CompiledSymbolRule;
 use crate::input as paths;
-use crate::input::file_io as io;
 use crate::pipeline::lint_context;
-use crate::reporting::change as changes;
+use crate::reporting::Change;
 use crate::rules::transform::visibility::rust::{
     ModuleTree, ParsedFile, ReexportSet, build_module_tree, collect_crate_reexports,
     discover_crate_root, narrow_vis_in_tree_protected,
@@ -126,7 +127,7 @@ pub(crate) fn vis_file(
     ctx: Option<&VisContext>,
     disabled: &HashSet<String>,
     rules: &[CompiledSymbolRule],
-) -> anyhow::Result<Vec<changes::Change>> {
+) -> anyhow::Result<Vec<Change>> {
     if disabled.contains("vis") {
         return Ok(Vec::new());
     }

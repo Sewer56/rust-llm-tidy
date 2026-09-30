@@ -31,7 +31,7 @@ mod post_process;
 mod validation;
 // The folder root sits inside `tests/config/`, so the helpers shared by
 // every test binary resolve at their sibling path, not under this folder.
-#[path = "../common/mod.rs"]
+#[path = "../common.rs"]
 mod common;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);

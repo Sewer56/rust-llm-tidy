@@ -5,6 +5,7 @@
 //!
 //! - this file: `run`, `should_parallelize`, `validate_selection`, `dedup_inputs`
 //! - `buffer`: standalone source-buffer processing shared by entry points
+//! - `changes`: change records shared by buffer and file transformations
 //! - `file_execution`: per-file mutation and lint phase execution
 //! - `files`: file I/O operations and the crate-aware visibility context
 //! - `run_options`: explicit permissions and rule selection for `run`
@@ -21,6 +22,7 @@ use crate::reporting::{FileReport, PostProcessFailure, RunReport};
 use crate::rules::lint::sole_caller::SoleCallerFindings;
 use crate::rules::registry as check;
 pub use buffer::tidy_source;
+pub use files::file_io;
 use rayon::prelude::*;
 pub use run_options::RunOptions;
 pub use source_options::SourceOptions;
@@ -28,6 +30,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 mod buffer;
+mod changes;
 mod file_execution;
 mod files;
 mod lint_context;

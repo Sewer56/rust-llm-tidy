@@ -17,11 +17,11 @@ use std::process::{self, Command, Output};
 mod no_args;
 // The folder root sits inside `tests/git_diff/`, so the sibling modules
 // resolve at their `tests/` paths, not under this folder.
-#[path = "../common/mod.rs"]
+#[path = "../common.rs"]
 mod common;
-#[path = "../documentation_context/mod.rs"]
+#[path = "../documentation_context.rs"]
 mod documentation_context;
-#[path = "../duplication/mod.rs"]
+#[path = "../duplication.rs"]
 mod duplication;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -233,7 +233,7 @@ fn cleanup(dir: &Path) {
 // -- Helpers (mirrors integration.rs) --------------------------------
 //
 // Note: `temp_dir` and `TEST_COUNTER` are still duplicated from
-// integration.rs; `binary` now lives in the shared `tests/common/mod.rs`
+// integration.rs; `binary` lives in the shared `tests/common.rs`
 // module.
 //
 // In a future cleanup, extract the rest likewise so git_diff.rs only owns

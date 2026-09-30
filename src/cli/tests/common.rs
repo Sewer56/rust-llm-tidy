@@ -1,9 +1,9 @@
 //! Helpers shared by the `rust-llm-tidy` CLI integration tests.
 //!
 //! Each test binary under `tests/` is its own crate, so helpers used by
-//! several of them live in this submodule (`tests/common/mod.rs`). Flat
+//! several of them live in this submodule (`tests/common.rs`). Flat
 //! roots pull it in with `mod common;`; folder roots use
-//! `#[path = "../common/mod.rs"]`.
+//! `#[path = "../common.rs"]`.
 
 use std::env;
 use std::path::PathBuf;

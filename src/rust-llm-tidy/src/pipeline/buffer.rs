@@ -1,10 +1,11 @@
 //! Shared source-only operations used by buffer and file entry points.
 
+use super::changes as change;
 use crate::SourceOptions;
 use crate::config::forbidden_character_rule::defaults;
 use crate::config::{CompiledSymbolRule, compile_symbol_rules};
 use crate::languages::{backend_for, registry};
-use crate::reporting::{Change, ChangeKind, Diagnostic, SourceReport, change};
+use crate::reporting::{Change, ChangeKind, Diagnostic, SourceReport};
 use crate::rules::transform::visibility::rust::{
     ParsedFile, collect_crate_reexports, narrow_vis_in_tree_protected,
 };
