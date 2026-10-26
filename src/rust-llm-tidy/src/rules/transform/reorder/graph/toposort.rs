@@ -11,6 +11,16 @@
 //! [`compute_order`]: crate::rules::transform::reorder::graph::compute_order
 //! [`PhaseStrategy::Dependency`]: crate::rules::transform::reorder::graph::PhaseStrategy::Dependency
 
+use core::cmp::Reverse;
+use std::collections::BinaryHeap;
+
+/// Tracks first references in caller output order across related groups.
+pub(super) struct ReferenceOrder {
+    targets: Vec<Vec<usize>>,
+    ranks: Vec<usize>,
+    next: usize,
+}
+
 /// Tie-breaking strategy for topological sort.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TieBreak {
@@ -19,6 +29,42 @@ pub enum TieBreak {
 
     /// Keep original file order for zero-in-degree nodes.
     Stable,
+}
+
+impl ReferenceOrder {
+    /// Creates unranked reference state for file or member indices.
+    ///
+    /// # Arguments
+    ///
+    /// - `len`: number of items or members.
+    /// - `edges`: reference-ordered pairs; out-of-range endpoints are ignored.
+    ///
+    /// # Returns
+    ///
+    /// State that assigns each target a rank when its first caller is emitted.
+    pub(super) fn new(len: usize, edges: &[(usize, usize)]) -> Self {
+        let mut targets = vec![Vec::new(); len];
+        for &(from, to) in edges {
+            if from < len && to < len {
+                targets[from].push(to);
+            }
+        }
+        Self {
+            targets,
+            ranks: vec![usize::MAX; len],
+            next: 0,
+        }
+    }
+
+    fn record(&mut self, caller: usize) {
+        // Callers arrive in output order; targets retain their reference order.
+        for &target in &self.targets[caller] {
+            if self.ranks[target] == usize::MAX {
+                self.ranks[target] = self.next;
+                self.next += 1;
+            }
+        }
+    }
 }
 
 /// Compute a topological ordering of item indices by reference dependencies.
@@ -59,6 +105,28 @@ pub enum TieBreak {
 /// 4. **Unrelated functions stable.** Functions with no calls between them
 ///    are ordered by the tie-break strategy.
 pub fn toposort(fns: &[&str], edges: &[(usize, usize)], tie_break: TieBreak) -> Vec<usize> {
+    with_references(fns, edges, tie_break, None)
+}
+
+/// Sorts dependencies with optional first-reference preferences.
+///
+/// # Arguments
+///
+/// - `fns`: group-local item names in source order.
+/// - `edges`: group-local reference dependency pairs.
+/// - `tie_break`: fallback order for unranked, equally ranked, or cyclic nodes.
+/// - `references`: local-to-global index map and shared reference state.
+///
+/// # Returns
+///
+/// A permutation of group-local positions, with `main` first and cycles last.
+/// Without reference state, ready nodes emit in batches as in [`toposort`].
+pub(super) fn with_references(
+    fns: &[&str],
+    edges: &[(usize, usize)],
+    tie_break: TieBreak,
+    mut references: Option<(&[usize], &mut ReferenceOrder)>,
+) -> Vec<usize> {
     let n = fns.len();
 
     // Build adjacency list: caller -> Vec<callee>. Edges are already phase
@@ -83,6 +151,9 @@ pub fn toposort(fns: &[&str], edges: &[(usize, usize)], tie_break: TieBreak) -> 
     {
         order.push(main_idx);
         visited[main_idx] = true;
+        if let Some((group, references)) = &mut references {
+            references.record(group[main_idx]);
+        }
         for &callee in &adj[main_idx] {
             if in_degree[callee] > 0 {
                 in_degree[callee] -= 1;
@@ -91,22 +162,40 @@ pub fn toposort(fns: &[&str], edges: &[(usize, usize)], tie_break: TieBreak) -> 
     }
 
     // ── Phase 2: standard Kahn iteration ─────────────────────────────
+    let key = |i: usize, rank: usize| {
+        Reverse((
+            rank,
+            if tie_break == TieBreak::Alphabetical {
+                fns[i]
+            } else {
+                ""
+            },
+            i,
+        ))
+    };
+    let mut ready = BinaryHeap::new();
+    if let Some((group, references)) = &references {
+        for i in 0..n {
+            if !visited[i] && in_degree[i] == 0 {
+                ready.push(key(i, references.ranks[group[i]]));
+            }
+        }
+    }
+    let mut zero_degree = Vec::new();
     let mut changed = true;
     while changed {
         changed = false;
 
-        // Collect all zero-in-degree nodes
-        let mut zero_degree: Vec<usize> = (0..n)
-            .filter(|&i| !visited[i] && in_degree[i] == 0)
-            .collect();
-
-        // Apply tie-break ordering
-        match tie_break {
-            TieBreak::Alphabetical => {
-                zero_degree.sort_by(|&a, &b| fns[a].cmp(fns[b]));
+        zero_degree.clear();
+        if references.is_some() {
+            // Pick one so a newly ready helper can beat an unrelated root.
+            if let Some(Reverse((_, _, i))) = ready.pop() {
+                zero_degree.push(i);
             }
-            TieBreak::Stable => {
-                // already in index order (file order)
+        } else {
+            zero_degree.extend((0..n).filter(|&i| !visited[i] && in_degree[i] == 0));
+            if tie_break == TieBreak::Alphabetical {
+                zero_degree.sort_by(|&a, &b| fns[a].cmp(fns[b]));
             }
         }
 
@@ -114,10 +203,20 @@ pub fn toposort(fns: &[&str], edges: &[(usize, usize)], tie_break: TieBreak) -> 
             visited[i] = true;
             changed = true;
             order.push(i);
+            if let Some((group, references)) = &mut references {
+                references.record(group[i]);
+            }
 
             for &callee in &adj[i] {
                 if in_degree[callee] > 0 {
                     in_degree[callee] -= 1;
+                    if in_degree[callee] == 0
+                        && !visited[callee]
+                        && let Some((group, references)) = &references
+                    {
+                        // All same-group callers have finished, so this rank is final.
+                        ready.push(key(callee, references.ranks[group[callee]]));
+                    }
                 }
             }
         }
@@ -132,6 +231,11 @@ pub fn toposort(fns: &[&str], edges: &[(usize, usize)], tie_break: TieBreak) -> 
             }
             TieBreak::Stable => {
                 // already in index order (file order)
+            }
+        }
+        if let Some((group, references)) = &mut references {
+            for &i in &remaining {
+                references.record(group[i]);
             }
         }
         order.extend(remaining);

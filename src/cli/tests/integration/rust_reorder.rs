@@ -223,9 +223,9 @@ pub fn build(name: &str) -> Option<Config> {\n\
     );
 }
 
-/// An already-sorted file (callers before callees) should be unchanged.
+/// Earlier references stay ahead of nested helpers.
 #[test]
-fn sorted_file_should_roundtrip_unchanged() {
+fn reorder_should_keep_earlier_references_before_nested_helpers() {
     let source = "\
 fn main() {\n\
     a();\n\
@@ -243,5 +243,8 @@ fn helper() {}\n";
 
     assert!(main_pos < a_pos, "main before a");
     assert!(a_pos < helper_pos, "a before helper (a calls helper)");
-    assert!(b_pos < helper_pos, "b before helper (original order)");
+    assert!(
+        b_pos < helper_pos,
+        "main references b before a references helper"
+    );
 }

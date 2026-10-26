@@ -54,7 +54,7 @@ pub enum PhaseStrategy {
     ///
     /// - `pub` fns, then restricted (`pub(crate)` style), then private
     /// - within a group, callers sort before callees, `main` first;
-    ///   unrelated fns sort alphabetically
+    ///   first references take priority, with alphabetical fallback
     FnsByVisibility,
 }
 

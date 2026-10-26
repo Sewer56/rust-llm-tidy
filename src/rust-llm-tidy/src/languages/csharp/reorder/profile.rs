@@ -18,7 +18,8 @@
 //! 5. enums and nested types
 //! 6. properties and indexers
 //! 7. operators
-//! 8. methods, callers before callees (stable tie-break)
+//! 8. methods, callers before callees, then first-reference preference,
+//!    source-order fallback
 //!
 //! Inside a namespace body the same table applies with `using` directives
 //! pinned first, so nested usings hoist above the namespace's types.

@@ -28,7 +28,7 @@ public class OrderService
     public static OrderService operator +(OrderService a, OrderService b) => a;
     public void Run() { Apply(); }
 
-    private void Validate() { }
-
     void Apply() { }
+
+    private void Validate() { }
 }

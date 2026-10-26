@@ -6,9 +6,13 @@ Reorders top-level items of source code into a review-friendly
 order, so you can review code by chronologically reading it from
 top to bottom.
 
-Functions etc. will come before anything they reference.
-Alphabetical order breaks ties. Any entry point e.g. `fn main()`
-always comes first.
+Within each reorder group, callers come before callees unless a cycle
+prevents it. Rust's `main` comes first in its group.
+
+Rust free functions and C# methods prefer first-reference order:
+`A → B, C` gives `A, B, C`.
+Dependencies and existing reorder groups take priority over that preference.
+Rust uses alphabetical order as a fallback.
 
 Other languages:
 - [Reorder for C#]

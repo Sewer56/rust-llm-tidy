@@ -36,6 +36,8 @@ mod toposort;
 ///
 /// Inside a run, members bucket by [`ReorderProfile::member_phase`] with
 /// each phase applying [`ReorderProfile::member_strategy`].
+/// Function-only dependency groups prefer first-reference order, then their
+/// configured tie-break.
 ///
 /// Member phases honor [`PhaseStrategy::Stable`] and
 /// [`PhaseStrategy::Dependency`]; other strategies fall back to `Stable`.
@@ -80,11 +82,16 @@ pub fn compute_member_order(
         for (phase, group) in &buckets {
             match profile.member_strategy(*phase) {
                 PhaseStrategy::Dependency(tie_break) => {
+                    let mut references = group
+                        .iter()
+                        .all(|&pos| members[pos].kind() == &ItemKind::Fn)
+                        .then(|| toposort::ReferenceOrder::new(members.len(), edges));
                     let names: Vec<&str> = group
                         .iter()
                         .map(|&pos| members[pos].name().unwrap_or(""))
                         .collect();
-                    let order = toposort_positions(&names, group, edges, tie_break);
+                    let order =
+                        toposort_positions(&names, group, edges, tie_break, references.as_mut());
                     out.extend(order.into_iter().map(|pos| group[pos]));
                 }
                 // Members only honor Stable and Dependency; anything else
@@ -218,7 +225,7 @@ fn order_region(
         match profile.strategy(*phase) {
             PhaseStrategy::Stable => out.extend_from_slice(items),
             PhaseStrategy::Dependency(tie_break) => {
-                out.extend(dependency_order(parsed, items, edges, tie_break));
+                out.extend(dependency_order(parsed, items, edges, tie_break, None));
             }
             PhaseStrategy::MacroDefinitions => {
                 emit_macro_definitions(parsed, items, edges, out);
@@ -233,36 +240,69 @@ fn order_region(
     }
 }
 
-/// Emit one fn phase: visibility groups, each dependency-sorted with an
-/// alphabetical tie-break. `main`-first is handled by the toposort itself.
+/// Emit one macro phase: definitions dependency-sorted alphabetically,
+/// each immediately followed by its local invocations in source order.
 ///
-/// Groups emit in order: `pub`, then restricted, then private.
-fn emit_fns_by_visibility(
+/// This keeps a `macro_rules!` definition before its use sites because
+/// Rust `macro_rules!` uses textual scoping.
+fn emit_macro_definitions(
     parsed: &ParseResult,
     items: &[usize],
     edges: &[(usize, usize)],
     out: &mut Vec<usize>,
 ) {
-    let mut pub_fns: Vec<usize> = Vec::new();
-    let mut restricted_fns: Vec<usize> = Vec::new();
-    let mut private_fns: Vec<usize> = Vec::new();
-
+    // Split definitions from invocations; both keep source order.
+    let mut defs: Vec<usize> = Vec::new();
+    let mut invocations: Vec<usize> = Vec::new();
     for &idx in items {
-        match parsed.items[idx].visibility() {
-            Some(VisibilityTier::Pub) => pub_fns.push(idx),
-            Some(VisibilityTier::PubRestricted) => restricted_fns.push(idx),
-            _ => private_fns.push(idx),
+        match parsed.items[idx].kind() {
+            ItemKind::Macro => defs.push(idx),
+            ItemKind::MacroInvocation => invocations.push(idx),
+            // Other kinds in a macro phase keep source order, leading the
+            // phase.
+            _ => out.push(idx),
         }
     }
 
-    for group in [pub_fns, restricted_fns, private_fns] {
-        out.extend(dependency_order(
-            parsed,
-            &group,
-            edges,
-            TieBreak::Alphabetical,
-        ));
+    let def_order = dependency_order(parsed, &defs, edges, TieBreak::Alphabetical, None);
+
+    // Group invocations by macro name. Invocations whose name has no
+    // matching definition emit last in source order.
+    //
+    // This case is unreachable: the profile routes an invocation to this phase only
+    // when a local definition shares its name.
+    let def_names: AHashSet<&str> = def_order
+        .iter()
+        .filter_map(|&idx| parsed.items[idx].name())
+        .filter(|name| !name.is_empty())
+        .collect();
+    let mut invocations_by_def: AHashMap<&str, Vec<usize>> = AHashMap::new();
+    let mut orphans: Vec<usize> = Vec::new();
+    for &inv_idx in &invocations {
+        let inv_name = parsed.items[inv_idx].name().unwrap_or("");
+        if def_names.contains(inv_name) {
+            invocations_by_def
+                .entry(inv_name)
+                .or_default()
+                .push(inv_idx);
+        } else {
+            orphans.push(inv_idx);
+        }
     }
+
+    for &def_idx in &def_order {
+        out.push(def_idx);
+        let def_name = parsed.items[def_idx].name().unwrap_or("");
+        // `remove` (not `get`): duplicate definition names would attach
+        // the shared invocations once per definition and repeat indices.
+        //
+        // Duplicate definition names are legal in Rust; a later
+        // `macro_rules!` shadows the earlier.
+        if let Some(invocs) = invocations_by_def.remove(def_name) {
+            out.extend(invocs);
+        }
+    }
+    out.extend(&orphans);
 }
 
 /// Emit one impl phase: inherent impls after their matching type, then
@@ -334,69 +374,38 @@ fn emit_impls_after_target_type(parsed: &ParseResult, items: &[usize], out: &mut
     }
 }
 
-/// Emit one macro phase: definitions dependency-sorted alphabetically,
-/// each immediately followed by its local invocations in source order.
+/// Emit one fn phase by visibility, dependencies, then first references.
+/// Alphabetical order breaks remaining ties.
 ///
-/// This keeps a `macro_rules!` definition before its use sites because
-/// Rust `macro_rules!` uses textual scoping.
-fn emit_macro_definitions(
+/// Groups emit in order: `pub`, then restricted, then private.
+fn emit_fns_by_visibility(
     parsed: &ParseResult,
     items: &[usize],
     edges: &[(usize, usize)],
     out: &mut Vec<usize>,
 ) {
-    // Split definitions from invocations; both keep source order.
-    let mut defs: Vec<usize> = Vec::new();
-    let mut invocations: Vec<usize> = Vec::new();
+    let mut pub_fns: Vec<usize> = Vec::new();
+    let mut restricted_fns: Vec<usize> = Vec::new();
+    let mut private_fns: Vec<usize> = Vec::new();
+
     for &idx in items {
-        match parsed.items[idx].kind() {
-            ItemKind::Macro => defs.push(idx),
-            ItemKind::MacroInvocation => invocations.push(idx),
-            // Other kinds in a macro phase keep source order, leading the
-            // phase.
-            _ => out.push(idx),
+        match parsed.items[idx].visibility() {
+            Some(VisibilityTier::Pub) => pub_fns.push(idx),
+            Some(VisibilityTier::PubRestricted) => restricted_fns.push(idx),
+            _ => private_fns.push(idx),
         }
     }
 
-    let def_order = dependency_order(parsed, &defs, edges, TieBreak::Alphabetical);
-
-    // Group invocations by macro name. Invocations whose name has no
-    // matching definition emit last in source order.
-    //
-    // This case is unreachable: the profile routes an invocation to this phase only
-    // when a local definition shares its name.
-    let def_names: AHashSet<&str> = def_order
-        .iter()
-        .filter_map(|&idx| parsed.items[idx].name())
-        .filter(|name| !name.is_empty())
-        .collect();
-    let mut invocations_by_def: AHashMap<&str, Vec<usize>> = AHashMap::new();
-    let mut orphans: Vec<usize> = Vec::new();
-    for &inv_idx in &invocations {
-        let inv_name = parsed.items[inv_idx].name().unwrap_or("");
-        if def_names.contains(inv_name) {
-            invocations_by_def
-                .entry(inv_name)
-                .or_default()
-                .push(inv_idx);
-        } else {
-            orphans.push(inv_idx);
-        }
+    let mut references = toposort::ReferenceOrder::new(parsed.items.len(), edges);
+    for group in [pub_fns, restricted_fns, private_fns] {
+        out.extend(dependency_order(
+            parsed,
+            &group,
+            edges,
+            TieBreak::Alphabetical,
+            Some(&mut references),
+        ));
     }
-
-    for &def_idx in &def_order {
-        out.push(def_idx);
-        let def_name = parsed.items[def_idx].name().unwrap_or("");
-        // `remove` (not `get`): duplicate definition names would attach
-        // the shared invocations once per definition and repeat indices.
-        //
-        // Duplicate definition names are legal in Rust; a later
-        // `macro_rules!` shadows the earlier.
-        if let Some(invocs) = invocations_by_def.remove(def_name) {
-            out.extend(invocs);
-        }
-    }
-    out.extend(&orphans);
 }
 
 /// Sort one group's items by reference dependency with `tie_break` for
@@ -409,12 +418,13 @@ fn dependency_order(
     group: &[usize],
     edges: &[(usize, usize)],
     tie_break: TieBreak,
+    references: Option<&mut toposort::ReferenceOrder>,
 ) -> Vec<usize> {
     let names: Vec<&str> = group
         .iter()
         .map(|&idx| parsed.items[idx].name().unwrap_or(""))
         .collect();
-    let order = toposort_positions(&names, group, edges, tie_break);
+    let order = toposort_positions(&names, group, edges, tie_break, references);
     order.into_iter().map(|pos| group[pos]).collect()
 }
 
@@ -431,7 +441,10 @@ fn dependency_order(
 /// 2. Keep only `edges` whose `(referencer, referenced)` endpoints both
 ///    lie in `group`, rewriting each pair to those positions. Edges
 ///    touching anything outside the group never constrain the sort.
-/// 3. Delegate to [`toposort`] with the group-local names and edges.
+/// 3. Delegate to [`toposort::with_references`] with the group-local names
+///    and edges.
+///
+/// Shared reference state can still carry preferences from earlier groups.
 ///
 /// Returns a permutation where `order[i]` is the position in `group` of
 /// the i-th entry in reading order; callers map back with
@@ -445,6 +458,7 @@ fn dependency_order(
 /// - `edges` - `(referencer, referenced)` pairs in the same numbering as
 ///   `group`'s values; pairs may span the whole file or type body.
 /// - `tie_break` - ordering for unconstrained and cyclic nodes.
+/// - `references` - optional first-reference preferences shared across groups.
 ///
 /// # Worked example
 ///
@@ -469,6 +483,7 @@ fn toposort_positions(
     group: &[usize],
     edges: &[(usize, usize)],
     tie_break: TieBreak,
+    references: Option<&mut toposort::ReferenceOrder>,
 ) -> Vec<usize> {
     // Group-local position for each node id the group holds.
     let mut pos_by_node: AHashMap<usize, usize> = AHashMap::with_capacity(group.len());
@@ -485,7 +500,12 @@ fn toposort_positions(
         }
     }
 
-    toposort(names, &group_edges, tie_break)
+    toposort::with_references(
+        names,
+        &group_edges,
+        tie_break,
+        references.map(|references| (group, references)),
+    )
 }
 
 #[cfg(test)]
