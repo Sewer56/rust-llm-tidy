@@ -157,57 +157,6 @@ fn compile_rule(rule: &SymbolRule) -> anyhow::Result<CompiledSymbolRule> {
     })
 }
 
-/// Compile the one present matcher, anchoring symbol regexes to the full name.
-fn compile_matcher(rule: &SymbolRule, text_regex: bool) -> anyhow::Result<SymbolMatcher> {
-    match (&rule.symbol, &rule.regex) {
-        (Some(symbol), None) => {
-            validate_text(symbol, "symbol")?;
-            if !valid_literal(symbol) {
-                bail!(
-                    "symbol must contain nonempty literal components separated by ::; use regex for patterns"
-                );
-            }
-            Ok(SymbolMatcher::Literal(symbol.clone()))
-        }
-        (None, Some(pattern)) => {
-            validate_text(pattern, "regex")?;
-            let anchored;
-            let pattern = if text_regex {
-                pattern.as_ref()
-            } else {
-                anchored = format!(r"\A(?:{pattern})\z");
-                &anchored
-            };
-            let regex = Regex::new(pattern)
-                .context("regex compilation failed; correct its syntax or simplify the pattern")?;
-            Ok(SymbolMatcher::Regex(regex))
-        }
-        _ => bail!("set exactly one of symbol and regex"),
-    }
-}
-
-/// Compile `exclude_lints` into suppression bits in registry lint-code order.
-fn exclude_lints_mask(rule: &SymbolRule) -> anyhow::Result<u32> {
-    let mask = match &rule.exclude_lints {
-        None | Some(DeclarationLintExclusion::All(true)) => (1 << LINT_CODES.len()) - 1,
-        Some(DeclarationLintExclusion::All(false)) => 0,
-        Some(DeclarationLintExclusion::Codes(codes)) => {
-            let mut mask = 0;
-            for code in codes {
-                let Some(index) = LINT_CODES.iter().position(|known| *known == code.as_ref())
-                else {
-                    bail!(
-                        "exclude_lints contains unknown lint code {code:?}; use registered lint codes only"
-                    )
-                };
-                mask |= 1 << index;
-            }
-            mask
-        }
-    };
-    Ok(mask)
-}
-
 /// Resolve the extension and language selectors into enabled-language bits.
 fn resolve_extensions(rule: &SymbolRule, text_regex: bool) -> anyhow::Result<[bool; 2]> {
     let mut extensions = [true; 2];
@@ -275,6 +224,68 @@ fn validate_action_fields(rule: &SymbolRule, usage_constraints: bool) -> anyhow:
     Ok(())
 }
 
+/// Compile `exclude_lints` into suppression bits in registry lint-code order.
+fn exclude_lints_mask(rule: &SymbolRule) -> anyhow::Result<u32> {
+    let mask = match &rule.exclude_lints {
+        None | Some(DeclarationLintExclusion::All(true)) => (1 << LINT_CODES.len()) - 1,
+        Some(DeclarationLintExclusion::All(false)) => 0,
+        Some(DeclarationLintExclusion::Codes(codes)) => {
+            let mut mask = 0;
+            for code in codes {
+                let Some(index) = LINT_CODES.iter().position(|known| *known == code.as_ref())
+                else {
+                    bail!(
+                        "exclude_lints contains unknown lint code {code:?}; use registered lint codes only"
+                    )
+                };
+                mask |= 1 << index;
+            }
+            mask
+        }
+    };
+    Ok(mask)
+}
+
+/// Compile the one present matcher, anchoring symbol regexes to the full name.
+fn compile_matcher(rule: &SymbolRule, text_regex: bool) -> anyhow::Result<SymbolMatcher> {
+    match (&rule.symbol, &rule.regex) {
+        (Some(symbol), None) => {
+            validate_text(symbol, "symbol")?;
+            if !valid_literal(symbol) {
+                bail!(
+                    "symbol must contain nonempty literal components separated by ::; use regex for patterns"
+                );
+            }
+            Ok(SymbolMatcher::Literal(symbol.clone()))
+        }
+        (None, Some(pattern)) => {
+            validate_text(pattern, "regex")?;
+            let anchored;
+            let pattern = if text_regex {
+                pattern.as_ref()
+            } else {
+                anchored = format!(r"\A(?:{pattern})\z");
+                &anchored
+            };
+            let regex = Regex::new(pattern)
+                .context("regex compilation failed; correct its syntax or simplify the pattern")?;
+            Ok(SymbolMatcher::Regex(regex))
+        }
+        _ => bail!("set exactly one of symbol and regex"),
+    }
+}
+
+/// Reject blank policy fields without changing their supplied text.
+///
+/// # Errors
+/// Returns an error when the field is blank.
+fn validate_text(text: &str, field: &str) -> anyhow::Result<()> {
+    if text.trim().is_empty() {
+        bail!("{field} must not be empty; provide nonblank text");
+    }
+    Ok(())
+}
+
 /// Check literal component shape without interpreting wildcard punctuation.
 fn valid_literal(symbol: &str) -> bool {
     if symbol == "new[]" {
@@ -290,15 +301,4 @@ fn valid_literal(symbol: &str) -> bool {
         chars.next().is_some_and(|c| c == '_' || c.is_alphabetic())
             && chars.all(|c| c == '_' || c.is_alphanumeric())
     })
-}
-
-/// Reject blank policy fields without changing their supplied text.
-///
-/// # Errors
-/// Returns an error when the field is blank.
-fn validate_text(text: &str, field: &str) -> anyhow::Result<()> {
-    if text.trim().is_empty() {
-        bail!("{field} must not be empty; provide nonblank text");
-    }
-    Ok(())
 }

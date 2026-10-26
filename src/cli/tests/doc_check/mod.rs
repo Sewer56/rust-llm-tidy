@@ -174,6 +174,11 @@ fn dry_run_should_fail_when_lint_clean_source_needs_reordering() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("success[REORDER]"));
 }
 
+/// The directory holding the Rust lint fixtures.
+fn rust_fixture_dir() -> PathBuf {
+    fixture_dir().join("rust")
+}
+
 /// The directory holding fix fixtures.
 fn fix_fixture_dir() -> PathBuf {
     manifest_dir().join("tests").join("fixtures").join("fix")
@@ -219,6 +224,31 @@ fn run_python_fixture(name: &str) -> (String, i32) {
     )
 }
 
+/// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
+fn run_command(args: &[&str], path: &Path) -> Output {
+    let mut cmd = Command::new(binary());
+    cmd.args(["--no-config", "--all-lines"])
+        .args(args)
+        .arg(path);
+    cmd.output()
+        .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
+}
+
+/// The directory holding the Python lint fixtures.
+fn python_fixture_dir() -> PathBuf {
+    fixture_dir().join("python")
+}
+
+/// The directory holding the shared, cross-language lint fixtures.
+fn fixture_dir() -> PathBuf {
+    manifest_dir().join("tests").join("fixtures").join("doc")
+}
+
+/// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.
+fn manifest_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
 /// Run MOD003 on hermetic source with an explicit, empty configuration.
 fn run_qualified_path_source(source: &str, extension: &str) -> (String, i32) {
     let directory = tempfile::tempdir().unwrap();
@@ -247,6 +277,13 @@ fn temp_md(content: &str) -> PathBuf {
     path
 }
 
+/// Create a numbered temporary file path with the given extension.
+fn temp_file(ext: &str) -> PathBuf {
+    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = process::id();
+    std::env::temp_dir().join(format!("rust-llm-tidy-all-{}-{}.{}", pid, seq, ext))
+}
+
 /// Write `content` to `rel` (a relative path inside a fresh temp dir)
 /// and return the file's path; parent directories are created.
 fn temp_named_file(rel: &str, content: &str) -> PathBuf {
@@ -254,6 +291,13 @@ fn temp_named_file(rel: &str, content: &str) -> PathBuf {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(&path, content).unwrap();
     path
+}
+
+/// Create a numbered temporary directory.
+fn temp_dir() -> PathBuf {
+    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = process::id();
+    std::env::temp_dir().join(format!("rust-llm-tidy-lint-dir-{}-{}", pid, seq))
 }
 
 /// A markdown file whose line 1 carries a narration marker and line 2 a
@@ -268,48 +312,4 @@ fn text007_marker_and_passive_md() -> String {
 /// fixture-relative paths must spell them Unix-style on every platform.
 fn unix_separators(stderr: &str) -> String {
     stderr.replace('\\', "/")
-}
-
-/// The directory holding the Python lint fixtures.
-fn python_fixture_dir() -> PathBuf {
-    fixture_dir().join("python")
-}
-
-/// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
-fn run_command(args: &[&str], path: &Path) -> Output {
-    let mut cmd = Command::new(binary());
-    cmd.args(["--no-config", "--all-lines"])
-        .args(args)
-        .arg(path);
-    cmd.output()
-        .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
-}
-
-/// The directory holding the Rust lint fixtures.
-fn rust_fixture_dir() -> PathBuf {
-    fixture_dir().join("rust")
-}
-
-/// Create a numbered temporary directory.
-fn temp_dir() -> PathBuf {
-    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = process::id();
-    std::env::temp_dir().join(format!("rust-llm-tidy-lint-dir-{}-{}", pid, seq))
-}
-
-/// Create a numbered temporary file path with the given extension.
-fn temp_file(ext: &str) -> PathBuf {
-    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = process::id();
-    std::env::temp_dir().join(format!("rust-llm-tidy-all-{}-{}.{}", pid, seq, ext))
-}
-
-/// The directory holding the shared, cross-language lint fixtures.
-fn fixture_dir() -> PathBuf {
-    manifest_dir().join("tests").join("fixtures").join("doc")
-}
-
-/// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.
-fn manifest_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }

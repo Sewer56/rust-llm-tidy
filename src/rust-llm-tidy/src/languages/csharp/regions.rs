@@ -226,16 +226,6 @@ fn lex_line(mut state: LexState, line: &str) -> Option<LexState> {
     })
 }
 
-/// One step inside a `/* */` comment: `*/` returns to code, any other
-/// byte stays in the comment.
-fn block_comment_step(bytes: &[u8], i: usize) -> (LexState, usize) {
-    if bytes[i] == b'*' && bytes.get(i + 1) == Some(&b'/') {
-        (LexState::Code, 2)
-    } else {
-        (LexState::BlockComment, 1)
-    }
-}
-
 /// One step of code-state scanning at `bytes[i]`; returns the next state
 /// and how many bytes were consumed, or `None` to reject the scan.
 fn code_step(bytes: &[u8], i: usize) -> Option<(LexState, usize)> {
@@ -281,6 +271,89 @@ fn code_step(bytes: &[u8], i: usize) -> Option<(LexState, usize)> {
     })
 }
 
+/// One step inside a `/* */` comment: `*/` returns to code, any other
+/// byte stays in the comment.
+fn block_comment_step(bytes: &[u8], i: usize) -> (LexState, usize) {
+    if bytes[i] == b'*' && bytes.get(i + 1) == Some(&b'/') {
+        (LexState::Code, 2)
+    } else {
+        (LexState::BlockComment, 1)
+    }
+}
+
+/// One step inside a regular `"..."` string or `'...'` character
+/// literal closed by `quote`.
+///
+/// Regular literals cannot span lines: their closing quote or the
+/// line's end leaves code state. Escapes keep the scan inside the
+/// literal; only the matching quote closes it.
+fn quoted_step(bytes: &[u8], i: usize, quote: u8) -> (LexState, usize) {
+    let literal = if quote == b'"' {
+        LexState::String
+    } else {
+        LexState::Char
+    };
+    if bytes[i] == b'\\' && bytes.get(i + 1).is_some() {
+        (literal, 2)
+    } else if bytes[i] == quote {
+        (LexState::Code, 1)
+    } else {
+        (literal, 1)
+    }
+}
+
+/// One step inside a verbatim `@"..."` string. Verbatim strings may
+/// span lines; a doubled quote is an escaped quote, a single quote
+/// closes the literal.
+fn verbatim_string_step(bytes: &[u8], i: usize) -> (LexState, usize) {
+    if bytes[i] == b'"' && bytes.get(i + 1) == Some(&b'"') {
+        (LexState::VerbatimString, 2)
+    } else if bytes[i] == b'"' {
+        (LexState::Code, 1)
+    } else {
+        (LexState::VerbatimString, 1)
+    }
+}
+
+/// One step inside a raw string opened by a run of `len` quotes.
+///
+/// Raw strings span lines and carry no escapes; a run of at least
+/// `len` quotes (consumed whole) closes the literal.
+fn raw_string_step(bytes: &[u8], i: usize, len: usize) -> (LexState, usize) {
+    if bytes[i] == b'"' && quote_run_len(bytes, i) >= len {
+        (LexState::Code, quote_run_len(bytes, i))
+    } else {
+        (LexState::RawString { len }, 1)
+    }
+}
+
+/// One step inside the literal text of an interpolated string:
+/// `{{`/`}}` are escaped braces, `{` opens an interpolation hole, and
+/// `"` closes the literal.
+///
+/// `verbatim` selects the interpolated verbatim (`$@"..."`) form over
+/// the classic (`$"..."`) one.
+///
+/// The verbatim form may span lines and escapes a quote by doubling it
+/// (`""`). The classic form escapes the next byte with a backslash.
+/// The flag is carried into the hole as the literal it returns to.
+fn interp_text_step(bytes: &[u8], i: usize, verbatim: bool) -> (LexState, usize) {
+    let text = if verbatim {
+        LexState::InterpVerbatim
+    } else {
+        LexState::InterpString
+    };
+    match bytes[i] {
+        b'\\' if !verbatim && bytes.get(i + 1).is_some() => (text, 2),
+        b'"' if verbatim && bytes.get(i + 1) == Some(&b'"') => (text, 2),
+        b'{' if bytes.get(i + 1) == Some(&b'{') => (text, 2),
+        b'}' if bytes.get(i + 1) == Some(&b'}') => (text, 2),
+        b'{' => (LexState::InterpHole { verbatim, depth: 1 }, 1),
+        b'"' => (LexState::Code, 1),
+        _ => (text, 1),
+    }
+}
+
 /// One step inside an interpolation hole whose open brace depth is
 /// `depth`; `verbatim` names the literal text the hole returns to on
 /// its closing `}`.
@@ -319,79 +392,6 @@ fn interp_hole_step(
             1,
         )),
         _ => Some((LexState::InterpHole { verbatim, depth }, 1)),
-    }
-}
-
-/// One step inside the literal text of an interpolated string:
-/// `{{`/`}}` are escaped braces, `{` opens an interpolation hole, and
-/// `"` closes the literal.
-///
-/// `verbatim` selects the interpolated verbatim (`$@"..."`) form over
-/// the classic (`$"..."`) one.
-///
-/// The verbatim form may span lines and escapes a quote by doubling it
-/// (`""`). The classic form escapes the next byte with a backslash.
-/// The flag is carried into the hole as the literal it returns to.
-fn interp_text_step(bytes: &[u8], i: usize, verbatim: bool) -> (LexState, usize) {
-    let text = if verbatim {
-        LexState::InterpVerbatim
-    } else {
-        LexState::InterpString
-    };
-    match bytes[i] {
-        b'\\' if !verbatim && bytes.get(i + 1).is_some() => (text, 2),
-        b'"' if verbatim && bytes.get(i + 1) == Some(&b'"') => (text, 2),
-        b'{' if bytes.get(i + 1) == Some(&b'{') => (text, 2),
-        b'}' if bytes.get(i + 1) == Some(&b'}') => (text, 2),
-        b'{' => (LexState::InterpHole { verbatim, depth: 1 }, 1),
-        b'"' => (LexState::Code, 1),
-        _ => (text, 1),
-    }
-}
-
-/// One step inside a regular `"..."` string or `'...'` character
-/// literal closed by `quote`.
-///
-/// Regular literals cannot span lines: their closing quote or the
-/// line's end leaves code state. Escapes keep the scan inside the
-/// literal; only the matching quote closes it.
-fn quoted_step(bytes: &[u8], i: usize, quote: u8) -> (LexState, usize) {
-    let literal = if quote == b'"' {
-        LexState::String
-    } else {
-        LexState::Char
-    };
-    if bytes[i] == b'\\' && bytes.get(i + 1).is_some() {
-        (literal, 2)
-    } else if bytes[i] == quote {
-        (LexState::Code, 1)
-    } else {
-        (literal, 1)
-    }
-}
-
-/// One step inside a raw string opened by a run of `len` quotes.
-///
-/// Raw strings span lines and carry no escapes; a run of at least
-/// `len` quotes (consumed whole) closes the literal.
-fn raw_string_step(bytes: &[u8], i: usize, len: usize) -> (LexState, usize) {
-    if bytes[i] == b'"' && quote_run_len(bytes, i) >= len {
-        (LexState::Code, quote_run_len(bytes, i))
-    } else {
-        (LexState::RawString { len }, 1)
-    }
-}
-
-/// One step inside a verbatim `@"..."` string. Verbatim strings may
-/// span lines; a doubled quote is an escaped quote, a single quote
-/// closes the literal.
-fn verbatim_string_step(bytes: &[u8], i: usize) -> (LexState, usize) {
-    if bytes[i] == b'"' && bytes.get(i + 1) == Some(&b'"') {
-        (LexState::VerbatimString, 2)
-    } else if bytes[i] == b'"' {
-        (LexState::Code, 1)
-    } else {
-        (LexState::VerbatimString, 1)
     }
 }
 

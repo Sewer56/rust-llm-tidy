@@ -133,25 +133,6 @@ pub(crate) fn narrow_vis_in_tree_protected<'a>(
     }
 }
 
-/// Apply byte edits back-to-front (descending start offset) so earlier offsets
-/// stay valid as later regions are rewritten.
-///
-/// The replacement text is the floor visibility, which is always at least as
-/// long as the `pub` token it replaces (`pub` -> `pub(crate)` etc.), so the
-/// output grows by a few bytes per edit.
-///
-/// Capacity is preallocated with that slack to keep `replace_range` from
-/// reallocating.
-fn apply_edits(source: &str, mut edits: Vec<(usize, usize, Cow<'_, str>)>) -> String {
-    edits.sort_by_key(|b| Reverse(b.0));
-    let mut out = String::with_capacity(source.len() + edits.len() * 8);
-    out.push_str(source);
-    for (start, end, repl) in edits {
-        out.replace_range(start..end, &repl);
-    }
-    out
-}
-
 /// Same as `narrow_if_eligible` but the floor text is owned (the tree path, not
 /// a slice of `source`), so the pushed edit wraps `Cow::Owned(floor.to_string())`.
 ///
@@ -225,6 +206,25 @@ fn walk<'a, 'n>(
         }
         walk(body, new_floor, source, reexported, edits);
     }
+}
+
+/// Apply byte edits back-to-front (descending start offset) so earlier offsets
+/// stay valid as later regions are rewritten.
+///
+/// The replacement text is the floor visibility, which is always at least as
+/// long as the `pub` token it replaces (`pub` -> `pub(crate)` etc.), so the
+/// output grows by a few bytes per edit.
+///
+/// Capacity is preallocated with that slack to keep `replace_range` from
+/// reallocating.
+fn apply_edits(source: &str, mut edits: Vec<(usize, usize, Cow<'_, str>)>) -> String {
+    edits.sort_by_key(|b| Reverse(b.0));
+    let mut out = String::with_capacity(source.len() + edits.len() * 8);
+    out.push_str(source);
+    for (start, end, repl) in edits {
+        out.replace_range(start..end, &repl);
+    }
+    out
 }
 
 /// If `item` is a bare-`pub` child under a restricted-visibility floor, push an

@@ -117,6 +117,20 @@ fn emit<'a>(source: &'a str, mut edits: Vec<SpacingEdit>) -> (Cow<'a, str>, Vec<
     (Cow::Owned(out), edits)
 }
 
+/// The line terminator that ends the line just before `byte`.
+///
+/// A CRLF pair is detected by looking back two bytes; everything else
+/// takes `\n`. Insertion bytes always follow a newline, but the guard
+/// keeps the helper total.
+fn terminator_before(source: &str, byte: usize) -> &'static str {
+    let bytes = source.as_bytes();
+    if byte >= 2 && bytes[byte - 1] == b'\n' && bytes[byte - 2] == b'\r' {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+
 /// True when `gap` contains a complete blank line.
 ///
 /// A blank line is a `\n` followed only by spaces, tabs, or `\r` and
@@ -148,20 +162,6 @@ fn has_blank_line(gap: &str) -> bool {
 /// Ranges that only touch a span boundary do not block.
 fn overlaps_span(range: &Range<usize>, start: usize, end: usize) -> bool {
     range.start <= end && start < range.end
-}
-
-/// The line terminator that ends the line just before `byte`.
-///
-/// A CRLF pair is detected by looking back two bytes; everything else
-/// takes `\n`. Insertion bytes always follow a newline, but the guard
-/// keeps the helper total.
-fn terminator_before(source: &str, byte: usize) -> &'static str {
-    let bytes = source.as_bytes();
-    if byte >= 2 && bytes[byte - 1] == b'\n' && bytes[byte - 2] == b'\r' {
-        "\r\n"
-    } else {
-        "\n"
-    }
 }
 
 #[cfg(test)]

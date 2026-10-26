@@ -172,6 +172,11 @@ pub(super) fn is_participle(word: &str) -> bool {
         || matches_any(word, IRREGULAR_PARTICIPLES)
 }
 
+/// Whether `word` equals any entry of `words`, ASCII-case-insensitively.
+pub(super) fn matches_any(word: &str, words: &[&str]) -> bool {
+    words.iter().any(|known| word.eq_ignore_ascii_case(known))
+}
+
 /// Whether `word` ends with `suffix`, ASCII-case-insensitively.
 ///
 /// ASCII-only words keep the byte suffix slice on a char boundary.
@@ -179,11 +184,6 @@ pub(super) fn ends_with_ci(word: &str, suffix: &str) -> bool {
     word.is_ascii()
         && word.len() > suffix.len()
         && word[word.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
-}
-
-/// Whether `word` equals any entry of `words`, ASCII-case-insensitively.
-pub(super) fn matches_any(word: &str, words: &[&str]) -> bool {
-    words.iter().any(|known| word.eq_ignore_ascii_case(known))
 }
 
 #[cfg(test)]

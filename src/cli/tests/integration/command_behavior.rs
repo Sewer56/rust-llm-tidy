@@ -310,6 +310,48 @@ fn dry_run_should_report_status_without_writing_source(
     }
 }
 
+/// Run a preview with explicit config and no inherited baseline, retaining bytes.
+fn preview(source: &str, rule: &str, config: &str, mode: &str) -> (Output, Vec<u8>) {
+    preview_with_flags(source, rule, config, mode, &["--dry-run"])
+}
+
+/// Run with explicit config plus extra flags (e.g. `--checks-only`) and no
+/// inherited baseline, retaining the consumed bytes.
+fn preview_with_flags(
+    source: &str,
+    rule: &str,
+    config: &str,
+    mode: &str,
+    flags: &[&str],
+) -> (Output, Vec<u8>) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("input.rs");
+    fs::write(&path, source).unwrap();
+    fs::write(directory.path().join("config.yml"), config).unwrap();
+
+    let output = Command::new(binary())
+        .current_dir(directory.path())
+        .env_remove("RUST_LLM_TIDY_DIFF_BASE")
+        .args([
+            "--config",
+            "config.yml",
+            "--all-lines",
+            "--output-mode",
+            mode,
+            "input.rs",
+        ])
+        .args(
+            rule.split(',')
+                .filter(|rule| !rule.is_empty())
+                .flat_map(|rule| ["--include", rule]),
+        )
+        .args(flags)
+        .output()
+        .unwrap();
+
+    (output, fs::read(path).unwrap())
+}
+
 /// An empty directory is accepted and produces no output.
 #[test]
 fn empty_directory_should_run_cleanly() {
@@ -376,46 +418,4 @@ fn version_should_print_package_version() {
         String::from_utf8_lossy(&output.stdout).trim(),
         format!("rust-llm-tidy {}", env!("CARGO_PKG_VERSION"))
     );
-}
-
-/// Run a preview with explicit config and no inherited baseline, retaining bytes.
-fn preview(source: &str, rule: &str, config: &str, mode: &str) -> (Output, Vec<u8>) {
-    preview_with_flags(source, rule, config, mode, &["--dry-run"])
-}
-
-/// Run with explicit config plus extra flags (e.g. `--checks-only`) and no
-/// inherited baseline, retaining the consumed bytes.
-fn preview_with_flags(
-    source: &str,
-    rule: &str,
-    config: &str,
-    mode: &str,
-    flags: &[&str],
-) -> (Output, Vec<u8>) {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("input.rs");
-    fs::write(&path, source).unwrap();
-    fs::write(directory.path().join("config.yml"), config).unwrap();
-
-    let output = Command::new(binary())
-        .current_dir(directory.path())
-        .env_remove("RUST_LLM_TIDY_DIFF_BASE")
-        .args([
-            "--config",
-            "config.yml",
-            "--all-lines",
-            "--output-mode",
-            mode,
-            "input.rs",
-        ])
-        .args(
-            rule.split(',')
-                .filter(|rule| !rule.is_empty())
-                .flat_map(|rule| ["--include", rule]),
-        )
-        .args(flags)
-        .output()
-        .unwrap();
-
-    (output, fs::read(path).unwrap())
 }

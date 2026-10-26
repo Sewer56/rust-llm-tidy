@@ -213,17 +213,13 @@ fn collect_reexports(container: Node, source: &[u8], out: &mut Option<AHashSet<S
     }
 }
 
-/// Parse `source` with the Rust backend's grammar.
+/// True when a `visibility_modifier` node is a bare `pub` (no restriction).
 ///
-/// The returned [`Tree`] stores byte offsets (not references), so it stays
-/// valid for the caller's source bytes as long as those bytes are not mutated.
-fn parse(source: &str) -> anyhow::Result<Tree> {
-    // Visibility consumes only nodes, not the backend's shared item model.
-    let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&RustBackend.language()?)?;
-    parser
-        .parse(source, None)
-        .ok_or_else(|| anyhow::anyhow!("tree-sitter parse returned no tree"))
+/// The `pub` keyword is an anonymous token, so a bare `pub` has zero named
+/// children; `pub(crate)`/`pub(super)`/`pub(in path)` each have one named child.
+#[inline]
+fn is_bare_pub(vis: Node<'_>) -> bool {
+    vis.named_child_count() == 0
 }
 
 /// Expand a single `use` clause (the `argument` of a `use_declaration`) into
@@ -290,15 +286,6 @@ fn collect_use_clause(node: Node, source: &[u8], out: &mut AHashSet<String>) {
     }
 }
 
-/// True when a `visibility_modifier` node is a bare `pub` (no restriction).
-///
-/// The `pub` keyword is an anonymous token, so a bare `pub` has zero named
-/// children; `pub(crate)`/`pub(super)`/`pub(in path)` each have one named child.
-#[inline]
-fn is_bare_pub(vis: Node<'_>) -> bool {
-    vis.named_child_count() == 0
-}
-
 /// Last path-segment text of a path node (`identifier`/`type_identifier`, or
 /// the `name` field of a `scoped_identifier`).
 ///
@@ -312,6 +299,19 @@ fn last_segment_text<'a>(node: Node<'a>, source: &'a [u8]) -> Option<&'a str> {
             .and_then(|n| n.utf8_text(source).ok()),
         _ => None,
     }
+}
+
+/// Parse `source` with the Rust backend's grammar.
+///
+/// The returned [`Tree`] stores byte offsets (not references), so it stays
+/// valid for the caller's source bytes as long as those bytes are not mutated.
+fn parse(source: &str) -> anyhow::Result<Tree> {
+    // Visibility consumes only nodes, not the backend's shared item model.
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&RustBackend.language()?)?;
+    parser
+        .parse(source, None)
+        .ok_or_else(|| anyhow::anyhow!("tree-sitter parse returned no tree"))
 }
 
 #[cfg(test)]

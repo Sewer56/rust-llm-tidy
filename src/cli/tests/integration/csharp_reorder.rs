@@ -79,6 +79,17 @@ fn csharp_member_reorder_matches_after_fixture() {
     );
 }
 
+// ── C# reorder: member profile + pinned usings ────────────────────
+
+/// The directory holding the C# reorder fixture pair.
+fn csharp_reorder_fixture_dir() -> PathBuf {
+    manifest_dir()
+        .join("tests")
+        .join("fixtures")
+        .join("reorder")
+        .join("csharp")
+}
+
 /// A pure-CRLF `.cs` source still reorders.
 ///
 /// - The guard accepts pure CRLF and declines lone-`\r` sources.
@@ -116,15 +127,4 @@ fn csharp_reorder_on_pure_crlf_source_preserves_the_endings() {
         String::from_utf8_lossy(&dry.stderr).is_empty(),
         "second run on the CRLF rewrite must emit zero records"
     );
-}
-
-// ── C# reorder: member profile + pinned usings ────────────────────
-
-/// The directory holding the C# reorder fixture pair.
-fn csharp_reorder_fixture_dir() -> PathBuf {
-    manifest_dir()
-        .join("tests")
-        .join("fixtures")
-        .join("reorder")
-        .join("csharp")
 }

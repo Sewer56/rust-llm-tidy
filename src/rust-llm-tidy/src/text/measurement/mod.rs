@@ -173,35 +173,6 @@ pub(crate) fn analyze(source: &str, ext: &str) -> Document {
     measure(line_markers::doc_regions(source, ext))
 }
 
-/// Identifies standalone decorative borders without exempting their labels.
-///
-/// A border has at least three drawing characters, optionally spaced.
-/// ASCII separators and Unicode box-drawing/block characters may mix.
-/// Markdown fence classification takes precedence over borders.
-pub(crate) fn is_decorative_border(text: &str) -> bool {
-    let mut count = 0;
-    for ch in text.chars().filter(|ch| !ch.is_whitespace()) {
-        if !matches!(
-            ch,
-            '-' | '=' | '_' | '*' | '+' | '|' | '/' | '\\' | '.' | ':' | '#' | '~' | '\u{2500}'
-                ..='\u{259f}'
-        ) {
-            return false;
-        }
-        count += 1;
-    }
-
-    count >= 3
-}
-
-/// True for markdown link reference definitions such as `[docs]: ./docs/x.md`.
-///
-/// Used by the exempt-content classifier here and by the TEXT002 line
-/// length rule in `crate::rules::lint::text`.
-pub(crate) fn is_link_reference_definition(trimmed: &str) -> bool {
-    trimmed.starts_with('[') && trimmed.contains("]:")
-}
-
 /// Folds `regions` into one [`Document`] in a single linear pass.
 ///
 /// Each region is measured with its dialect's rules. The gap between two
@@ -241,6 +212,35 @@ pub(crate) fn measure(regions: Vec<DocRegion>) -> Document {
         }
     }
     doc
+}
+
+/// Identifies standalone decorative borders without exempting their labels.
+///
+/// A border has at least three drawing characters, optionally spaced.
+/// ASCII separators and Unicode box-drawing/block characters may mix.
+/// Markdown fence classification takes precedence over borders.
+pub(crate) fn is_decorative_border(text: &str) -> bool {
+    let mut count = 0;
+    for ch in text.chars().filter(|ch| !ch.is_whitespace()) {
+        if !matches!(
+            ch,
+            '-' | '=' | '_' | '*' | '+' | '|' | '/' | '\\' | '.' | ':' | '#' | '~' | '\u{2500}'
+                ..='\u{259f}'
+        ) {
+            return false;
+        }
+        count += 1;
+    }
+
+    count >= 3
+}
+
+/// True for markdown link reference definitions such as `[docs]: ./docs/x.md`.
+///
+/// Used by the exempt-content classifier here and by the TEXT002 line
+/// length rule in `crate::rules::lint::text`.
+pub(crate) fn is_link_reference_definition(trimmed: &str) -> bool {
+    trimmed.starts_with('[') && trimmed.contains("]:")
 }
 
 /// Measures one markdown-text region: the producer already stripped the
@@ -365,45 +365,18 @@ fn measure_prose_line(
     });
 }
 
-/// The paragraph text after the bullet marker, or `None` for non-bullets.
-///
-/// Recognized bullet forms:
-///
-/// ```text
-/// - dash
-/// * asterisk
-/// + plus
-/// 1. ordered with a dot
-/// 2) ordered with a parenthesis
-/// ```
-fn bullet_content(trimmed: &str) -> Option<&str> {
-    for marker in ["- ", "* ", "+ "] {
-        if let Some(rest) = trimmed.strip_prefix(marker) {
-            return Some(rest);
-        }
-    }
-    let digits_end = trimmed.find(['.', ')'])?;
-    if digits_end > 0
-        && trimmed[..digits_end].chars().all(|c| c.is_ascii_digit())
-        && (trimmed[digits_end..].starts_with(". ") || trimmed[digits_end..].starts_with(") "))
-    {
-        Some(&trimmed[digits_end + 2..])
-    } else {
-        None
-    }
-}
-
-/// Whether `trimmed` closes the open fence `open`.
-///
-/// Closing requires the same marker, an equal-or-longer run, and no
-/// info string. Shorter, different-marker, or info-bearing fence lines
-/// stay fenced content.
-fn closes_fence(open: &OpenFence, fence: Option<(u8, usize)>, trimmed: &str) -> bool {
-    match fence {
-        Some((marker, run)) => {
-            marker == open.marker && run >= open.run && fence_info(trimmed).is_empty()
-        }
-        None => false,
+/// Folds the accumulated member texts into a finished paragraph, if any.
+fn flush(pending: &mut Option<PendingParagraph>, doc: &mut Document) {
+    if let Some(open) = pending.take() {
+        let size = open.text.chars().count();
+        doc.paragraphs.push(Paragraph {
+            first_line: open.first_line,
+            opens_region: false,
+            kind: open.kind,
+            size,
+            text: open.text.into_boxed_str(),
+            line_starts: open.line_starts,
+        });
     }
 }
 
@@ -420,18 +393,17 @@ fn fence_delimiter(trimmed: &str) -> Option<(u8, usize)> {
     (run >= 3).then_some((marker, run))
 }
 
-/// Folds the accumulated member texts into a finished paragraph, if any.
-fn flush(pending: &mut Option<PendingParagraph>, doc: &mut Document) {
-    if let Some(open) = pending.take() {
-        let size = open.text.chars().count();
-        doc.paragraphs.push(Paragraph {
-            first_line: open.first_line,
-            opens_region: false,
-            kind: open.kind,
-            size,
-            text: open.text.into_boxed_str(),
-            line_starts: open.line_starts,
-        });
+/// Whether `trimmed` closes the open fence `open`.
+///
+/// Closing requires the same marker, an equal-or-longer run, and no
+/// info string. Shorter, different-marker, or info-bearing fence lines
+/// stay fenced content.
+fn closes_fence(open: &OpenFence, fence: Option<(u8, usize)>, trimmed: &str) -> bool {
+    match fence {
+        Some((marker, run)) => {
+            marker == open.marker && run >= open.run && fence_info(trimmed).is_empty()
+        }
+        None => false,
     }
 }
 
@@ -461,6 +433,34 @@ fn fence_info(trimmed: &str) -> &str {
     let marker = trimmed.as_bytes()[0];
     let run = trimmed.bytes().take_while(|&b| b == marker).count();
     trimmed[run..].trim()
+}
+
+/// The paragraph text after the bullet marker, or `None` for non-bullets.
+///
+/// Recognized bullet forms:
+///
+/// ```text
+/// - dash
+/// * asterisk
+/// + plus
+/// 1. ordered with a dot
+/// 2) ordered with a parenthesis
+/// ```
+fn bullet_content(trimmed: &str) -> Option<&str> {
+    for marker in ["- ", "* ", "+ "] {
+        if let Some(rest) = trimmed.strip_prefix(marker) {
+            return Some(rest);
+        }
+    }
+    let digits_end = trimmed.find(['.', ')'])?;
+    if digits_end > 0
+        && trimmed[..digits_end].chars().all(|c| c.is_ascii_digit())
+        && (trimmed[digits_end..].starts_with(". ") || trimmed[digits_end..].starts_with(") "))
+    {
+        Some(&trimmed[digits_end + 2..])
+    } else {
+        None
+    }
 }
 
 /// True for lines that look like code signatures rather than plain text.

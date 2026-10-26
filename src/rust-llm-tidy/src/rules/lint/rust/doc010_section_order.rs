@@ -82,19 +82,6 @@ pub(super) fn check(item: &SourceItem) -> Vec<Diagnostic> {
     Vec::new()
 }
 
-/// The standard header name for a section rank.
-fn canonical_header(rank: u8) -> &'static str {
-    match rank {
-        1 => "# Arguments",
-        2 => "# Returns",
-        3 => "# Examples",
-        4 => "# Errors",
-        5 => "# Panics",
-        6 => "# Safety",
-        _ => "# Remarks",
-    }
-}
-
 /// Standard rank of a doc-comment section header line, or `None` when
 /// the line is not a recognized header.
 ///
@@ -110,6 +97,19 @@ fn section_rank(line: &str) -> Option<u8> {
         .iter()
         .find(|(header, _)| t.eq_ignore_ascii_case(header))
         .map(|(_, rank)| *rank)
+}
+
+/// The standard header name for a section rank.
+fn canonical_header(rank: u8) -> &'static str {
+    match rank {
+        1 => "# Arguments",
+        2 => "# Returns",
+        3 => "# Examples",
+        4 => "# Errors",
+        5 => "# Panics",
+        6 => "# Safety",
+        _ => "# Remarks",
+    }
 }
 
 #[cfg(test)]

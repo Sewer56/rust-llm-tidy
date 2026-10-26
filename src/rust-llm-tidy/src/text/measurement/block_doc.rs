@@ -54,12 +54,6 @@ pub(super) fn measure_region(
     }
 }
 
-/// Whether the measured text counts as indented code: a tab or 4-space
-/// lead after the `*` continuation marker.
-fn prose_is_indented(text: &str) -> bool {
-    text.starts_with('\t') || text.starts_with("    ")
-}
-
 /// Strips the line's `*` continuation marker in place. A maximal leading
 /// `*` run vanishes when only whitespace (at most one space of it) or
 /// nothing follows.
@@ -125,6 +119,12 @@ fn tag_prefix_len(text: &str) -> usize {
     let name_end = rest.find(char::is_whitespace).unwrap_or(rest.len());
     let prose = rest[name_end..].trim_start();
     text.len() - prose.len()
+}
+
+/// Whether the measured text counts as indented code: a tab or 4-space
+/// lead after the `*` continuation marker.
+fn prose_is_indented(text: &str) -> bool {
+    text.starts_with('\t') || text.starts_with("    ")
 }
 
 #[cfg(test)]

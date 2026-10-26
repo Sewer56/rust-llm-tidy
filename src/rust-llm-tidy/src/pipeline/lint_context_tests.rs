@@ -92,6 +92,17 @@ fn documentation_reminder_should_follow_remapped_eligibility(
     }
 }
 
+/// Store `changed` eligibility for `path` against `source`.
+fn snapshot(context: &mut LintContext<'_>, path: &Path, source: &str, changed: ChangedLines) {
+    context.snapshots.snapshots.insert(
+        path.into(),
+        Some(ChangedLineSnapshot {
+            source: source.into(),
+            changed,
+        }),
+    );
+}
+
 /// Whole-file scopes report the reminder without any snapshot, and disabling
 /// the rule suppresses it.
 #[rstest]
@@ -125,6 +136,40 @@ fn documentation_reminder_should_skip_undetected_files() {
     let diagnostics = filtered_diagnostics(&context, &path, source, &HashSet::new());
 
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+/// A lint context with documentation signals for one temp file at `relative`.
+fn documented_context<'a>(
+    config: Option<&'a CompiledConfig>,
+    all_lines: bool,
+    relative: &str,
+    content: &str,
+) -> (LintContext<'a>, PathBuf) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join(relative);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, content).unwrap();
+    let mut context = LintContext::new(config, all_lines);
+    context.classify_documentation(from_ref(&path));
+    (context, path)
+}
+
+/// Diagnostics `context` reports for `source` at `path`, minus `disabled`.
+fn filtered_diagnostics(
+    context: &LintContext<'_>,
+    path: &Path,
+    source: &str,
+    disabled: &HashSet<String>,
+) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    context.filter(
+        path,
+        source,
+        SymbolObservations::default(),
+        &mut diagnostics,
+        disabled,
+    );
+    diagnostics
 }
 
 #[rstest]
@@ -385,49 +430,4 @@ fn compile(yaml: &str, _files: &[(&str, &str)]) -> CompiledConfig {
     fs::write(&path, yaml).unwrap();
 
     load_and_compile(&path).unwrap()
-}
-
-/// A lint context with documentation signals for one temp file at `relative`.
-fn documented_context<'a>(
-    config: Option<&'a CompiledConfig>,
-    all_lines: bool,
-    relative: &str,
-    content: &str,
-) -> (LintContext<'a>, PathBuf) {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join(relative);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, content).unwrap();
-    let mut context = LintContext::new(config, all_lines);
-    context.classify_documentation(from_ref(&path));
-    (context, path)
-}
-
-/// Diagnostics `context` reports for `source` at `path`, minus `disabled`.
-fn filtered_diagnostics(
-    context: &LintContext<'_>,
-    path: &Path,
-    source: &str,
-    disabled: &HashSet<String>,
-) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
-    context.filter(
-        path,
-        source,
-        SymbolObservations::default(),
-        &mut diagnostics,
-        disabled,
-    );
-    diagnostics
-}
-
-/// Store `changed` eligibility for `path` against `source`.
-fn snapshot(context: &mut LintContext<'_>, path: &Path, source: &str, changed: ChangedLines) {
-    context.snapshots.snapshots.insert(
-        path.into(),
-        Some(ChangedLineSnapshot {
-            source: source.into(),
-            changed,
-        }),
-    );
 }

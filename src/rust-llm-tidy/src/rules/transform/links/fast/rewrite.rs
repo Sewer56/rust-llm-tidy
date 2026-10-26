@@ -35,6 +35,16 @@ pub(crate) fn append_block_definitions(
     }
 }
 
+/// The prefix for a blank separator line: the block prefix minus the single
+/// trailing space [`strip_comment_prefix`] keeps, so the line is `///`, not
+/// `/// `.
+///
+/// [`strip_comment_prefix`]: crate::rules::transform::tables::strip_comment_prefix
+#[inline]
+pub(super) fn blank_line_prefix(prefix: &str) -> &str {
+    prefix.strip_suffix(' ').unwrap_or(prefix)
+}
+
 /// Append hoisted `[text]: url` definitions at the end of `buf`, each on its
 /// own line. A CRLF document stays CRLF after hoisting.
 ///
@@ -57,6 +67,47 @@ pub(crate) fn append_definitions(buf: &mut String, hoist: &[(&str, &str)], le: &
     for &(text, url) in hoist {
         append_definition(buf, "", text, url, le);
     }
+}
+
+/// True when definitions appended after `text` need a blank comment line first.
+///
+/// `text` is any slice ending in the block's last line: the output buffer for
+/// the counted path, `input[..block.end]` for the specialized one.
+///
+/// CommonMark forbids a link reference definition from interrupting a
+/// paragraph, so glued definitions parse as text and rustdoc reports broken
+/// intra-doc links.
+///
+/// Blocks already ending in a blank line or a complete reference definition
+/// are continued contiguously.
+pub(super) fn needs_blank_before_defs(text: &str, prefix: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut end = bytes.len();
+    if end > 0 && bytes[end - 1] == b'\n' {
+        end -= 1;
+        if end > 0 && bytes[end - 1] == b'\r' {
+            end -= 1;
+        }
+    }
+    let start = memchr::memrchr(b'\n', &bytes[..end]).map_or(0, |nl| nl + 1);
+    let last_line = &text[start..end];
+    let body = last_line
+        .strip_prefix(prefix)
+        .unwrap_or(last_line)
+        .trim_start();
+    !body.is_empty()
+        && !(body.starts_with('[') && body.contains("]:") && is_reference_definition(body))
+}
+
+/// Append one `[text]: url` definition with an optional comment prefix.
+#[inline]
+pub(super) fn append_definition(buf: &mut String, prefix: &str, text: &str, url: &str, le: &str) {
+    buf.push_str(prefix);
+    buf.push('[');
+    buf.push_str(text);
+    buf.push_str("]: ");
+    buf.push_str(url);
+    buf.push_str(le);
 }
 
 /// Return the dominant line ending used in `source`: `"\r\n"` when CRLF is at
@@ -154,57 +205,6 @@ pub(crate) fn tally_links<'a>(
         }
         counts.insert((link.text, link.url), prev + 1);
     }
-}
-
-/// Append one `[text]: url` definition with an optional comment prefix.
-#[inline]
-pub(super) fn append_definition(buf: &mut String, prefix: &str, text: &str, url: &str, le: &str) {
-    buf.push_str(prefix);
-    buf.push('[');
-    buf.push_str(text);
-    buf.push_str("]: ");
-    buf.push_str(url);
-    buf.push_str(le);
-}
-
-/// The prefix for a blank separator line: the block prefix minus the single
-/// trailing space [`strip_comment_prefix`] keeps, so the line is `///`, not
-/// `/// `.
-///
-/// [`strip_comment_prefix`]: crate::rules::transform::tables::strip_comment_prefix
-#[inline]
-pub(super) fn blank_line_prefix(prefix: &str) -> &str {
-    prefix.strip_suffix(' ').unwrap_or(prefix)
-}
-
-/// True when definitions appended after `text` need a blank comment line first.
-///
-/// `text` is any slice ending in the block's last line: the output buffer for
-/// the counted path, `input[..block.end]` for the specialized one.
-///
-/// CommonMark forbids a link reference definition from interrupting a
-/// paragraph, so glued definitions parse as text and rustdoc reports broken
-/// intra-doc links.
-///
-/// Blocks already ending in a blank line or a complete reference definition
-/// are continued contiguously.
-pub(super) fn needs_blank_before_defs(text: &str, prefix: &str) -> bool {
-    let bytes = text.as_bytes();
-    let mut end = bytes.len();
-    if end > 0 && bytes[end - 1] == b'\n' {
-        end -= 1;
-        if end > 0 && bytes[end - 1] == b'\r' {
-            end -= 1;
-        }
-    }
-    let start = memchr::memrchr(b'\n', &bytes[..end]).map_or(0, |nl| nl + 1);
-    let last_line = &text[start..end];
-    let body = last_line
-        .strip_prefix(prefix)
-        .unwrap_or(last_line)
-        .trim_start();
-    !body.is_empty()
-        && !(body.starts_with('[') && body.contains("]:") && is_reference_definition(body))
 }
 
 fn rewrite_links_inner<'a, F>(

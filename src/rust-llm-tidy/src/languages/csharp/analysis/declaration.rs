@@ -225,6 +225,24 @@ fn collect_declaration<'a>(
     });
 }
 
+/// The `name` attribute values of every `<param>` tag in `docs`.
+fn param_tag_names(docs: &[String]) -> Vec<String> {
+    tag_slices(docs, "param")
+        .filter_map(|tag| attribute_value(tag, "name"))
+        .collect()
+}
+
+/// The quoted value of `attribute` inside a `<tag ...>` opening-tag slice.
+fn attribute_value(tag: &str, attribute: &str) -> Option<String> {
+    let needle = format!("{attribute}=");
+    let pos = tag.find(&needle)?;
+    let rest = tag[pos + needle.len()..].trim_start();
+    let quote = rest.chars().next().filter(|c| *c == '"' || *c == '\'')?;
+    let value = &rest[1..];
+    let end = value.find(quote)?;
+    Some(value[..end].to_string())
+}
+
 /// True when `node` is a bodyless method without a visibility
 /// modifier inside an interface.
 ///
@@ -244,22 +262,4 @@ fn implicitly_public_interface_method(node: tree_sitter::Node<'_>, source: &str)
                 )
         })
     }
-}
-
-/// The `name` attribute values of every `<param>` tag in `docs`.
-fn param_tag_names(docs: &[String]) -> Vec<String> {
-    tag_slices(docs, "param")
-        .filter_map(|tag| attribute_value(tag, "name"))
-        .collect()
-}
-
-/// The quoted value of `attribute` inside a `<tag ...>` opening-tag slice.
-fn attribute_value(tag: &str, attribute: &str) -> Option<String> {
-    let needle = format!("{attribute}=");
-    let pos = tag.find(&needle)?;
-    let rest = tag[pos + needle.len()..].trim_start();
-    let quote = rest.chars().next().filter(|c| *c == '"' || *c == '\'')?;
-    let value = &rest[1..];
-    let end = value.find(quote)?;
-    Some(value[..end].to_string())
 }

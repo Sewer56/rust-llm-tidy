@@ -225,6 +225,28 @@ pub fn run(options: &RunOptions, config: Option<&CompiledConfig>) -> anyhow::Res
     Ok(report)
 }
 
+/// Validate explicit selection before allocating per-file processing state.
+pub(crate) fn validate_selection(
+    include: &[String],
+    exclude: &[String],
+    extensions: &[String],
+) -> anyhow::Result<()> {
+    let valid = config::known_rules();
+    for name in include.iter().chain(exclude) {
+        if !valid.contains(&name.as_str()) {
+            anyhow::bail!(
+                "unknown op/rule `{name}` in --include/--exclude; valid: {}",
+                valid.join(", ")
+            );
+        }
+    }
+
+    for ext in extensions {
+        langs::validate_extension(ext)?;
+    }
+    Ok(())
+}
+
 /// Whether per-file processing should run on rayon's work-stealing pool.
 ///
 /// Run parallel once there is input work enough to clear the pool-overhead
@@ -296,63 +318,6 @@ pub(crate) fn should_parallelize(paths: &[PathBuf]) -> bool {
     false
 }
 
-/// Validate explicit selection before allocating per-file processing state.
-pub(crate) fn validate_selection(
-    include: &[String],
-    exclude: &[String],
-    extensions: &[String],
-) -> anyhow::Result<()> {
-    let valid = config::known_rules();
-    for name in include.iter().chain(exclude) {
-        if !valid.contains(&name.as_str()) {
-            anyhow::bail!(
-                "unknown op/rule `{name}` in --include/--exclude; valid: {}",
-                valid.join(", ")
-            );
-        }
-    }
-
-    for ext in extensions {
-        langs::validate_extension(ext)?;
-    }
-    Ok(())
-}
-
-/// Fold each file's phase warnings into the report, prefixed by its path.
-fn collect_file_warnings(report: &mut RunReport) {
-    for file in &report.files {
-        report.warnings.extend(
-            file.warnings
-                .iter()
-                .map(|warning| format!("{}: {warning}", file.path.display())),
-        );
-    }
-}
-
-/// Build the MOD004 Rust and C# facts once, post-mutation and pre-lint.
-fn cross_file_facts(
-    csharp: &mut Option<CSharpIndex>,
-    paths: &[PathBuf],
-    options: &RunOptions,
-    config: Option<&CompiledConfig>,
-    included: Option<&HashSet<String>>,
-    disabled: &HashSet<String>,
-    warnings: &mut Vec<String>,
-) -> (Option<SoleCallerFindings>, Option<SoleCallerFindings>) {
-    csharp.iter_mut().for_each(|index| index.refresh(paths));
-    let sole_caller =
-        sole_caller::sole_caller_findings(paths, options, config, included, disabled, warnings);
-    // The C# findings reuse the refreshed parses; no second closure parse.
-    let csharp_sole_caller = sole_caller::csharp_sole_caller_findings(
-        csharp.as_ref(),
-        paths,
-        config,
-        included,
-        disabled,
-    );
-    (sole_caller, csharp_sole_caller)
-}
-
 /// Collapse path aliases before dispatch.
 ///
 /// The input resolver dedups literal paths only. Aliases (`.` vs
@@ -390,34 +355,6 @@ fn dedup_inputs(paths: Vec<PathBuf>) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Run the mutation phase; rayon or sequential, no cross-file facts yet.
-fn mutate_inputs(
-    paths: &[PathBuf],
-    parallel: bool,
-    options: &RunOptions,
-    included: Option<&HashSet<String>>,
-    disabled: &HashSet<String>,
-    context: Option<&files::VisContext>,
-    lint_context: &lint_context::LintContext<'_>,
-) -> Vec<FileReport> {
-    let mutate = |path: &PathBuf| {
-        file_execution::process_one(
-            path,
-            included,
-            disabled,
-            context,
-            !options.apply,
-            (None, None, None, None),
-            lint_context,
-        )
-    };
-    if parallel {
-        paths.par_iter().map(mutate).collect()
-    } else {
-        paths.iter().map(mutate).collect()
-    }
-}
-
 /// Resolve the crate-aware visibility context from the eligible Rust inputs.
 ///
 /// Returns `None` when cargo discovery is off or no input selects `vis`, so
@@ -447,6 +384,69 @@ fn resolve_visibility(
         None
     } else {
         files::resolve_vis_context(&inputs, warnings)
+    }
+}
+
+/// Run the mutation phase; rayon or sequential, no cross-file facts yet.
+fn mutate_inputs(
+    paths: &[PathBuf],
+    parallel: bool,
+    options: &RunOptions,
+    included: Option<&HashSet<String>>,
+    disabled: &HashSet<String>,
+    context: Option<&files::VisContext>,
+    lint_context: &lint_context::LintContext<'_>,
+) -> Vec<FileReport> {
+    let mutate = |path: &PathBuf| {
+        file_execution::process_one(
+            path,
+            included,
+            disabled,
+            context,
+            !options.apply,
+            (None, None, None, None),
+            lint_context,
+        )
+    };
+    if parallel {
+        paths.par_iter().map(mutate).collect()
+    } else {
+        paths.iter().map(mutate).collect()
+    }
+}
+
+/// Build the MOD004 Rust and C# facts once, post-mutation and pre-lint.
+fn cross_file_facts(
+    csharp: &mut Option<CSharpIndex>,
+    paths: &[PathBuf],
+    options: &RunOptions,
+    config: Option<&CompiledConfig>,
+    included: Option<&HashSet<String>>,
+    disabled: &HashSet<String>,
+    warnings: &mut Vec<String>,
+) -> (Option<SoleCallerFindings>, Option<SoleCallerFindings>) {
+    csharp.iter_mut().for_each(|index| index.refresh(paths));
+    let sole_caller =
+        sole_caller::sole_caller_findings(paths, options, config, included, disabled, warnings);
+    // The C# findings reuse the refreshed parses; no second closure parse.
+    let csharp_sole_caller = sole_caller::csharp_sole_caller_findings(
+        csharp.as_ref(),
+        paths,
+        config,
+        included,
+        disabled,
+    );
+    (sole_caller, csharp_sole_caller)
+}
+
+/// Fold each file's phase warnings into the report, prefixed by its path.
+fn collect_file_warnings(report: &mut RunReport) {
+    for file in &report.files {
+        report.warnings.extend(
+            file.warnings
+                .iter()
+                .map(|warning| format!("{}: {warning}", file.path.display())),
+        );
     }
 }
 

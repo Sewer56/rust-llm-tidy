@@ -176,18 +176,6 @@ fn rewrite_markdown<'a>(input: &'a str, scan: Scan<'a>) -> (Cow<'a, str>, Vec<(S
     (Cow::Owned(output), pairs)
 }
 
-fn build_pairs<'a>(
-    candidates: impl Iterator<Item = &'a Candidate<'a>>,
-    count: usize,
-) -> Vec<(String, String)> {
-    let mut pairs = Vec::with_capacity(count);
-    for candidate in candidates {
-        let url = candidate.url.expect("reported candidate has an inline URL");
-        pairs.push(replacement_pair(candidate.text, url));
-    }
-    pairs
-}
-
 /// Decide what to rewrite and how large the output will be. Records each
 /// block's definition range and blank-line decision in `scan` so writing stays
 /// a pure merge.
@@ -312,6 +300,18 @@ fn write_doc(input: &str, scan: &Scan<'_>, plan: &DocPlan) -> String {
 
     debug_assert_eq!(output.len(), plan.capacity);
     output
+}
+
+fn build_pairs<'a>(
+    candidates: impl Iterator<Item = &'a Candidate<'a>>,
+    count: usize,
+) -> Vec<(String, String)> {
+    let mut pairs = Vec::with_capacity(count);
+    for candidate in candidates {
+        let url = candidate.url.expect("reported candidate has an inline URL");
+        pairs.push(replacement_pair(candidate.text, url));
+    }
+    pairs
 }
 
 #[inline]

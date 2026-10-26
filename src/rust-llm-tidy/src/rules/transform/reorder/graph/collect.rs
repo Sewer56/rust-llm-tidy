@@ -279,6 +279,13 @@ fn first_segment_node<'t>(walk: &'static ReferenceWalk, node: Node<'t>) -> Optio
     }
 }
 
+/// The reference-position entry for `kind`, if the walk data declares one.
+fn position_of(walk: &'static ReferenceWalk, kind: &str) -> Option<&'static ReferencePosition> {
+    walk.reference_positions
+        .iter()
+        .find(|position| position.kind == kind)
+}
+
 /// True when `node` (an `identifier`/`type_identifier`) is in a declaration
 /// position (an item name, a binding pattern, an alias) rather than a
 /// reference position.
@@ -310,11 +317,4 @@ fn parent_field_name<'a>(node: Node<'a>) -> Option<&'a str> {
         }
     }
     None
-}
-
-/// The reference-position entry for `kind`, if the walk data declares one.
-fn position_of(walk: &'static ReferenceWalk, kind: &str) -> Option<&'static ReferencePosition> {
-    walk.reference_positions
-        .iter()
-        .find(|position| position.kind == kind)
 }

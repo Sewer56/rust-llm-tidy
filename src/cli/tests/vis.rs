@@ -151,6 +151,18 @@ fn vis_reexport_guard_unchanged() {
     );
 }
 
+// -- Helpers (mirrors fix.rs) ----------------------------------------
+
+/// The directory holding `vis` fixtures.
+fn fixture_dir() -> PathBuf {
+    manifest_dir().join("tests").join("fixtures").join("vis")
+}
+
+/// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.
+fn manifest_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
 /// Standalone path: a file with NO Cargo.toml above it must still run
 /// (standalone narrowing) and must not error.
 #[test]
@@ -170,6 +182,13 @@ fn vis_standalone_without_cargo_toml() {
         actual.contains("pub(crate) fn f"),
         "standalone fallback still narrows inline mod: {actual}"
     );
+}
+
+/// Create a numbered temporary file path.
+fn temp_file(ext: &str) -> PathBuf {
+    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = process::id();
+    env::temp_dir().join(format!("rust-llm-tidy-vis-{}-{}.{}", pid, seq, ext))
 }
 
 /// Unresolved `mod` diagnostic reaches stderr (REQ-006) without failing vis.
@@ -195,13 +214,6 @@ fn vis_warns_on_unresolved_mod() {
     );
 }
 
-// -- Helpers (mirrors fix.rs) ----------------------------------------
-
-/// The directory holding `vis` fixtures.
-fn fixture_dir() -> PathBuf {
-    manifest_dir().join("tests").join("fixtures").join("vis")
-}
-
 /// Build a minimal temp crate dir, returning the crate root path (`src/lib.rs`).
 ///
 /// Files created: `Cargo.toml`, `src/lib.rs`, `src/foo.rs`. `lib_src` declares
@@ -224,27 +236,15 @@ fn make_temp_crate(lib_src: &str, foo_src: &str) -> PathBuf {
     src.join("lib.rs")
 }
 
+/// Resolve a sibling file in the same src/ dir as `lib_path`.
+fn src_sibling(lib_path: &Path, name: &str) -> PathBuf {
+    lib_path.parent().unwrap().join(name)
+}
+
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
 fn run_command(args: &[&str], path: &Path) -> Output {
     let mut cmd = Command::new(binary());
     cmd.args(["--no-config"]).args(args).arg(path);
     cmd.output()
         .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
-}
-
-/// Resolve a sibling file in the same src/ dir as `lib_path`.
-fn src_sibling(lib_path: &Path, name: &str) -> PathBuf {
-    lib_path.parent().unwrap().join(name)
-}
-
-/// Create a numbered temporary file path.
-fn temp_file(ext: &str) -> PathBuf {
-    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = process::id();
-    env::temp_dir().join(format!("rust-llm-tidy-vis-{}-{}.{}", pid, seq, ext))
-}
-
-/// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.
-fn manifest_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }

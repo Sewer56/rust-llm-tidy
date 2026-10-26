@@ -119,42 +119,6 @@ fn array_creation(node: Node<'_>) -> Usage<'static> {
     }
 }
 
-/// Preserve PERF001's written callee or unqualified created type in diagnostics.
-fn written_name<'a>(
-    node: Node<'_>,
-    name: Node<'_>,
-    source: &'a str,
-    language: SymbolLanguage,
-    kind: &str,
-) -> &'a str {
-    let original = if kind == "call" {
-        node.child_by_field_name("function").unwrap_or(name)
-    } else {
-        name
-    };
-    let original = match (language, original.kind()) {
-        (SymbolLanguage::Rust, "field_expression") => {
-            original.child_by_field_name("field").unwrap_or(original)
-        }
-        (SymbolLanguage::Csharp, "member_access_expression") => {
-            original.child_by_field_name("name").unwrap_or(original)
-        }
-        _ => original,
-    };
-    let text = source.get(original.byte_range()).unwrap_or_default().trim();
-    if kind == "creation" {
-        text.split('<')
-            .next()
-            .unwrap_or(text)
-            .rsplit('.')
-            .next()
-            .unwrap_or(text)
-            .trim()
-    } else {
-        text
-    }
-}
-
 /// Build a component path and the inclusive lines containing its name tokens.
 /// Generic arguments and complex receiver expressions contribute no components.
 fn written_path(node: Node<'_>, source: &str) -> Option<(String, RangeInclusive<usize>)> {
@@ -195,5 +159,41 @@ fn written_path(node: Node<'_>, source: &str) -> Option<(String, RangeInclusive<
                 return first_line.map(|first| (path, first..=last_line));
             }
         }
+    }
+}
+
+/// Preserve PERF001's written callee or unqualified created type in diagnostics.
+fn written_name<'a>(
+    node: Node<'_>,
+    name: Node<'_>,
+    source: &'a str,
+    language: SymbolLanguage,
+    kind: &str,
+) -> &'a str {
+    let original = if kind == "call" {
+        node.child_by_field_name("function").unwrap_or(name)
+    } else {
+        name
+    };
+    let original = match (language, original.kind()) {
+        (SymbolLanguage::Rust, "field_expression") => {
+            original.child_by_field_name("field").unwrap_or(original)
+        }
+        (SymbolLanguage::Csharp, "member_access_expression") => {
+            original.child_by_field_name("name").unwrap_or(original)
+        }
+        _ => original,
+    };
+    let text = source.get(original.byte_range()).unwrap_or_default().trim();
+    if kind == "creation" {
+        text.split('<')
+            .next()
+            .unwrap_or(text)
+            .rsplit('.')
+            .next()
+            .unwrap_or(text)
+            .trim()
+    } else {
+        text
     }
 }

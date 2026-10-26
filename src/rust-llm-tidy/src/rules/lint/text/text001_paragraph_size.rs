@@ -26,31 +26,6 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     diags
 }
 
-/// TEXT001 Warning for an over-limit bullet, with shortening guidance.
-fn bullet_diagnostic(para: &Paragraph) -> Diagnostic {
-    let bullets = [
-        "Split distinct facts or actions into separate bullets.".to_string(),
-        format!(
-            "Aim for one fact or checkable action per bullet, ideally at most \
-             {BULLET_RECOMMENDED} chars; the limit is {PARAGRAPH_LIMIT}."
-        ),
-        "Preserve necessary information, contracts, and code identifiers.".to_string(),
-    ];
-    Diagnostic {
-        title: Some("oversized paragraph".into()),
-        severity: Severity::Warning,
-        code: CODE_PARAGRAPH_SIZE,
-        message: bulleted(
-            &format!("bullet is {} chars long.", para.size),
-            "Long bullets make individual facts and actions harder to scan.",
-            &bullets,
-        ),
-        line: para.first_line,
-        item_kind: "file".to_string(),
-        item_name: None,
-    }
-}
-
 /// TEXT001 Error for an over-limit plain paragraph, reported at its first line.
 fn paragraph_diagnostic(para: &Paragraph) -> Diagnostic {
     let bullets = [
@@ -73,6 +48,31 @@ fn paragraph_diagnostic(para: &Paragraph) -> Diagnostic {
         message: bulleted(
             &format!("paragraph is {} chars long.", para.size),
             "Dense paragraphs make it harder to find an idea and keep its context in mind.",
+            &bullets,
+        ),
+        line: para.first_line,
+        item_kind: "file".to_string(),
+        item_name: None,
+    }
+}
+
+/// TEXT001 Warning for an over-limit bullet, with shortening guidance.
+fn bullet_diagnostic(para: &Paragraph) -> Diagnostic {
+    let bullets = [
+        "Split distinct facts or actions into separate bullets.".to_string(),
+        format!(
+            "Aim for one fact or checkable action per bullet, ideally at most \
+             {BULLET_RECOMMENDED} chars; the limit is {PARAGRAPH_LIMIT}."
+        ),
+        "Preserve necessary information, contracts, and code identifiers.".to_string(),
+    ];
+    Diagnostic {
+        title: Some("oversized paragraph".into()),
+        severity: Severity::Warning,
+        code: CODE_PARAGRAPH_SIZE,
+        message: bulleted(
+            &format!("bullet is {} chars long.", para.size),
+            "Long bullets make individual facts and actions harder to scan.",
             &bullets,
         ),
         line: para.first_line,

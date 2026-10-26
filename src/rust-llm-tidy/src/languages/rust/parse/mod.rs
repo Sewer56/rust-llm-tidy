@@ -120,72 +120,28 @@ pub(crate) fn parse_source(source: &str) -> anyhow::Result<ParseResult> {
     ))
 }
 
-/// Assign each item a span that carries the blank lines and `//` comments
-/// preceding it, so reordering preserves that whitespace.
+/// Byte offset of the start of every line in `source`.
 ///
-/// Spans are laid back-to-back. Each item's `start` is the previous item's
-/// `end` (`preamble_end` for the first), and each `end` is the byte after the
-/// item's trailing newline.
+/// `starts[0]` is always `0` (line 1 starts at offset 0). Each subsequent
+/// entry is the byte offset immediately following a `'\n'`, i.e. the first
+/// byte of the next line.
 ///
-/// Consecutive spans touch with no overlap, so the gap between two
-/// items' bodies falls inside the second item's span. For:
-///
-/// ```text
-/// fn a() {}
-///
-/// // header
-/// fn b() {}
-/// ```
-///
-/// item `a` ends right after its own newline; item `b` starts there, so
-/// `source[b.start..b.end]` contains the blank line and `// header`.
-///
-/// `start_line` uses the item's attached-trivia start (the first preceding
-/// `#[...]` attribute or `///` doc comment) so diagnostic line numbers point at
-/// the real leading docs/attrs. With no attached trivia, it falls back to
-/// the item body start.
-fn build_items(raw: &[RawEntry<'_>], source: &str, line_starts: &[usize]) -> Vec<SourceItem> {
-    let source_len = source.len();
-    let mut out = Vec::with_capacity(raw.len());
-    let mut prev_end: usize = 0;
-    let mut first = true;
-
-    for entry in raw {
-        let body = entry.body;
-        let body_start = body.start_byte();
-        let body_end = body.end_byte();
-
-        // attached_start = start of first preceding attr/outer-doc, else body.
-        let attached_start = entry.pending.attached_start().unwrap_or(body_start);
-
-        // Gap-anchored start: the first item seeds with its attached_start
-        // (= preamble_end).
-        //
-        // Later items chain from the previous item's end so the inter-item
-        // gap falls inside this item's span.
-        let start = if first {
-            first = false;
-            attached_start
-        } else {
-            prev_end
-        };
-
-        // `end` extends body_end to the byte after its terminating newline:
-        // the first line-start strictly greater than body_end.
-        let end = next_line_start(line_starts, body_end).unwrap_or(source_len);
-
-        out.push(item_from_class(
-            body,
-            &entry.pending,
-            start,
-            end,
-            attached_start,
-            line_starts,
-            source,
-        ));
-        prev_end = end;
+/// Built with a single SIMD-accelerated `memchr` scan.
+fn line_start_offsets(source: &str) -> Vec<usize> {
+    let bytes = source.as_bytes();
+    // Heuristic preallocation: capacity = bytes/D; no regrowth when the file's
+    // average bytes/line >= D. Measured across 3820 Rust files (~1.25M lines):
+    //
+    //   D=24 -> ~93% no regrow, D=21 -> ~96%, D=20 -> ~97%.
+    // D=21 chosen for >95% target with margin (median file = ~33 bytes/line).
+    let mut starts: Vec<usize> = Vec::with_capacity(bytes.len() / 21 + 1);
+    starts.push(0);
+    let mut from = 0;
+    while let Some(pos) = memchr::memchr(b'\n', &bytes[from..]) {
+        from += pos + 1;
+        starts.push(from);
     }
-    out
+    starts
 }
 
 /// Descend `impl` bodies and non-test modules, collecting members into
@@ -302,63 +258,78 @@ fn collect_item_entries(root: tree_sitter::Node<'_>) -> Vec<RawEntry<'_>> {
     entries
 }
 
-/// Byte offset of the start of every line in `source`.
+/// Assign each item a span that carries the blank lines and `//` comments
+/// preceding it, so reordering preserves that whitespace.
 ///
-/// `starts[0]` is always `0` (line 1 starts at offset 0). Each subsequent
-/// entry is the byte offset immediately following a `'\n'`, i.e. the first
-/// byte of the next line.
+/// Spans are laid back-to-back. Each item's `start` is the previous item's
+/// `end` (`preamble_end` for the first), and each `end` is the byte after the
+/// item's trailing newline.
 ///
-/// Built with a single SIMD-accelerated `memchr` scan.
-fn line_start_offsets(source: &str) -> Vec<usize> {
-    let bytes = source.as_bytes();
-    // Heuristic preallocation: capacity = bytes/D; no regrowth when the file's
-    // average bytes/line >= D. Measured across 3820 Rust files (~1.25M lines):
-    //
-    //   D=24 -> ~93% no regrow, D=21 -> ~96%, D=20 -> ~97%.
-    // D=21 chosen for >95% target with margin (median file = ~33 bytes/line).
-    let mut starts: Vec<usize> = Vec::with_capacity(bytes.len() / 21 + 1);
-    starts.push(0);
-    let mut from = 0;
-    while let Some(pos) = memchr::memchr(b'\n', &bytes[from..]) {
-        from += pos + 1;
-        starts.push(from);
+/// Consecutive spans touch with no overlap, so the gap between two
+/// items' bodies falls inside the second item's span. For:
+///
+/// ```text
+/// fn a() {}
+///
+/// // header
+/// fn b() {}
+/// ```
+///
+/// item `a` ends right after its own newline; item `b` starts there, so
+/// `source[b.start..b.end]` contains the blank line and `// header`.
+///
+/// `start_line` uses the item's attached-trivia start (the first preceding
+/// `#[...]` attribute or `///` doc comment) so diagnostic line numbers point at
+/// the real leading docs/attrs. With no attached trivia, it falls back to
+/// the item body start.
+fn build_items(raw: &[RawEntry<'_>], source: &str, line_starts: &[usize]) -> Vec<SourceItem> {
+    let source_len = source.len();
+    let mut out = Vec::with_capacity(raw.len());
+    let mut prev_end: usize = 0;
+    let mut first = true;
+
+    for entry in raw {
+        let body = entry.body;
+        let body_start = body.start_byte();
+        let body_end = body.end_byte();
+
+        // attached_start = start of first preceding attr/outer-doc, else body.
+        let attached_start = entry.pending.attached_start().unwrap_or(body_start);
+
+        // Gap-anchored start: the first item seeds with its attached_start
+        // (= preamble_end).
+        //
+        // Later items chain from the previous item's end so the inter-item
+        // gap falls inside this item's span.
+        let start = if first {
+            first = false;
+            attached_start
+        } else {
+            prev_end
+        };
+
+        // `end` extends body_end to the byte after its terminating newline:
+        // the first line-start strictly greater than body_end.
+        let end = next_line_start(line_starts, body_end).unwrap_or(source_len);
+
+        out.push(item_from_class(
+            body,
+            &entry.pending,
+            start,
+            end,
+            attached_start,
+            line_starts,
+            source,
+        ));
+        prev_end = end;
     }
-    starts
+    out
 }
 
 /// If `node` is an impl member the DOC rules check, return the body node to
 /// classify.
 fn impl_member_entry_for(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
     IMPL_MEMBER_KINDS.contains(&node.kind()).then_some(node)
-}
-
-/// If `node` is a recognized top-level item, return the body node to classify.
-///
-/// Top-level macro invocations are wrapped in `expression_statement`. The
-/// body node returned is the `expression_statement` (so its byte range covers
-/// the trailing `;`), with classification reading the inner `macro_invocation`.
-fn item_entry_for(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
-    match node.kind() {
-        "function_item"
-        | "struct_item"
-        | "enum_item"
-        | "union_item"
-        | "type_item"
-        | "impl_item"
-        | "mod_item"
-        | "trait_item"
-        | "const_item"
-        | "static_item"
-        | "use_declaration"
-        | "extern_crate_declaration"
-        | "macro_definition"
-        | "foreign_mod_item"
-        | "macro_invocation" => Some(node),
-        // A top-level `foo!();` parses as `expression_statement` wrapping a
-        // `macro_invocation`.
-        "expression_statement" => is_macro_invocation_stmt(node).then_some(node),
-        _ => None,
-    }
 }
 
 /// Classify `body` (reading `pending`) and build one [`SourceItem`] from
@@ -405,12 +376,46 @@ fn item_from_class(
     .with_summary_comment(pending.has_summary_comment(body, source))
 }
 
+/// If `node` is a recognized top-level item, return the body node to classify.
+///
+/// Top-level macro invocations are wrapped in `expression_statement`. The
+/// body node returned is the `expression_statement` (so its byte range covers
+/// the trailing `;`), with classification reading the inner `macro_invocation`.
+fn item_entry_for(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
+    match node.kind() {
+        "function_item"
+        | "struct_item"
+        | "enum_item"
+        | "union_item"
+        | "type_item"
+        | "impl_item"
+        | "mod_item"
+        | "trait_item"
+        | "const_item"
+        | "static_item"
+        | "use_declaration"
+        | "extern_crate_declaration"
+        | "macro_definition"
+        | "foreign_mod_item"
+        | "macro_invocation" => Some(node),
+        // A top-level `foo!();` parses as `expression_statement` wrapping a
+        // `macro_invocation`.
+        "expression_statement" => is_macro_invocation_stmt(node).then_some(node),
+        _ => None,
+    }
+}
+
 /// The first line-start strictly greater than `byte`, or `None` if none.
 fn next_line_start(line_starts: &[usize], byte: usize) -> Option<usize> {
     // partition_point returns the count of starts <= byte, i.e. the index of
     // the first start strictly greater than byte.
     let idx = line_starts.partition_point(|&s| s <= byte);
     line_starts.get(idx).copied()
+}
+
+/// 1-based line number of `byte` (count of line-starts at or before `byte`).
+fn line_of(line_starts: &[usize], byte: usize) -> usize {
+    line_starts.partition_point(|&s| s <= byte)
 }
 
 /// True when an `expression_statement`'s single named child is a
@@ -420,11 +425,6 @@ fn is_macro_invocation_stmt(stmt: tree_sitter::Node) -> bool {
         && stmt
             .named_child(0)
             .is_some_and(|c| c.kind() == "macro_invocation")
-}
-
-/// 1-based line number of `byte` (count of line-starts at or before `byte`).
-fn line_of(line_starts: &[usize], byte: usize) -> usize {
-    line_starts.partition_point(|&s| s <= byte)
 }
 
 #[cfg(test)]

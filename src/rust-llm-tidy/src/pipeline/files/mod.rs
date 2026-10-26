@@ -268,6 +268,73 @@ pub(super) fn post_process_inputs(
     processed
 }
 
+/// Resolved TEXT009 diagnostics for a parsed backend file.
+///
+/// Returns `None` when disabled; callers replace backend defaults so entry
+/// scopes and complete comment extraction use the same path for every policy.
+fn forbidden_diagnostics_parsed(
+    disabled: &HashSet<String>,
+    config: Option<&CompiledConfig>,
+    parsed: &ParseResult,
+    ext: &str,
+) -> Option<Vec<Diagnostic>> {
+    if disabled.contains(check::CODE_FORBIDDEN_CHARACTERS) {
+        return None;
+    }
+    let rules = config
+        .map(CompiledConfig::forbidden_characters)
+        .unwrap_or_else(|| defaults());
+    Some(check::text::forbidden_characters::parsed_diagnostics(
+        parsed, ext, rules,
+    ))
+}
+
+/// Emit a layout hint, warning instead of failing on unreadable directories.
+fn emit_mod005(diagnostics: &mut Vec<Diagnostic>, warnings: &mut Vec<String>, path: &Path) {
+    match check::rust::mod005_lone_mod::check(path) {
+        Ok(finding) => diagnostics.extend(finding),
+        Err(error) => warnings.push(format!(
+            "MOD005 skipped for {}: could not read module directory: {error}",
+            path.display()
+        )),
+    }
+}
+
+/// Run the parser-seam checks MOD001 and LEN001 for one file.
+///
+/// Both need the path or a config threshold that never reach
+/// `LanguageBackend::lint`, so they run at this seam. LEN001 walks the
+/// retained Rust tree only.
+fn mod001_len001_seam_checks(
+    diagnostics: &mut Vec<Diagnostic>,
+    parsed: &ParseResult,
+    path: &Path,
+    profile: &langs::Profile,
+    module_size: ModuleSizeConfig,
+    method_length: MethodLengthConfig,
+    disabled: &HashSet<String>,
+) {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if profile.module_size == langs::ModuleSize::RustNonTest
+        && !disabled.contains(check::CODE_MODULE_SIZE)
+    {
+        diagnostics.extend(check::rust::mod001_module_size::check_with_options(
+            parsed,
+            path,
+            module_size.max_lines,
+            module_size.include_in_file_tests,
+            module_size.include_test_files,
+            module_size.exclude_module_headers,
+        ));
+    }
+    if paths::ext_in(Some(ext), &["rs"]) && !disabled.contains(check::CODE_LEN001) {
+        diagnostics.extend(check::rust::len001_method_length::check(
+            parsed,
+            method_length.max_lines,
+        ));
+    }
+}
+
 /// Emit this file's share of the precomputed MOD004 findings.
 ///
 /// The pipeline precomputes the crate-level Rust findings and the C#
@@ -291,38 +358,6 @@ fn emit_mod004(
             diagnostics.extend(findings.for_file(path).iter().cloned());
         }
     }
-}
-
-/// Emit a layout hint, warning instead of failing on unreadable directories.
-fn emit_mod005(diagnostics: &mut Vec<Diagnostic>, warnings: &mut Vec<String>, path: &Path) {
-    match check::rust::mod005_lone_mod::check(path) {
-        Ok(finding) => diagnostics.extend(finding),
-        Err(error) => warnings.push(format!(
-            "MOD005 skipped for {}: could not read module directory: {error}",
-            path.display()
-        )),
-    }
-}
-
-/// Resolved TEXT009 diagnostics for a parsed backend file.
-///
-/// Returns `None` when disabled; callers replace backend defaults so entry
-/// scopes and complete comment extraction use the same path for every policy.
-fn forbidden_diagnostics_parsed(
-    disabled: &HashSet<String>,
-    config: Option<&CompiledConfig>,
-    parsed: &ParseResult,
-    ext: &str,
-) -> Option<Vec<Diagnostic>> {
-    if disabled.contains(check::CODE_FORBIDDEN_CHARACTERS) {
-        return None;
-    }
-    let rules = config
-        .map(CompiledConfig::forbidden_characters)
-        .unwrap_or_else(|| defaults());
-    Some(check::text::forbidden_characters::parsed_diagnostics(
-        parsed, ext, rules,
-    ))
 }
 
 /// Resolved TEXT009 diagnostics for a backend-less text file.
@@ -371,39 +406,4 @@ fn is_release_or_migration_note(path: &Path) -> bool {
         || path
             .components()
             .any(|c| lower(c.as_os_str()) == "releases")
-}
-
-/// Run the parser-seam checks MOD001 and LEN001 for one file.
-///
-/// Both need the path or a config threshold that never reach
-/// `LanguageBackend::lint`, so they run at this seam. LEN001 walks the
-/// retained Rust tree only.
-fn mod001_len001_seam_checks(
-    diagnostics: &mut Vec<Diagnostic>,
-    parsed: &ParseResult,
-    path: &Path,
-    profile: &langs::Profile,
-    module_size: ModuleSizeConfig,
-    method_length: MethodLengthConfig,
-    disabled: &HashSet<String>,
-) {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    if profile.module_size == langs::ModuleSize::RustNonTest
-        && !disabled.contains(check::CODE_MODULE_SIZE)
-    {
-        diagnostics.extend(check::rust::mod001_module_size::check_with_options(
-            parsed,
-            path,
-            module_size.max_lines,
-            module_size.include_in_file_tests,
-            module_size.include_test_files,
-            module_size.exclude_module_headers,
-        ));
-    }
-    if paths::ext_in(Some(ext), &["rs"]) && !disabled.contains(check::CODE_LEN001) {
-        diagnostics.extend(check::rust::len001_method_length::check(
-            parsed,
-            method_length.max_lines,
-        ));
-    }
 }

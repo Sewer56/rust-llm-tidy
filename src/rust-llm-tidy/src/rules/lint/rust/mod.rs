@@ -90,6 +90,60 @@ pub(crate) fn run(parsed: &ParseResult) -> Vec<Diagnostic> {
     diagnostics
 }
 
+/// Run every Rust rule over `parsed` and return all diagnostics.
+///
+/// File-level diagnostics precede item diagnostics, which follow source
+/// order and then rule code order: DOC*, then TEST*. Items include
+/// impl-block members merged in source order with the top-level items.
+///
+/// The returned `Vec` is empty only when the file and every item pass
+/// every rule.
+///
+/// # Arguments
+///
+/// - `parsed` - the parsed source result whose items and file preamble
+///   are checked.
+fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
+    // Each item produces at most a handful of diagnostics; preallocating to the
+    // item count can reduce regrowth on the common dirty-file path.
+    let mut diags = Vec::with_capacity(parsed.items.len());
+    diags.extend(doc009_missing_module_docs::check(parsed));
+
+    // DOC008 resolves the returned enum against same-file top-level enum
+    // declarations, so it needs the sibling enums, not just the item under
+    // check.
+    let enums = doc008_error_variant_order::top_level_enums(parsed);
+
+    // Impl members (methods, associated consts/types) are not top-level
+    // items; collect them separately and merge them in source order.
+    //
+    // The collector excludes test-module members. A test-marked method
+    // outside a test module still classifies as a test fn, so the TEST
+    // rules check it like a free test fn.
+    let members = parse::impl_member_items(&parsed.source, parsed.syntax_tree());
+    let mut entries: Vec<&SourceItem> = parsed.items.iter().collect();
+    entries.extend(members.iter());
+    // Sort by byte start so diagnostics follow source order; the stable
+    // sort keeps the merge deterministic.
+    entries.sort_by_key(|item| item.start);
+
+    for item in entries {
+        diags.extend(doc001_missing_docs::check(item));
+        diags.extend(doc002_missing_errors_section::check(item));
+        diags.extend(doc003_vague_errors::check(item));
+        diags.extend(doc004_missing_arguments::check(item));
+        diags.extend(doc005_undocumented_param::check(item));
+        diags.extend(doc006_placeholder::check(item));
+        diags.extend(doc008_error_variant_order::check(item, &enums));
+        diags.extend(doc010_section_order::check(item));
+        diags.extend(doc011_missing_returns::check(item));
+        diags.extend(test001_test_naming::check(item));
+        diags.extend(test002_test_summary::check(item));
+    }
+    diags.extend(mod003_qualified_path::check(parsed));
+    diags
+}
+
 /// Case-insensitive whole-word match for `needle` in `haystack`.
 ///
 /// A word boundary is any non-alphanumeric character other than `_` (or
@@ -184,60 +238,6 @@ fn is_pub_fn_with_params(item: &SourceItem) -> bool {
 /// ([`doc003_vague_errors`]).
 fn is_pub_result_fn(item: &SourceItem) -> bool {
     item.is_fn() && item.visibility() == Some(VisibilityTier::Pub) && item.returns_result()
-}
-
-/// Run every Rust rule over `parsed` and return all diagnostics.
-///
-/// File-level diagnostics precede item diagnostics, which follow source
-/// order and then rule code order: DOC*, then TEST*. Items include
-/// impl-block members merged in source order with the top-level items.
-///
-/// The returned `Vec` is empty only when the file and every item pass
-/// every rule.
-///
-/// # Arguments
-///
-/// - `parsed` - the parsed source result whose items and file preamble
-///   are checked.
-fn run_all(parsed: &ParseResult) -> Vec<Diagnostic> {
-    // Each item produces at most a handful of diagnostics; preallocating to the
-    // item count can reduce regrowth on the common dirty-file path.
-    let mut diags = Vec::with_capacity(parsed.items.len());
-    diags.extend(doc009_missing_module_docs::check(parsed));
-
-    // DOC008 resolves the returned enum against same-file top-level enum
-    // declarations, so it needs the sibling enums, not just the item under
-    // check.
-    let enums = doc008_error_variant_order::top_level_enums(parsed);
-
-    // Impl members (methods, associated consts/types) are not top-level
-    // items; collect them separately and merge them in source order.
-    //
-    // The collector excludes test-module members. A test-marked method
-    // outside a test module still classifies as a test fn, so the TEST
-    // rules check it like a free test fn.
-    let members = parse::impl_member_items(&parsed.source, parsed.syntax_tree());
-    let mut entries: Vec<&SourceItem> = parsed.items.iter().collect();
-    entries.extend(members.iter());
-    // Sort by byte start so diagnostics follow source order; the stable
-    // sort keeps the merge deterministic.
-    entries.sort_by_key(|item| item.start);
-
-    for item in entries {
-        diags.extend(doc001_missing_docs::check(item));
-        diags.extend(doc002_missing_errors_section::check(item));
-        diags.extend(doc003_vague_errors::check(item));
-        diags.extend(doc004_missing_arguments::check(item));
-        diags.extend(doc005_undocumented_param::check(item));
-        diags.extend(doc006_placeholder::check(item));
-        diags.extend(doc008_error_variant_order::check(item, &enums));
-        diags.extend(doc010_section_order::check(item));
-        diags.extend(doc011_missing_returns::check(item));
-        diags.extend(test001_test_naming::check(item));
-        diags.extend(test002_test_summary::check(item));
-    }
-    diags.extend(mod003_qualified_path::check(parsed));
-    diags
 }
 
 /// The section body: lines after the header at `start` up to the next

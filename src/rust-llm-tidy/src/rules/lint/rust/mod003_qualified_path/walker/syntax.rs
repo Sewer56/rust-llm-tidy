@@ -30,6 +30,20 @@ pub(super) fn has_conditional_attribute(node: Node, bytes: &[u8]) -> bool {
     false
 }
 
+/// Recognize real conditional attributes, never their text in comments or strings.
+pub(super) fn is_conditional_attribute(node: Node, bytes: &[u8]) -> bool {
+    matches!(node.kind(), "attribute_item" | "inner_attribute_item")
+        && node
+            .named_child(0)
+            .and_then(|attr| attr.named_child(0))
+            .is_some_and(|path| {
+                path.kind() == "identifier"
+                    && path
+                        .utf8_text(bytes)
+                        .is_ok_and(|text| matches!(text, "cfg" | "cfg_attr"))
+            })
+}
+
 /// True when `node` is the outermost node of a scoped path chain, so
 /// it carries the whole path. Inner chain links are covered by their
 /// parent.
@@ -88,20 +102,6 @@ pub(super) fn scoped_segments<'a>(node: Node, bytes: &'a [u8]) -> Option<Vec<&'a
     }
     segments.reverse();
     Some(segments)
-}
-
-/// Recognize real conditional attributes, never their text in comments or strings.
-pub(super) fn is_conditional_attribute(node: Node, bytes: &[u8]) -> bool {
-    matches!(node.kind(), "attribute_item" | "inner_attribute_item")
-        && node
-            .named_child(0)
-            .and_then(|attr| attr.named_child(0))
-            .is_some_and(|path| {
-                path.kind() == "identifier"
-                    && path
-                        .utf8_text(bytes)
-                        .is_ok_and(|text| matches!(text, "cfg" | "cfg_attr"))
-            })
 }
 
 /// Text of a path leaf node (identifier, type identifier, or the

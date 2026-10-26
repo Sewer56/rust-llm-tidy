@@ -151,6 +151,20 @@ fn collect_should_include_exotic_names_of_new_files(#[case] name: &str, #[case] 
     assert_new_file_fully_covered(name, staged);
 }
 
+/// Check that one new working-tree input counts every current line as changed.
+fn assert_new_file_fully_covered(name: &str, staged: bool) {
+    let repo = repository(Some(("initial.rs", "initial\n")));
+    let path = repo.path().join(name);
+    std::fs::write(&path, "new\nlines\n").unwrap();
+    if staged {
+        git(repo.path(), &["--literal-pathspecs", "add", "--", name]);
+    }
+
+    let snapshot = snapshot(&path, None);
+
+    assert_eq!(snapshot.changed, ChangedLines::all("new\nlines\n"));
+}
+
 #[test]
 fn collect_should_leave_deleted_files_without_anchors() {
     let repo = repository(Some(("input.rs", "one\ntwo\n")));
@@ -412,20 +426,6 @@ fn snapshots_should_remain_stable_after_file_mutation() {
     assert!(snapshot.remap("tool\n").is_empty());
 }
 
-/// Check that one new working-tree input counts every current line as changed.
-fn assert_new_file_fully_covered(name: &str, staged: bool) {
-    let repo = repository(Some(("initial.rs", "initial\n")));
-    let path = repo.path().join(name);
-    std::fs::write(&path, "new\nlines\n").unwrap();
-    if staged {
-        git(repo.path(), &["--literal-pathspecs", "add", "--", name]);
-    }
-
-    let snapshot = snapshot(&path, None);
-
-    assert_eq!(snapshot.changed, ChangedLines::all("new\nlines\n"));
-}
-
 /// Build a private repository with an optional initial tracked input.
 fn repository(initial: Option<(&str, &str)>) -> tempfile::TempDir {
     let directory = tempfile::tempdir().unwrap();
@@ -438,14 +438,6 @@ fn repository(initial: Option<(&str, &str)>) -> tempfile::TempDir {
     }
 
     directory
-}
-
-/// Extract one successful snapshot while checking that collection had no fallback.
-fn snapshot(path: &Path, baseline: Option<&str>) -> ChangedLineSnapshot {
-    let mut result = collect(&[path.to_path_buf()], baseline).unwrap();
-
-    assert!(result.warnings.is_empty(), "{:?}", result.warnings);
-    result.snapshots.remove(path).unwrap().unwrap()
 }
 
 /// Run fixture Git with fixed identity, clock, locale, and private configuration.
@@ -473,4 +465,12 @@ fn git(root: &Path, args: &[&str]) {
         "{args:?}: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+/// Extract one successful snapshot while checking that collection had no fallback.
+fn snapshot(path: &Path, baseline: Option<&str>) -> ChangedLineSnapshot {
+    let mut result = collect(&[path.to_path_buf()], baseline).unwrap();
+
+    assert!(result.warnings.is_empty(), "{:?}", result.warnings);
+    result.snapshots.remove(path).unwrap().unwrap()
 }

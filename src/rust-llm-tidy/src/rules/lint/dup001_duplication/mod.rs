@@ -104,34 +104,6 @@ fn analyze(
     diagnostics
 }
 
-/// Render one textual group, including the query once and all other selected sites.
-fn diagnostic(group: &Group, anchor: usize, sites: &[usize]) -> Diagnostic {
-    let mut message = format!(
-        "{} meaningful lines repeat at {} non-overlapping sites in this file. Locations: ",
-        group.meaningful,
-        sites.len()
-    );
-    for (index, start) in sites.iter().enumerate() {
-        if index != 0 {
-            message.push_str(", ");
-        }
-        let _ = write!(message, "{}-{}", start + 1, start + group.length);
-    }
-    message.push_str(
-        ".\n\nWhy:\n- Less repeated code is easier to audit and keep consistent.\n\nSuggestions:\n- Consider a constructor or helper if it preserves behavior, contracts, and performance.\n- A useful refactor may not clear this reminder. That is OK; do not force further changes just to silence it."
-    );
-
-    Diagnostic {
-        severity: Severity::Reminder,
-        code: CODE_DUPLICATION,
-        title: None,
-        message,
-        line: anchor + 1,
-        item_kind: "source sequence".into(),
-        item_name: None,
-    }
-}
-
 /// Extend each branch only while a complete eligible occurrence still qualifies.
 fn extend(lines: &Lines<'_>, seed: Group, minimum_sites: usize, found: &mut Vec<Group>) {
     let mut pending = vec![seed];
@@ -179,5 +151,33 @@ fn extend(lines: &Lines<'_>, seed: Group, minimum_sites: usize, found: &mut Vec<
             });
         }
         pending.extend(children.into_iter().rev());
+    }
+}
+
+/// Render one textual group, including the query once and all other selected sites.
+fn diagnostic(group: &Group, anchor: usize, sites: &[usize]) -> Diagnostic {
+    let mut message = format!(
+        "{} meaningful lines repeat at {} non-overlapping sites in this file. Locations: ",
+        group.meaningful,
+        sites.len()
+    );
+    for (index, start) in sites.iter().enumerate() {
+        if index != 0 {
+            message.push_str(", ");
+        }
+        let _ = write!(message, "{}-{}", start + 1, start + group.length);
+    }
+    message.push_str(
+        ".\n\nWhy:\n- Less repeated code is easier to audit and keep consistent.\n\nSuggestions:\n- Consider a constructor or helper if it preserves behavior, contracts, and performance.\n- A useful refactor may not clear this reminder. That is OK; do not force further changes just to silence it."
+    );
+
+    Diagnostic {
+        severity: Severity::Reminder,
+        code: CODE_DUPLICATION,
+        title: None,
+        message,
+        line: anchor + 1,
+        item_kind: "source sequence".into(),
+        item_name: None,
     }
 }

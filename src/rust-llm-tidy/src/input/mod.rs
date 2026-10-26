@@ -38,25 +38,6 @@ pub(crate) fn collect_files(
     collect_project_files(dir, exts, out, false, exclude_license_documents)
 }
 
-// ---------------------------------------------------------------------------
-// Shared path resolution
-// ---------------------------------------------------------------------------
-
-/// Resolve the effective input file list: explicit paths (with directory
-/// expansion) when given, else changed and untracked files from git.
-pub(crate) fn resolve_inputs(
-    inputs: &[PathBuf],
-    git_changed: bool,
-    exts: &[&str],
-    exclude_license_documents: bool,
-) -> anyhow::Result<Vec<PathBuf>> {
-    if inputs.is_empty() && git_changed {
-        git::changed_files(exts, exclude_license_documents)
-    } else {
-        resolve_all(inputs, exts, exclude_license_documents)
-    }
-}
-
 /// Collect `exts` under `dir` into `out`, optionally skipping nested repositories.
 ///
 /// # Errors
@@ -102,27 +83,6 @@ pub(crate) fn collect_project_files(
     Ok(())
 }
 
-/// Resolve a list of input paths into a flat, ordered list of files with
-/// matching extensions.
-pub(crate) fn resolve_all(
-    inputs: &[PathBuf],
-    exts: &[&str],
-    exclude_license_documents: bool,
-) -> anyhow::Result<Vec<PathBuf>> {
-    let mut paths: Vec<PathBuf> = Vec::new();
-
-    for input in inputs {
-        let resolved = resolve_paths(input, exts, exclude_license_documents)
-            .with_context(|| format!("failed to resolve path {}", input.display()))?;
-        paths.extend(resolved);
-    }
-
-    paths.sort();
-    paths.dedup();
-
-    Ok(paths)
-}
-
 /// Identify conventional license filenames without hiding source implementations.
 pub(crate) fn is_license_document(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
@@ -156,6 +116,46 @@ pub(crate) fn is_license_document(path: &Path) -> bool {
 #[inline]
 pub(crate) fn ext_in(ext: Option<&str>, exts: &[&str]) -> bool {
     ext.is_some_and(|e| exts.iter().any(|x| e.eq_ignore_ascii_case(x)))
+}
+
+// ---------------------------------------------------------------------------
+// Shared path resolution
+// ---------------------------------------------------------------------------
+
+/// Resolve the effective input file list: explicit paths (with directory
+/// expansion) when given, else changed and untracked files from git.
+pub(crate) fn resolve_inputs(
+    inputs: &[PathBuf],
+    git_changed: bool,
+    exts: &[&str],
+    exclude_license_documents: bool,
+) -> anyhow::Result<Vec<PathBuf>> {
+    if inputs.is_empty() && git_changed {
+        git::changed_files(exts, exclude_license_documents)
+    } else {
+        resolve_all(inputs, exts, exclude_license_documents)
+    }
+}
+
+/// Resolve a list of input paths into a flat, ordered list of files with
+/// matching extensions.
+pub(crate) fn resolve_all(
+    inputs: &[PathBuf],
+    exts: &[&str],
+    exclude_license_documents: bool,
+) -> anyhow::Result<Vec<PathBuf>> {
+    let mut paths: Vec<PathBuf> = Vec::new();
+
+    for input in inputs {
+        let resolved = resolve_paths(input, exts, exclude_license_documents)
+            .with_context(|| format!("failed to resolve path {}", input.display()))?;
+        paths.extend(resolved);
+    }
+
+    paths.sort();
+    paths.dedup();
+
+    Ok(paths)
 }
 
 /// Resolve `path` into a sorted list of files with matching extensions.

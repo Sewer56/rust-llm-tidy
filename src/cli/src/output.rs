@@ -145,40 +145,6 @@ pub(crate) fn emit_json(report: &RunReport) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Project a single dry-run change record into its serializable form.
-fn project_change<'a>(path: &Path, c: &'a Change) -> JsonRecord<'a> {
-    JsonRecord {
-        path: Cow::Owned(path.display().to_string()),
-        line: c.line,
-        severity: "success",
-        code: c.code,
-        message: Cow::Borrowed(c.message.as_ref()),
-        item_kind: Cow::Borrowed(c.kind.as_str()),
-        item_name: c.name.as_deref().map(Cow::Borrowed),
-        title: None,
-    }
-}
-
-/// Project a single lint finding into its serializable form.
-fn project_lint<'a>(path: &Path, d: &'a Diagnostic) -> JsonRecord<'a> {
-    JsonRecord {
-        path: Cow::Owned(path.display().to_string()),
-        line: NonZeroU32::new(d.line as u32),
-        severity: match d.severity {
-            Severity::Error => "error",
-            Severity::Warning => "warning",
-            Severity::Hint => "hint",
-            Severity::Reminder => "reminder",
-            Severity::AiReminder => "ai_reminder",
-        },
-        code: d.code,
-        message: Cow::Borrowed(d.message.as_ref()),
-        item_kind: Cow::Borrowed(d.item_kind.as_ref()),
-        item_name: d.item_name.as_deref().map(Cow::Borrowed),
-        title: Some(d.title()),
-    }
-}
-
 /// Write changes, errors, warnings, and processing failures, followed by
 /// separate hint, reminder, and AI reminder groups.
 fn write_text(output: &mut impl Write, report: &RunReport) -> io::Result<()> {
@@ -213,6 +179,40 @@ fn write_text(output: &mut impl Write, report: &RunReport) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Project a single lint finding into its serializable form.
+fn project_lint<'a>(path: &Path, d: &'a Diagnostic) -> JsonRecord<'a> {
+    JsonRecord {
+        path: Cow::Owned(path.display().to_string()),
+        line: NonZeroU32::new(d.line as u32),
+        severity: match d.severity {
+            Severity::Error => "error",
+            Severity::Warning => "warning",
+            Severity::Hint => "hint",
+            Severity::Reminder => "reminder",
+            Severity::AiReminder => "ai_reminder",
+        },
+        code: d.code,
+        message: Cow::Borrowed(d.message.as_ref()),
+        item_kind: Cow::Borrowed(d.item_kind.as_ref()),
+        item_name: d.item_name.as_deref().map(Cow::Borrowed),
+        title: Some(d.title()),
+    }
+}
+
+/// Project a single dry-run change record into its serializable form.
+fn project_change<'a>(path: &Path, c: &'a Change) -> JsonRecord<'a> {
+    JsonRecord {
+        path: Cow::Owned(path.display().to_string()),
+        line: c.line,
+        severity: "success",
+        code: c.code,
+        message: Cow::Borrowed(c.message.as_ref()),
+        item_kind: Cow::Borrowed(c.kind.as_str()),
+        item_name: c.name.as_deref().map(Cow::Borrowed),
+        title: None,
+    }
 }
 
 /// Write the note introducing a severity's group, before its first diagnostic.

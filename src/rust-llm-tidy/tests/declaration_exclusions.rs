@@ -261,6 +261,40 @@ fn entrypoints_should_suppress_owned_docs_and_custom_and_builtin_hints(
     assert_eq!(codes, expected);
 }
 
+/// Compare both public entrypoints' consumed bytes, changes and findings.
+fn equivalent(source: &str, ext: &str, rules: &str, include: &[&str]) -> (String, Vec<Diagnostic>) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join(format!("input.{ext}"));
+    let config_path = directory.path().join("config.yml");
+    fs::write(&path, source).unwrap();
+    fs::write(&config_path, format!("symbol_rules: {rules}")).unwrap();
+    let config = load_and_compile(&config_path).unwrap();
+    let options = SourceOptions {
+        symbol_rules: serde_yml::from_str(rules).unwrap(),
+        include: include.iter().map(|code| (*code).into()).collect(),
+        all_lines: true,
+        ..SourceOptions::default()
+    };
+    let file_options = RunOptions {
+        paths: vec![path.clone()],
+        include: options.include.clone(),
+        apply: true,
+        all_lines: true,
+        ..RunOptions::default()
+    };
+
+    let buffer = tidy_source(source, ext, &options).unwrap();
+    let file = run(&file_options, Some(&config)).unwrap();
+    let consumed = fs::read_to_string(path).unwrap();
+
+    assert_eq!(file.files.len(), 1);
+    assert!(file.files[0].failure.is_none(), "{:?}", file.files[0]);
+    assert_eq!(consumed, buffer.source);
+    assert_eq!(file.files[0].changes, buffer.changes);
+    assert_eq!(file.files[0].diagnostics, buffer.diagnostics);
+    (consumed, buffer.diagnostics)
+}
+
 #[cfg(unix)]
 #[rstest]
 #[case::defaults("", false)]
@@ -340,37 +374,6 @@ fn file_should_report_subprocess_failure_only_when_postprocessing_runs(#[case] s
     assert_postprocessing("fn load() {}\n", &rules, skipped, false, true);
 }
 
-#[rstest]
-#[case::all("true")]
-#[case::selected("[DOC009, MOD001]")]
-fn file_should_retain_file_level_findings_when_declarations_are_excluded(#[case] selection: &str) {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("input.rs");
-    let config_path = directory.path().join("config.yml");
-    fs::write(&path, "pub fn load() {\n}\n").unwrap();
-    fs::write(
-        &config_path,
-        format!(
-            "module_size: {{max_lines: 1}}\nsymbol_rules: [{{symbol: load, \
-         target: declaration, action: exclude, exclude_lints: {selection}}}]"
-        ),
-    )
-    .unwrap();
-    let config = load_and_compile(&config_path).unwrap();
-    let options = RunOptions {
-        paths: vec![path],
-        include: vec!["DOC009".into(), "MOD001".into()],
-        all_lines: true,
-        ..RunOptions::default()
-    };
-
-    let report = run(&options, Some(&config)).unwrap();
-
-    let mut codes: Vec<_> = report.files[0].diagnostics.iter().map(|d| d.code).collect();
-    codes.sort_unstable();
-    assert_eq!(codes, ["DOC009", "MOD001"]);
-}
-
 /// Observe actual subprocess writes and failure reporting under one file policy.
 #[cfg(unix)]
 fn assert_postprocessing(
@@ -437,36 +440,33 @@ fn assert_postprocessing(
     );
 }
 
-/// Compare both public entrypoints' consumed bytes, changes and findings.
-fn equivalent(source: &str, ext: &str, rules: &str, include: &[&str]) -> (String, Vec<Diagnostic>) {
+#[rstest]
+#[case::all("true")]
+#[case::selected("[DOC009, MOD001]")]
+fn file_should_retain_file_level_findings_when_declarations_are_excluded(#[case] selection: &str) {
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join(format!("input.{ext}"));
+    let path = directory.path().join("input.rs");
     let config_path = directory.path().join("config.yml");
-    fs::write(&path, source).unwrap();
-    fs::write(&config_path, format!("symbol_rules: {rules}")).unwrap();
+    fs::write(&path, "pub fn load() {\n}\n").unwrap();
+    fs::write(
+        &config_path,
+        format!(
+            "module_size: {{max_lines: 1}}\nsymbol_rules: [{{symbol: load, \
+         target: declaration, action: exclude, exclude_lints: {selection}}}]"
+        ),
+    )
+    .unwrap();
     let config = load_and_compile(&config_path).unwrap();
-    let options = SourceOptions {
-        symbol_rules: serde_yml::from_str(rules).unwrap(),
-        include: include.iter().map(|code| (*code).into()).collect(),
-        all_lines: true,
-        ..SourceOptions::default()
-    };
-    let file_options = RunOptions {
-        paths: vec![path.clone()],
-        include: options.include.clone(),
-        apply: true,
+    let options = RunOptions {
+        paths: vec![path],
+        include: vec!["DOC009".into(), "MOD001".into()],
         all_lines: true,
         ..RunOptions::default()
     };
 
-    let buffer = tidy_source(source, ext, &options).unwrap();
-    let file = run(&file_options, Some(&config)).unwrap();
-    let consumed = fs::read_to_string(path).unwrap();
+    let report = run(&options, Some(&config)).unwrap();
 
-    assert_eq!(file.files.len(), 1);
-    assert!(file.files[0].failure.is_none(), "{:?}", file.files[0]);
-    assert_eq!(consumed, buffer.source);
-    assert_eq!(file.files[0].changes, buffer.changes);
-    assert_eq!(file.files[0].diagnostics, buffer.diagnostics);
-    (consumed, buffer.diagnostics)
+    let mut codes: Vec<_> = report.files[0].diagnostics.iter().map(|d| d.code).collect();
+    codes.sort_unstable();
+    assert_eq!(codes, ["DOC009", "MOD001"]);
 }

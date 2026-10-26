@@ -90,40 +90,6 @@ fn is_opener(doc: &Document, headings: &[usize], index: usize, para: &Paragraph)
         .any(|heading| previous_end < *heading && *heading < para.first_line)
 }
 
-/// TEXT004 Warning for one opener paragraph, reported at its first line.
-fn opener_diagnostic(para: &Paragraph, summary: &str, over_chars: bool) -> Diagnostic {
-    let mut bullets = vec![
-        "Lead with the main point, ideally in one short sentence.".to_string(),
-        format!("Keep a plain opener to {OPENER_CHAR_LIMIT} measured chars or fewer."),
-        "Move supporting details below the opener without losing necessary \
-          information."
-            .to_string(),
-        "Use bullets for distinct facts, one fact per bullet.".to_string(),
-        "Keep a connected explanation in a separate short paragraph.".to_string(),
-    ];
-    if over_chars {
-        bullets.push(
-            "Put links on a separate line. A URL alone, or one word followed by a URL, \
-             does not count toward the opener's character limit."
-                .to_string(),
-        );
-    }
-
-    Diagnostic {
-        title: Some("header opener shape".into()),
-        severity: Severity::Warning,
-        code: CODE_HEADER_OPENER,
-        message: bulleted(
-            summary,
-            "A long opener delays the main point and makes the section harder to scan.",
-            &bullets,
-        ),
-        line: para.first_line,
-        item_kind: "file".to_string(),
-        item_name: None,
-    }
-}
-
 /// Sentences in `text`: boundary count plus one.
 ///
 /// A boundary is `.`, `!`, or `?` followed by whitespace whose next
@@ -156,6 +122,40 @@ fn sentence_count(text: &str) -> usize {
         }
     }
     count
+}
+
+/// TEXT004 Warning for one opener paragraph, reported at its first line.
+fn opener_diagnostic(para: &Paragraph, summary: &str, over_chars: bool) -> Diagnostic {
+    let mut bullets = vec![
+        "Lead with the main point, ideally in one short sentence.".to_string(),
+        format!("Keep a plain opener to {OPENER_CHAR_LIMIT} measured chars or fewer."),
+        "Move supporting details below the opener without losing necessary \
+          information."
+            .to_string(),
+        "Use bullets for distinct facts, one fact per bullet.".to_string(),
+        "Keep a connected explanation in a separate short paragraph.".to_string(),
+    ];
+    if over_chars {
+        bullets.push(
+            "Put links on a separate line. A URL alone, or one word followed by a URL, \
+             does not count toward the opener's character limit."
+                .to_string(),
+        );
+    }
+
+    Diagnostic {
+        title: Some("header opener shape".into()),
+        severity: Severity::Warning,
+        code: CODE_HEADER_OPENER,
+        message: bulleted(
+            summary,
+            "A long opener delays the main point and makes the section harder to scan.",
+            &bullets,
+        ),
+        line: para.first_line,
+        item_kind: "file".to_string(),
+        item_name: None,
+    }
 }
 
 #[cfg(test)]

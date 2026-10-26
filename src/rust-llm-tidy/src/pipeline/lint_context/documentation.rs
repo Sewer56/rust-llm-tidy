@@ -196,6 +196,15 @@ fn signal_for(
     ancestry_signal(path, cache)
 }
 
+/// Conventional stem for a documentation filename, matched case-insensitively.
+fn conventional_stem(path: &Path) -> Option<&'static str> {
+    let stem = path.file_stem().and_then(OsStr::to_str)?;
+    CONVENTIONAL_FILENAMES
+        .iter()
+        .find(|candidate| stem.eq_ignore_ascii_case(candidate))
+        .copied()
+}
+
 /// Nearest documentation evidence in the file's ancestors.
 ///
 /// Walks from the file's directory to the first `.git` boundary, inclusive,
@@ -222,37 +231,6 @@ fn ancestry_signal(
         current = dir.parent();
     }
     docs.then_some(DocumentationSignal::DocsDirectory)
-}
-
-/// Conventional stem for a documentation filename, matched case-insensitively.
-fn conventional_stem(path: &Path) -> Option<&'static str> {
-    let stem = path.file_stem().and_then(OsStr::to_str)?;
-    CONVENTIONAL_FILENAMES
-        .iter()
-        .find(|candidate| stem.eq_ignore_ascii_case(candidate))
-        .copied()
-}
-
-/// Probe `dir` once, reusing the result while the cache has room.
-fn directory_facts(dir: &Path, cache: &mut AHashMap<PathBuf, DirectoryFacts>) -> DirectoryFacts {
-    if let Some(facts) = cache.get(dir) {
-        return *facts;
-    }
-    let facts = DirectoryFacts {
-        marker: DOCUMENTATION_MARKERS
-            .iter()
-            .find(|marker| marker.present_in(dir))
-            .map(|marker| marker.entry),
-        docs: dir
-            .file_name()
-            .and_then(OsStr::to_str)
-            .is_some_and(|name| name.eq_ignore_ascii_case(DOCS_DIRECTORY)),
-        boundary: dir.join(".git").exists(),
-    };
-    if cache.len() < MAX_CACHED_DIRECTORIES {
-        cache.insert(dir.to_path_buf(), facts);
-    }
-    facts
 }
 
 /// Absolute location to walk for `path`, with `.` and `..` resolved lexically.
@@ -283,6 +261,28 @@ fn traversal_path(path: &Path) -> Option<PathBuf> {
         }
     }
     Some(resolved)
+}
+
+/// Probe `dir` once, reusing the result while the cache has room.
+fn directory_facts(dir: &Path, cache: &mut AHashMap<PathBuf, DirectoryFacts>) -> DirectoryFacts {
+    if let Some(facts) = cache.get(dir) {
+        return *facts;
+    }
+    let facts = DirectoryFacts {
+        marker: DOCUMENTATION_MARKERS
+            .iter()
+            .find(|marker| marker.present_in(dir))
+            .map(|marker| marker.entry),
+        docs: dir
+            .file_name()
+            .and_then(OsStr::to_str)
+            .is_some_and(|name| name.eq_ignore_ascii_case(DOCS_DIRECTORY)),
+        boundary: dir.join(".git").exists(),
+    };
+    if cache.len() < MAX_CACHED_DIRECTORIES {
+        cache.insert(dir.to_path_buf(), facts);
+    }
+    facts
 }
 
 #[cfg(test)]

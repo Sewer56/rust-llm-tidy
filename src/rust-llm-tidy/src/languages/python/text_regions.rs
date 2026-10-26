@@ -118,38 +118,6 @@ pub(crate) fn language() -> anyhow::Result<tree_sitter::Language> {
     Ok(tree_sitter_python::LANGUAGE.into())
 }
 
-/// Whether `body`'s first statement is a string literal that can serve
-/// as a docstring: any string, except a bytes literal.
-///
-/// Unlike [`docstring_region`], this is a semantic predicate only: it
-/// accepts single-quoted one-liners and never extracts text.
-fn first_statement_is_docstring(body: tree_sitter::Node<'_>, source: &str) -> bool {
-    let Some(first) = first_statement(body) else {
-        return false;
-    };
-    if first.kind() != "expression_statement" {
-        return false;
-    }
-    let mut stmt_cursor = first.walk();
-    let Some(string) = first.named_children(&mut stmt_cursor).next() else {
-        return false;
-    };
-    if string.kind() != "string" {
-        return false;
-    }
-    // A `b`/`B` in the prefix (before the quote) marks a bytes literal,
-    // which is not a docstring.
-    let Some(open) = string.child(0) else {
-        return false;
-    };
-    if open.kind() != "string_start" {
-        return false;
-    }
-    let prefix = &source[open.start_byte()..open.end_byte()];
-    let quote = prefix.find(['"', '\'']).unwrap_or(prefix.len());
-    !prefix[..quote].contains(['b', 'B'])
-}
-
 /// Walks `node`'s subtree in document order, appending docstring and
 /// comment regions to `regions`; `run` carries the open standalone
 /// comment run.
@@ -183,6 +151,38 @@ fn walk(
             }
         }
     }
+}
+
+/// Whether `body`'s first statement is a string literal that can serve
+/// as a docstring: any string, except a bytes literal.
+///
+/// Unlike [`docstring_region`], this is a semantic predicate only: it
+/// accepts single-quoted one-liners and never extracts text.
+fn first_statement_is_docstring(body: tree_sitter::Node<'_>, source: &str) -> bool {
+    let Some(first) = first_statement(body) else {
+        return false;
+    };
+    if first.kind() != "expression_statement" {
+        return false;
+    }
+    let mut stmt_cursor = first.walk();
+    let Some(string) = first.named_children(&mut stmt_cursor).next() else {
+        return false;
+    };
+    if string.kind() != "string" {
+        return false;
+    }
+    // A `b`/`B` in the prefix (before the quote) marks a bytes literal,
+    // which is not a docstring.
+    let Some(open) = string.child(0) else {
+        return false;
+    };
+    if open.kind() != "string_start" {
+        return false;
+    }
+    let prefix = &source[open.start_byte()..open.end_byte()];
+    let quote = prefix.find(['"', '\'']).unwrap_or(prefix.len());
+    !prefix[..quote].contains(['b', 'B'])
 }
 
 /// Measures one `#` comment node.
@@ -234,6 +234,21 @@ fn comment_region(
             dialect: Dialect::Markdown,
             lines: vec![line],
         });
+    }
+}
+
+/// Whether `node` is a body whose first statement may be its docstring:
+/// the module root, or the block of a class or function definition.
+///
+/// Other blocks (`if`, `for`, `while`) never carry docstrings.
+fn is_docstring_body(node: tree_sitter::Node<'_>) -> bool {
+    match node.kind() {
+        "module" => true,
+        "block" => matches!(
+            node.parent(),
+            Some(parent) if matches!(parent.kind(), "class_definition" | "function_definition")
+        ),
+        _ => false,
     }
 }
 
@@ -302,28 +317,6 @@ fn docstring_region(body: tree_sitter::Node<'_>, source: &str) -> Option<DocRegi
     })
 }
 
-/// Whether `node` is a body whose first statement may be its docstring:
-/// the module root, or the block of a class or function definition.
-///
-/// Other blocks (`if`, `for`, `while`) never carry docstrings.
-fn is_docstring_body(node: tree_sitter::Node<'_>) -> bool {
-    match node.kind() {
-        "module" => true,
-        "block" => matches!(
-            node.parent(),
-            Some(parent) if matches!(parent.kind(), "class_definition" | "function_definition")
-        ),
-        _ => false,
-    }
-}
-
-/// Flushes the open standalone-comment run into `regions`, if any.
-fn close_run(run: &mut Option<DocRegion>, regions: &mut Vec<DocRegion>) {
-    if let Some(region) = run.take() {
-        regions.push(region);
-    }
-}
-
 /// The body's first non-comment named child: its first statement.
 ///
 /// Comments are not statements, so leading comment rows never displace
@@ -332,6 +325,13 @@ fn first_statement(body: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>>
     let mut cursor = body.walk();
     body.named_children(&mut cursor)
         .find(|child| child.kind() != "comment")
+}
+
+/// Flushes the open standalone-comment run into `regions`, if any.
+fn close_run(run: &mut Option<DocRegion>, regions: &mut Vec<DocRegion>) {
+    if let Some(region) = run.take() {
+        regions.push(region);
+    }
 }
 
 #[cfg(test)]

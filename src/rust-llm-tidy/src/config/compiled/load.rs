@@ -182,62 +182,6 @@ pub(crate) fn compile(yaml: &str, files: &[(&str, &str)]) -> CompiledConfig {
     load_and_compile(&cfg_path).expect("config should compile")
 }
 
-/// Expand `pattern` joined with `config_dir` via `glob::glob()` and require
-/// at least one match.
-///
-/// Descends only the pattern's prefix subtree, so cost scales with the
-/// number/depth of patterns, not repo size.
-fn check_pattern_matches(config_dir: &Path, pattern: &str) -> anyhow::Result<()> {
-    let full = config_dir.join(pattern);
-    let full_str = full.to_string_lossy().into_owned();
-    let mut matches = fs_glob(&full_str)
-        .map_err(|e| anyhow!("invalid glob pattern `{pattern}`: {e}"))?
-        .filter_map(Result::ok);
-    if matches.next().is_none() {
-        bail!(
-            "config pattern `{pattern}` matched no files under {}",
-            config_dir.display()
-        );
-    }
-    Ok(())
-}
-
-/// Validate each group's rule names against `valid` and compile its path
-/// patterns into one `CompiledRuleGroup`.
-///
-/// `section` names the config key the groups came from (`include.rules` or
-/// `exclude.rules`) in the unknown-rule error. An empty/missing `paths` in a
-/// group is treated as `["**"]`.
-fn compile_rule_groups(
-    groups: &[RuleGroup],
-    valid: &[&'static str],
-    config_dir: &Path,
-    section: &str,
-) -> anyhow::Result<Vec<CompiledRuleGroup>> {
-    let mut compiled: Vec<CompiledRuleGroup> = Vec::with_capacity(groups.len());
-    for rule in groups {
-        for r in &rule.rules {
-            if !valid.contains(&r.as_str()) {
-                bail!(
-                    "unknown rule `{r}` in {section}; valid rules: {}",
-                    valid.join(", ")
-                );
-            }
-        }
-        let paths = if rule.paths.is_empty() {
-            vec!["**".to_string()]
-        } else {
-            rule.paths.clone()
-        };
-        let set = compile_glob_set(&paths, config_dir)?;
-        compiled.push(CompiledRuleGroup {
-            set,
-            rules: rule.rules.clone(),
-        });
-    }
-    Ok(compiled)
-}
-
 /// Read and parse the YAML config at `path`, returning it with the
 /// canonicalized config directory its patterns resolve against.
 ///
@@ -315,6 +259,42 @@ fn validate_thresholds(config: &Config) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Validate each group's rule names against `valid` and compile its path
+/// patterns into one `CompiledRuleGroup`.
+///
+/// `section` names the config key the groups came from (`include.rules` or
+/// `exclude.rules`) in the unknown-rule error. An empty/missing `paths` in a
+/// group is treated as `["**"]`.
+fn compile_rule_groups(
+    groups: &[RuleGroup],
+    valid: &[&'static str],
+    config_dir: &Path,
+    section: &str,
+) -> anyhow::Result<Vec<CompiledRuleGroup>> {
+    let mut compiled: Vec<CompiledRuleGroup> = Vec::with_capacity(groups.len());
+    for rule in groups {
+        for r in &rule.rules {
+            if !valid.contains(&r.as_str()) {
+                bail!(
+                    "unknown rule `{r}` in {section}; valid rules: {}",
+                    valid.join(", ")
+                );
+            }
+        }
+        let paths = if rule.paths.is_empty() {
+            vec!["**".to_string()]
+        } else {
+            rule.paths.clone()
+        };
+        let set = compile_glob_set(&paths, config_dir)?;
+        compiled.push(CompiledRuleGroup {
+            set,
+            rules: rule.rules.clone(),
+        });
+    }
+    Ok(compiled)
+}
+
 /// Build a `GlobSet` from `patterns`, each compiled with `literal_separator(true)`.
 fn compile_glob_set(patterns: &[String], _config_dir: &Path) -> anyhow::Result<GlobSet> {
     let mut builder = GlobSet::builder();
@@ -328,6 +308,26 @@ fn compile_glob_set(patterns: &[String], _config_dir: &Path) -> anyhow::Result<G
     builder
         .build()
         .map_err(|e| anyhow!("failed to build glob set: {e}"))
+}
+
+/// Expand `pattern` joined with `config_dir` via `glob::glob()` and require
+/// at least one match.
+///
+/// Descends only the pattern's prefix subtree, so cost scales with the
+/// number/depth of patterns, not repo size.
+fn check_pattern_matches(config_dir: &Path, pattern: &str) -> anyhow::Result<()> {
+    let full = config_dir.join(pattern);
+    let full_str = full.to_string_lossy().into_owned();
+    let mut matches = fs_glob(&full_str)
+        .map_err(|e| anyhow!("invalid glob pattern `{pattern}`: {e}"))?
+        .filter_map(Result::ok);
+    if matches.next().is_none() {
+        bail!(
+            "config pattern `{pattern}` matched no files under {}",
+            config_dir.display()
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]

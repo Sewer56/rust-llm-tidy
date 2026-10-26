@@ -22,20 +22,6 @@ pub(super) fn checked(command: &mut Command) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-/// Decode a NUL-delimited Git path without lossy conversion on Unix.
-pub(super) fn path(bytes: &[u8]) -> Result<std::path::PathBuf> {
-    #[cfg(unix)]
-    {
-        Ok(std::ffi::OsStr::from_bytes(bytes).into())
-    }
-    #[cfg(not(unix))]
-    {
-        Ok(core::str::from_utf8(bytes)
-            .context("Git path is not representable as UTF-8 on this platform")?
-            .into())
-    }
-}
-
 /// Capture bounded stdout; kill and reap children before reporting read failures.
 ///
 /// Stderr is discarded rather than retained without a bound. Callers report the
@@ -97,4 +83,18 @@ pub(super) fn command(root: &Path) -> Command {
     }
 
     command
+}
+
+/// Decode a NUL-delimited Git path without lossy conversion on Unix.
+pub(super) fn path(bytes: &[u8]) -> Result<std::path::PathBuf> {
+    #[cfg(unix)]
+    {
+        Ok(std::ffi::OsStr::from_bytes(bytes).into())
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(core::str::from_utf8(bytes)
+            .context("Git path is not representable as UTF-8 on this platform")?
+            .into())
+    }
 }

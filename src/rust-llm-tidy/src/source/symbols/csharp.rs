@@ -62,6 +62,14 @@ pub(super) fn collect(container: Node<'_>, parent: &str, source: &str, out: &mut
     }
 }
 
+/// Use the same path separator for block and file-scoped namespace syntax.
+fn namespace_name(node: Node<'_>, source: &str) -> String {
+    source[node.byte_range()]
+        .split_whitespace()
+        .collect::<String>()
+        .replace('.', "::")
+}
+
 /// Give every field name the entire declaration, including attributes and docs.
 fn collect_fields(node: Node<'_>, parent: &str, source: &str, out: &mut Vec<Declaration>) {
     let mut cursor = node.walk();
@@ -85,12 +93,4 @@ fn collect_fields(node: Node<'_>, parent: &str, source: &str, out: &mut Vec<Decl
             ));
         }
     }
-}
-
-/// Use the same path separator for block and file-scoped namespace syntax.
-fn namespace_name(node: Node<'_>, source: &str) -> String {
-    source[node.byte_range()]
-        .split_whitespace()
-        .collect::<String>()
-        .replace('.', "::")
 }

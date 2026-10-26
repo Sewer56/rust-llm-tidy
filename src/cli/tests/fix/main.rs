@@ -39,6 +39,11 @@ fn fixture_dir() -> PathBuf {
     manifest_dir().join("tests").join("fixtures").join("fix")
 }
 
+/// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.
+fn manifest_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
 /// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
 fn run_command(args: &[&str], path: &Path) -> Output {
     let directory = tempfile::tempdir().unwrap();
@@ -63,9 +68,4 @@ fn temp_file(ext: &str) -> PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-fix-{}-{}.{}", pid, seq, ext))
-}
-
-/// Return `CARGO_MANIFEST_DIR` for resolving fixture paths.
-fn manifest_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }

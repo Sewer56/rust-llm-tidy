@@ -401,6 +401,24 @@ pub(super) fn resolve_mod_children(
     out
 }
 
+/// Capture a `visibility_modifier` node's text verbatim from `source`.
+///
+/// Captured only when restricted: `pub(crate)`/`pub(super)`/`pub(in path)`.
+/// Returns `None` for bare `pub` and private (no visibility).
+///
+/// Uses byte-exact span slicing mirroring `walk()`. tree-sitter yields byte
+/// offsets directly, so no line/column conversion is needed (the prior
+/// `to_token_stream()`+strip would corrupt `pub(in crate::a)` ->
+/// `pub(incrate::a)`).
+fn vis_text_of(vis: Option<Node>, source: &str) -> Option<String> {
+    let vis = vis?;
+    if vis.named_child_count() >= 1 {
+        Some(source[vis.start_byte()..vis.end_byte()].to_string())
+    } else {
+        None
+    }
+}
+
 /// Extract the string value of a `#[path = "..."]` attribute from a run of
 /// preceding `attribute_item` nodes. Returns the verbatim content (no quotes).
 fn find_path_attr(attrs: &[Node], source: &str) -> Option<String> {
@@ -469,24 +487,6 @@ fn resolve_mod_file(
         return Some(modrs);
     }
     None
-}
-
-/// Capture a `visibility_modifier` node's text verbatim from `source`.
-///
-/// Captured only when restricted: `pub(crate)`/`pub(super)`/`pub(in path)`.
-/// Returns `None` for bare `pub` and private (no visibility).
-///
-/// Uses byte-exact span slicing mirroring `walk()`. tree-sitter yields byte
-/// offsets directly, so no line/column conversion is needed (the prior
-/// `to_token_stream()`+strip would corrupt `pub(in crate::a)` ->
-/// `pub(incrate::a)`).
-fn vis_text_of(vis: Option<Node>, source: &str) -> Option<String> {
-    let vis = vis?;
-    if vis.named_child_count() >= 1 {
-        Some(source[vis.start_byte()..vis.end_byte()].to_string())
-    } else {
-        None
-    }
 }
 
 #[cfg(test)]

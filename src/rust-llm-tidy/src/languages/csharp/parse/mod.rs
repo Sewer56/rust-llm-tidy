@@ -349,10 +349,67 @@ fn build_item(
     );
 }
 
+/// Byte offset where `node`'s `///` doc run starts, if it has one.
+fn doc_run_start(node: tree_sitter::Node<'_>, source: &str) -> Option<usize> {
+    doc_run_node(node, source).map(|run| run.start_byte())
+}
+
+/// The first `///` comment node of `node`'s doc run, if it has one.
+///
+/// A non-`///` comment ends the walk without discarding the run collected
+/// so far. The run stays attached to the item. The plain comment above it
+/// stays in the preamble (or in the previous item's span).
+fn doc_run_node<'t>(node: tree_sitter::Node<'t>, source: &str) -> Option<tree_sitter::Node<'t>> {
+    let mut current = node;
+    while let Some(comment) = adjacent_comment_above(current, source) {
+        let text = comment.utf8_text(source.as_bytes()).ok()?;
+        if !text.starts_with("///") {
+            break;
+        }
+        current = comment;
+    }
+    (current != node).then_some(current)
+}
+
+/// The comment sibling sitting on the line immediately above `node`, if any.
+fn adjacent_comment_above<'t>(
+    node: tree_sitter::Node<'t>,
+    source: &str,
+) -> Option<tree_sitter::Node<'t>> {
+    let prev = node.prev_named_sibling()?;
+    if prev.kind() != "comment" {
+        return None;
+    }
+    let gap = &source[prev.end_byte()..node.start_byte()];
+    is_adjacent_line(gap).then_some(prev)
+}
+
+/// Item kind of a top-level `compilation_unit` child.
+fn top_level_kind(kind: &str) -> ItemKind {
+    match kind {
+        "using_directive" => ItemKind::Using,
+        "namespace_declaration" | "file_scoped_namespace_declaration" => ItemKind::Namespace,
+        "class_declaration" => ItemKind::Class,
+        "struct_declaration" => ItemKind::Struct,
+        "interface_declaration" => ItemKind::Interface,
+        "record_declaration" => ItemKind::Record,
+        "enum_declaration" => ItemKind::Enum,
+        "delegate_declaration" => ItemKind::Delegate,
+        _ => ItemKind::Other,
+    }
+}
+
 /// The `declaration_list` body of a namespace or type declaration, if any.
 fn body_list(node: tree_sitter::Node<'_>) -> Option<tree_sitter::Node<'_>> {
     node.child_by_field_name("body")
         .filter(|body| body.kind() == "declaration_list")
+}
+
+/// True when `list` holds any preprocessor directive node.
+fn has_preproc_child(list: tree_sitter::Node<'_>) -> bool {
+    let mut cursor = list.walk();
+    list.children(&mut cursor)
+        .any(|c| c.is_named() && c.kind().starts_with("preproc"))
 }
 
 /// Build the member list of one `declaration_list` body, tiling spans
@@ -442,68 +499,11 @@ fn build_members(
     members
 }
 
-/// Byte offset where `node`'s `///` doc run starts, if it has one.
-fn doc_run_start(node: tree_sitter::Node<'_>, source: &str) -> Option<usize> {
-    doc_run_node(node, source).map(|run| run.start_byte())
-}
-
-/// True when `list` holds any preprocessor directive node.
-fn has_preproc_child(list: tree_sitter::Node<'_>) -> bool {
-    let mut cursor = list.walk();
-    list.children(&mut cursor)
-        .any(|c| c.is_named() && c.kind().starts_with("preproc"))
-}
-
-/// Item kind of a top-level `compilation_unit` child.
-fn top_level_kind(kind: &str) -> ItemKind {
-    match kind {
-        "using_directive" => ItemKind::Using,
-        "namespace_declaration" | "file_scoped_namespace_declaration" => ItemKind::Namespace,
-        "class_declaration" => ItemKind::Class,
-        "struct_declaration" => ItemKind::Struct,
-        "interface_declaration" => ItemKind::Interface,
-        "record_declaration" => ItemKind::Record,
-        "enum_declaration" => ItemKind::Enum,
-        "delegate_declaration" => ItemKind::Delegate,
-        _ => ItemKind::Other,
-    }
-}
-
-/// The first `///` comment node of `node`'s doc run, if it has one.
-///
-/// A non-`///` comment ends the walk without discarding the run collected
-/// so far. The run stays attached to the item. The plain comment above it
-/// stays in the preamble (or in the previous item's span).
-fn doc_run_node<'t>(node: tree_sitter::Node<'t>, source: &str) -> Option<tree_sitter::Node<'t>> {
-    let mut current = node;
-    while let Some(comment) = adjacent_comment_above(current, source) {
-        let text = comment.utf8_text(source.as_bytes()).ok()?;
-        if !text.starts_with("///") {
-            break;
-        }
-        current = comment;
-    }
-    (current != node).then_some(current)
-}
-
 /// The preprocessor region id of `node`'s declaration line.
 fn region_of(regions: Option<&Regions>, node: tree_sitter::Node<'_>) -> u32 {
     regions
         .map(|r| r.id_of_line(node.start_position().row + 1))
         .unwrap_or(0)
-}
-
-/// The comment sibling sitting on the line immediately above `node`, if any.
-fn adjacent_comment_above<'t>(
-    node: tree_sitter::Node<'t>,
-    source: &str,
-) -> Option<tree_sitter::Node<'t>> {
-    let prev = node.prev_named_sibling()?;
-    if prev.kind() != "comment" {
-        return None;
-    }
-    let gap = &source[prev.end_byte()..node.start_byte()];
-    is_adjacent_line(gap).then_some(prev)
 }
 
 /// True when `gap` is exactly one line ending plus horizontal whitespace,

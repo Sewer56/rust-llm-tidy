@@ -207,10 +207,18 @@ pub fn fix_fences<'a>(input: &'a str, prefixes: &[&str]) -> FixOutcome<'a> {
     }
 }
 
-/// Return the opposite fence marker character.
+/// Lazily allocate `out` if absent, copying the verbatim prefix
+/// `input[..seg_start]`, then return the mutable buffer.
+///
+/// Until the first changed segment, [`fix_fences`] borrows the input; this
+/// defers the one allocation to the point it is actually needed.
 #[inline]
-fn alternate(marker: char) -> char {
-    if marker == '`' { '~' } else { '`' }
+fn ensure_output<'a>(out: &'a mut Option<String>, input: &str, seg_start: usize) -> &'a mut String {
+    out.get_or_insert_with(|| {
+        let mut s = String::with_capacity(input.len());
+        s.push_str(&input[..seg_start]);
+        s
+    })
 }
 
 /// Rebuild a fence segment: `prefix` + `lead` + `marker * run_len` + `info`
@@ -232,18 +240,10 @@ fn emit_fence(
     output.push_str(term);
 }
 
-/// Lazily allocate `out` if absent, copying the verbatim prefix
-/// `input[..seg_start]`, then return the mutable buffer.
-///
-/// Until the first changed segment, [`fix_fences`] borrows the input; this
-/// defers the one allocation to the point it is actually needed.
+/// Return the opposite fence marker character.
 #[inline]
-fn ensure_output<'a>(out: &'a mut Option<String>, input: &str, seg_start: usize) -> &'a mut String {
-    out.get_or_insert_with(|| {
-        let mut s = String::with_capacity(input.len());
-        s.push_str(&input[..seg_start]);
-        s
-    })
+fn alternate(marker: char) -> char {
+    if marker == '`' { '~' } else { '`' }
 }
 
 #[cfg(test)]

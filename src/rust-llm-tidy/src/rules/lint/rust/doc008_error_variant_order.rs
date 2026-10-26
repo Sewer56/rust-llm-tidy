@@ -118,6 +118,35 @@ pub(super) fn top_level_enums(parsed: &ParseResult) -> Vec<DeclaredEnum<'_>> {
     enums
 }
 
+/// Variants of `enum_name` linked on `line`, in document order.
+///
+/// A participating link is a bracketed `[`Enum::Variant`]` reference
+/// (crate-root prefixes like `[`crate::Enum::Variant`]` allowed) whose
+/// second-to-last `::` segment is `enum_name`. The variant must also be
+/// one of `declared`.
+///
+/// Excluded links:
+///
+/// - foreign qualified paths (`io::Error::V`), even when the enum name
+///   collides;
+/// - bracket contents without a `::` path;
+/// - variant names the enum does not declare (unresolved links).
+fn linked_variants<'a>(
+    line: &'a str,
+    enum_name: &'a str,
+    declared: &'a [&str],
+) -> impl Iterator<Item = &'a str> + 'a {
+    line.split(']').filter_map(move |chunk| {
+        let inner = chunk.rsplit_once('[')?.1;
+        link_variant(inner, enum_name, declared)
+    })
+}
+
+/// True when `variants` never decreases under Rust `str` ordering.
+fn is_non_decreasing(variants: &[&str]) -> bool {
+    variants.windows(2).all(|pair| pair[0] <= pair[1])
+}
+
 /// Declared variant names of a top-level `enum_item`, in declaration order.
 ///
 /// Attributes inside the variant list (e.g. `#[doc(hidden)]` on a variant)
@@ -143,35 +172,6 @@ fn declared_variants<'a>(enum_item: Node<'_>, bytes: &'a [u8]) -> Vec<&'a str> {
         }
     }
     variants
-}
-
-/// True when `variants` never decreases under Rust `str` ordering.
-fn is_non_decreasing(variants: &[&str]) -> bool {
-    variants.windows(2).all(|pair| pair[0] <= pair[1])
-}
-
-/// Variants of `enum_name` linked on `line`, in document order.
-///
-/// A participating link is a bracketed `[`Enum::Variant`]` reference
-/// (crate-root prefixes like `[`crate::Enum::Variant`]` allowed) whose
-/// second-to-last `::` segment is `enum_name`. The variant must also be
-/// one of `declared`.
-///
-/// Excluded links:
-///
-/// - foreign qualified paths (`io::Error::V`), even when the enum name
-///   collides;
-/// - bracket contents without a `::` path;
-/// - variant names the enum does not declare (unresolved links).
-fn linked_variants<'a>(
-    line: &'a str,
-    enum_name: &'a str,
-    declared: &'a [&str],
-) -> impl Iterator<Item = &'a str> + 'a {
-    line.split(']').filter_map(move |chunk| {
-        let inner = chunk.rsplit_once('[')?.1;
-        link_variant(inner, enum_name, declared)
-    })
 }
 
 /// The variant named by link content `inner` when it targets `enum_name`

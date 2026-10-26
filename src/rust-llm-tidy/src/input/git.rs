@@ -70,6 +70,11 @@ pub fn changed_files(
     Ok(paths)
 }
 
+fn git_stdout(args: &[&str]) -> anyhow::Result<String> {
+    git_stdout_opt(None, args)?
+        .ok_or_else(|| anyhow!("`git {}` produced no output", args.join(" ")))
+}
+
 fn changed_lines(root: &Path) -> anyhow::Result<Vec<String>> {
     // Run at the repo root so discovery is repo-wide, not scoped to the
     // invocation directory. `git ls-files --others` is cwd-scoped, while
@@ -121,11 +126,6 @@ fn changed_lines(root: &Path) -> anyhow::Result<Vec<String>> {
         .unwrap_or_default(),
     ));
     Ok(paths)
-}
-
-fn git_stdout(args: &[&str]) -> anyhow::Result<String> {
-    git_stdout_opt(None, args)?
-        .ok_or_else(|| anyhow!("`git {}` produced no output", args.join(" ")))
 }
 
 fn matches_ext(p: &Path, exts: &[&str]) -> bool {

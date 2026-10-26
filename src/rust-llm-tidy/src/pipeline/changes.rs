@@ -256,12 +256,12 @@ fn clean_name(token: &str) -> String {
         .to_string()
 }
 
-fn is_kind(w: &str) -> bool {
-    kind_for(w).is_some()
-}
-
 fn is_modifier(w: &str) -> bool {
     matches!(w, "async" | "unsafe" | "default" | "extern")
+}
+
+fn is_kind(w: &str) -> bool {
+    kind_for(w).is_some()
 }
 
 fn kind_for(w: &str) -> Option<ItemKind> {

@@ -95,43 +95,6 @@ pub(crate) fn analyze(index: &NamespaceRefIndex) -> SoleCallerFindings {
     SoleCallerFindings::new(by_file)
 }
 
-/// Build the MOD004 hint for one qualifying namespace.
-fn diagnostic(
-    namespace: &[&str],
-    caller: &[&str],
-    first: &NamespaceEdge,
-    count: usize,
-) -> Diagnostic {
-    let last = namespace[namespace.len() - 1];
-    let name = (*last).to_string();
-    let namespace_path = namespace.join(".");
-    let caller_path = caller.join(".");
-    let nested = format!("{caller_path}.{last}");
-    let references = if count == 1 {
-        "1 reference".to_string()
-    } else {
-        format!("{count} references")
-    };
-    Diagnostic {
-        severity: Severity::Hint,
-        code: CODE_MOD004,
-        title: Some("sole-caller namespace placement".into()),
-        message: format!(
-            "namespace `{namespace_path}` is referenced only by `{caller_path}` \
-             ({references}).\n\
-             Why:\n\
-             - Nesting code under its caller makes call flow easier to follow.\n\
-             Suggestions:\n\
-             - Consider nesting `{namespace_path}` as `{nested}`, with folders to match.\n\
-             Update references; preserve behavior and public APIs.\n\
-             - Keep the current layout if it better supports reuse or readability."
-        ),
-        line: first.line,
-        item_kind: "namespace".to_string(),
-        item_name: Some(name),
-    }
-}
-
 /// The sole external caller of `namespace`, if there is exactly one.
 ///
 /// The caller unit is the referencing namespace truncated to
@@ -206,6 +169,43 @@ fn sole_external_referencer_is(
     }
     let namespace_unit: Vec<&str> = namespace.iter().take(caller.len()).copied().collect();
     referencer.is_some_and(|seen| seen == namespace_unit)
+}
+
+/// Build the MOD004 hint for one qualifying namespace.
+fn diagnostic(
+    namespace: &[&str],
+    caller: &[&str],
+    first: &NamespaceEdge,
+    count: usize,
+) -> Diagnostic {
+    let last = namespace[namespace.len() - 1];
+    let name = (*last).to_string();
+    let namespace_path = namespace.join(".");
+    let caller_path = caller.join(".");
+    let nested = format!("{caller_path}.{last}");
+    let references = if count == 1 {
+        "1 reference".to_string()
+    } else {
+        format!("{count} references")
+    };
+    Diagnostic {
+        severity: Severity::Hint,
+        code: CODE_MOD004,
+        title: Some("sole-caller namespace placement".into()),
+        message: format!(
+            "namespace `{namespace_path}` is referenced only by `{caller_path}` \
+             ({references}).\n\
+             Why:\n\
+             - Nesting code under its caller makes call flow easier to follow.\n\
+             Suggestions:\n\
+             - Consider nesting `{namespace_path}` as `{nested}`, with folders to match.\n\
+             Update references; preserve behavior and public APIs.\n\
+             - Keep the current layout if it better supports reuse or readability."
+        ),
+        line: first.line,
+        item_kind: "namespace".to_string(),
+        item_name: Some(name),
+    }
 }
 
 /// True when `name` is `namespace` or nested beneath it.

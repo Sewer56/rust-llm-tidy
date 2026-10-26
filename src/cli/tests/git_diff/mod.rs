@@ -225,11 +225,6 @@ fn test002_should_gate_on_the_declaration_line(
     cleanup(&repo);
 }
 
-/// Remove a throwaway temp dir created by `temp_dir`/`init_repo`.
-fn cleanup(dir: &Path) {
-    let _ = fs::remove_dir_all(dir);
-}
-
 // -- Helpers (mirrors integration.rs) --------------------------------
 //
 // Note: `temp_dir` and `TEST_COUNTER` are still duplicated from
@@ -253,15 +248,6 @@ fn init_repo() -> Option<PathBuf> {
     Some(repo)
 }
 
-/// Run the binary with `args` in `current_dir`, returning the raw `Output`.
-fn run(current_dir: &Path, args: &[&str]) -> Output {
-    Command::new(binary())
-        .current_dir(current_dir)
-        .args(args)
-        .output()
-        .expect("failed to spawn")
-}
-
 fn git(repo: &Path, args: &[&str]) -> String {
     let out = Command::new("git")
         .current_dir(repo)
@@ -276,6 +262,20 @@ fn git(repo: &Path, args: &[&str]) -> String {
         );
     }
     String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// Run the binary with `args` in `current_dir`, returning the raw `Output`.
+fn run(current_dir: &Path, args: &[&str]) -> Output {
+    Command::new(binary())
+        .current_dir(current_dir)
+        .args(args)
+        .output()
+        .expect("failed to spawn")
+}
+
+/// Remove a throwaway temp dir created by `temp_dir`/`init_repo`.
+fn cleanup(dir: &Path) {
+    let _ = fs::remove_dir_all(dir);
 }
 
 fn git_available() -> bool {

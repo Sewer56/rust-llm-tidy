@@ -176,6 +176,17 @@ pub(super) fn returns_result(body: Node<'_>, source: &str) -> bool {
     last_type_segment(rt, source) == Some("Result")
 }
 
+/// Root path node of a type node, unwrapping generic wrappers
+/// (`Vec<T>` -> `T`) so qualification can be inspected.
+fn type_path_root<'a>(node: Node<'a>) -> Node<'a> {
+    match node.kind() {
+        "generic_type" => node
+            .child_by_field_name("type")
+            .map_or(node, type_path_root),
+        _ => node,
+    }
+}
+
 /// True when a scoped type's prefix is exactly one crate-root segment
 /// (`crate::Error`), so the final segment can still name a same-file
 /// top-level enum.
@@ -248,17 +259,6 @@ fn result_ok_payload_is_unit(rt: Node<'_>, source: &str) -> bool {
     args.named_child(0).is_some_and(|arg| {
         arg.kind() == "unit_type" || arg.utf8_text(source.as_bytes()) == Ok("()")
     })
-}
-
-/// Root path node of a type node, unwrapping generic wrappers
-/// (`Vec<T>` -> `T`) so qualification can be inspected.
-fn type_path_root<'a>(node: Node<'a>) -> Node<'a> {
-    match node.kind() {
-        "generic_type" => node
-            .child_by_field_name("type")
-            .map_or(node, type_path_root),
-        _ => node,
-    }
 }
 
 /// True for path-qualified type nodes (`std::io::Error`).

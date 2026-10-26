@@ -174,6 +174,14 @@ fn fixes_should_rewrite_comments_without_changing_adjacent_literals(
     );
 }
 
+/// Render fixture text as comment lines without changing its payload bytes.
+fn comment(prose: &str, prefix: &str) -> String {
+    prose
+        .split_inclusive('\n')
+        .map(|line| format!("{prefix}{line}"))
+        .collect()
+}
+
 #[rstest]
 #[case::marker("/// ", "")]
 #[case::indentation("  //! ", "")]
@@ -291,12 +299,4 @@ fn assert_equivalent(
         assert!(!buffer.changes.is_empty());
     }
     buffer.changes
-}
-
-/// Render fixture text as comment lines without changing its payload bytes.
-fn comment(prose: &str, prefix: &str) -> String {
-    prose
-        .split_inclusive('\n')
-        .map(|line| format!("{prefix}{line}"))
-        .collect()
 }

@@ -54,22 +54,6 @@ pub(super) fn check(decl: &Declaration<'_>) -> Vec<Diagnostic> {
     Vec::new()
 }
 
-/// The standard tag name for a rank.
-fn canonical_tag(rank: u8) -> &'static str {
-    match rank {
-        1 => "inheritdoc",
-        2 => "summary",
-        3 => "typeparam",
-        4 => "param",
-        5 => "returns",
-        6 => "value",
-        7 => "exception",
-        8 => "remarks",
-        9 => "example",
-        _ => "seealso",
-    }
-}
-
 /// The standard rank of the opening XML doc tag starting `line`, or
 /// `None` when the line starts with no recognized tag.
 ///
@@ -95,6 +79,22 @@ fn tag_rank(line: &str) -> Option<u8> {
         "example" => Some(9),
         "seealso" => Some(10),
         _ => None,
+    }
+}
+
+/// The standard tag name for a rank.
+fn canonical_tag(rank: u8) -> &'static str {
+    match rank {
+        1 => "inheritdoc",
+        2 => "summary",
+        3 => "typeparam",
+        4 => "param",
+        5 => "returns",
+        6 => "value",
+        7 => "exception",
+        8 => "remarks",
+        9 => "example",
+        _ => "seealso",
     }
 }
 

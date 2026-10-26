@@ -327,6 +327,12 @@ fn collect_edges(
     }
 }
 
+/// True when `node` is a gate-kind item preceded by a `#[cfg(test)]`
+/// attribute run (attributes are preceding siblings in the grammar).
+fn is_test_gated(node: Node, source: &str) -> bool {
+    is_gate_kind(node.kind()) && has_cfg_test_attribute(node, source)
+}
+
 /// True when `node` is the outermost link of a scoped path chain, so its
 /// text carries the whole path (the parent covers inner links).
 fn is_chain_head(node: Node) -> bool {
@@ -337,12 +343,6 @@ fn is_chain_head(node: Node) -> bool {
                 "scoped_identifier" | "scoped_type_identifier"
             )
         })
-}
-
-/// True when `node` is a gate-kind item preceded by a `#[cfg(test)]`
-/// attribute run (attributes are preceding siblings in the grammar).
-fn is_test_gated(node: Node, source: &str) -> bool {
-    is_gate_kind(node.kind()) && has_cfg_test_attribute(node, source)
 }
 
 /// Resolve one path's segments against the referencing module path.
@@ -411,6 +411,21 @@ fn resolve_target(
     target
 }
 
+/// Item kinds whose subtree a preceding `#[cfg(test)]` gate covers.
+fn is_gate_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "mod_item"
+            | "use_declaration"
+            | "function_item"
+            | "static_item"
+            | "const_item"
+            | "struct_item"
+            | "enum_item"
+            | "impl_item"
+    )
+}
+
 /// Scan `node`'s contiguous preceding `attribute_item` run for
 /// `#[cfg(test)]`; comments do not break the run.
 ///
@@ -437,21 +452,6 @@ fn has_cfg_test_attribute(node: Node, source: &str) -> bool {
         prev = item.prev_named_sibling();
     }
     false
-}
-
-/// Item kinds whose subtree a preceding `#[cfg(test)]` gate covers.
-fn is_gate_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        "mod_item"
-            | "use_declaration"
-            | "function_item"
-            | "static_item"
-            | "const_item"
-            | "struct_item"
-            | "enum_item"
-            | "impl_item"
-    )
 }
 
 /// True when `attr`'s trimmed text is exactly `cfg(test)`.

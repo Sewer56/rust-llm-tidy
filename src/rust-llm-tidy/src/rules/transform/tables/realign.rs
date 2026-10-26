@@ -148,6 +148,104 @@ pub(crate) fn realign_table(lines: &[&str]) -> Option<Vec<String>> {
     None
 }
 
+/// Parse the delimiter row into per-column alignments.
+fn parse_delimiter_row(line: &str, ncols: usize) -> Option<Vec<Alignment>> {
+    let cells = split_cells(line);
+    if cells.len() != ncols {
+        return None;
+    }
+    cells.iter().map(|c| parse_delimiter(c)).collect()
+}
+
+/// Split a single table line into its cells.
+///
+/// Splits on unescaped `|`, trims surrounding whitespace from each cell, and
+/// drops the empty cells produced by the outer pipes. A few examples:
+///
+/// ```text
+/// "| a | b |"   -> ["a", "b"]
+/// "|a|b|"       -> ["a", "b"]
+/// "  |  a  |  " -> ["a"]
+/// "no pipes"    -> ["no pipes"]
+/// r"| a\|b | c |" -> ["a\\|b", "c"]   // escaped pipe stays in the cell
+/// ```
+///
+/// Returns borrowed `&str` slices into `line`, so parsing a table allocates
+/// only the single outer `Vec` (one pointer per cell) - no per-cell `String`.
+fn split_cells(line: &str) -> Vec<&str> {
+    let mut cells = Vec::new();
+    split_cells_into(line, &mut cells);
+    drop_border_empties(&mut cells);
+    cells
+}
+
+/// Append every pipe-delimited cell of `line` to `out`, keeping the border
+/// empties from leading/trailing pipes. Borrows from `line`; allocates
+/// nothing itself.
+///
+/// Each cell is trimmed and escaped pipes (`\|`) stay inside their cell rather
+/// than acting as a separator. For input `| a | b\|c |`:
+///
+/// ```text
+/// ["", "a", "b\\|c", ""]
+/// ```
+///
+/// The leading/trailing empties come from the outer pipes; pass the result to
+/// [`drop_border_empties`] to strip them, as [`split_cells`] does.
+fn split_cells_into<'a>(line: &'a str, out: &mut Vec<&'a str>) {
+    // `|` (0x7C) and `\` (0x5C) are ASCII, so they never appear inside a
+    // multibyte UTF-8 sequence.
+    //
+    // Iterating bytes is therefore sound. It also
+    // lets us slice at every pipe without decoding characters.
+    let bytes = line.as_bytes();
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'\\' {
+            // Skip the backslash and the character it escapes (e.g. `\|`),
+            // mirroring the original char-pair consumption without allocating.
+            i += 2;
+            continue;
+        }
+        if b == b'|' {
+            // SAFETY: `i` sits on an ASCII `|`, which is always a char boundary.
+            out.push(line[start..i].trim());
+            start = i + 1;
+        }
+        i += 1;
+    }
+    out.push(line[start..].trim());
+}
+
+/// Drop the empty cells produced by leading/trailing border pipes, if present.
+///
+/// For a row like `| a | b |`, [`split_cells_into`] leaves the border pipes as
+/// empty cells at both ends:
+///
+/// ```text
+/// ["", "a", "b", ""]
+/// ```
+///
+/// Border cells popped:
+///
+/// ```text
+/// ["a", "b"]
+/// ```
+///
+/// Rows with no outer pipes (`a | b`) have no border empties and are left
+/// unchanged. At most one cell is dropped per end; inner empties (e.g. the
+/// gap in `a | | c`) stay put.
+fn drop_border_empties(cells: &mut Vec<&str>) {
+    if cells.first().is_some_and(|c| c.is_empty()) {
+        cells.remove(0);
+    }
+    if cells.last().is_some_and(|c| c.is_empty()) {
+        cells.pop();
+    }
+}
+
 /// Per-column maximum character count across header and all body rows.
 fn compute_widths(header: &[&str], body: &[&str], ncols: usize) -> Vec<usize> {
     // `widths[col_index]` is the target width every cell in column `col_index`
@@ -201,13 +299,16 @@ fn emit_all(
     out
 }
 
-/// Parse the delimiter row into per-column alignments.
-fn parse_delimiter_row(line: &str, ncols: usize) -> Option<Vec<Alignment>> {
-    let cells = split_cells(line);
-    if cells.len() != ncols {
-        return None;
+/// Append one realigned data row (`| a | b |`) to `out`.
+fn build_row_into(cells: &[&str], widths: &[usize], alignments: &[Alignment], out: &mut String) {
+    out.push_str("| ");
+    let mut sep = "";
+    for ((&cell, &w), &a) in cells.iter().zip(widths).zip(alignments) {
+        out.push_str(sep);
+        write_padded(cell, w, a, out);
+        sep = " | ";
     }
-    cells.iter().map(|c| parse_delimiter(c)).collect()
+    out.push_str(" |");
 }
 
 /// Append the regenerated delimiter row to `out`.
@@ -217,18 +318,6 @@ fn build_delimiter_into(widths: &[usize], alignments: &[Alignment], out: &mut St
     for (&w, &a) in widths.iter().zip(alignments) {
         out.push_str(sep);
         write_delimiter_cell(w, a, out);
-        sep = " | ";
-    }
-    out.push_str(" |");
-}
-
-/// Append one realigned data row (`| a | b |`) to `out`.
-fn build_row_into(cells: &[&str], widths: &[usize], alignments: &[Alignment], out: &mut String) {
-    out.push_str("| ");
-    let mut sep = "";
-    for ((&cell, &w), &a) in cells.iter().zip(widths).zip(alignments) {
-        out.push_str(sep);
-        write_padded(cell, w, a, out);
         sep = " | ";
     }
     out.push_str(" |");
@@ -262,121 +351,6 @@ fn row_capacity(widths: &[usize]) -> usize {
     // "| " + cells joined with " | " + " |" => 3 chars framing per cell + 1.
     let cells: usize = widths.iter().sum();
     cells + widths.len() * 3 + 1
-}
-
-/// Split a single table line into its cells.
-///
-/// Splits on unescaped `|`, trims surrounding whitespace from each cell, and
-/// drops the empty cells produced by the outer pipes. A few examples:
-///
-/// ```text
-/// "| a | b |"   -> ["a", "b"]
-/// "|a|b|"       -> ["a", "b"]
-/// "  |  a  |  " -> ["a"]
-/// "no pipes"    -> ["no pipes"]
-/// r"| a\|b | c |" -> ["a\\|b", "c"]   // escaped pipe stays in the cell
-/// ```
-///
-/// Returns borrowed `&str` slices into `line`, so parsing a table allocates
-/// only the single outer `Vec` (one pointer per cell) - no per-cell `String`.
-fn split_cells(line: &str) -> Vec<&str> {
-    let mut cells = Vec::new();
-    split_cells_into(line, &mut cells);
-    drop_border_empties(&mut cells);
-    cells
-}
-
-/// Drop the empty cells produced by leading/trailing border pipes, if present.
-///
-/// For a row like `| a | b |`, [`split_cells_into`] leaves the border pipes as
-/// empty cells at both ends:
-///
-/// ```text
-/// ["", "a", "b", ""]
-/// ```
-///
-/// Border cells popped:
-///
-/// ```text
-/// ["a", "b"]
-/// ```
-///
-/// Rows with no outer pipes (`a | b`) have no border empties and are left
-/// unchanged. At most one cell is dropped per end; inner empties (e.g. the
-/// gap in `a | | c`) stay put.
-fn drop_border_empties(cells: &mut Vec<&str>) {
-    if cells.first().is_some_and(|c| c.is_empty()) {
-        cells.remove(0);
-    }
-    if cells.last().is_some_and(|c| c.is_empty()) {
-        cells.pop();
-    }
-}
-
-/// Append every pipe-delimited cell of `line` to `out`, keeping the border
-/// empties from leading/trailing pipes. Borrows from `line`; allocates
-/// nothing itself.
-///
-/// Each cell is trimmed and escaped pipes (`\|`) stay inside their cell rather
-/// than acting as a separator. For input `| a | b\|c |`:
-///
-/// ```text
-/// ["", "a", "b\\|c", ""]
-/// ```
-///
-/// The leading/trailing empties come from the outer pipes; pass the result to
-/// [`drop_border_empties`] to strip them, as [`split_cells`] does.
-fn split_cells_into<'a>(line: &'a str, out: &mut Vec<&'a str>) {
-    // `|` (0x7C) and `\` (0x5C) are ASCII, so they never appear inside a
-    // multibyte UTF-8 sequence.
-    //
-    // Iterating bytes is therefore sound. It also
-    // lets us slice at every pipe without decoding characters.
-    let bytes = line.as_bytes();
-    let mut start = 0usize;
-    let mut i = 0usize;
-    while i < bytes.len() {
-        let b = bytes[i];
-        if b == b'\\' {
-            // Skip the backslash and the character it escapes (e.g. `\|`),
-            // mirroring the original char-pair consumption without allocating.
-            i += 2;
-            continue;
-        }
-        if b == b'|' {
-            // SAFETY: `i` sits on an ASCII `|`, which is always a char boundary.
-            out.push(line[start..i].trim());
-            start = i + 1;
-        }
-        i += 1;
-    }
-    out.push(line[start..].trim());
-}
-
-/// Write a single delimiter cell of visual width `width` into `out`.
-#[inline]
-fn write_delimiter_cell(width: usize, alignment: Alignment, out: &mut String) {
-    let (leading, trailing) = match alignment {
-        Alignment::None => (false, false),
-        Alignment::Left => (true, false),
-        Alignment::Center => (true, true),
-        Alignment::Right => (false, true),
-    };
-    let mut dashes = width;
-    if leading {
-        dashes = dashes.saturating_sub(1);
-    }
-    if trailing {
-        dashes = dashes.saturating_sub(1);
-    }
-    let dashes = dashes.max(1);
-    if leading {
-        out.push(':');
-    }
-    out.extend(repeat_n('-', dashes));
-    if trailing {
-        out.push(':');
-    }
 }
 
 /// Write a single data cell, padded to `width` per `alignment`, into `out`.
@@ -420,6 +394,32 @@ fn char_width(s: &str) -> usize {
         s.len()
     } else {
         s.chars().count()
+    }
+}
+
+/// Write a single delimiter cell of visual width `width` into `out`.
+#[inline]
+fn write_delimiter_cell(width: usize, alignment: Alignment, out: &mut String) {
+    let (leading, trailing) = match alignment {
+        Alignment::None => (false, false),
+        Alignment::Left => (true, false),
+        Alignment::Center => (true, true),
+        Alignment::Right => (false, true),
+    };
+    let mut dashes = width;
+    if leading {
+        dashes = dashes.saturating_sub(1);
+    }
+    if trailing {
+        dashes = dashes.saturating_sub(1);
+    }
+    let dashes = dashes.max(1);
+    if leading {
+        out.push(':');
+    }
+    out.extend(repeat_n('-', dashes));
+    if trailing {
+        out.push(':');
     }
 }
 

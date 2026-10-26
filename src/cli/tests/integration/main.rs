@@ -77,6 +77,17 @@ fn reorder_in_place(path: &Path, ext: &str) -> String {
     result
 }
 
+/// Create a numbered temporary file path with the given extension.
+///
+/// Fixture copies use the extension to select the language (`.cs`);
+/// case-sensitivity tests need `.RS`/`.MD`/`.TXT` (the local `temp_file`
+/// is fixed to `.rs`).
+fn temp_file_ext(ext: &str) -> PathBuf {
+    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = process::id();
+    std::env::temp_dir().join(format!("rust-llm-tidy-ext-{}-{}.{}", pid, seq, ext))
+}
+
 /// Run rust-llm-tidy on `content` (written to a tempfile) with optional
 /// `--dry-run`.
 /// Returns (stdout, stderr, exit_code).
@@ -143,6 +154,17 @@ fn run_dry_run(path: &Path) -> (String, String, i32) {
     )
 }
 
+/// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
+fn run_command(args: &[&str], path: &Path) -> Output {
+    let mut cmd = Command::new(binary());
+    // Keep expected error output stable without disabling panic backtraces.
+    cmd.env("RUST_LIB_BACKTRACE", "0");
+    cmd.args(["--no-config"]).args(args).arg(path);
+
+    cmd.output()
+        .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
+}
+
 /// Strip the `path:` label from every stderr line so outputs for the same
 /// content under different file names compare equal.
 fn strip_path_prefix(stderr: &str, path: &Path) -> String {
@@ -167,26 +189,4 @@ fn temp_file() -> PathBuf {
     let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = process::id();
     std::env::temp_dir().join(format!("rust-llm-tidy-file-{}-{}.rs", pid, seq))
-}
-
-/// Build `rust-llm-tidy <args> <path>` and run it, returning captured output.
-fn run_command(args: &[&str], path: &Path) -> Output {
-    let mut cmd = Command::new(binary());
-    // Keep expected error output stable without disabling panic backtraces.
-    cmd.env("RUST_LIB_BACKTRACE", "0");
-    cmd.args(["--no-config"]).args(args).arg(path);
-
-    cmd.output()
-        .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {}: {e}", path.display()))
-}
-
-/// Create a numbered temporary file path with the given extension.
-///
-/// Fixture copies use the extension to select the language (`.cs`);
-/// case-sensitivity tests need `.RS`/`.MD`/`.TXT` (the local `temp_file`
-/// is fixed to `.rs`).
-fn temp_file_ext(ext: &str) -> PathBuf {
-    let seq = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = process::id();
-    std::env::temp_dir().join(format!("rust-llm-tidy-ext-{}-{}.{}", pid, seq, ext))
 }

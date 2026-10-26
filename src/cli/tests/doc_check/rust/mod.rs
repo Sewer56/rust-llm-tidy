@@ -66,6 +66,22 @@ fn clean_file_no_diagnostics() {
     );
 }
 
+/// Run the selected comma-separated lint codes on a Rust fixture and return
+/// its (stderr, exit_code).
+fn run_rust_fixture(name: &str, codes: &str) -> (String, i32) {
+    let path = rust_fixture_dir().join(name);
+    let args: Vec<_> = codes
+        .split(',')
+        .flat_map(|code| ["--include", code])
+        .collect();
+    let output = run_command(&args, &path);
+
+    (
+        String::from_utf8_lossy(&output.stderr).to_string(),
+        output.status.code().unwrap_or(-1),
+    )
+}
+
 /// The CLI's rendered rs findings equal the Rust backend's lint
 /// composition over the same file.
 ///
@@ -140,20 +156,4 @@ fn rs_diagnostics_match_direct_check_composition() {
             "{name}: CLI rs dispatch must render exactly the backend lint composition"
         );
     }
-}
-
-/// Run the selected comma-separated lint codes on a Rust fixture and return
-/// its (stderr, exit_code).
-fn run_rust_fixture(name: &str, codes: &str) -> (String, i32) {
-    let path = rust_fixture_dir().join(name);
-    let args: Vec<_> = codes
-        .split(',')
-        .flat_map(|code| ["--include", code])
-        .collect();
-    let output = run_command(&args, &path);
-
-    (
-        String::from_utf8_lossy(&output.stderr).to_string(),
-        output.status.code().unwrap_or(-1),
-    )
 }

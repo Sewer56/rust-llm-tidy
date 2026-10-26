@@ -42,6 +42,15 @@ pub(super) fn diagnostics(doc: &Document) -> Vec<Diagnostic> {
     diags
 }
 
+/// Char count of `trimmed` without its trailing URL, when one is present.
+fn measured_length(trimmed: &str) -> usize {
+    let total = trimmed.chars().count();
+    match urls::trailing_range(trimmed) {
+        Some(url) => total - trimmed[url].chars().count(),
+        None => total,
+    }
+}
+
 /// TEXT002 Warning for one over-limit line; `len` is its measured length.
 fn line_length_diagnostic(line: &StrippedLine, len: usize) -> Diagnostic {
     let bullets = [
@@ -65,15 +74,6 @@ fn line_length_diagnostic(line: &StrippedLine, len: usize) -> Diagnostic {
         line: line.number,
         item_kind: "file".to_string(),
         item_name: None,
-    }
-}
-
-/// Char count of `trimmed` without its trailing URL, when one is present.
-fn measured_length(trimmed: &str) -> usize {
-    let total = trimmed.chars().count();
-    match urls::trailing_range(trimmed) {
-        Some(url) => total - trimmed[url].chars().count(),
-        None => total,
     }
 }
 

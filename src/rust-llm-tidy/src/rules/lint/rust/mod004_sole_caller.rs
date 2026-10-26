@@ -132,42 +132,6 @@ pub(crate) fn analyze(index: &RustCrateIndex) -> SoleCallerFindings {
     SoleCallerFindings::new(by_file)
 }
 
-/// Build the MOD004 hint for one qualifying module.
-fn diagnostic(
-    module: &[Box<str>],
-    caller: &[Box<str>],
-    first: &ReferenceEdge,
-    count: usize,
-) -> Diagnostic {
-    let name = module[module.len() - 1].to_string();
-    let module_path = crate_path(module);
-    let caller_path = crate_path(caller);
-    let nested = format!("{caller_path}::{name}");
-    let references = if count == 1 {
-        "1 reference".to_string()
-    } else {
-        format!("{count} references")
-    };
-    Diagnostic {
-        severity: Severity::Hint,
-        code: CODE_MOD004,
-        title: Some("sole-caller module placement".into()),
-        message: format!(
-            "module `{module_path}` is referenced only by `{caller_path}` \
-             ({references}).\n\
-             Why:\n\
-             - Nesting code under its caller makes call flow easier to follow.\n\
-             Suggestions:\n\
-             - Consider moving `{name}` to `{nested}`.\n\
-             Update references; preserve behavior and public APIs.\n\
-             - Keep the current layout if it better supports reuse or readability."
-        ),
-        line: first.line,
-        item_kind: "mod".to_string(),
-        item_name: Some(name),
-    }
-}
-
 /// The sole external caller of `module`'s subtree, if there is exactly one.
 ///
 /// The caller unit is the subtree at `module`'s depth containing the
@@ -253,6 +217,42 @@ fn sole_external_referencer_is(
     }
     let module_unit = &module[..caller.len().min(module.len())];
     referencer == Some(module_unit)
+}
+
+/// Build the MOD004 hint for one qualifying module.
+fn diagnostic(
+    module: &[Box<str>],
+    caller: &[Box<str>],
+    first: &ReferenceEdge,
+    count: usize,
+) -> Diagnostic {
+    let name = module[module.len() - 1].to_string();
+    let module_path = crate_path(module);
+    let caller_path = crate_path(caller);
+    let nested = format!("{caller_path}::{name}");
+    let references = if count == 1 {
+        "1 reference".to_string()
+    } else {
+        format!("{count} references")
+    };
+    Diagnostic {
+        severity: Severity::Hint,
+        code: CODE_MOD004,
+        title: Some("sole-caller module placement".into()),
+        message: format!(
+            "module `{module_path}` is referenced only by `{caller_path}` \
+             ({references}).\n\
+             Why:\n\
+             - Nesting code under its caller makes call flow easier to follow.\n\
+             Suggestions:\n\
+             - Consider moving `{name}` to `{nested}`.\n\
+             Update references; preserve behavior and public APIs.\n\
+             - Keep the current layout if it better supports reuse or readability."
+        ),
+        line: first.line,
+        item_kind: "mod".to_string(),
+        item_name: Some(name),
+    }
 }
 
 /// The `crate::`-joined spelling of a module path; the root is `crate`.

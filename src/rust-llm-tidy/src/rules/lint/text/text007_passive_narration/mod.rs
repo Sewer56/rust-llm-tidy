@@ -134,6 +134,26 @@ pub(super) fn one_line(line: &str) -> Vec<crate::reporting::Diagnostic> {
         .collect()
 }
 
+/// The single-offense summary for one line, passive class first.
+///
+/// Returns `None` when the line holds neither a passive construction nor
+/// a narration marker.
+fn find_offense(line: &str, code_delimiter: &mut usize) -> Option<String> {
+    let words = prose::words(line, code_delimiter);
+
+    if let Some((be, participle)) = find_passive(line, &words) {
+        return Some(format!(
+            "passive construction: `{} {}`.",
+            be.to_ascii_lowercase(),
+            participle.to_ascii_lowercase()
+        ));
+    }
+    if let Some(marker) = find_narration_marker(line, &words) {
+        return Some(format!("{NARRATION_MARKER_SUMMARY}`{marker}`."));
+    }
+    None
+}
+
 /// One TEXT007 diagnostic; `summary` names the finding class and trigger.
 fn diagnostic(line: &StrippedLine, summary: &str) -> Diagnostic {
     let bullets = [
@@ -165,26 +185,6 @@ fn diagnostic(line: &StrippedLine, summary: &str) -> Diagnostic {
         item_kind: "file".to_string(),
         item_name: None,
     }
-}
-
-/// The single-offense summary for one line, passive class first.
-///
-/// Returns `None` when the line holds neither a passive construction nor
-/// a narration marker.
-fn find_offense(line: &str, code_delimiter: &mut usize) -> Option<String> {
-    let words = prose::words(line, code_delimiter);
-
-    if let Some((be, participle)) = find_passive(line, &words) {
-        return Some(format!(
-            "passive construction: `{} {}`.",
-            be.to_ascii_lowercase(),
-            participle.to_ascii_lowercase()
-        ));
-    }
-    if let Some(marker) = find_narration_marker(line, &words) {
-        return Some(format!("{NARRATION_MARKER_SUMMARY}`{marker}`."));
-    }
-    None
 }
 
 #[cfg(test)]

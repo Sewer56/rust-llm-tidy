@@ -53,6 +53,22 @@ pub(crate) fn qualified_call_target<'a>(
     Some((owner, member))
 }
 
+/// Return `target`'s rightmost simple name in `source` without generic arguments.
+pub(crate) fn call_target_name<'a>(
+    target: tree_sitter::Node<'_>,
+    source: &'a str,
+) -> Option<&'a str> {
+    let mut node = target;
+    loop {
+        if node.kind() == "identifier" {
+            return node.utf8_text(source.as_bytes()).ok();
+        }
+        node = node
+            .child_by_field_name("name")
+            .or_else(|| node.named_child(0))?;
+    }
+}
+
 /// Collect value names under `scope` in `source` to reject ambiguous receivers.
 pub(crate) fn receiver_value_names<'a>(
     scope: tree_sitter::Node<'_>,
@@ -83,22 +99,6 @@ pub(crate) fn receiver_value_names<'a>(
                 return names;
             }
         }
-    }
-}
-
-/// Return `target`'s rightmost simple name in `source` without generic arguments.
-pub(crate) fn call_target_name<'a>(
-    target: tree_sitter::Node<'_>,
-    source: &'a str,
-) -> Option<&'a str> {
-    let mut node = target;
-    loop {
-        if node.kind() == "identifier" {
-            return node.utf8_text(source.as_bytes()).ok();
-        }
-        node = node
-            .child_by_field_name("name")
-            .or_else(|| node.named_child(0))?;
     }
 }
 

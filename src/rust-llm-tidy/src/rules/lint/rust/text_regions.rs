@@ -175,47 +175,9 @@ fn merge_regions(marker: Vec<DocRegion>, tree: Vec<DocRegion>) -> Vec<DocRegion>
     merged
 }
 
-/// One doc attribute's measured lines, split on the value's literal
-/// newlines with each line keeping its original number.
-///
-/// The conventional leading space goes with the quote, so `#[doc = "
-/// text"]` measures like `/// text`.
-///
-/// The value's text arrives in `string_content` fragments split by
-/// escape sequences; every fragment measures and the escapes
-/// themselves count as nothing.
-fn attribute_lines(content: tree_sitter::Node<'_>, source: &str) -> Vec<RegionLine> {
-    content_fragments(content)
-        .flat_map(|fragment| content_lines(fragment, source))
-        .map(|(number, text)| {
-            let text = text.strip_prefix(' ').unwrap_or(text);
-            let indented = text.starts_with('\t') || text.starts_with("    ");
-            RegionLine {
-                number,
-                text: text.to_string(),
-                indented,
-            }
-        })
-        .collect()
-}
-
-/// One outer block doc comment as a block-doc region.
-///
-/// The `doc` child's text splits into lines with original numbers,
-/// each trimmed to its text. The block doc dialect then strips the
-/// `*` continuations and exempts tagged and indented lines.
-fn block_doc_region(content: tree_sitter::Node<'_>, source: &str) -> DocRegion {
-    DocRegion {
-        dialect: Dialect::BlockDoc,
-        lines: content_lines(content, source)
-            .map(|(number, text)| RegionLine {
-                number,
-                text: text.trim().to_string(),
-                // The dialect derives indented examples after `*`-stripping.
-                indented: false,
-            })
-            .collect(),
-    }
+/// The region's first line number.
+fn first_line(region: &DocRegion) -> usize {
+    region.lines.first().map_or(0, |line| line.number)
 }
 
 /// Collects the doc-bearing nodes in document order on one reused
@@ -256,27 +218,47 @@ fn collect_doc_nodes<'a>(root: tree_sitter::Node<'a>, source: &str, out: &mut Ve
     }
 }
 
-/// The region's first line number.
-fn first_line(region: &DocRegion) -> usize {
-    region.lines.first().map_or(0, |line| line.number)
+/// One outer block doc comment as a block-doc region.
+///
+/// The `doc` child's text splits into lines with original numbers,
+/// each trimmed to its text. The block doc dialect then strips the
+/// `*` continuations and exempts tagged and indented lines.
+fn block_doc_region(content: tree_sitter::Node<'_>, source: &str) -> DocRegion {
+    DocRegion {
+        dialect: Dialect::BlockDoc,
+        lines: content_lines(content, source)
+            .map(|(number, text)| RegionLine {
+                number,
+                text: text.trim().to_string(),
+                // The dialect derives indented examples after `*`-stripping.
+                indented: false,
+            })
+            .collect(),
+    }
 }
 
-/// The node and its later named siblings that are also
-/// `string_content` nodes: one string literal's text fragments around
-/// its escape sequences.
-fn content_fragments<'a>(
-    first: tree_sitter::Node<'a>,
-) -> impl Iterator<Item = tree_sitter::Node<'a>> {
-    let mut next = Some(first);
-    iter::from_fn(move || {
-        while let Some(node) = next {
-            next = node.next_named_sibling();
-            if node.kind() == "string_content" {
-                return Some(node);
+/// One doc attribute's measured lines, split on the value's literal
+/// newlines with each line keeping its original number.
+///
+/// The conventional leading space goes with the quote, so `#[doc = "
+/// text"]` measures like `/// text`.
+///
+/// The value's text arrives in `string_content` fragments split by
+/// escape sequences; every fragment measures and the escapes
+/// themselves count as nothing.
+fn attribute_lines(content: tree_sitter::Node<'_>, source: &str) -> Vec<RegionLine> {
+    content_fragments(content)
+        .flat_map(|fragment| content_lines(fragment, source))
+        .map(|(number, text)| {
+            let text = text.strip_prefix(' ').unwrap_or(text);
+            let indented = text.starts_with('\t') || text.starts_with("    ");
+            RegionLine {
+                number,
+                text: text.to_string(),
+                indented,
             }
-        }
-        None
-    })
+        })
+        .collect()
 }
 
 /// The content node's text as `(1-based line number, line text)` pairs,
@@ -303,6 +285,24 @@ fn content_lines<'a>(
                     (row + idx + 1, seg)
                 })
         })
+}
+
+/// The node and its later named siblings that are also
+/// `string_content` nodes: one string literal's text fragments around
+/// its escape sequences.
+fn content_fragments<'a>(
+    first: tree_sitter::Node<'a>,
+) -> impl Iterator<Item = tree_sitter::Node<'a>> {
+    let mut next = Some(first);
+    iter::from_fn(move || {
+        while let Some(node) = next {
+            next = node.next_named_sibling();
+            if node.kind() == "string_content" {
+                return Some(node);
+            }
+        }
+        None
+    })
 }
 
 #[cfg(test)]

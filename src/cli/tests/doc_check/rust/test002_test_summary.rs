@@ -40,6 +40,30 @@ fn test002_decisions_match_across_backends() {
     }
 }
 
+/// Run TEST002 in JSON mode and return each finding's `code/severity` plus its
+/// message with the language noun normalized away.
+fn test002_records(path: &Path) -> Vec<(String, String)> {
+    let output = run_command(&["--include", "TEST002", "--output-mode", "json"], path);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let findings: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("stdout must parse as JSON: {e}\n{stdout}"));
+
+    findings
+        .as_array()
+        .expect("output must be an array")
+        .iter()
+        .map(|rec| {
+            (
+                format!("{}/{}", rec["code"], rec["severity"]),
+                rec["message"]
+                    .as_str()
+                    .expect("message")
+                    .replace("test method", "test function"),
+            )
+        })
+        .collect()
+}
+
 /// Exactly the four unsummarised test functions produce findings, and the
 /// commented ones do not.
 #[test]
@@ -108,28 +132,4 @@ fn test002_json_record_carries_the_documented_fields() {
             "unexpected message:\n{message}"
         );
     }
-}
-
-/// Run TEST002 in JSON mode and return each finding's `code/severity` plus its
-/// message with the language noun normalized away.
-fn test002_records(path: &Path) -> Vec<(String, String)> {
-    let output = run_command(&["--include", "TEST002", "--output-mode", "json"], path);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let findings: serde_json::Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("stdout must parse as JSON: {e}\n{stdout}"));
-
-    findings
-        .as_array()
-        .expect("output must be an array")
-        .iter()
-        .map(|rec| {
-            (
-                format!("{}/{}", rec["code"], rec["severity"]),
-                rec["message"]
-                    .as_str()
-                    .expect("message")
-                    .replace("test method", "test function"),
-            )
-        })
-        .collect()
 }

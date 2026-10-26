@@ -40,12 +40,6 @@ pub(super) fn trailing_range(line: &str) -> Option<Range<usize>> {
     None
 }
 
-/// Whether `ch` may trail a URL without ending its exemption: sentence
-/// punctuation, markdown closers, or whitespace.
-fn is_ignorable_tail(ch: char) -> bool {
-    ch.is_whitespace() || is_sentence_punctuation(ch) || matches!(ch, '>' | ']' | ')')
-}
-
 /// The recognized scheme starting at byte `index`, if any.
 ///
 /// Returns `None` when `index` is mid-token or no listed scheme matches.
@@ -58,14 +52,6 @@ fn scheme_at(text: &str, index: usize) -> Option<&'static str> {
         .iter()
         .copied()
         .find(|scheme| starts_with_ignore_ascii_case(tail, scheme))
-}
-
-/// Trims trailing sentence punctuation off `raw`, leaving the URL token.
-///
-/// Markdown closers never reach here: [`url_body_end`] already stopped the
-/// body before them. A balanced `)` is URL content and stays.
-fn trim_tail(raw: &str) -> &str {
-    raw.trim_end_matches(is_sentence_punctuation)
 }
 
 /// Byte offset just past the URL body starting at `body_start`.
@@ -95,10 +81,18 @@ fn url_body_end(line: &str, body_start: usize) -> usize {
     line.len()
 }
 
-/// Trailing sentence punctuation that belongs to the surrounding text, not
-/// the URL.
-fn is_sentence_punctuation(ch: char) -> bool {
-    matches!(ch, '.' | ',' | ';' | ':' | '!' | '?' | '\'' | '"')
+/// Trims trailing sentence punctuation off `raw`, leaving the URL token.
+///
+/// Markdown closers never reach here: [`url_body_end`] already stopped the
+/// body before them. A balanced `)` is URL content and stays.
+fn trim_tail(raw: &str) -> &str {
+    raw.trim_end_matches(is_sentence_punctuation)
+}
+
+/// Whether `ch` may trail a URL without ending its exemption: sentence
+/// punctuation, markdown closers, or whitespace.
+fn is_ignorable_tail(ch: char) -> bool {
+    ch.is_whitespace() || is_sentence_punctuation(ch) || matches!(ch, '>' | ']' | ')')
 }
 
 /// Whether `text` starts a token at `index`, not the middle of a word.
@@ -119,6 +113,12 @@ fn starts_with_ignore_ascii_case(haystack: &str, prefix: &str) -> bool {
     haystack
         .get(..prefix.len())
         .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
+}
+
+/// Trailing sentence punctuation that belongs to the surrounding text, not
+/// the URL.
+fn is_sentence_punctuation(ch: char) -> bool {
+    matches!(ch, '.' | ',' | ';' | ':' | '!' | '?' | '\'' | '"')
 }
 
 #[cfg(test)]

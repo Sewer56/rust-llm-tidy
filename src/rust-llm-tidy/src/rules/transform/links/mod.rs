@@ -348,16 +348,6 @@ fn rewrite_markdown<'a>(
     (Cow::Owned(buf), pairs)
 }
 
-/// Lazily allocate `out`, copying the verbatim prefix `input[..seg_start]`.
-#[inline]
-fn ensure_output<'a>(out: &'a mut Option<String>, input: &str, seg_start: usize) -> &'a mut String {
-    out.get_or_insert_with(|| {
-        let mut s = String::with_capacity(input.len());
-        s.push_str(&input[..seg_start]);
-        s
-    })
-}
-
 /// Append a comment block's collected definition lines to `out`.
 ///
 /// This resets the accumulator (with the dedup set), so the next block
@@ -377,6 +367,16 @@ fn flush_block_defs(
     append_block_definitions(o, prefix, defs, le);
     defs.clear();
     seen.clear();
+}
+
+/// Lazily allocate `out`, copying the verbatim prefix `input[..seg_start]`.
+#[inline]
+fn ensure_output<'a>(out: &'a mut Option<String>, input: &str, seg_start: usize) -> &'a mut String {
+    out.get_or_insert_with(|| {
+        let mut s = String::with_capacity(input.len());
+        s.push_str(&input[..seg_start]);
+        s
+    })
 }
 
 #[cfg(test)]

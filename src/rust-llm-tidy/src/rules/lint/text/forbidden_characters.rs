@@ -128,19 +128,6 @@ pub(crate) fn scoped_diagnostics(
     findings
 }
 
-/// Recognize complete URI/email autolinks, not comparison punctuation.
-fn is_autolink(rest: &str) -> bool {
-    let Some(end) = rest.find(['<', '>']) else {
-        return false;
-    };
-    if rest.as_bytes()[end] != b'>' {
-        return false;
-    }
-    let target = &rest[..end];
-    !target.chars().any(char::is_whitespace)
-        && (target.contains("://") || target.starts_with("mailto:") || target.contains('@'))
-}
-
 /// Record backtick runs with a matching closer before a paragraph boundary.
 /// A reverse pass avoids repeated suffix scans for unmatched delimiters.
 fn matched_openers(doc: &Document) -> HashSet<(usize, usize)> {
@@ -179,6 +166,19 @@ fn matched_openers(doc: &Document) -> HashSet<(usize, usize)> {
         }
     }
     openers
+}
+
+/// Recognize complete URI/email autolinks, not comparison punctuation.
+fn is_autolink(rest: &str) -> bool {
+    let Some(end) = rest.find(['<', '>']) else {
+        return false;
+    };
+    if rest.as_bytes()[end] != b'>' {
+        return false;
+    }
+    let target = &rest[..end];
+    !target.chars().any(char::is_whitespace)
+        && (target.contains("://") || target.starts_with("mailto:") || target.contains('@'))
 }
 
 #[cfg(test)]

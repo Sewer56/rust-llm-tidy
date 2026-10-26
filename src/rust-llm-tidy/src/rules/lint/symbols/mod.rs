@@ -67,58 +67,6 @@ pub(crate) fn check(
     check_enabled(parsed, ext, rules, true)
 }
 
-/// Extract only edit-excluded declarations, without scanning invocation usages.
-///
-/// # Errors
-/// Returns an error when applicable exclusions encounter a syntax-error tree.
-pub(crate) fn excluded_ranges(
-    parsed: &ParseResult,
-    ext: &str,
-    rules: &[CompiledSymbolRule],
-) -> anyhow::Result<Vec<Range<usize>>> {
-    let Some(language) = SymbolLanguage::for_extension(ext) else {
-        return Ok(Vec::new());
-    };
-    let exclusions: Vec<_> = rules
-        .iter()
-        .filter(|rule| {
-            rule.action == SymbolAction::Exclude && rule.exclude_edits && rule.applies_to(language)
-        })
-        .collect();
-    if exclusions.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    Ok(declarations(parsed, ext)?
-        .into_iter()
-        .filter(|declaration| {
-            exclusions
-                .iter()
-                .any(|rule| matches_name(&rule.matcher, &declaration.path))
-        })
-        .map(|declaration| declaration.bytes)
-        .collect())
-}
-
-/// Check file-wide post-processing opt-outs without applying edit exclusions.
-///
-/// The caller supplies only opt-outs applicable to this file's language.
-///
-/// # Errors
-/// Returns an error when applicable opt-outs encounter syntax errors or missing
-/// tokens, even if no complete declaration matches.
-pub(crate) fn excludes_post_process(
-    parsed: &ParseResult,
-    ext: &str,
-    rules: &[&CompiledSymbolRule],
-) -> anyhow::Result<bool> {
-    Ok(declarations(parsed, ext)?.iter().any(|declaration| {
-        rules
-            .iter()
-            .any(|rule| matches_name(&rule.matcher, &declaration.path))
-    }))
-}
-
 /// Observe exclusions without scanning hints when SYM is disabled.
 ///
 /// # Errors
@@ -212,6 +160,79 @@ pub(crate) fn check_enabled(
     Ok(result)
 }
 
+/// Extract only edit-excluded declarations, without scanning invocation usages.
+///
+/// # Errors
+/// Returns an error when applicable exclusions encounter a syntax-error tree.
+pub(crate) fn excluded_ranges(
+    parsed: &ParseResult,
+    ext: &str,
+    rules: &[CompiledSymbolRule],
+) -> anyhow::Result<Vec<Range<usize>>> {
+    let Some(language) = SymbolLanguage::for_extension(ext) else {
+        return Ok(Vec::new());
+    };
+    let exclusions: Vec<_> = rules
+        .iter()
+        .filter(|rule| {
+            rule.action == SymbolAction::Exclude && rule.exclude_edits && rule.applies_to(language)
+        })
+        .collect();
+    if exclusions.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    Ok(declarations(parsed, ext)?
+        .into_iter()
+        .filter(|declaration| {
+            exclusions
+                .iter()
+                .any(|rule| matches_name(&rule.matcher, &declaration.path))
+        })
+        .map(|declaration| declaration.bytes)
+        .collect())
+}
+
+/// Check file-wide post-processing opt-outs without applying edit exclusions.
+///
+/// The caller supplies only opt-outs applicable to this file's language.
+///
+/// # Errors
+/// Returns an error when applicable opt-outs encounter syntax errors or missing
+/// tokens, even if no complete declaration matches.
+pub(crate) fn excludes_post_process(
+    parsed: &ParseResult,
+    ext: &str,
+    rules: &[&CompiledSymbolRule],
+) -> anyhow::Result<bool> {
+    Ok(declarations(parsed, ext)?.iter().any(|declaration| {
+        rules
+            .iter()
+            .any(|rule| matches_name(&rule.matcher, &declaration.path))
+    }))
+}
+
+/// Render the selected message while preserving its per-rule scope override.
+fn observation(
+    rule: &CompiledSymbolRule,
+    name: &str,
+    kind: &str,
+    name_lines: RangeInclusive<usize>,
+) -> HintObservation {
+    HintObservation {
+        diagnostic: Diagnostic {
+            title: rule.title.clone(),
+            severity: rule.severity,
+            code: rule.code,
+            message: rule.message.as_deref().unwrap_or_default().to_owned(),
+            line: *name_lines.end(),
+            item_kind: kind.to_owned(),
+            item_name: Some(name.to_owned()),
+        },
+        scope: rule.scope,
+    }
+}
+
 /// Apply explicit invocation constraints before comparing names.
 fn matches_usage(rule: &CompiledSymbolRule, usage: &Usage<'_>, language: SymbolLanguage) -> bool {
     if rule.target != SymbolTarget::Usage
@@ -243,27 +264,6 @@ fn matches_usage(rule: &CompiledSymbolRule, usage: &Usage<'_>, language: SymbolL
     }
 
     matches_name(&rule.matcher, &usage.path)
-}
-
-/// Render the selected message while preserving its per-rule scope override.
-fn observation(
-    rule: &CompiledSymbolRule,
-    name: &str,
-    kind: &str,
-    name_lines: RangeInclusive<usize>,
-) -> HintObservation {
-    HintObservation {
-        diagnostic: Diagnostic {
-            title: rule.title.clone(),
-            severity: rule.severity,
-            code: rule.code,
-            message: rule.message.as_deref().unwrap_or_default().to_owned(),
-            line: *name_lines.end(),
-            item_kind: kind.to_owned(),
-            item_name: Some(name.to_owned()),
-        },
-        scope: rule.scope,
-    }
 }
 
 /// Compare a normalized name, keeping literal component boundaries intact.

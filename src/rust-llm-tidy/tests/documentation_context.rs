@@ -118,6 +118,24 @@ fn reminder_should_carry_the_documentation_guidance() {
     }
 }
 
+/// Write `files` under one temp root and audit `target` for TEXT010.
+fn audit(files: &[(&str, &str)], target: &str) -> Vec<Diagnostic> {
+    let directory = tempfile::tempdir().unwrap();
+    for (relative, content) in files {
+        let path = directory.path().join(relative);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, content).unwrap();
+    }
+    let options = RunOptions {
+        paths: vec![directory.path().join(target)],
+        include: vec!["TEXT010".into()],
+        all_lines: true,
+        ..RunOptions::default()
+    };
+
+    run(&options, None).unwrap().files.remove(0).diagnostics
+}
+
 /// Changed-line scope without Git permission hides the reminder and warns.
 #[test]
 fn reminder_should_stay_hidden_without_changed_lines() {
@@ -145,22 +163,4 @@ fn reminder_should_stay_hidden_without_changed_lines() {
 #[case::similar_file(&[("docs.md", BLANK_OPENER)], "docs.md")]
 fn undetected_files_should_stay_silent(#[case] files: &[(&str, &str)], #[case] target: &str) {
     assert!(audit(files, target).is_empty());
-}
-
-/// Write `files` under one temp root and audit `target` for TEXT010.
-fn audit(files: &[(&str, &str)], target: &str) -> Vec<Diagnostic> {
-    let directory = tempfile::tempdir().unwrap();
-    for (relative, content) in files {
-        let path = directory.path().join(relative);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, content).unwrap();
-    }
-    let options = RunOptions {
-        paths: vec![directory.path().join(target)],
-        include: vec!["TEXT010".into()],
-        all_lines: true,
-        ..RunOptions::default()
-    };
-
-    run(&options, None).unwrap().files.remove(0).diagnostics
 }

@@ -86,90 +86,6 @@ pub(super) fn inline_links(body: &str) -> impl Iterator<Item = InlineLink<'_>> {
     })
 }
 
-/// True when `body` is a complete CommonMark link reference definition.
-///
-/// The form is `[label]: destination` plus an optional quoted or
-/// parenthesized title, with nothing else on the line.
-///
-/// Shares [`parse_definition`] with [`definition_text`], so both agree on
-/// what counts as a definition.
-pub(super) fn is_reference_definition(body: &str) -> bool {
-    parse_definition(body.trim_start()).is_some()
-}
-
-/// Iterate line segments as `(start, segment)`, retaining each terminator.
-///
-/// Uses `memchr` so every input byte participates in one vectorized newline
-/// search instead of `str::split`'s character-pattern state machine.
-#[inline]
-pub(super) fn line_segments(input: &str) -> impl Iterator<Item = (usize, &str)> {
-    let mut start = 0usize;
-    memchr_iter(b'\n', input.as_bytes())
-        .map(|newline| newline + 1)
-        .chain(iter::once(input.len()))
-        .filter_map(move |end| {
-            if end == start {
-                return None;
-            }
-            let segment_start = start;
-            start = end;
-            Some((segment_start, &input[segment_start..end]))
-        })
-}
-
-/// Update the open-fence stack for the (doc-prefix-stripped) line `body`.
-/// Reports whether it is a fence delimiter line (an opener or its closer).
-///
-/// Reuses the byte-exact [`parse_fence`] for recognition.
-///
-/// Follows CommonMark block structure: while a fence is open, every other
-/// marker run is code-block content.
-///
-/// A `~~~` line inside a backtick fence (or a too-short run of the same
-/// marker) therefore neither opens nor closes anything. The original fence
-/// still closes on its own delimiter.
-///
-/// The stack therefore holds at most one entry; it stays a `Vec` because
-/// callers test it with `is_empty`.
-///
-/// `body` has already passed through comment-prefix stripping, so the
-/// matched marker (and its indent) is already gone; only an optional inner
-/// indent may remain.
-pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
-    // Cheap candidate check: after leading whitespace, a fence must start with
-    // a backtick/tilde run.
-    //
-    // Non-ASCII-leading lines defer to the full Unicode `trim_start` (sound
-    // superset gate, identical to `fix_fences`'s `is_fence_candidate`), so
-    // typical code/text lines skip the pipeline.
-    if !is_fence_candidate_body(body) {
-        return false;
-    }
-    let stripped = body.trim_start();
-    let Some((marker, run_len, info)) = parse_fence(stripped) else {
-        return false;
-    };
-    match stack.last() {
-        // A fence is open: only a matching closer ends it.
-        //
-        // A closer is the same marker, a run at least as long as the
-        // opener's, and an empty info string. Anything else is block
-        // content, so the marker run is ignored.
-        Some(&(open_marker, open_len)) => {
-            let is_closer = info.is_empty() && open_marker == marker && open_len <= run_len;
-            if is_closer {
-                stack.pop();
-            }
-            is_closer
-        }
-        // No fence open: this run opens one.
-        None => {
-            stack.push((marker, run_len));
-            true
-        }
-    }
-}
-
 /// If `body` at byte index `open` (`[`) opens an inline link `[text](url)`
 /// eligible for hoisting, return `(text, url, end)`.
 ///
@@ -257,37 +173,87 @@ pub(super) fn parse_inline_link(body: &str, open: usize) -> Option<(&str, &str, 
     Some((text, url, k + 1))
 }
 
-/// Cheaply decide whether the doc-prefix-stripped `body` could begin a fence
-/// under the Unicode `body.trim_start()` pipeline.
+/// True when `body` is a complete CommonMark link reference definition.
 ///
-/// Sound superset gate (mirrors `fix_fences`'s `is_fence_candidate`): returns
-/// `true` for every line the pipeline treats as a fence, plus a few extras
-/// the pipeline emits verbatim.
+/// The form is `[label]: destination` plus an optional quoted or
+/// parenthesized title, with nothing else on the line.
 ///
-/// The common case - an ASCII line whose first non-whitespace byte is not a
-/// marker run - short-circuits with a byte scan.
+/// Shares [`parse_definition`] with [`definition_text`], so both agree on
+/// what counts as a definition.
+pub(super) fn is_reference_definition(body: &str) -> bool {
+    parse_definition(body.trim_start()).is_some()
+}
+
+/// Iterate line segments as `(start, segment)`, retaining each terminator.
 ///
-/// Whitespace in two tiers: ASCII whitespace (`0x09..=0x0d` plus `0x20`, the
-/// ASCII members of [`char::is_whitespace`]) is skipped directly.
-///
-/// A leading non-ASCII byte (`>= 0x80`) may be Unicode whitespace before a
-/// fence, so such lines defer to the full pipeline.
+/// Uses `memchr` so every input byte participates in one vectorized newline
+/// search instead of `str::split`'s character-pattern state machine.
 #[inline]
-fn is_fence_candidate_body(body: &str) -> bool {
-    let bytes = body.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() && matches!(bytes[i], 0x09..=0x0d | 0x20) {
-        i += 1;
+pub(super) fn line_segments(input: &str) -> impl Iterator<Item = (usize, &str)> {
+    let mut start = 0usize;
+    memchr_iter(b'\n', input.as_bytes())
+        .map(|newline| newline + 1)
+        .chain(iter::once(input.len()))
+        .filter_map(move |end| {
+            if end == start {
+                return None;
+            }
+            let segment_start = start;
+            start = end;
+            Some((segment_start, &input[segment_start..end]))
+        })
+}
+
+/// Update the open-fence stack for the (doc-prefix-stripped) line `body`.
+/// Reports whether it is a fence delimiter line (an opener or its closer).
+///
+/// Reuses the byte-exact [`parse_fence`] for recognition.
+///
+/// Follows CommonMark block structure: while a fence is open, every other
+/// marker run is code-block content.
+///
+/// A `~~~` line inside a backtick fence (or a too-short run of the same
+/// marker) therefore neither opens nor closes anything. The original fence
+/// still closes on its own delimiter.
+///
+/// The stack therefore holds at most one entry; it stays a `Vec` because
+/// callers test it with `is_empty`.
+///
+/// `body` has already passed through comment-prefix stripping, so the
+/// matched marker (and its indent) is already gone; only an optional inner
+/// indent may remain.
+pub(super) fn step_fence(stack: &mut Vec<(char, usize)>, body: &str) -> bool {
+    // Cheap candidate check: after leading whitespace, a fence must start with
+    // a backtick/tilde run.
+    //
+    // Non-ASCII-leading lines defer to the full Unicode `trim_start` (sound
+    // superset gate, identical to `fix_fences`'s `is_fence_candidate`), so
+    // typical code/text lines skip the pipeline.
+    if !is_fence_candidate_body(body) {
+        return false;
     }
-    match bytes.get(i).copied() {
-        // ASCII first byte: a fence - after the pipeline's Unicode trim - can
-        // only start with a marker run.
-        Some(b) if b <= 0x7f => b == b'`' || b == b'~',
-        // Non-ASCII leading byte: may be Unicode whitespace before a fence;
-        // defer to the full pipeline, which handles Unicode whitespace exactly.
-        Some(_) => true,
-        // Line was whitespace only (or empty): not a fence.
-        None => false,
+    let stripped = body.trim_start();
+    let Some((marker, run_len, info)) = parse_fence(stripped) else {
+        return false;
+    };
+    match stack.last() {
+        // A fence is open: only a matching closer ends it.
+        //
+        // A closer is the same marker, a run at least as long as the
+        // opener's, and an empty info string. Anything else is block
+        // content, so the marker run is ignored.
+        Some(&(open_marker, open_len)) => {
+            let is_closer = info.is_empty() && open_marker == marker && open_len <= run_len;
+            if is_closer {
+                stack.pop();
+            }
+            is_closer
+        }
+        // No fence open: this run opens one.
+        None => {
+            stack.push((marker, run_len));
+            true
+        }
     }
 }
 
@@ -346,6 +312,40 @@ fn parse_definition(s: &str) -> Option<&str> {
     tail[end + 2..].trim().is_empty().then_some(text)
 }
 
+/// Cheaply decide whether the doc-prefix-stripped `body` could begin a fence
+/// under the Unicode `body.trim_start()` pipeline.
+///
+/// Sound superset gate (mirrors `fix_fences`'s `is_fence_candidate`): returns
+/// `true` for every line the pipeline treats as a fence, plus a few extras
+/// the pipeline emits verbatim.
+///
+/// The common case - an ASCII line whose first non-whitespace byte is not a
+/// marker run - short-circuits with a byte scan.
+///
+/// Whitespace in two tiers: ASCII whitespace (`0x09..=0x0d` plus `0x20`, the
+/// ASCII members of [`char::is_whitespace`]) is skipped directly.
+///
+/// A leading non-ASCII byte (`>= 0x80`) may be Unicode whitespace before a
+/// fence, so such lines defer to the full pipeline.
+#[inline]
+fn is_fence_candidate_body(body: &str) -> bool {
+    let bytes = body.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && matches!(bytes[i], 0x09..=0x0d | 0x20) {
+        i += 1;
+    }
+    match bytes.get(i).copied() {
+        // ASCII first byte: a fence - after the pipeline's Unicode trim - can
+        // only start with a marker run.
+        Some(b) if b <= 0x7f => b == b'`' || b == b'~',
+        // Non-ASCII leading byte: may be Unicode whitespace before a fence;
+        // defer to the full pipeline, which handles Unicode whitespace exactly.
+        Some(_) => true,
+        // Line was whitespace only (or empty): not a fence.
+        None => false,
+    }
+}
+
 /// Index of the `]` closing a label opened before `after`: the first `]`
 /// not preceded by a backslash escape (CommonMark).
 ///
@@ -364,47 +364,6 @@ fn closing_bracket(after: &str) -> Option<usize> {
         }
     }
     None
-}
-
-/// Length of a title's content `tail`.
-///
-/// For quotes, this is the position of
-/// the first unescaped `close` byte. For parenthesized titles it is the
-/// position of its matching unescaped `)` (balanced content required).
-#[inline]
-fn closing_delimiter(tail: &str, close: u8) -> Option<usize> {
-    let bytes = tail.as_bytes();
-    let mut i = 0;
-    if close == b')' {
-        let mut depth = 1usize;
-        while i < bytes.len() {
-            match bytes[i] {
-                b'\\' => i += 2,
-                b'(' => {
-                    depth += 1;
-                    i += 1;
-                }
-                b')' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return Some(i);
-                    }
-                    i += 1;
-                }
-                _ => i += 1,
-            }
-        }
-        None
-    } else {
-        while i < bytes.len() {
-            match bytes[i] {
-                b'\\' => i += 2,
-                b if b == close => return Some(i),
-                _ => i += 1,
-            }
-        }
-        None
-    }
 }
 
 /// Length of the destination at the start of `rest`:
@@ -477,5 +436,46 @@ fn parse_destination(rest: &str) -> Option<usize> {
             }
         }
         (i > 0 && depth == 0).then_some(i)
+    }
+}
+
+/// Length of a title's content `tail`.
+///
+/// For quotes, this is the position of
+/// the first unescaped `close` byte. For parenthesized titles it is the
+/// position of its matching unescaped `)` (balanced content required).
+#[inline]
+fn closing_delimiter(tail: &str, close: u8) -> Option<usize> {
+    let bytes = tail.as_bytes();
+    let mut i = 0;
+    if close == b')' {
+        let mut depth = 1usize;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\\' => i += 2,
+                b'(' => {
+                    depth += 1;
+                    i += 1;
+                }
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(i);
+                    }
+                    i += 1;
+                }
+                _ => i += 1,
+            }
+        }
+        None
+    } else {
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\\' => i += 2,
+                b if b == close => return Some(i),
+                _ => i += 1,
+            }
+        }
+        None
     }
 }

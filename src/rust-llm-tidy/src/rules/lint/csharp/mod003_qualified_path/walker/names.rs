@@ -166,30 +166,6 @@ pub(super) fn name_segments<'a>(node: Node, bytes: &'a [u8]) -> Option<Vec<&'a s
     Some(segments)
 }
 
-/// The names a foreach designation binds: a simple name, a
-/// destructuring pattern, or a declaration's variable.
-fn designation_names<'a>(bytes: &'a [u8], node: Node) -> Vec<&'a str> {
-    match node.kind() {
-        "identifier" => leaf_text(node, bytes).into_iter().collect(),
-        "tuple_pattern" => tuple_pattern_names(bytes, node),
-        "declaration" | "variable_declaration" => {
-            let mut names = Vec::new();
-            for i in 0..node.named_child_count() as u32 {
-                if let Some(child) = node.named_child(i) {
-                    names.extend(designation_names(bytes, child));
-                }
-            }
-            names
-        }
-        "variable_declarator" => node
-            .child_by_field_name("name")
-            .and_then(|name| leaf_text(name, bytes))
-            .into_iter()
-            .collect(),
-        _ => Vec::new(),
-    }
-}
-
 /// The name `node` binds through its `name` field, positioned at
 /// `offset`.
 fn field_name_at<'a>(bytes: &'a [u8], node: Node, offset: usize) -> Option<(&'a str, usize)> {
@@ -218,6 +194,30 @@ fn identifier_children<'a>(bytes: &'a [u8], node: Node) -> Vec<(&'a str, usize)>
         }
     }
     names
+}
+
+/// The names a foreach designation binds: a simple name, a
+/// destructuring pattern, or a declaration's variable.
+fn designation_names<'a>(bytes: &'a [u8], node: Node) -> Vec<&'a str> {
+    match node.kind() {
+        "identifier" => leaf_text(node, bytes).into_iter().collect(),
+        "tuple_pattern" => tuple_pattern_names(bytes, node),
+        "declaration" | "variable_declaration" => {
+            let mut names = Vec::new();
+            for i in 0..node.named_child_count() as u32 {
+                if let Some(child) = node.named_child(i) {
+                    names.extend(designation_names(bytes, child));
+                }
+            }
+            names
+        }
+        "variable_declarator" => node
+            .child_by_field_name("name")
+            .and_then(|name| leaf_text(name, bytes))
+            .into_iter()
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// The names a destructuring pattern binds, including nested

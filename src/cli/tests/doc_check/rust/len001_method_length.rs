@@ -134,6 +134,17 @@ fn len001_should_render_the_full_hint_in_text_and_json() {
     );
 }
 
+// ── helpers ───────────────────────────────────────────────────────
+
+/// A `fn oversized()` body of exactly `count` counted lines; the module
+/// doc keeps broad-selection runs free of unrelated findings.
+fn fn_with_body_lines(count: usize) -> String {
+    let body: String = (0..count)
+        .map(|i| format!("    let _v{i} = {i};\n"))
+        .collect();
+    format!("//! Loads merged parts.\nfn oversized() {{\n{body}}}\n")
+}
+
 /// `--include LEN001` whitelists the code alone: the finding fires and
 /// every other code stays off.
 #[test]
@@ -152,17 +163,6 @@ fn len001_should_run_alone_when_included_by_code() {
         !stderr.contains("DOC001"),
         "the code-only whitelist must suppress every other code: {stderr}"
     );
-}
-
-// ── helpers ───────────────────────────────────────────────────────
-
-/// A `fn oversized()` body of exactly `count` counted lines; the module
-/// doc keeps broad-selection runs free of unrelated findings.
-fn fn_with_body_lines(count: usize) -> String {
-    let body: String = (0..count)
-        .map(|i| format!("    let _v{i} = {i};\n"))
-        .collect();
-    format!("//! Loads merged parts.\nfn oversized() {{\n{body}}}\n")
 }
 
 /// Run an isolated file with explicit configuration and automatic fixture

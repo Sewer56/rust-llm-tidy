@@ -209,24 +209,6 @@ pub(super) fn scan(source: &str, lex: &Lexicon) -> Option<Vec<DocRegion>> {
     scan_source(source, lex, false).map(|scanner| scanner.regions)
 }
 
-/// Adds one block-comment content segment to the open block's lines.
-///
-/// The opener line's own marker stars (`/***`) vanish here; continuation
-/// lines keep their `*` for the block doc dialect to strip.
-fn push_block_line(seg: &str, opener: bool, number: usize, lines: &mut Vec<RegionLine>) {
-    let text = if opener {
-        seg.trim_start_matches('*').trim()
-    } else {
-        seg.trim()
-    };
-    lines.push(RegionLine {
-        number,
-        text: text.to_string(),
-        // The dialect derives indented examples after `*`-stripping.
-        indented: false,
-    });
-}
-
 /// Share lexical decisions between text measurement and byte-span consumers.
 fn scan_source<'a>(source: &str, lex: &'a Lexicon, strict: bool) -> Option<Scanner<'a>> {
     let mut scanner = Scanner {
@@ -261,4 +243,22 @@ fn close_run(run: &mut Option<DocRegion>, regions: &mut Vec<DocRegion>) {
     if let Some(region) = run.take() {
         regions.push(region);
     }
+}
+
+/// Adds one block-comment content segment to the open block's lines.
+///
+/// The opener line's own marker stars (`/***`) vanish here; continuation
+/// lines keep their `*` for the block doc dialect to strip.
+fn push_block_line(seg: &str, opener: bool, number: usize, lines: &mut Vec<RegionLine>) {
+    let text = if opener {
+        seg.trim_start_matches('*').trim()
+    } else {
+        seg.trim()
+    };
+    lines.push(RegionLine {
+        number,
+        text: text.to_string(),
+        // The dialect derives indented examples after `*`-stripping.
+        indented: false,
+    });
 }

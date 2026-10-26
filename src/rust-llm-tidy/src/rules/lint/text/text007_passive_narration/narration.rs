@@ -163,47 +163,6 @@ pub(super) fn find_narration_marker(line: &str, words: &[prose::Word<'_>]) -> Op
         .or_else(|| before_comma_marker(line, words))
 }
 
-/// The clause-initial `before,` marker in the line, if any; temporal
-/// `before` never matches.
-fn before_comma_marker(line: &str, words: &[prose::Word<'_>]) -> Option<&'static str> {
-    words
-        .iter()
-        .any(|word| {
-            word.text.eq_ignore_ascii_case("before")
-                && line[word.offset + word.text.len()..].starts_with(',')
-                && is_clause_start(&line[..word.offset])
-        })
-        .then_some("before,")
-}
-
-/// The first `this <noun> <verb>` change marker in the line, if any.
-fn change_noun_marker(line: &str, words: &[prose::Word<'_>]) -> Option<&'static str> {
-    // Change nouns also name runtime data; require an implementation-change verb.
-    for phrase in words.windows(3) {
-        if phrase[0].text.eq_ignore_ascii_case("this")
-            && prose::contiguous(line, phrase)
-            && matches_any(
-                phrase[2].text,
-                &["adds", "fixes", "removes", "introduces", "rejects"],
-            )
-        {
-            for (noun, marker) in [
-                ("change", "this change"),
-                ("patch", "this patch"),
-                ("commit", "this commit"),
-                ("update", "this update"),
-                ("fix", "this fix"),
-            ] {
-                if phrase[1].text.eq_ignore_ascii_case(noun) {
-                    return Some(marker);
-                }
-            }
-        }
-    }
-
-    None
-}
-
 /// The first `NARRATION_MARKERS` phrase in the line, if any; `no longer
 /// than` comparisons and non-clause-initial `in the past` stay silent.
 fn phrase_marker(line: &str, words: &[prose::Word<'_>]) -> Option<&'static str> {
@@ -231,6 +190,34 @@ fn phrase_marker(line: &str, words: &[prose::Word<'_>]) -> Option<&'static str> 
             })
         {
             return Some(marker.display);
+        }
+    }
+
+    None
+}
+
+/// The first `this <noun> <verb>` change marker in the line, if any.
+fn change_noun_marker(line: &str, words: &[prose::Word<'_>]) -> Option<&'static str> {
+    // Change nouns also name runtime data; require an implementation-change verb.
+    for phrase in words.windows(3) {
+        if phrase[0].text.eq_ignore_ascii_case("this")
+            && prose::contiguous(line, phrase)
+            && matches_any(
+                phrase[2].text,
+                &["adds", "fixes", "removes", "introduces", "rejects"],
+            )
+        {
+            for (noun, marker) in [
+                ("change", "this change"),
+                ("patch", "this patch"),
+                ("commit", "this commit"),
+                ("update", "this update"),
+                ("fix", "this fix"),
+            ] {
+                if phrase[1].text.eq_ignore_ascii_case(noun) {
+                    return Some(marker);
+                }
+            }
         }
     }
 
@@ -339,6 +326,19 @@ fn single_word_marker(line: &str, words: &[prose::Word<'_>]) -> Option<&'static 
     }
 
     None
+}
+
+/// The clause-initial `before,` marker in the line, if any; temporal
+/// `before` never matches.
+fn before_comma_marker(line: &str, words: &[prose::Word<'_>]) -> Option<&'static str> {
+    words
+        .iter()
+        .any(|word| {
+            word.text.eq_ignore_ascii_case("before")
+                && line[word.offset + word.text.len()..].starts_with(',')
+                && is_clause_start(&line[..word.offset])
+        })
+        .then_some("before,")
 }
 
 /// Whether the text before one `before,` occurrence ends a clause, so

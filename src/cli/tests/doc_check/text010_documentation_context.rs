@@ -85,6 +85,62 @@ fn cli_should_stay_silent_without_a_signal(#[case] target: &str, #[case] markers
     assert!(records.is_empty(), "{records:?}");
 }
 
+/// Audit `target` in a fresh temp tree with empty config and JSON output.
+///
+/// Uses `--all-lines`, so reminders report without Git eligibility, and
+/// `--include TEXT010`, so nothing else can contribute records.
+fn audit(files: &[(&str, &str)], target: &str, extra_args: &[&str]) -> Vec<serde_json::Value> {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    for (relative, content) in files {
+        let path = dir.join(relative);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, content).unwrap();
+    }
+    let config = write_config(&dir);
+
+    let output = Command::new(binary())
+        .current_dir(&dir)
+        .arg("--config")
+        .arg(&config)
+        .args(["--include", "TEXT010", "--all-lines", "--json"])
+        .args(extra_args)
+        .arg(target)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {target}: {e}"));
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let records: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+    if extra_args.contains(&"--checks-only") {
+        let expected = files
+            .iter()
+            .find(|(relative, _)| *relative == target)
+            .map(|(_, content)| *content)
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(dir.join(target)).unwrap(),
+            expected,
+            "checks-only must not rewrite {target}"
+        );
+    }
+    let _ = fs::remove_dir_all(&dir);
+
+    records
+}
+
+/// `files` with the target appended when marker cases name it only once.
+fn files_for<'a>(target: &'a str, markers: &'a [(&'a str, &'a str)]) -> Vec<(&'a str, &'a str)> {
+    let mut files: Vec<(&str, &str)> = markers.to_vec();
+    if !files.iter().any(|(relative, _)| *relative == target) {
+        files.push((target, BLANK_OPENER));
+    }
+    files
+}
+
 /// Replace each record's displayed path, which legitimately follows the input
 /// spelling, so relative and absolute runs compare as records.
 fn normalized(records: &[serde_json::Value]) -> Vec<serde_json::Value> {
@@ -162,60 +218,11 @@ fn relative_selections_should_match_absolute_selections(
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Audit `target` in a fresh temp tree with empty config and JSON output.
-///
-/// Uses `--all-lines`, so reminders report without Git eligibility, and
-/// `--include TEXT010`, so nothing else can contribute records.
-fn audit(files: &[(&str, &str)], target: &str, extra_args: &[&str]) -> Vec<serde_json::Value> {
-    let dir = temp_dir();
-    fs::create_dir_all(&dir).unwrap();
-    for (relative, content) in files {
-        let path = dir.join(relative);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, content).unwrap();
-    }
-    let config = write_config(&dir);
-
-    let output = Command::new(binary())
-        .current_dir(&dir)
-        .arg("--config")
-        .arg(&config)
-        .args(["--include", "TEXT010", "--all-lines", "--json"])
-        .args(extra_args)
-        .arg(target)
-        .output()
-        .unwrap_or_else(|e| panic!("failed to spawn rust-llm-tidy on {target}: {e}"));
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let records: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
-    if extra_args.contains(&"--checks-only") {
-        let expected = files
-            .iter()
-            .find(|(relative, _)| *relative == target)
-            .map(|(_, content)| *content)
-            .unwrap();
-        assert_eq!(
-            fs::read_to_string(dir.join(target)).unwrap(),
-            expected,
-            "checks-only must not rewrite {target}"
-        );
-    }
-    let _ = fs::remove_dir_all(&dir);
-
-    records
-}
-
-/// `files` with the target appended when marker cases name it only once.
-fn files_for<'a>(target: &'a str, markers: &'a [(&'a str, &'a str)]) -> Vec<(&'a str, &'a str)> {
-    let mut files: Vec<(&str, &str)> = markers.to_vec();
-    if !files.iter().any(|(relative, _)| *relative == target) {
-        files.push((target, BLANK_OPENER));
-    }
-    files
+/// Write the empty config these runs rely on and return its path.
+fn write_config(dir: &Path) -> PathBuf {
+    let config = dir.join("config.yml");
+    fs::write(&config, "{}\n").unwrap();
+    config
 }
 
 /// Run `target` from the fixture subdirectory `cwd`, returning parsed records
@@ -239,11 +246,4 @@ fn run_from(dir: &Path, cwd: &str, target: &str, config: &Path) -> (Vec<serde_js
         serde_json::from_slice(&output.stdout).unwrap_or_default();
 
     (records, output.status.code().unwrap_or(-1))
-}
-
-/// Write the empty config these runs rely on and return its path.
-fn write_config(dir: &Path) -> PathBuf {
-    let config = dir.join("config.yml");
-    fs::write(&config, "{}\n").unwrap();
-    config
 }

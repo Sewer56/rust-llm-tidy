@@ -219,77 +219,6 @@ fn project_scope(inputs: &[PathBuf]) -> anyhow::Result<CSharpScopes> {
     Ok(build_scopes(roots, own_files, references, loose))
 }
 
-/// Phase 3: one scope per root (sorted), plus the loose scope.
-fn build_scopes(
-    roots: Vec<PathBuf>,
-    own_files: ProjectFiles,
-    references: ProjectFiles,
-    mut loose: Vec<PathBuf>,
-) -> CSharpScopes {
-    // Owners: the deepest scanning project wins; path order breaks
-    // ties, so unordered iteration stays deterministic.
-    let mut owners: AHashMap<PathBuf, PathBuf> = AHashMap::new();
-    for (project, files) in &own_files {
-        let depth = dir_depth(project);
-        for file in files {
-            let replace = match owners.get(file) {
-                None => true,
-                Some(previous) => {
-                    let previous_depth = dir_depth(previous);
-                    depth > previous_depth || (depth == previous_depth && project < previous)
-                }
-            };
-            if replace {
-                owners.insert(file.clone(), project.clone());
-            }
-        }
-    }
-
-    let mut sorted_roots = roots;
-    sorted_roots.sort();
-    let mut scopes: Vec<CSharpScope> =
-        Vec::with_capacity(sorted_roots.len() + usize::from(!loose.is_empty()));
-    for root in &sorted_roots {
-        // Closure membership: every project reachable from this root.
-        let mut seen: HashSet<PathBuf> = HashSet::new();
-        let mut stack = vec![root.clone()];
-        let mut files: Vec<PathBuf> = Vec::new();
-        while let Some(project) = stack.pop() {
-            if !seen.insert(project.clone()) {
-                continue;
-            }
-            if let Some(own) = own_files.get(&project) {
-                files.extend(own.iter().cloned());
-            }
-            if let Some(found) = references.get(&project) {
-                stack.extend(found.iter().cloned());
-            }
-        }
-        files.sort();
-        files.dedup();
-        scopes.push(CSharpScope {
-            project: Some(root.clone()),
-            files,
-        });
-    }
-    let mut loose_set: AHashSet<PathBuf> = AHashSet::new();
-    if !loose.is_empty() {
-        loose_set.extend(loose.iter().cloned());
-        loose.sort();
-        loose.dedup();
-        scopes.push(CSharpScope {
-            project: None,
-            files: loose,
-        });
-    }
-
-    CSharpScopes {
-        scopes,
-        owners,
-        loose: loose_set,
-    }
-}
-
 /// Phase 1: each input's nearest projects, or the loose set.
 ///
 /// Returns the distinct canonicalized root projects in first-seen order,
@@ -402,12 +331,75 @@ fn scan_projects(roots: &[PathBuf]) -> anyhow::Result<(ProjectFiles, ProjectFile
     Ok((own_files, references))
 }
 
-/// The component depth of `project`'s directory, for owner conflicts.
-fn dir_depth(project: &Path) -> usize {
-    project
-        .parent()
-        .map(|dir| dir.components().count())
-        .unwrap_or(0)
+/// Phase 3: one scope per root (sorted), plus the loose scope.
+fn build_scopes(
+    roots: Vec<PathBuf>,
+    own_files: ProjectFiles,
+    references: ProjectFiles,
+    mut loose: Vec<PathBuf>,
+) -> CSharpScopes {
+    // Owners: the deepest scanning project wins; path order breaks
+    // ties, so unordered iteration stays deterministic.
+    let mut owners: AHashMap<PathBuf, PathBuf> = AHashMap::new();
+    for (project, files) in &own_files {
+        let depth = dir_depth(project);
+        for file in files {
+            let replace = match owners.get(file) {
+                None => true,
+                Some(previous) => {
+                    let previous_depth = dir_depth(previous);
+                    depth > previous_depth || (depth == previous_depth && project < previous)
+                }
+            };
+            if replace {
+                owners.insert(file.clone(), project.clone());
+            }
+        }
+    }
+
+    let mut sorted_roots = roots;
+    sorted_roots.sort();
+    let mut scopes: Vec<CSharpScope> =
+        Vec::with_capacity(sorted_roots.len() + usize::from(!loose.is_empty()));
+    for root in &sorted_roots {
+        // Closure membership: every project reachable from this root.
+        let mut seen: HashSet<PathBuf> = HashSet::new();
+        let mut stack = vec![root.clone()];
+        let mut files: Vec<PathBuf> = Vec::new();
+        while let Some(project) = stack.pop() {
+            if !seen.insert(project.clone()) {
+                continue;
+            }
+            if let Some(own) = own_files.get(&project) {
+                files.extend(own.iter().cloned());
+            }
+            if let Some(found) = references.get(&project) {
+                stack.extend(found.iter().cloned());
+            }
+        }
+        files.sort();
+        files.dedup();
+        scopes.push(CSharpScope {
+            project: Some(root.clone()),
+            files,
+        });
+    }
+    let mut loose_set: AHashSet<PathBuf> = AHashSet::new();
+    if !loose.is_empty() {
+        loose_set.extend(loose.iter().cloned());
+        loose.sort();
+        loose.dedup();
+        scopes.push(CSharpScope {
+            project: None,
+            files: loose,
+        });
+    }
+
+    CSharpScopes {
+        scopes,
+        owners,
+        loose: loose_set,
+    }
 }
 
 /// Extract the literal `Include` targets of `<ProjectReference>` elements
@@ -446,6 +438,14 @@ fn literal_project_includes(source: &str) -> Vec<String> {
         }
     }
     includes
+}
+
+/// The component depth of `project`'s directory, for owner conflicts.
+fn dir_depth(project: &Path) -> usize {
+    project
+        .parent()
+        .map(|dir| dir.components().count())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]

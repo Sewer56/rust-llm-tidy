@@ -340,34 +340,16 @@ fn child_namespace(node: Node<'_>, ns: &str, bytes: &[u8]) -> Option<String> {
     })
 }
 
+/// The dot-joined dotted name of a namespace declaration's name node.
+fn dotted_name(node: Node<'_>, bytes: &[u8]) -> Option<String> {
+    Some(chain_segments(node, bytes)?.join("."))
+}
+
 /// Collect every plain `using` directive's namespace path in the file.
 fn collect_usings(node: Node<'_>, bytes: &[u8]) -> Vec<String> {
     let mut usings = Vec::new();
     collect_using_directives(node, bytes, &mut usings);
     usings
-}
-
-/// True when `node` is the outermost link of a dotted name chain or a
-/// bare identifier name, so it carries the whole reference.
-fn is_occurrence_head(node: Node<'_>) -> bool {
-    let Some(parent) = node.parent() else {
-        return false;
-    };
-    let in_chain = matches!(parent.kind(), "qualified_name" | "member_access_expression");
-    match node.kind() {
-        "qualified_name" | "member_access_expression" => !in_chain,
-        "identifier" => !in_chain && parent.kind() != "generic_name",
-        "generic_name" => !in_chain,
-        _ => false,
-    }
-}
-
-/// True when `node` is the `name` field of its parent, so it is a
-/// declaration's own name rather than a reference.
-fn is_own_name(node: Node<'_>) -> bool {
-    node.parent()
-        .and_then(|parent| parent.child_by_field_name("name"))
-        .is_some_and(|name| name.id() == node.id())
 }
 
 /// Add each plain, non-aliased `using` namespace under `node`.
@@ -385,11 +367,6 @@ fn collect_using_directives(node: Node<'_>, bytes: &[u8], usings: &mut Vec<Strin
             collect_using_directives(child, bytes, usings);
         }
     }
-}
-
-/// The dot-joined dotted name of a namespace declaration's name node.
-fn dotted_name(node: Node<'_>, bytes: &[u8]) -> Option<String> {
-    Some(chain_segments(node, bytes)?.join("."))
 }
 
 /// True when `node` is a `using static` directive: its anonymous
@@ -469,6 +446,29 @@ fn leaf_name<'a>(node: Node<'_>, bytes: &'a [u8]) -> Option<&'a str> {
             .and_then(|identifier| identifier.utf8_text(bytes).ok()),
         _ => None,
     }
+}
+
+/// True when `node` is the outermost link of a dotted name chain or a
+/// bare identifier name, so it carries the whole reference.
+fn is_occurrence_head(node: Node<'_>) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+    let in_chain = matches!(parent.kind(), "qualified_name" | "member_access_expression");
+    match node.kind() {
+        "qualified_name" | "member_access_expression" => !in_chain,
+        "identifier" => !in_chain && parent.kind() != "generic_name",
+        "generic_name" => !in_chain,
+        _ => false,
+    }
+}
+
+/// True when `node` is the `name` field of its parent, so it is a
+/// declaration's own name rather than a reference.
+fn is_own_name(node: Node<'_>) -> bool {
+    node.parent()
+        .and_then(|parent| parent.child_by_field_name("name"))
+        .is_some_and(|name| name.id() == node.id())
 }
 
 #[cfg(test)]

@@ -174,27 +174,6 @@ pub fn header_lines(source: &str, ext: &str) -> usize {
     end
 }
 
-/// Whether a Rust or C# comment line documents the following item
-/// rather than the file: `///` outer docs and `/**` blocks.
-fn is_item_doc(trimmed: &str) -> bool {
-    trimmed.starts_with("///") || trimmed.starts_with("/**")
-}
-
-/// Whether `text` opens Python's module docstring at column 0.
-///
-/// An optional string prefix (`r`, `b`, `u`, `f`, combined) may precede
-/// the triple quote. Returns the closing fence and the text after the
-/// opener.
-fn module_docstring_open(text: &str) -> Option<(&'static str, &str)> {
-    let after_prefix = text.trim_start_matches(['r', 'R', 'b', 'B', 'u', 'U', 'f', 'F']);
-    for fence in ["\"\"\"", "'''"] {
-        if let Some(after) = after_prefix.strip_prefix(fence) {
-            return Some((fence, after));
-        }
-    }
-    None
-}
-
 /// The header syntax for `ext`.
 ///
 /// Rust and C# sit outside the comment lexicon; both use `//` and
@@ -234,6 +213,27 @@ fn syntax_for(ext: &str) -> Option<HeaderSyntax> {
 fn tail_is_comment_or_empty(tail: &str, line: &str) -> bool {
     let tail = tail.trim_start();
     tail.is_empty() || tail.starts_with(line)
+}
+
+/// Whether a Rust or C# comment line documents the following item
+/// rather than the file: `///` outer docs and `/**` blocks.
+fn is_item_doc(trimmed: &str) -> bool {
+    trimmed.starts_with("///") || trimmed.starts_with("/**")
+}
+
+/// Whether `text` opens Python's module docstring at column 0.
+///
+/// An optional string prefix (`r`, `b`, `u`, `f`, combined) may precede
+/// the triple quote. Returns the closing fence and the text after the
+/// opener.
+fn module_docstring_open(text: &str) -> Option<(&'static str, &str)> {
+    let after_prefix = text.trim_start_matches(['r', 'R', 'b', 'B', 'u', 'U', 'f', 'F']);
+    for fence in ["\"\"\"", "'''"] {
+        if let Some(after) = after_prefix.strip_prefix(fence) {
+            return Some((fence, after));
+        }
+    }
+    None
 }
 
 #[cfg(test)]

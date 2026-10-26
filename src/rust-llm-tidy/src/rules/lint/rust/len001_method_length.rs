@@ -76,58 +76,6 @@ pub(crate) fn check(parsed: &ParseResult, max_lines: usize) -> Vec<Diagnostic> {
     diags
 }
 
-/// Build the hint stating the measured facts and the split advice.
-fn diagnostic(name: Option<&str>, measured: usize, max_lines: usize, line: usize) -> Diagnostic {
-    let name = name.unwrap_or("<unnamed>");
-    Diagnostic {
-        title: Some("oversized function or method".into()),
-        severity: Severity::Hint,
-        code: CODE_LEN001,
-        message: indoc::formatdoc! {"
-            fn `{name}` has {measured} body lines (blank and comment-only lines excluded),
-            over the {max_lines}-line budget (method_length.max_lines).
-            Why:
-            - Long functions can make readers track too much control flow and local state.
-            - Named, cohesive steps can help readers follow the flow without tracking every detail.
-            Suggestions:
-            - Consider extracting cohesive steps into functions named for what they do,
-              so the outer function reads as an overview of the flow.
-            - Keep closely related work together. Avoid new types, forwarding wrappers,
-              or a wider public API solely to shorten the body.
-            - Preserve behavior and performance. Avoid extra allocations, cloning, or
-              repeated work; measure performance-sensitive changes.
-            - Mark extracted functions as `#[inline]` if needed.
-            - Inner functions still count toward the enclosing body.
-            - Keep the body intact if splitting would make it harder to follow or slower."},
-        line,
-        item_kind: "fn".to_string(),
-        item_name: Some(name.to_string()),
-    }
-}
-
-/// Count `inner`'s measured lines: physical lines that hold code.
-///
-/// Blank and comment-only lines never count. `comments` holds every
-/// comment span in the file in document order; `first` advances through
-/// it monotonically, so each span is considered once per function.
-fn measured_lines(source: &str, inner: &Range<usize>, comments: &[(usize, usize)]) -> usize {
-    let mut count = 0;
-    let mut first = comments.partition_point(|&(start, _)| start < inner.start);
-    let mut offset = inner.start;
-    for line in source[inner.start..inner.end].split('\n') {
-        // The piece after a trailing newline is not a physical line.
-        if offset == inner.end {
-            break;
-        }
-        let line_end = offset + line.len();
-        if line_has_code(source, offset, line_end, comments, &mut first) {
-            count += 1;
-        }
-        offset = line_end + 1;
-    }
-    count
-}
-
 /// Depth-first cursor walk over `root`, gathering function bodies and
 /// comment spans in document order.
 fn walk<'a>(
@@ -174,6 +122,58 @@ fn walk<'a>(
                 return;
             }
         }
+    }
+}
+
+/// Count `inner`'s measured lines: physical lines that hold code.
+///
+/// Blank and comment-only lines never count. `comments` holds every
+/// comment span in the file in document order; `first` advances through
+/// it monotonically, so each span is considered once per function.
+fn measured_lines(source: &str, inner: &Range<usize>, comments: &[(usize, usize)]) -> usize {
+    let mut count = 0;
+    let mut first = comments.partition_point(|&(start, _)| start < inner.start);
+    let mut offset = inner.start;
+    for line in source[inner.start..inner.end].split('\n') {
+        // The piece after a trailing newline is not a physical line.
+        if offset == inner.end {
+            break;
+        }
+        let line_end = offset + line.len();
+        if line_has_code(source, offset, line_end, comments, &mut first) {
+            count += 1;
+        }
+        offset = line_end + 1;
+    }
+    count
+}
+
+/// Build the hint stating the measured facts and the split advice.
+fn diagnostic(name: Option<&str>, measured: usize, max_lines: usize, line: usize) -> Diagnostic {
+    let name = name.unwrap_or("<unnamed>");
+    Diagnostic {
+        title: Some("oversized function or method".into()),
+        severity: Severity::Hint,
+        code: CODE_LEN001,
+        message: indoc::formatdoc! {"
+            fn `{name}` has {measured} body lines (blank and comment-only lines excluded),
+            over the {max_lines}-line budget (method_length.max_lines).
+            Why:
+            - Long functions can make readers track too much control flow and local state.
+            - Named, cohesive steps can help readers follow the flow without tracking every detail.
+            Suggestions:
+            - Consider extracting cohesive steps into functions named for what they do,
+              so the outer function reads as an overview of the flow.
+            - Keep closely related work together. Avoid new types, forwarding wrappers,
+              or a wider public API solely to shorten the body.
+            - Preserve behavior and performance. Avoid extra allocations, cloning, or
+              repeated work; measure performance-sensitive changes.
+            - Mark extracted functions as `#[inline]` if needed.
+            - Inner functions still count toward the enclosing body.
+            - Keep the body intact if splitting would make it harder to follow or slower."},
+        line,
+        item_kind: "fn".to_string(),
+        item_name: Some(name.to_string()),
     }
 }
 

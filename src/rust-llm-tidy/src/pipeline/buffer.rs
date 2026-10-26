@@ -193,29 +193,6 @@ pub fn tidy_source<'a>(
     })
 }
 
-/// Apply text fixes to text documents or verified standalone comment runs.
-///
-/// Unverified source remains borrowed, regardless of explicit rule selection.
-#[cfg(test)]
-pub(super) fn fix_source<'a>(
-    source: &'a str,
-    ext: &str,
-    profile: &registry::Profile,
-    enabled: &Option<HashSet<String>>,
-    disabled: &HashSet<String>,
-    links_min_occurrences: usize,
-) -> (Cow<'a, str>, Vec<Change>) {
-    fix_source_protected(
-        source,
-        ext,
-        profile,
-        enabled,
-        disabled,
-        links_min_occurrences,
-        &[],
-    )
-}
-
 /// Reorder supported source and verify line preservation before returning
 /// changes.
 pub(super) fn reorder_source<'a>(
@@ -242,6 +219,29 @@ pub(super) fn reorder_source<'a>(
         Cow::Owned(output)
     };
     Ok((output, changes))
+}
+
+/// Apply text fixes to text documents or verified standalone comment runs.
+///
+/// Unverified source remains borrowed, regardless of explicit rule selection.
+#[cfg(test)]
+pub(super) fn fix_source<'a>(
+    source: &'a str,
+    ext: &str,
+    profile: &registry::Profile,
+    enabled: &Option<HashSet<String>>,
+    disabled: &HashSet<String>,
+    links_min_occurrences: usize,
+) -> (Cow<'a, str>, Vec<Change>) {
+    fix_source_protected(
+        source,
+        ext,
+        profile,
+        enabled,
+        disabled,
+        links_min_occurrences,
+        &[],
+    )
 }
 
 /// Fix text or standalone comments, skipping runs overlapping protected bytes.
@@ -321,39 +321,22 @@ pub(super) fn fix_source_protected<'a>(
     }
 }
 
-/// Run text engines on an already authorized document or comment run.
-fn fix_text<'a>(
-    source: &'a str,
+/// Resolve the lint group and individual-code selections against language
+/// capabilities.
+fn lints_enabled(
     profile: &registry::Profile,
     enabled: &Option<HashSet<String>>,
     disabled: &HashSet<String>,
-    links_min_occurrences: usize,
-) -> (Cow<'a, str>, Vec<Change>) {
-    let mut output = Cow::Borrowed(source);
-    let mut changes = Vec::new();
-
-    if profile.op_enabled("tables", enabled, disabled)
-        && let Cow::Owned(after) = transform::fix_tables(&output, profile.prefixes)
-    {
-        changes.push(change::table_changes());
-        output = Cow::Owned(after);
-    }
-    if profile.op_enabled("fences", enabled, disabled) {
-        let result = transform::fix_fences(&output, profile.prefixes);
-        if let Cow::Owned(after) = result.text {
-            changes.extend(change::fence_changes(&result.anchors));
-            output = Cow::Owned(after);
+) -> bool {
+    !disabled.contains("lints")
+        && match enabled {
+            Some(set) => {
+                profile.allows("lints")
+                    && (set.contains("lints")
+                        || lint::LINT_CODES.iter().any(|code| set.contains(*code)))
+            }
+            None => profile.op_enabled("lints", enabled, disabled),
         }
-    }
-    if profile.op_enabled("links", enabled, disabled) {
-        let (result, pairs) =
-            transform::fix_links(&output, profile.prefixes, links_min_occurrences);
-        if let Cow::Owned(after) = result {
-            changes.extend(change::link_changes(&pairs));
-            output = Cow::Owned(after);
-        }
-    }
-    (output, changes)
 }
 
 /// Lint the transformed buffer, appending run warnings to `warnings`.
@@ -416,22 +399,39 @@ fn lint_buffer(
     Ok(diagnostics)
 }
 
-/// Resolve the lint group and individual-code selections against language
-/// capabilities.
-fn lints_enabled(
+/// Run text engines on an already authorized document or comment run.
+fn fix_text<'a>(
+    source: &'a str,
     profile: &registry::Profile,
     enabled: &Option<HashSet<String>>,
     disabled: &HashSet<String>,
-) -> bool {
-    !disabled.contains("lints")
-        && match enabled {
-            Some(set) => {
-                profile.allows("lints")
-                    && (set.contains("lints")
-                        || lint::LINT_CODES.iter().any(|code| set.contains(*code)))
-            }
-            None => profile.op_enabled("lints", enabled, disabled),
+    links_min_occurrences: usize,
+) -> (Cow<'a, str>, Vec<Change>) {
+    let mut output = Cow::Borrowed(source);
+    let mut changes = Vec::new();
+
+    if profile.op_enabled("tables", enabled, disabled)
+        && let Cow::Owned(after) = transform::fix_tables(&output, profile.prefixes)
+    {
+        changes.push(change::table_changes());
+        output = Cow::Owned(after);
+    }
+    if profile.op_enabled("fences", enabled, disabled) {
+        let result = transform::fix_fences(&output, profile.prefixes);
+        if let Cow::Owned(after) = result.text {
+            changes.extend(change::fence_changes(&result.anchors));
+            output = Cow::Owned(after);
         }
+    }
+    if profile.op_enabled("links", enabled, disabled) {
+        let (result, pairs) =
+            transform::fix_links(&output, profile.prefixes, links_min_occurrences);
+        if let Cow::Owned(after) = result {
+            changes.extend(change::link_changes(&pairs));
+            output = Cow::Owned(after);
+        }
+    }
+    (output, changes)
 }
 
 /// Run standalone checks using the registered AST or text extraction mechanism.

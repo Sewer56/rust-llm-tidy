@@ -209,6 +209,68 @@ pub(super) fn diagnostic(
     }
 }
 
+/// Whether `path` has a `tests` directory component (e.g.
+/// `tests/csharp/main.rs`, `src/cli/tests/config/main.rs`).
+///
+/// A file named `tests.rs` is not a directory component and does not match.
+fn is_tests_path(path: &Path) -> bool {
+    path.components()
+        .any(|component| component.as_os_str() == OsStr::new("tests"))
+}
+
+/// Add Rust-specific split advice and the effective test-counting policies.
+fn with_rust_guidance(
+    mut finding: Diagnostic,
+    include_in_file_tests: bool,
+    include_test_files: bool,
+    excludes_header: bool,
+) -> Diagnostic {
+    let regions = if include_in_file_tests {
+        "counted"
+    } else {
+        "excluded"
+    };
+    let files = if include_test_files {
+        "checked"
+    } else {
+        "skipped"
+    };
+    let headers = if excludes_header {
+        "\n- Module headers are excluded from the count."
+    } else {
+        ""
+    };
+
+    indoc::writedoc!(
+        finding.message,
+        "
+
+        - In Rust, the module root (`mod.rs` or `foo.rs`) is the usual home for
+          those entry points.
+        - Selective re-exports can expose child-module entry points without a
+          forwarding wrapper.
+        Counting:
+        - Top-level `#[cfg(test)]` test modules are {regions}.
+          Other lines count, including comments and blank lines.
+        - Rust files in `tests/` directories are {files}.{headers}"
+    )
+    .expect("writing to a String cannot fail");
+    finding
+}
+
+/// The byte offset just past the header's last content byte, before its
+/// line's newline: the span that owns exactly the header's lines.
+fn header_span_end(source: &str, header: usize) -> usize {
+    let mut offset = 0;
+    for line in source.split('\n').take(header) {
+        offset += line.len() + 1;
+    }
+    // `offset` sits one past the newline (or past the source end for a
+    // final unterminated line). Back up one byte so the next line stays
+    // outside the span.
+    (offset - 1).min(source.len())
+}
+
 /// Count physical lines no span fully owns, tracking where the count
 /// passes `max_lines`.
 ///
@@ -264,68 +326,6 @@ fn count_lines_outside_spans(
         offset = line_end + 1;
     }
     (non_test_lines, crossing_line)
-}
-
-/// The byte offset just past the header's last content byte, before its
-/// line's newline: the span that owns exactly the header's lines.
-fn header_span_end(source: &str, header: usize) -> usize {
-    let mut offset = 0;
-    for line in source.split('\n').take(header) {
-        offset += line.len() + 1;
-    }
-    // `offset` sits one past the newline (or past the source end for a
-    // final unterminated line). Back up one byte so the next line stays
-    // outside the span.
-    (offset - 1).min(source.len())
-}
-
-/// Whether `path` has a `tests` directory component (e.g.
-/// `tests/csharp/main.rs`, `src/cli/tests/config/main.rs`).
-///
-/// A file named `tests.rs` is not a directory component and does not match.
-fn is_tests_path(path: &Path) -> bool {
-    path.components()
-        .any(|component| component.as_os_str() == OsStr::new("tests"))
-}
-
-/// Add Rust-specific split advice and the effective test-counting policies.
-fn with_rust_guidance(
-    mut finding: Diagnostic,
-    include_in_file_tests: bool,
-    include_test_files: bool,
-    excludes_header: bool,
-) -> Diagnostic {
-    let regions = if include_in_file_tests {
-        "counted"
-    } else {
-        "excluded"
-    };
-    let files = if include_test_files {
-        "checked"
-    } else {
-        "skipped"
-    };
-    let headers = if excludes_header {
-        "\n- Module headers are excluded from the count."
-    } else {
-        ""
-    };
-
-    indoc::writedoc!(
-        finding.message,
-        "
-
-        - In Rust, the module root (`mod.rs` or `foo.rs`) is the usual home for
-          those entry points.
-        - Selective re-exports can expose child-module entry points without a
-          forwarding wrapper.
-        Counting:
-        - Top-level `#[cfg(test)]` test modules are {regions}.
-          Other lines count, including comments and blank lines.
-        - Rust files in `tests/` directories are {files}.{headers}"
-    )
-    .expect("writing to a String cannot fail");
-    finding
 }
 
 #[cfg(test)]

@@ -405,6 +405,17 @@ fn emit_protected(parsed: &ParseResult, perm: &Permutation) -> String {
     output
 }
 
+/// The member permutation to splice for item `idx`, or `None` when the item
+/// emits its plain slice.
+///
+/// A plain slice means no attached member order, or an identity one, which
+/// must keep the original bytes.
+fn member_splice_order(perm: &Permutation, idx: usize) -> Option<&[usize]> {
+    let order = perm.member_orders.get(&idx)?;
+    let identity = order.iter().enumerate().all(|(pos, &member)| pos == member);
+    (!identity).then_some(order.as_slice())
+}
+
 /// Keep the requested relative order only inside contiguous unpinned runs.
 fn pin_runs(order: &mut [usize], pinned: impl Fn(usize) -> bool) {
     let mut rank = vec![0; order.len()];
@@ -435,17 +446,6 @@ fn spacing_group(kind: &ItemKind) -> Option<u8> {
         ItemKind::Const | ItemKind::Static | ItemKind::Extern => Some(2),
         _ => None,
     }
-}
-
-/// The member permutation to splice for item `idx`, or `None` when the item
-/// emits its plain slice.
-///
-/// A plain slice means no attached member order, or an identity one, which
-/// must keep the original bytes.
-fn member_splice_order(perm: &Permutation, idx: usize) -> Option<&[usize]> {
-    let order = perm.member_orders.get(&idx)?;
-    let identity = order.iter().enumerate().all(|(pos, &member)| pos == member);
-    (!identity).then_some(order.as_slice())
 }
 
 #[cfg(test)]

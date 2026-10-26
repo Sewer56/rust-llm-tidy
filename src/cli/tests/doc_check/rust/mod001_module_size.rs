@@ -99,6 +99,19 @@ fn mod001_should_follow_the_configured_max_lines_threshold() {
     );
 }
 
+// ── MOD001 helpers ────────────────────────────────────────────────
+
+/// Write `yaml` beside a fresh `over.rs` of `count` private fn lines and
+/// return `(dir, file)`; the config governs runs against `file`.
+fn mod001_module_with_config(count: usize, yaml: &str) -> (PathBuf, PathBuf) {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("over.rs");
+    fs::write(&file, mod001_module_source(count)).unwrap();
+    fs::write(dir.join(".rust-llm-tidy.yml"), yaml).unwrap();
+    (dir, file)
+}
+
 /// Files under a `tests` directory never fire MOD001 while the other
 /// codes still lint them.
 #[test]
@@ -184,19 +197,6 @@ fn mod001_should_warn_when_non_test_lines_exceed_the_default_budget() {
         stderr.contains(":501: warning[MOD001]"),
         "MOD001 must report at the first line past the budget:\n{stderr}"
     );
-}
-
-// ── MOD001 helpers ────────────────────────────────────────────────
-
-/// Write `yaml` beside a fresh `over.rs` of `count` private fn lines and
-/// return `(dir, file)`; the config governs runs against `file`.
-fn mod001_module_with_config(count: usize, yaml: &str) -> (PathBuf, PathBuf) {
-    let dir = temp_dir();
-    fs::create_dir_all(&dir).unwrap();
-    let file = dir.join("over.rs");
-    fs::write(&file, mod001_module_source(count)).unwrap();
-    fs::write(dir.join(".rust-llm-tidy.yml"), yaml).unwrap();
-    (dir, file)
 }
 
 /// Generate `count` private fn lines with zero-padded names.

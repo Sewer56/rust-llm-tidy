@@ -159,12 +159,6 @@ fn check_item<'a>(
     }
 }
 
-/// True when the comment node is a doc comment (`///` or `/**`).
-fn is_doc_comment(node: tree_sitter::Node<'_>, source: &str) -> bool {
-    node.utf8_text(source.as_bytes())
-        .is_ok_and(|text| text.starts_with("///") || text.starts_with("/**"))
-}
-
 /// The enclosing item kind for one member-list item kind.
 ///
 /// Items without a member body return `None`.
@@ -177,6 +171,12 @@ fn item_kind(kind: &str) -> Option<ItemKind> {
         "enum_declaration" => Some(ItemKind::Enum),
         _ => None,
     }
+}
+
+/// True when the comment node is a doc comment (`///` or `/**`).
+fn is_doc_comment(node: tree_sitter::Node<'_>, source: &str) -> bool {
+    node.utf8_text(source.as_bytes())
+        .is_ok_and(|text| text.starts_with("///") || text.starts_with("/**"))
 }
 
 /// A member's declared name, or a phrase for its node kind.
@@ -208,6 +208,17 @@ fn declared_field_name(member: tree_sitter::Node<'_>, source: &str) -> Option<Bo
     Some(text.into())
 }
 
+/// The first named child of `node` with `kind`, if any.
+fn named_child_of_kind<'a>(
+    node: tree_sitter::Node<'a>,
+    kind: &str,
+) -> Option<tree_sitter::Node<'a>> {
+    (0..node.named_child_count() as u32).find_map(|i| {
+        let child = node.named_child(i).expect("index below count");
+        (child.kind() == kind).then_some(child)
+    })
+}
+
 /// Label phrase for a member node without a usable name.
 fn member_kind_phrase(kind: &str) -> &'static str {
     match kind {
@@ -222,17 +233,6 @@ fn member_kind_phrase(kind: &str) -> &'static str {
         "record_declaration" => "record",
         _ => "member",
     }
-}
-
-/// The first named child of `node` with `kind`, if any.
-fn named_child_of_kind<'a>(
-    node: tree_sitter::Node<'a>,
-    kind: &str,
-) -> Option<tree_sitter::Node<'a>> {
-    (0..node.named_child_count() as u32).find_map(|i| {
-        let child = node.named_child(i).expect("index below count");
-        (child.kind() == kind).then_some(child)
-    })
 }
 
 #[cfg(test)]
