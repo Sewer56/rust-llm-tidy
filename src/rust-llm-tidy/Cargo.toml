@@ -73,4 +73,4 @@ tree-sitter-rust = "0.24"
 
 [dev-dependencies]
 criterion = "0.8"
-rstest = "0.27.0"
+rstest = "0.28.0"
