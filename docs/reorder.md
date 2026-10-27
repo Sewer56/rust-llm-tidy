@@ -9,10 +9,11 @@ top to bottom.
 Within each reorder group, callers come before callees unless a cycle
 prevents it. Rust's `main` comes first in its group.
 
-Rust free functions and C# methods prefer first-reference order:
-`A → B, C` gives `A, B, C`.
-Dependencies and existing reorder groups take priority over that preference.
-Rust uses alphabetical order as a fallback.
+Rust free functions and C# methods follow their first references when they can.
+For example, if `A` calls `B` and then `C`, the preferred order is `A, B, C`.
+
+Dependencies and reorder groups come first. Rust breaks remaining ties
+alphabetically.
 
 Other languages:
 - [Reorder for C#]

@@ -36,8 +36,8 @@ mod toposort;
 ///
 /// Inside a run, members bucket by [`ReorderProfile::member_phase`] with
 /// each phase applying [`ReorderProfile::member_strategy`].
-/// Function-only dependency groups prefer first-reference order, then their
-/// configured tie-break.
+/// Function-only dependency groups follow first references when possible.
+/// The configured tie-break orders the rest.
 ///
 /// Member phases honor [`PhaseStrategy::Stable`] and
 /// [`PhaseStrategy::Dependency`]; other strategies fall back to `Stable`.
@@ -240,69 +240,38 @@ fn order_region(
     }
 }
 
-/// Emit one macro phase: definitions dependency-sorted alphabetically,
-/// each immediately followed by its local invocations in source order.
+/// Emit functions by visibility: `pub`, restricted, then private.
 ///
-/// This keeps a `macro_rules!` definition before its use sites because
-/// Rust `macro_rules!` uses textual scoping.
-fn emit_macro_definitions(
+/// Within each group, put callers first, then follow first references where
+/// possible; break remaining ties alphabetically.
+fn emit_fns_by_visibility(
     parsed: &ParseResult,
     items: &[usize],
     edges: &[(usize, usize)],
     out: &mut Vec<usize>,
 ) {
-    // Split definitions from invocations; both keep source order.
-    let mut defs: Vec<usize> = Vec::new();
-    let mut invocations: Vec<usize> = Vec::new();
+    let mut pub_fns: Vec<usize> = Vec::new();
+    let mut restricted_fns: Vec<usize> = Vec::new();
+    let mut private_fns: Vec<usize> = Vec::new();
+
     for &idx in items {
-        match parsed.items[idx].kind() {
-            ItemKind::Macro => defs.push(idx),
-            ItemKind::MacroInvocation => invocations.push(idx),
-            // Other kinds in a macro phase keep source order, leading the
-            // phase.
-            _ => out.push(idx),
+        match parsed.items[idx].visibility() {
+            Some(VisibilityTier::Pub) => pub_fns.push(idx),
+            Some(VisibilityTier::PubRestricted) => restricted_fns.push(idx),
+            _ => private_fns.push(idx),
         }
     }
 
-    let def_order = dependency_order(parsed, &defs, edges, TieBreak::Alphabetical, None);
-
-    // Group invocations by macro name. Invocations whose name has no
-    // matching definition emit last in source order.
-    //
-    // This case is unreachable: the profile routes an invocation to this phase only
-    // when a local definition shares its name.
-    let def_names: AHashSet<&str> = def_order
-        .iter()
-        .filter_map(|&idx| parsed.items[idx].name())
-        .filter(|name| !name.is_empty())
-        .collect();
-    let mut invocations_by_def: AHashMap<&str, Vec<usize>> = AHashMap::new();
-    let mut orphans: Vec<usize> = Vec::new();
-    for &inv_idx in &invocations {
-        let inv_name = parsed.items[inv_idx].name().unwrap_or("");
-        if def_names.contains(inv_name) {
-            invocations_by_def
-                .entry(inv_name)
-                .or_default()
-                .push(inv_idx);
-        } else {
-            orphans.push(inv_idx);
-        }
+    let mut references = toposort::ReferenceOrder::new(parsed.items.len(), edges);
+    for group in [pub_fns, restricted_fns, private_fns] {
+        out.extend(dependency_order(
+            parsed,
+            &group,
+            edges,
+            TieBreak::Alphabetical,
+            Some(&mut references),
+        ));
     }
-
-    for &def_idx in &def_order {
-        out.push(def_idx);
-        let def_name = parsed.items[def_idx].name().unwrap_or("");
-        // `remove` (not `get`): duplicate definition names would attach
-        // the shared invocations once per definition and repeat indices.
-        //
-        // Duplicate definition names are legal in Rust; a later
-        // `macro_rules!` shadows the earlier.
-        if let Some(invocs) = invocations_by_def.remove(def_name) {
-            out.extend(invocs);
-        }
-    }
-    out.extend(&orphans);
 }
 
 /// Emit one impl phase: inherent impls after their matching type, then
@@ -374,38 +343,69 @@ fn emit_impls_after_target_type(parsed: &ParseResult, items: &[usize], out: &mut
     }
 }
 
-/// Emit one fn phase by visibility, dependencies, then first references.
-/// Alphabetical order breaks remaining ties.
+/// Emit one macro phase: definitions dependency-sorted alphabetically,
+/// each immediately followed by its local invocations in source order.
 ///
-/// Groups emit in order: `pub`, then restricted, then private.
-fn emit_fns_by_visibility(
+/// This keeps a `macro_rules!` definition before its use sites because
+/// Rust `macro_rules!` uses textual scoping.
+fn emit_macro_definitions(
     parsed: &ParseResult,
     items: &[usize],
     edges: &[(usize, usize)],
     out: &mut Vec<usize>,
 ) {
-    let mut pub_fns: Vec<usize> = Vec::new();
-    let mut restricted_fns: Vec<usize> = Vec::new();
-    let mut private_fns: Vec<usize> = Vec::new();
-
+    // Split definitions from invocations; both keep source order.
+    let mut defs: Vec<usize> = Vec::new();
+    let mut invocations: Vec<usize> = Vec::new();
     for &idx in items {
-        match parsed.items[idx].visibility() {
-            Some(VisibilityTier::Pub) => pub_fns.push(idx),
-            Some(VisibilityTier::PubRestricted) => restricted_fns.push(idx),
-            _ => private_fns.push(idx),
+        match parsed.items[idx].kind() {
+            ItemKind::Macro => defs.push(idx),
+            ItemKind::MacroInvocation => invocations.push(idx),
+            // Other kinds in a macro phase keep source order, leading the
+            // phase.
+            _ => out.push(idx),
         }
     }
 
-    let mut references = toposort::ReferenceOrder::new(parsed.items.len(), edges);
-    for group in [pub_fns, restricted_fns, private_fns] {
-        out.extend(dependency_order(
-            parsed,
-            &group,
-            edges,
-            TieBreak::Alphabetical,
-            Some(&mut references),
-        ));
+    let def_order = dependency_order(parsed, &defs, edges, TieBreak::Alphabetical, None);
+
+    // Group invocations by macro name. Invocations whose name has no
+    // matching definition emit last in source order.
+    //
+    // This case is unreachable: the profile routes an invocation to this phase only
+    // when a local definition shares its name.
+    let def_names: AHashSet<&str> = def_order
+        .iter()
+        .filter_map(|&idx| parsed.items[idx].name())
+        .filter(|name| !name.is_empty())
+        .collect();
+    let mut invocations_by_def: AHashMap<&str, Vec<usize>> = AHashMap::new();
+    let mut orphans: Vec<usize> = Vec::new();
+    for &inv_idx in &invocations {
+        let inv_name = parsed.items[inv_idx].name().unwrap_or("");
+        if def_names.contains(inv_name) {
+            invocations_by_def
+                .entry(inv_name)
+                .or_default()
+                .push(inv_idx);
+        } else {
+            orphans.push(inv_idx);
+        }
     }
+
+    for &def_idx in &def_order {
+        out.push(def_idx);
+        let def_name = parsed.items[def_idx].name().unwrap_or("");
+        // `remove` (not `get`): duplicate definition names would attach
+        // the shared invocations once per definition and repeat indices.
+        //
+        // Duplicate definition names are legal in Rust; a later
+        // `macro_rules!` shadows the earlier.
+        if let Some(invocs) = invocations_by_def.remove(def_name) {
+            out.extend(invocs);
+        }
+    }
+    out.extend(&orphans);
 }
 
 /// Sort one group's items by reference dependency with `tie_break` for

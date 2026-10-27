@@ -52,9 +52,9 @@ pub enum PhaseStrategy {
 
     /// Fns group by visibility, widest first (Rust fns):
     ///
-    /// - `pub` fns, then restricted (`pub(crate)` style), then private
-    /// - within a group, callers sort before callees, `main` first;
-    ///   first references take priority, with alphabetical fallback
+    /// - `pub` functions, then restricted (`pub(crate)`), then private
+    /// - within each group, `main` first, then callers before callees;
+    ///   first references come next, then alphabetical order
     FnsByVisibility,
 }
 

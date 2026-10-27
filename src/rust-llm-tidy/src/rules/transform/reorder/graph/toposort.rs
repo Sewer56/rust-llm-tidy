@@ -32,12 +32,12 @@ pub enum TieBreak {
 }
 
 impl ReferenceOrder {
-    /// Creates unranked reference state for file or member indices.
+    /// Creates reference order with no ranks assigned.
     ///
     /// # Arguments
     ///
     /// - `len`: number of items or members.
-    /// - `edges`: reference-ordered pairs; out-of-range endpoints are ignored.
+    /// - `edges`: reference pairs in order; ignores out-of-range endpoints.
     ///
     /// # Returns
     ///
@@ -114,13 +114,13 @@ pub fn toposort(fns: &[&str], edges: &[(usize, usize)], tie_break: TieBreak) -> 
 ///
 /// - `fns`: group-local item names in source order.
 /// - `edges`: group-local reference dependency pairs.
-/// - `tie_break`: fallback order for unranked, equally ranked, or cyclic nodes.
+/// - `tie_break`: orders unranked or equally ranked nodes, and nodes in cycles.
 /// - `references`: local-to-global index map and shared reference state.
 ///
 /// # Returns
 ///
-/// A permutation of group-local positions, with `main` first and cycles last.
-/// Without reference state, ready nodes emit in batches as in [`toposort`].
+/// Group positions with `main` first and cycles last.
+/// Without reference state, emits ready nodes in batches, as in [`toposort`].
 pub(super) fn with_references(
     fns: &[&str],
     edges: &[(usize, usize)],
@@ -188,7 +188,7 @@ pub(super) fn with_references(
 
         zero_degree.clear();
         if references.is_some() {
-            // Pick one so a newly ready helper can beat an unrelated root.
+            // Pick one at a time so a ready helper can precede an unrelated root.
             if let Some(Reverse((_, _, i))) = ready.pop() {
                 zero_degree.push(i);
             }
@@ -214,7 +214,7 @@ pub(super) fn with_references(
                         && !visited[callee]
                         && let Some((group, references)) = &references
                     {
-                        // All same-group callers have finished, so this rank is final.
+                        // All callers in this group have finished, so the rank is final.
                         ready.push(key(callee, references.ranks[group[callee]]));
                     }
                 }

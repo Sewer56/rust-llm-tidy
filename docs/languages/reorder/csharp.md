@@ -7,7 +7,8 @@ Differences from Rust:
 
 - Shared behavior covers config, change output, and callers before callees.
 - Members follow the Rider/ReSharper default order.
-- Methods prefer first-reference order; remaining ties keep file order.
+- Methods follow their first references when possible; other ties keep file
+  order.
 
 ## Top-level order
 

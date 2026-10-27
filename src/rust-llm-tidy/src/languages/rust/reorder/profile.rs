@@ -76,8 +76,8 @@ static RUST_REFERENCE_WALK: ReferenceWalk = ReferenceWalk {
 /// 6. `struct`/`enum`/`union`/`type`, dependency then alphabetical
 /// 7. `trait`, dependency then alphabetical
 /// 8. `impl`, inherent before trait, after the matching type
-/// 9. `fn`, visibility groups, dependency then first-reference preference,
-///    alphabetical fallback
+/// 9. `fn`: grouped by visibility, then callers first and first references;
+///    other ties sort alphabetically
 /// 10. inline `#[cfg(test)] mod`, stable, last
 pub(crate) struct RustProfile;
 
