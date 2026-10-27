@@ -27,6 +27,8 @@ synthetic_fixture!(csharp, "cs", member_properties_indexers_keep_source_order);
 
 synthetic_fixture!(csharp, "cs", member_callers_before_callees);
 
+synthetic_fixture!(csharp, "cs", member_first_reference);
+
 synthetic_fixture!(csharp, "cs", member_methods_keep_source_order);
 
 synthetic_fixture!(csharp, "cs", member_mutual_recursion_contiguous);

@@ -47,6 +47,8 @@ synthetic_fixture!(rust, "rs", fn_main_first);
 
 synthetic_fixture!(rust, "rs", fn_callers_before_callees);
 
+synthetic_fixture!(rust, "rs", fn_first_reference);
+
 synthetic_fixture!(rust, "rs", fn_alphabetical_tie_break);
 
 synthetic_fixture!(rust, "rs", fn_mutual_recursion_contiguous);

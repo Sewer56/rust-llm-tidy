@@ -307,64 +307,6 @@ fn source_should_match_applied_file_results_for_standalone_operations() {
     }
 }
 
-// ── Function order ──────────────────────────────────────────────────
-
-#[rstest]
-#[case::rust(
-    "pub fn z_run() { a(); z(); }\n\
-     pub fn a_run() { z(); a(); z(); }\n\
-     fn a() {}\n\
-     fn deep() {}\n\
-     fn unrelated() {}\n\
-     fn z() { deep(); }\n",
-    "rs",
-    &["a_run", "z_run", "z", "a", "deep", "unrelated"]
-)]
-#[case::csharp(
-    "class C\n{\n\
-         void A() { Z(); B(); Z(); }\n\
-         void B() { Z(); }\n\
-         void Deep() {}\n\
-         void Unrelated() {}\n\
-         void Z() { Deep(); }\n\
-     }\n",
-    "cs",
-    &["A", "B", "Z", "Deep", "Unrelated"]
-)]
-fn source_should_order_helpers_by_first_reference(
-    #[case] source: &str,
-    #[case] extension: &str,
-    #[case] expected: &[&str],
-) {
-    // Arrange
-    // Rust's callers disagree; alphabetical output puts a_run first.
-    // C# prefers Z, but its caller B must come first.
-    let options = SourceOptions {
-        include: vec!["reorder".into()],
-        ..SourceOptions::default()
-    };
-
-    // Act
-    let report = tidy_source(source, extension, &options).unwrap();
-    let second = tidy_source(&report.source, extension, &options).unwrap();
-
-    // Assert
-    let names: Vec<_> = report
-        .source
-        .lines()
-        .filter_map(|line| {
-            let line = line.trim().strip_prefix("pub ").unwrap_or(line.trim());
-            let declaration = line
-                .strip_prefix("fn ")
-                .or_else(|| line.strip_prefix("void "))?;
-            Some(declaration.split_once('(').unwrap().0)
-        })
-        .collect();
-    assert_eq!(names, expected);
-    assert_eq!(second.source, report.source);
-    assert!(second.changes.is_empty());
-}
-
 // Failures and execution permissions.
 
 #[rstest]
